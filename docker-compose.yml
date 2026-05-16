@@ -1,0 +1,21 @@
+services:
+  mediatree:
+    image: zasenjc/mediatree:latest
+    build: .
+    container_name: mediatree
+    ports:
+      - "27580:27580"
+    volumes:
+      - /Volumes/o1/media/ss/01:/media/o1:ro
+      - /Volumes/o1/media/ss/02:/media/o2:ro
+      - /Volumes/o1/media/Movie:/media/movie:ro
+      - /Volumes/o1/media/Bangumi:/media/bgm:ro
+      - /Volumes/STU/Code/mediatree/data:/app/data
+    environment:
+      - MEDIA_ROOT=/media
+      - JAVDB_ENABLED=true
+      - JAVDB_CACHE_HOURS=24
+      - SCAN_ON_STARTUP=true
+      - AUTH_USER=admin
+      - AUTH_PASS=changeme
+    restart: unless-stopped
