@@ -1,5 +1,10 @@
 # AGENTS.md — MediaTree 项目开发指南
 
+## Push 工作流
+
+- 每次 push 前，必须先同步更新 `AGENTS.md`、`CLAUDE.md`、`CHANGEME.md` 和 `README.md`，确保文档反映当前代码状态。
+- 将文档更新纳入同一个 commit，不要单独提交。
+
 ## 项目概述
 
 基于 Docker 的本地影片 Web 浏览管理器。支持多媒体库、插件化刮削（TMDB/Bangumi/Javdatabase）、ArtPlayer 播放器（触控手势/键盘快捷键/移动端全屏适配）、ASS/SSA 特效字幕渲染、外挂字幕播放列表、本地播放器调用、进度记忆。
@@ -59,16 +64,18 @@ mediatree/
 
 ## 核心数据流
 
-### 刮削器 Fallback 链
+### 刮削器 Fallback 链（顺序搜索）
 ```
-"javdatabase" → [javdatabase]          (独立)
-"tmdb_movie"  → [TMDB movie ID/标题, bangumi, TMDB movie 标题]
-"tmdb_tv"     → [TMDB tv ID/标题, bangumi, TMDB tv 标题]
+"javdatabase" → [javdatabase]                         (独立，只在用户选择了此刮削器才启用)
+"tmdb_movie"  → [TMDB movie ID精确匹配, bangumi搜索, TMDB movie标题搜索]
+"tmdb_tv"     → [TMDB tv ID精确匹配, bangumi搜索, TMDB tv标题搜索]
 "tmdb"        → tmdb_movie 兼容别名
-"bangumi"     → [bangumi, TMDB tv 标题]
-"auto"        → [TMDB ID精确匹配(含movie/tv推断), bangumi, tmdb]
+"bangumi"     → [bangumi, TMDB tv标题搜索]
+"auto"        → [TMDB ID精确匹配(含movie/tv推断), bangumi, TMDB标题搜索]
 "none"        → 跳过
 ```
+Fallback 采用**顺序搜索**（非并行）：先 Bangumi 搜索 API，失败则继续 TMDB 标题搜索 API。
+TMDB ID 精确匹配优先于所有搜索；javdatabase 刮削器独立运行，不参与其他刮削器的 fallback 链。
 
 ### 扫描 + 刮削
 ```
