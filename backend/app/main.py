@@ -1,5 +1,7 @@
 import asyncio
 import json as json_module
+import mimetypes
+import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -17,18 +19,36 @@ from .database import (
     get_media_roots, get_folder_tree_from_db,
     get_library_passwords, set_library_password, verify_library_password_v2,
     get_all_library_settings, save_library_settings, has_any_library_setting,
+    save_progress, get_progress,
 )
-from .scanner import scan_media, scrape_for_library, rescrape_movie, rescrape_movie_manual, rescrape_folder, rescrape_folder_manual, search_for_scrape, apply_folder_scrape_result, fetch_search_backdrops, change_folder_cover, change_folder_backdrop, edit_folder_movies, delete_folder_movies
+from .scanner import scan_media, scrape_for_library, run_scan_for_root, rescrape_movie, rescrape_movie_manual, rescrape_folder, rescrape_folder_manual, search_for_scrape, apply_folder_scrape_result, fetch_search_backdrops, change_folder_cover, change_folder_backdrop, edit_folder_movies, delete_folder_movies
 from .javdb import search_javdb
-from .stream import get_video_stream
-from .subtitles import get_subtitle_tracks, find_external_subtitles, extract_subtitle_stream, convert_external_to_webvtt
+from .stream import get_video_stream, get_media_info
+from .subtitles import get_subtitle_tracks, find_external_subtitles, find_external_audio_tracks, extract_subtitle_stream_raw, load_external_subtitle, list_fonts, install_font, remove_font, get_fonts_dir, resolve_font_path, get_default_subtitle_font_path
+
+mimetypes.add_type("font/woff2", ".woff2")
+mimetypes.add_type("font/woff", ".woff")
+mimetypes.add_type("font/ttf", ".ttf")
+mimetypes.add_type("font/otf", ".otf")
+mimetypes.add_type("font/collection", ".ttc")
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if path.startswith("/System") \
+                or path.startswith("/Users") \
+                or path.startswith("/Items") \
+                or path.startswith("/Videos") \
+                or path.startswith("/Sessions") \
+                or path.startswith("/Shows") \
+                or path.startswith("/Library") \
+                or path.startswith("/DisplayPreferences") \
+                or path.startswith("/Genres") \
+                or path.startswith("/emby"):
+            return await call_next(request)
         if not settings.auth_enabled:
             return await call_next(request)
-        path = request.url.path
         if path.startswith("/assets") \
                 or path in ("/api/auth/login", "/api/auth/status", "/api/setup/status", "/api/health") \
                 or path.startswith("/api/stream/") \
@@ -36,7 +56,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 or path.startswith("/api/cached-cover/") \
                 or path.startswith("/api/episode-still/") \
                 or path.startswith("/api/thumbnail/") \
+                or path.startswith("/api/subtitle-tracks/") \
                 or path.startswith("/api/subtitle/") \
+                or path.startswith("/api/subtitle-content/") \
+                or path.startswith("/api/subtitle-file/") \
+                or path.startswith("/api/external-play/") \
+                or path.startswith("/fonts/") \
+                or (path == "/api/subtitle-fonts" and request.method in ("GET", "HEAD")) \
+                or (path.startswith("/api/subtitle-fonts/") and request.method in ("GET", "HEAD")) \
                 or path.startswith("/api/media/"):
             return await call_next(request)
         auth = request.headers.get("Authorization", "")
@@ -58,36 +85,37 @@ class AuthMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI):
     await init_db()
     setup_file_logging(settings.data_dir)
+    from .jellyfin_compat import init_jellyfin
+    await init_jellyfin()
     startup_task = None
-    if settings.scan_on_startup:
+    if settings.scan_on_startup and await has_any_library_setting():
         startup_task = asyncio.create_task(run_startup_scan())
-    from .watcher import start_file_watcher
-    watch_task = asyncio.create_task(start_file_watcher(startup_task))
+    watch_task = None
+    if os.environ.get("FILE_WATCHER_ENABLED", "true").lower() not in {"0", "false", "no"}:
+        from .watcher import start_file_watcher
+        watch_task = asyncio.create_task(start_file_watcher(startup_task))
     logger.info("MediaTree server started")
     yield
-    watch_task.cancel()
+    if watch_task:
+        watch_task.cancel()
     await close_db_pool()
 
 
 async def run_startup_scan():
     try:
-        results = scan_media()
-        for item in results:
-            await upsert_movie(item)
-        codes = list(set(r["code"] for r in results))
+        await asyncio.sleep(1)
+        if not await has_any_library_setting():
+            logger.info("Startup scan skipped: setup has not been completed")
+            return
         from .database import get_db
         db = await get_db()
         await db.execute("DELETE FROM movies WHERE media_root = ''")
-        cur = await db.execute("SELECT id, path FROM movies")
-        for row in await cur.fetchall():
-            if not Path(row["path"]).exists():
-                await db.execute("DELETE FROM movies WHERE id=?", (row["id"],))
         await db.commit()
 
         for root in settings.get_all_media_roots():
-            await scrape_for_library(root)
+            await run_scan_for_root(root, trigger="startup")
 
-        logger.info(f"Startup scan complete: {len(codes)} unique codes")
+        logger.info("Startup scan complete")
     except Exception as e:
         logger.error(f"Startup scan error: {e}")
 
@@ -102,6 +130,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from .jellyfin_compat import router as jellyfin_router, EmbyPathRewriteMiddleware
+app.include_router(jellyfin_router)
+
+app.add_middleware(EmbyPathRewriteMiddleware)
 
 
 # ─── Auth ───
@@ -131,14 +164,12 @@ async def health():
 
 @app.get("/api/scan")
 async def api_scan(media_root: str = Query("")):
-    results = scan_media(root=media_root) if media_root else scan_media()
-    for item in results:
-        await upsert_movie(item)
-    codes = list(set(r["code"] for r in results))
     roots = [media_root] if media_root else settings.get_all_media_roots()
+    results = []
     for r in roots:
-        asyncio.create_task(scrape_for_library(r))
-    return {"total": len(results), "codes": codes[:20], "all_codes_count": len(codes)}
+        results.append(await run_scan_for_root(r, trigger="manual"))
+    total = sum(int(r.get("total") or 0) for r in results)
+    return {"total": total, "roots": results, "all_codes_count": total}
 
 
 @app.get("/api/scan/status")
@@ -193,6 +224,10 @@ async def api_setup_status():
 @app.post("/api/setup/save")
 async def api_setup_save(data: dict):
     items = data.get("libraries", [])
+    tmdb_token = (data.get("tmdb_access_token") or data.get("tmdb_token") or "").strip()
+    if tmdb_token:
+        settings.tmdb_access_token = tmdb_token.removeprefix("Bearer ").strip()
+        settings.save_config()
     for item in items:
         pwd_hash = None
         if item.get("password"):
@@ -200,12 +235,13 @@ async def api_setup_save(data: dict):
             pwd_hash = hashlib.sha256(item["password"].encode()).hexdigest()
         await save_library_settings({
             "media_root": item["media_root"],
-            "scraper": item.get("scraper", "none"),
+            "scraper": item.get("scraper") or "auto",
             "tmdb_key": item.get("tmdb_key", ""),
             "password_hash": pwd_hash,
             "enabled": 1,
         })
-    return {"ok": True}
+    asyncio.create_task(run_startup_scan())
+    return {"ok": True, "scan_started": True}
 
 
 # ─── Library Settings ───
@@ -231,17 +267,17 @@ async def api_folders(media_root: str = Query("")):
 
 
 @app.get("/api/search")
-async def api_search(q: str = Query(""), media_root: str = Query(""), limit: int = Query(100), offset: int = Query(0)):
+async def api_search(q: str = Query(""), media_root: str = Query(""), limit: int = Query(100), offset: int = Query(0), field: str = Query("")):
     if not q:
         return {"movies": [], "total": 0}
-    return await search_movies(q, media_root=media_root, limit=limit, offset=offset)
+    return await search_movies(q, media_root=media_root, limit=limit, offset=offset, field=field)
 
 
 @app.get("/api/movies")
 async def api_movies(folder: str = Query(""), tag: str = Query(""), code: str = Query(""),
-                     actress: str = Query(""), category_id: int = Query(0), media_root: str = Query(""),
+                     actress: str = Query(""), staff: str = Query(""), category_id: int = Query(0), media_root: str = Query(""),
                      sort: str = Query("created_desc"), limit: int = Query(50), offset: int = Query(0)):
-    return await get_movies(folder=folder, tag=tag, code=code, actress=actress,
+    return await get_movies(folder=folder, tag=tag, code=code, actress=actress, staff=staff,
                             media_root=media_root, category_id=category_id, sort=sort,
                             limit=limit, offset=offset)
 
@@ -260,6 +296,21 @@ async def api_detail(movie_id: int):
     return movie
 
 
+@app.get("/api/progress/{movie_id}")
+async def api_get_progress(movie_id: int):
+    return await get_progress(movie_id)
+
+
+@app.post("/api/progress/{movie_id}")
+async def api_save_progress(movie_id: int, data: dict):
+    return await save_progress(
+        movie_id,
+        float(data.get("position") or 0),
+        float(data.get("duration") or 0) if data.get("duration") is not None else None,
+        bool(data.get("stopped", False)),
+    )
+
+
 # ─── Stream / Cover / Thumbnail ───
 
 @app.get("/api/stream/{movie_id}")
@@ -268,6 +319,19 @@ async def api_stream(movie_id: int, request: Request):
     if not movie:
         raise HTTPException(status_code=404)
     return get_video_stream(movie["path"], request)
+
+
+@app.get("/api/media-info/{movie_id}")
+async def api_media_info(movie_id: int):
+    movie = await get_movie_detail(movie_id)
+    if not movie:
+        raise HTTPException(status_code=404)
+    info = get_media_info(movie["path"])
+    tracks = movie.get("external_audio_tracks") or []
+    if not tracks:
+        tracks = find_external_audio_tracks(movie["path"])
+    info["external_audio_tracks"] = tracks
+    return info
 
 
 @app.get("/api/cover/{movie_id}")
@@ -279,10 +343,10 @@ async def api_cover(movie_id: int):
     if cover_key and "/" not in cover_key and "\\" not in cover_key:
         p = Path(settings.covers_dir) / f"{cover_key}.jpg"
         if p.exists():
-            return FileResponse(p)
+            return FileResponse(p, headers={"Cache-Control": "no-store"})
     cover_path = movie.get("cover_local")
     if cover_path and Path(cover_path).exists():
-        return FileResponse(cover_path)
+        return FileResponse(cover_path, headers={"Cache-Control": "no-store"})
     remote = movie.get("cover_remote")
     if remote:
         import httpx
@@ -290,7 +354,11 @@ async def api_cover(movie_id: int):
             async with httpx.AsyncClient(timeout=15) as client:
                 resp = await client.get(remote, headers={"Referer": "https://www.javdatabase.com", "User-Agent": "Mozilla/5.0"})
                 if resp.status_code == 200:
-                    return Response(content=resp.content, media_type=resp.headers.get("content-type", "image/jpeg"))
+                    return Response(
+                        content=resp.content,
+                        media_type=resp.headers.get("content-type", "image/jpeg"),
+                        headers={"Cache-Control": "no-store"},
+                    )
         except Exception:
             pass
     return Response(status_code=404, content="No cover available")
@@ -307,25 +375,32 @@ async def api_cached_cover(cache_key: str):
 
 @app.get("/api/episode-still/{movie_id}")
 async def api_episode_still(movie_id: int):
+    from .covers import find_local_episode_still, generate_video_still
+
     movie = await get_movie_detail(movie_id)
     if not movie:
         raise HTTPException(status_code=404)
-    local_path = movie.get("episode_still_local") or movie.get("episode_still")
-    if not local_path:
-        remote = movie.get("episode_still")
-        if remote and (remote.startswith("http://") or remote.startswith("https://")):
-            import httpx
-            try:
-                async with httpx.AsyncClient(timeout=15) as client:
-                    resp = await client.get(remote)
-                    if resp.status_code == 200:
-                        return Response(content=resp.content, media_type=resp.headers.get("content-type", "image/jpeg"))
-            except Exception:
-                pass
-        raise HTTPException(status_code=404)
-    local = Path(local_path)
-    if local.exists():
-        return FileResponse(local)
+    for candidate in (movie.get("episode_still_local"), movie.get("episode_still")):
+        if candidate and not str(candidate).startswith(("http://", "https://")):
+            local = Path(candidate)
+            if local.exists():
+                return FileResponse(local)
+    remote = movie.get("episode_still")
+    if remote and str(remote).startswith(("http://", "https://")):
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(remote)
+                if resp.status_code == 200:
+                    return Response(content=resp.content, media_type=resp.headers.get("content-type", "image/jpeg"))
+        except Exception:
+            pass
+    local_still = find_local_episode_still(movie["path"])
+    if local_still:
+        return FileResponse(local_still)
+    generated = generate_video_still(movie["path"])
+    if generated:
+        return FileResponse(generated)
     raise HTTPException(status_code=404)
 
 
@@ -357,16 +432,21 @@ async def api_subtitle_tracks(movie_id: int):
         raise HTTPException(status_code=404)
     track_list = get_subtitle_tracks(movie["path"])
     external = find_external_subtitles(movie["path"])
+    logger.info(f"Subtitle tracks for movie_id={movie_id}: embedded={len(track_list)} external={len(external)}")
     all_tracks = []
     for i, t in enumerate(external):
         all_tracks.append({
             "index": 1000 + i,
             "stream_index": -1,
-            "codec": Path(t["path"]).suffix.lstrip("."),
+            "codec": t.get("codec") or Path(t["path"]).suffix.lstrip("."),
             "language": t.get("language", "und"),
             "title": t.get("name", ""),
+            "name": t.get("name", ""),
             "source": "external",
             "path": t["path"],
+            "format": t.get("format") or Path(t["path"]).suffix.lstrip("."),
+            "is_external": True,
+            "web_supported": t.get("web_supported", False),
         })
     return track_list + all_tracks
 
@@ -380,14 +460,160 @@ async def api_subtitle(movie_id: int, track_index: int):
         ext_idx = track_index - 1000
         ext_subs = find_external_subtitles(movie["path"])
         if ext_idx < len(ext_subs):
-            vtt = convert_external_to_webvtt(ext_subs[ext_idx]["path"])
-            if vtt:
-                return Response(content=vtt, media_type="text/vtt")
+            content, media_type = load_external_subtitle(ext_subs[ext_idx]["path"])
+            if content:
+                return Response(
+                    content=content, media_type=f"{media_type}; charset=utf-8",
+                    headers={"Access-Control-Allow-Origin": "*"}
+                )
+            logger.warning(f"Subtitle load failed for movie_id={movie_id} path={ext_subs[ext_idx]['path']}")
         raise HTTPException(status_code=404)
-    vtt = extract_subtitle_stream(movie["path"], track_index)
-    if vtt:
-        return Response(content=vtt, media_type="text/vtt")
+    track_list = get_subtitle_tracks(movie["path"])
+    matching = [t for t in track_list if t["index"] == track_index]
+    if matching:
+        content, media_type = extract_subtitle_stream_raw(
+            movie["path"], matching[0]["stream_index"], matching[0].get("codec", "")
+        )
+        if content:
+            return Response(
+                content=content, media_type=f"{media_type}; charset=utf-8",
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+        logger.warning(f"Embedded subtitle extraction failed for movie_id={movie_id} track={track_index}")
     raise HTTPException(status_code=404)
+
+
+@app.get("/api/subtitle-content/{movie_id}/{track_index}")
+async def api_subtitle_content(movie_id: int, track_index: int):
+    movie = await get_movie_detail(movie_id)
+    if not movie:
+        raise HTTPException(status_code=404)
+    if track_index >= 1000:
+        ext_idx = track_index - 1000
+        ext_subs = find_external_subtitles(movie["path"])
+        if ext_idx < len(ext_subs):
+            content, media_type = load_external_subtitle(ext_subs[ext_idx]["path"])
+            if content:
+                return Response(
+                    content=content, media_type=f"{media_type}; charset=utf-8",
+                    headers={"Access-Control-Allow-Origin": "*"}
+                )
+            logger.warning(f"Subtitle content load failed for movie_id={movie_id} path={ext_subs[ext_idx]['path']}")
+        raise HTTPException(status_code=404)
+    track_list = get_subtitle_tracks(movie["path"])
+    matching = [t for t in track_list if t["index"] == track_index]
+    if matching:
+        content, media_type = extract_subtitle_stream_raw(
+            movie["path"], matching[0]["stream_index"], matching[0].get("codec", "")
+        )
+        if content:
+            return Response(content=content, media_type=f"{media_type}; charset=utf-8")
+        logger.warning(f"Embedded subtitle content extraction failed for movie_id={movie_id} track={track_index}")
+    raise HTTPException(status_code=404)
+
+
+@app.get("/api/subtitle-file/{movie_id}/{track_index}/{filename}")
+async def api_subtitle_file(movie_id: int, track_index: int, filename: str):
+    movie = await get_movie_detail(movie_id)
+    if not movie:
+        raise HTTPException(status_code=404)
+    if track_index < 1000:
+        raise HTTPException(status_code=404)
+    ext_idx = track_index - 1000
+    ext_subs = find_external_subtitles(movie["path"])
+    if ext_idx >= len(ext_subs):
+        raise HTTPException(status_code=404)
+    p = Path(ext_subs[ext_idx]["path"])
+    if not p.exists():
+        raise HTTPException(status_code=404)
+    return FileResponse(str(p), filename=p.name, headers={"Access-Control-Allow-Origin": "*"})
+
+
+@app.get("/api/external-play/{movie_id}.m3u")
+async def api_external_play_playlist(movie_id: int, request: Request):
+    from urllib.parse import quote
+    movie = await get_movie_detail(movie_id)
+    if not movie:
+        raise HTTPException(status_code=404)
+    base = str(request.base_url).rstrip("/")
+    if request.url.hostname in {"0.0.0.0", "::", "[::]"}:
+        port = f":{request.url.port}" if request.url.port else ""
+        base = f"{request.url.scheme}://127.0.0.1{port}"
+    stream_url = f"{base}/api/stream/{movie_id}"
+    lines = ["#EXTM3U"]
+    external = find_external_subtitles(movie["path"])
+    for i, sub in enumerate(external):
+        idx = 1000 + i
+        name = quote(Path(sub["path"]).name)
+        sub_url = f"{base}/api/subtitle-file/{movie_id}/{idx}/{name}"
+        lines.append(f"#EXTVLCOPT:sub-file={sub_url}")
+        lines.append(f"#EXT-X-MPV-OPT:sub-file={sub_url}")
+    lines.append(f"#EXTINF:-1,{movie.get('title') or movie.get('code') or Path(movie['path']).name}")
+    lines.append(stream_url)
+    return Response(
+        content="\n".join(lines) + "\n",
+        media_type="audio/x-mpegurl",
+        headers={"Content-Disposition": f'attachment; filename="mediatree-{movie_id}.m3u"'},
+    )
+
+
+@app.get("/api/subtitle-fonts")
+async def api_list_fonts():
+    return {"fonts": list_fonts()}
+
+
+def _font_media_type(path: Path) -> str | None:
+    return {
+        ".woff2": "font/woff2",
+        ".woff": "font/woff",
+        ".ttf": "font/ttf",
+        ".otf": "font/otf",
+        ".ttc": "font/collection",
+    }.get(path.suffix.lower())
+
+
+@app.head("/api/subtitle-fonts/default")
+@app.get("/api/subtitle-fonts/default")
+async def api_default_subtitle_font():
+    p = get_default_subtitle_font_path()
+    if not p or not p.exists():
+        raise HTTPException(status_code=404)
+    return FileResponse(str(p), media_type=_font_media_type(p), headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.post("/api/subtitle-fonts/upload")
+async def api_upload_font(file: UploadFile = File(...)):
+    import tempfile
+    if not file.filename or Path(file.filename).suffix.lower() not in {".ttf", ".otf", ".ttc", ".woff", ".woff2"}:
+        raise HTTPException(status_code=400, detail="Only font files allowed (.ttf, .otf, .ttc, .woff, .woff2)")
+    with tempfile.NamedTemporaryFile(suffix=Path(file.filename).suffix, delete=False) as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+    try:
+        result = install_font(tmp_path)
+        return {"ok": True, **result}
+    finally:
+        try:
+            Path(tmp_path).unlink()
+        except Exception:
+            pass
+
+
+@app.delete("/api/subtitle-fonts/{name}")
+async def api_delete_font(name: str):
+    if remove_font(name):
+        return {"ok": True}
+    raise HTTPException(status_code=404)
+
+
+@app.head("/api/subtitle-fonts/{name:path}")
+@app.get("/api/subtitle-fonts/{name:path}")
+async def api_serve_font(name: str):
+    p = resolve_font_path(name)
+    if not p.exists():
+        raise HTTPException(status_code=404)
+    return FileResponse(str(p), media_type=_font_media_type(p), headers={"Cache-Control": "public, max-age=86400"})
 
 
 # ─── Config ───
@@ -610,10 +836,12 @@ async def api_movie_rescrape(movie_id: int):
 @app.post("/api/movies/{movie_id}/manual-scrape")
 async def api_movie_manual_scrape(movie_id: int, data: dict):
     query = data.get("query", "")
+    source_id = data.get("source_id", "")
+    media_type = data.get("media_type", "movie")
     scraper = data.get("scraper")
-    if not query:
-        raise HTTPException(status_code=400, detail="query required")
-    result = await rescrape_movie_manual(movie_id, query, scraper)
+    if not query and not source_id:
+        raise HTTPException(status_code=400, detail="query or source_id required")
+    result = await rescrape_movie_manual(movie_id, query, scraper, source_id, media_type)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Scrape failed"))
     return result
@@ -638,7 +866,7 @@ async def api_rescrape_folder(data: dict):
 @app.post("/api/search-scrape")
 async def api_search_scrape(data: dict):
     query = data.get("query", "")
-    scraper = data.get("scraper", "tmdb")
+    scraper = data.get("scraper", "tmdb_movie")
     if not query:
         raise HTTPException(status_code=400, detail="query required")
     results = await search_for_scrape(query, scraper)
@@ -911,10 +1139,10 @@ async def api_media_roots():
             "label": Path(r).name,
             "movie_count": next((s["movie_count"] for s in stats if s["path"] == r), 0),
             "locked": r in locked_set or bool(ls.get("password_hash")),
-            "scraper": ls.get("scraper", "none"),
+            "scraper": ls.get("scraper", "auto"),
         })
     if not items:
-        items.append({"path": settings.media_root, "label": "media", "movie_count": 0, "locked": False, "scraper": "none"})
+        items.append({"path": settings.media_root, "label": "media", "movie_count": 0, "locked": False, "scraper": "auto"})
     return {"items": items}
 
 
@@ -1019,6 +1247,9 @@ INDEX_HTML = ""
 
 if FRONTEND_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIR / "assets")), name="assets")
+    fonts_dir = FRONTEND_DIR / "fonts"
+    if fonts_dir.exists():
+        app.mount("/fonts", StaticFiles(directory=str(fonts_dir)), name="fonts")
     with open(FRONTEND_DIR / "index.html", "r") as f:
         INDEX_HTML = f.read()
 
@@ -1035,11 +1266,13 @@ class SPAFallbackMiddleware(BaseHTTPMiddleware):
             return Response(content=INDEX_HTML, media_type="text/html")
         if response.status_code == 404 and INDEX_HTML \
                 and not request.url.path.startswith("/api") \
-                and not request.url.path.startswith("/assets"):
+                and not request.url.path.startswith("/assets") \
+                and not request.url.path.startswith("/fonts"):
             return Response(content=INDEX_HTML, media_type="text/html")
         if response.status_code == 401 and INDEX_HTML \
                 and not request.url.path.startswith("/api") \
-                and not request.url.path.startswith("/assets"):
+                and not request.url.path.startswith("/assets") \
+                and not request.url.path.startswith("/fonts"):
             return Response(content=INDEX_HTML, media_type="text/html")
         return response
 

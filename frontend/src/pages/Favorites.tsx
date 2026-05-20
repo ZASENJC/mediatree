@@ -49,7 +49,7 @@ export default function Favorites() {
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold">我的收藏</h1>
+          <h1 className="text-xl sm:text-2xl font-bold">我的收藏</h1>
           <p className="text-sm text-gray-500">共 {total} 部</p>
         </div>
         <div className="flex items-center gap-1">
@@ -64,12 +64,12 @@ export default function Favorites() {
           <p className="text-sm mt-2 text-gray-600">在影片详情页点击收藏按钮即可添加</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3 sm:gap-4">
           {movies.map((movie) => (
             <div
               key={movie.id}
               onClick={() => { saveScrollPos(); navigate(`/detail/${movie.id}`) }}
-              className="group cursor-pointer bg-dark-800 rounded-xl overflow-hidden border border-dark-700 hover:border-blue-500/40 transition-all hover:bg-dark-700/50"
+              className="group cursor-pointer bg-dark-800 rounded-lg overflow-hidden border border-dark-700 hover:border-blue-500/40 transition-all hover:bg-dark-700/50"
             >
               <div className="aspect-[2/3] bg-dark-700 relative">
                 <img
@@ -83,12 +83,12 @@ export default function Favorites() {
                 />
                 <WatchedBadge watched={!!(movie.tags || []).includes('watched')} />
                 {movie.javdb_score != null && movie.javdb_score > 0 && (
-                  <span className="absolute top-2 right-2 bg-dark-900/80 px-1.5 py-0.5 rounded text-xs text-yellow-400">
+                  <span className="absolute top-2 right-2 bg-dark-900/80 px-1.5 py-0.5 rounded-md text-xs text-yellow-400">
                     {movie.javdb_score.toFixed(1)}
                   </span>
                 )}
                 {movie.javdb_likes != null && movie.javdb_likes > 0 && (
-                  <span className="absolute top-7 right-2 bg-dark-900/80 px-1.5 py-0.5 rounded text-xs text-pink-400">
+                  <span className="absolute top-7 right-2 bg-dark-900/80 px-1.5 py-0.5 rounded-md text-xs text-pink-400">
                     {movie.javdb_likes >= 1000 ? `${(movie.javdb_likes / 1000).toFixed(1)}k` : movie.javdb_likes}
                   </span>
                 )}
@@ -104,7 +104,7 @@ export default function Favorites() {
                     setMovies(prev => prev.filter(m => m.id !== movie.id))
                     setTotal(t => t - 1)
                   }}
-                  className="absolute top-2 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 text-[10px] bg-red-500/20 text-red-400 rounded hover:bg-red-500/30"
+                  className="absolute top-2 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 text-[10px] bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30"
                 >
                   取消收藏
                 </button>

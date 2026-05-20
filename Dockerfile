@@ -10,6 +10,11 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    fontconfig \
+    fonts-noto-cjk \
+    fonts-noto-color-emoji \
+    fonts-wqy-microhei \
+    && fc-cache -f -v \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt ./

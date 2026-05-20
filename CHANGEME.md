@@ -2,6 +2,200 @@
 
 ---
 
+## v3.0.1 (2026-05-20) - 动画发布组命名与 VCB-Studio 兼容
+
+### 扫描与标题清洗
+- 新增 `anime_naming.py`，集中处理动画/番剧发布组命名解析。
+- 扫描阶段写入 `clean_title`、`episode_number`、`display_title` 和 `external_audio_tracks`，用于刮削标题、列表排序、详情返回和后续扩展。
+- 支持清洗 `[ANi]`、`[NC-Raws]`、`[Lilith-Raws]`、`[LoliHouse]`、`[VCB-Studio]`、`[喵萌奶茶屋]` 以及其他开头方括号发布组。
+- 支持剔除 `[1080P]`、`[WEB-DL]`、`[Baha]`、`[Ma10p_1080p]`、`[x265_flac]`、`[AAC AVC]`、`[10bit]` 等画质、来源、编码和音频标签。
+- 支持 `[01]`、`[001]`、`[EP01]`、`[E01]`、`[第01集]`、`[第1话]`、`S01E01`、`S1E1`、`1x01` 集数识别。
+- 防误判 `[1080P]`、`[2160P]`、`[2024]`、`[10bit]`、`[Ma10p_1080p]` 为集数。
+
+### 分集显示、排序与剧照
+- 多集目录默认按 `tmdb_episode` 或本地 `episode_number` 数字升序排序，VCB-Studio `[05]`、`[09]`、`[12]` 可稳定显示为 EP05、EP09、EP12。
+- 本地分集在未刮削出真实集标题时返回 `display_title = 作品标题 - EPxx`。
+- 支持与视频完全同 basename 的单集图，以及 `.cover/.still/.thumb` 后缀图作为 `episode_still_local`。
+- `/api/episode-still/{id}` 现在按本地剧照、远程剧照、同 basename 图片、视频截图的顺序兜底。
+
+### 外挂字幕与外挂音轨
+- 外挂字幕匹配优先级调整为：完全 basename → basename + 语言后缀 → 同片名同集数 → 单视频目录同片名无集数。
+- 支持 VCB-Studio 常见字幕：`basename.zh.ass`、`basename.chs.ass`、`basename.cht.ass`、`basename.ja.ass`、`basename.en.ass`。
+- 外挂字幕轨返回补充 `format` 和 `is_external=true`，便于播放器和外部播放器入口稳定识别。
+- 新增外挂音轨检测，支持 `basename.mka` 和 `.zh/.ja/.en/.jpn/.eng/.chs/.cht` 语言后缀，格式包括 `mka/aac/flac/opus/ac3/eac3/dts`。
+- `/api/media-info/{id}` 返回 `external_audio_tracks`，当前不改变视频流直传行为。
+
+### 验证
+- `PYTHONPATH=backend python3.11 -m unittest backend.tests.test_anime_naming backend.tests.test_subtitles backend.tests.test_covers backend.tests.test_scanner_tmdbid` 通过。
+- `npm run build` 通过，生产构建仅保留 Vite chunk size 常规警告。
+
+---
+
+## v3.0.0 (2026-05-20) - Auto 刮削与 Watcher 增量扫描
+
+### Auto 刮削
+- 新增 `TmdbIdToken` 和 `extract_tmdb_token_from_name()`，支持 `[tmdb-movie=123]`、`[tmdb-tv=123]`、`[tmdbid=movie:123]`、`[tmdbid=tv:123]`、`tmdbid=123`、`tmdb-123` 等格式。
+- `scraper="auto"` 检测到显式 movie/tv TMDB token 时只请求对应 TMDB 端点，不再默认 movie。
+- 无类型 `tmdbid=123` 会先执行本地 `infer_tmdb_media_type()`，基于 SxxExx、Season、EP、第 X 集、已有 tmdb_type、tmdb_season/tmdb_episode、NFO 类型、单文件年份、CD/Disc 多段电影等信号评分。
+- 本地评分强明确时只请求一个 TMDB ID 端点；评分不明确时才并发请求 movie/tv 候选。
+- movie/tv 两边都存在且本地评分仍不明确时不自动应用，fallback 到 Bangumi → TMDB 标题搜索，避免错误覆盖元数据。
+- TMDB ID 精确匹配失败会明确记录“TMDB ID 精确匹配失败，fallback 到标题搜索”。
+
+### TMDB 查询性能
+- `fetch_tmdb_by_id(tmdb_id, media_type)` 改为严格类型：`movie` 只请求 `/movie/{id}`，`tv` 只请求 `/tv/{id}`。
+- 新增 `fetch_tmdb_candidates_by_id()`，仅在类型不明确时并发查询 movie/tv。
+- TMDB ID 缓存 key 区分 `tmdb_id:movie:{id}` 和 `tmdb_id:tv:{id}`。
+- TMDB HTTP 请求复用 AsyncClient，并通过 semaphore 限制并发。
+- 同进程内相同 `tmdb_id + media_type` 请求复用 task，避免同一轮扫描重复打 TMDB。
+
+### Watcher 自动增量扫描
+- watcher 只监听 enabled=true 的媒体库，并周期性刷新监听目标。
+- 只处理视频、字幕、NFO、封面扩展名，忽略无关文件。
+- 15 秒 debounce 后按 media_root 合并变更，自动触发 `run_scan_for_root(trigger="watcher")`。
+- 同一 media_root 同一时间只允许一个扫描任务；扫描期间再次变更会排队，当前扫描完成后补跑一次。
+- 自动扫描流程统一为 `scan_media(root)` → `upsert_movie()` → `cleanup_deleted_files()` → `scrape_for_library()`。
+- `/api/scan/status` 复用现有进度结构并补充 `trigger` 字段。
+
+### 字幕回退与 CJK 字体
+- 回退上一轮“等待字体列表后再创建 libass”的播放器改动，恢复到上一版外挂字幕选择和 ASS 立即渲染逻辑，解决外挂字幕不显示的问题。
+- 参考 OpenList 的 libass 字体方案，新增前端内置 `SourceHanSansCN-Bold.woff2`，并通过 `/fonts/SourceHanSansCN-Bold.woff2` 作为固定 CJK `fallbackFont`。
+- ASS/SSA 字幕不再把 libass fallback 落到自带 Latin-only `default.woff2`；常见 Source Han / Noto / WenQuanYi / YaHei / SimSun / SimHei / 宋体 / 黑体 / 微软雅黑等字体名会映射到 CJK fallback。
+- 后端新增 `/api/subtitle-fonts/default`，字体 API 支持 GET/HEAD 和正确 font MIME；Docker 内系统 CJK 字体列表优先显示 SC/CN 字族，便于排查。
+
+### 验证
+- Docker Python 3.12：`PYTHONPATH=/app python -m unittest /app/tests/test_scanner_tmdbid.py` 通过。
+- `python -m compileall backend/app` 通过。
+- `npm run build` 通过，生产构建仅保留 Vite chunk size 常规警告。
+- `docker compose build && docker compose up -d` 通过；`/fonts/SourceHanSansCN-Bold.woff2` 返回 `font/woff2` 且文件头为 `wOF2`。
+
+---
+
+## v2.9.0 (2026-05-20) - Jellyfin 兼容 API 层
+
+### Jellyfin 兼容 API
+- 新增 30+ Jellyfin 风格 API 端点：`/System/Info/Public`、`/Users/AuthenticateByName`、`/Users/{uid}/Views`、`/Items`、`/Items/{id}/PlaybackInfo`、`/Videos/{id}/stream`、`/Sessions/Playing` 等。
+- 支持 VidHub / Infuse / Kodi / VLC / IINA / mpv 直接添加为 Jellyfin 服务器。
+- 多客户端鉴权：MediaBrowser Token、X-Emby-Token、Bearer Token、api_key、query token 统一支持。
+- Emby 路径兼容：`/emby/*` 请求自动重写到 Jellyfin 路径，通过 `EmbyPathRewriteMiddleware` 实现。
+
+### Series/Season/Episode 分组
+- 电视剧/番剧自动按 Series → Season → Episode 层级分组展示。
+- 通过 `folder_levels` 字段解析季文件夹（S01/S02），多文件目录自动识别为系列。
+- 集数自动提取（SxxExx / [01] / EP01 / 第X集 多种格式）。
+- 支持 `IncludeItemTypes=Series,Movie,Episode` 过滤，`ParentId` 层级导航。
+- Series/Season 伪 ID 使用 `series_` / `season_` 前缀，基于路径 hash 生成稳定 ID。
+
+### DirectPlay 优先
+- PlaybackInfo 默认 `SupportsDirectPlay=true`、`SupportsTranscoding=false`。
+- `/Videos/{id}/stream` 原文件直传，不转码 E-AC-3 / DTS / TrueHD / MKV / ASS。
+- 视频流支持 Range 206、HEAD、Content-Disposition: inline。
+- 字幕流支持 `/Videos/{id}/{mid}/Subtitles/{n}/Stream.{ass,srt,vtt}`。
+- 字幕轨道嵌入 PlaybackInfo MediaStreams（含 DeliveryUrl / DeliveryMethod）。
+
+### 播放进度与会话
+- 新增 `user_data` 表：存储播放位置、播放次数、收藏、已看状态。
+- 新增 `playback_sessions` 表：记录播放会话（client/device/position）。
+- `/Sessions/Playing/Progress` 频繁调用时安全节流，不产生过多日志。
+- `/Sessions/Playing/Stopped` 接近结尾（>90%）自动标记 Played=true。
+- 新增 `jellyfin_tokens` 表：持久化客户端鉴权 token。
+
+### 图片与字幕
+- `/Items/{id}/Images/Primary` 支持 Series/Season/Episode 三级封面。
+- `/Items/{id}/Images/Backdrop` 返回 fanart 背景图。
+- 封面服务支持 ETag 和 If-None-Match 返回 304。
+- `/DisplayPreferences/{uid}` 返回默认 Poster 视图偏好。
+
+### 新增文件
+- `backend/app/jellyfin_compat.py` — Jellyfin 兼容路由（1274 行）
+- `backend/app/jellyfin_auth.py` — 多源鉴权 + token 管理（204 行）
+- `backend/app/jellyfin_mappers.py` — 数据映射 + Series/Season/Episode 分组（628 行）
+- `backend/app/jellyfin_models.py` — 请求 Pydantic 模型（36 行）
+
+### 修改文件
+- `backend/app/main.py` — 注册 Jellyfin 路由器 + EmbyPathRewriteMiddleware + AuthMiddleware 白名单扩展
+
+---
+
+## v2.8.0 (2026-05-19) - 字幕完整渲染 + 移动端 UI + Docker 2.8
+
+### 字幕与外部播放
+- ASS/SSA 字幕改为 JASSUB/libass canvas 渲染，保留特效、字体、定位、描边和多行排版。
+- `SubtitleRenderer.tsx` 保留 DOM fallback：JASSUB 启动失败时自动使用 ASS 解析器输出基础字幕，避免完全无字幕。
+- 修正转码播放字幕时间：`?transcode=1&start=` 后以前端 `transcodeStart` 叠加视频当前时间，字幕仍按原始媒体时间同步。
+- 自动选轨改为优先选择外挂 ASS/SRT/VTT 等文本字幕，避免优先选中 PGS 图形字幕后无法显示。
+- `/api/subtitle-tracks/{id}` 加入认证白名单，字幕轨列表不再因 token 状态导致播放器拿不到轨道。
+- `/api/subtitle-file/{id}/{track}/{filename}` 提供原始外挂字幕文件，`/api/external-play/{id}.m3u` 生成 IINA / MPV 可用的本地播放列表。
+- 外部播放列表在 Docker Desktop 下自动把 `0.0.0.0` 改为 `127.0.0.1`，避免外部播放器无法连接。
+
+### 刮削与命名兼容
+- 手动刮削应用时加入右下角“正在应用刮削结果”提示，单影片和文件夹级应用都可见。
+- 番剧分集命名兼容 `[组标] 片名 [01][画质][音画格式].mkv`，读取 `[01]` 作为集数并显示在分集封面。
+- 首次引导页保存库刮削器配置后自动触发首次全库扫描和刮削，扫描/刮削进度由右下角弹窗显示。
+- TMDB 配置文案调整为 API 读访问令牌，保留旧版 API Key 兼容。
+
+### UI 与移动端
+- 主导航、搜索框、首页网格、浏览页网格、详情页按钮组、设置页表单、手动刮削弹窗和封面弹窗补齐移动端布局。
+- 搜索浮层不再卸载当前路由内容，避免聚焦搜索或进入登录流程时出现空白主区域。
+- 页面卡片、弹窗、按钮统一为简约深色和 8px 圆角风格；清理可见 UI 中的 emoji、箭头和勾号装饰。
+- 前端 favicon 改为几何 SVG 图标，不再使用 emoji。
+
+### 验证与发布
+- 前端生产构建通过。
+- 后端 Python 编译检查通过。
+- Docker 本地构建与运行通过后发布 `zasenjc/mediatree:2.8`。
+
+---
+
+## v2.5.0 (2026-05-18) — 播放器重构 + 字幕重写 + 流优化
+
+### 播放器重构
+- **自定义 Jellyfin 风格播放器**：完全重写 `VideoPlayer.tsx`，舍弃 video.js（从未使用），使用原生 `<video>` 元素构建完整自定义 UI
+- **触控手势系统** (`GestureLayer.tsx`)：
+  - 双击左/右 1/3：快退/快进 5s，双击中央：暂停/播放
+  - 垂直滑动左半屏：亮度，右半屏：音量
+  - 水平滑动：拖拽进度
+- **OSD 中央覆盖层** (`OSD.tsx`)：播放/暂停/快进/快退/音量图标指示
+- **键盘快捷键**：Space/K 暂停, ←→快进快退, ↑↓ 音量, F 全屏, M 静音, J/L 速度调节
+- **进度条拖拽**：onMouseDown+Move+Up 完整拖拽逻辑
+- **画中画按钮** + **全屏适配**
+- **本地播放器调用**：IINA / MPV URL scheme 按钮 + 复制链接
+
+### 字幕系统重写
+- **放弃浏览器原生 `<track>` + `::cue`**（索引错位、样式限制、Safari不兼容）
+- **客户端 VTT 解析器** (`utils/vttParser.ts`)：解析 WebVTT → `[{start, end, text}]`
+- **自定义 DOM overlay 渲染** (`SubtitleRenderer.tsx`)：fetch VTT → rAF 同步 video.time → CSS div 渲染
+  - 完整 CSS 控制：fontSize / fontFamily / color / textShadow / background
+  - 不受浏览器 `::cue` 限制，全浏览器一致
+- **字幕设置 UI**：字号 6 档、颜色 5 色、背景透明度、字体选择
+- **外挂字幕增强匹配**：`{stem}.{lang}.{ext}` 和 `{stem}_{lang}.{ext}` 双模式
+- **`_guess_lang` 修复**：set 交集替代子串匹配，杜绝 `"japanese"`→eng 误判
+- **`_post_process_vtt` 修复**：不再删除 cue 间空行，保留 WebVTT 规范格式
+
+### 视频流优化
+- **默认直传原文件**：移除自动音频转码，Range 206 → 进度条 + seek 完整
+- **可选转码**：`?transcode=1` → ffmpeg pipe H.264+AAC MP4
+- **`<video src={streamSrc}>`**：直接用 video 的 src 属性，不用 `<source>` 子元素
+- **`key={streamSrc}` + `v.load()`**：转码切换时强制重建 video 元素
+- **音视频错误提示**：解码失败时弹窗提示"切换为转码播放"
+
+### 刮削修复
+- **单影片手动刮削 source_id 传递**：前端发送 `source_id`+`media_type`，后端直接 fetch 详情，避免重新搜索导致匹配错误
+- **`_apply_scraped_data` 清理**：移除无用 `code` 参数，新增 `return affected`
+- **`apply_folder_scrape_result`**：移除重复 bangumi 死代码，修正参数传递
+
+### 新增 API
+- `/api/subtitle-content/{id}/{n}` — 原始字幕内容
+- `/api/subtitle-fonts` (CRUD) — 字体上传/列表/删除/服务
+
+### 移除
+- `hls.js` 依赖 — 之前的 HLS 实验方案（不稳定，已回退）
+- `video.js` 依赖 — 从未实际使用
+
+### 文档更新
+- AGENTS.md / TECHNICAL.md / README.md / CHANGEME.md 全面更新至 v2.5.0
+
+---
+
 ## v2.4.0 (2026-05-17) — 文件监控 + 文件夹级操作 + 右键菜单增强
 
 ### 新增
@@ -34,7 +228,7 @@
 ### 文档更新
 - AGENTS.md 精简重写，清理已解决问题
 - README.md / TECHNICAL.md / CHANGEME.md 同步更新
-- 新增手动刮削为已知待修复问题
+- 当时记录手动刮削为待改进问题，后续版本已修复
 
 ---
 

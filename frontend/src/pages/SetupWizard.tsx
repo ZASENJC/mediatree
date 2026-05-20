@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api, MediaRoot } from '../api'
+import { api } from '../api'
 
 interface LibConfig {
   media_root: string
@@ -10,27 +10,61 @@ interface LibConfig {
   password: string
 }
 
+const SCRAPER_OPTIONS = [
+  {
+    key: 'tmdb_movie',
+    label: 'TMDB 电影',
+    desc: '电影库；tmdbid 调用 /movie 精确刮削',
+  },
+  {
+    key: 'tmdb_tv',
+    label: 'TMDB 剧集/番剧',
+    desc: '剧集/番剧库；tmdbid 调用 /tv 精确刮削',
+  },
+  {
+    key: 'bangumi',
+    label: 'Bangumi',
+    desc: '番剧、动画、二次元条目',
+  },
+  {
+    key: 'javdatabase',
+    label: 'Javdatabase',
+    desc: 'JAV 番号识别和刮削',
+  },
+  {
+    key: 'auto',
+    label: '自动',
+    desc: '自动判断，可能效果不好',
+  },
+  {
+    key: 'none',
+    label: '不刮削',
+    desc: '只扫描本地文件',
+  },
+]
+
 export default function SetupWizard({ onComplete }: { onComplete: () => void }) {
   const [step, setStep] = useState(0)
-  const [roots, setRoots] = useState<string[]>([])
   const [slide, setSlide] = useState(0)
   const [libs, setLibs] = useState<LibConfig[]>([])
+  const [tmdbAccessToken, setTmdbAccessToken] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
     api.setupStatus().then(d => {
       if (!d.needs_setup) { onComplete(); return }
-      setRoots(d.roots)
       setLibs(d.roots.map(r => ({
         media_root: r,
         label: r.split('/').filter(Boolean).pop() || r,
-        scraper: 'javdatabase',
+        scraper: 'auto',
         tmdb_key: '',
         bangumi_type: '2',
         password: '',
       })))
-    })
+      setLoaded(true)
+    }).catch(() => setLoaded(true))
   }, [])
 
   const updateLib = (idx: number, patch: Partial<LibConfig>) => {
@@ -47,7 +81,7 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
         tmdb_key: l.tmdb_key,
         bangumi_type: l.bangumi_type,
         password: l.password,
-      })))
+      })), tmdbAccessToken)
       onComplete()
     } catch {
       setError('保存失败')
@@ -55,7 +89,25 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
     setSaving(false)
   }
 
-  if (libs.length === 0) return null
+  if (!loaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-dark-900">
+        <div className="animate-pulse text-gray-400 text-lg">检查媒体库...</div>
+      </div>
+    )
+  }
+
+  if (libs.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-dark-900 px-4">
+        <div className="w-full max-w-lg text-center">
+          <h1 className="text-3xl font-bold mb-3">未检测到媒体库</h1>
+          <p className="text-gray-400 mb-2">容器内的 <span className="font-mono text-gray-300">/media</span> 目录下没有可配置的媒体库文件夹。</p>
+          <p className="text-sm text-gray-500">请在 Docker 里挂载媒体目录，或在 <span className="font-mono text-gray-400">MEDIA_ROOT</span> 指向的目录下创建至少一个子文件夹后重启。</p>
+        </div>
+      </div>
+    )
+  }
 
   if (step === 0) {
     return (
@@ -77,26 +129,21 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-dark-900 px-4">
-      <div className="w-full max-w-md">
+        <div className="w-full max-w-md">
         <div className="mb-6 flex gap-1">
           {libs.map((_, i) => (
-            <div key={i} className={`flex-1 h-1 rounded ${i <= slide ? 'bg-blue-500' : 'bg-dark-600'}`} />
+            <div key={i} className={`flex-1 h-1 rounded-lg ${i <= slide ? 'bg-blue-500' : 'bg-dark-600'}`} />
           ))}
         </div>
 
         <h1 className="text-xl font-bold mb-1">配置媒体库</h1>
         <p className="text-sm text-gray-400 mb-6">{lib.label} ({slide + 1}/{libs.length})</p>
 
-        <div className="space-y-5 bg-dark-800 rounded-xl p-6 border border-dark-600">
+        <div className="space-y-5 bg-dark-800 rounded-lg p-4 sm:p-6 border border-dark-600">
           <div>
             <label className="block text-sm font-medium mb-2">刮削数据源</label>
             <div className="grid grid-cols-2 gap-2">
-              {[
-                { key: 'javdatabase', label: 'Javdatabase', desc: 'JAV番号匹配' },
-                { key: 'tmdb', label: 'TMDB', desc: '电影/电视剧' },
-                { key: 'bangumi', label: 'Bangumi', desc: '动画/番剧' },
-                { key: 'none', label: '关闭', desc: '不刮削' },
-              ].map(({ key, label, desc }) => (
+              {SCRAPER_OPTIONS.map(({ key, label, desc }) => (
                 <button
                   key={key}
                   onClick={() => updateLib(slide, { scraper: key })}
@@ -113,18 +160,24 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
             </div>
           </div>
 
-          {lib.scraper === 'tmdb' && (
+          {(['tmdb_movie', 'tmdb_tv', 'auto'].includes(lib.scraper)) && (
             <div>
-              <label className="block text-sm font-medium mb-1.5">TMDB API Key</label>
+              <label className="block text-sm font-medium mb-1.5">TMDB API 读访问令牌</label>
               <input
-                type="text"
-                value={lib.tmdb_key}
-                onChange={e => updateLib(slide, { tmdb_key: e.target.value })}
-                placeholder="去 themoviedb.org 免费申请"
+                type="password"
+                value={tmdbAccessToken}
+                onChange={e => setTmdbAccessToken(e.target.value)}
+                placeholder="以 eyJ 开头的 Read Access Token"
                 className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500 placeholder-gray-600"
               />
-              <p className="text-xs text-gray-500 mt-1">在 themoviedb.org/settings/api 免费注册获取</p>
+              <p className="text-xs text-gray-500 mt-1">填写 TMDB 设置页的 API Read Access Token，不是旧版 API Key。</p>
             </div>
+          )}
+
+          {lib.scraper === 'auto' && (
+            <p className="text-xs text-gray-500 leading-relaxed">
+              自动：会尝试判断刮削源，但可能效果不好；推荐按媒体库类型手动选择 TMDB 电影、TMDB 剧集/番剧、Bangumi 或 Javdatabase。
+            </p>
           )}
 
           {lib.scraper === 'bangumi' && (
@@ -183,9 +236,7 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
           )}
         </div>
 
-        <button onClick={onComplete} className="w-full mt-3 py-2 text-sm text-gray-500 hover:text-white transition-colors">
-          跳过（稍后设置）
-        </button>
+        <p className="mt-3 text-center text-xs text-gray-600">保存后会自动启动第一次全库扫描和刮削。</p>
       </div>
     </div>
   )
