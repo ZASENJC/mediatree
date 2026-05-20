@@ -2,10 +2,16 @@ import { useEffect, useState, useRef } from 'react'
 import { api, Config, MediaRoot, LibrarySetting, Plugin, clearCache } from '../api'
 
 const SCRAPER_META: Record<string, { label: string; desc: string; hasKey: boolean }> = {
-  javdatabase: { label: 'Javdatabase', desc: '番号精确匹配', hasKey: false },
-  tmdb: { label: 'TMDB', desc: '电影 / 电视剧 (需 API)', hasKey: true },
-  bangumi: { label: 'Bangumi', desc: '动画 / 番剧 (仅动画)', hasKey: false },
-  none: { label: '关闭', desc: '不刮削', hasKey: false },
+  tmdb_movie: { label: 'TMDB 电影', desc: '适合电影库；tmdbid 调用 /movie 精确刮削', hasKey: true },
+  tmdb_tv: { label: 'TMDB 剧集/番剧', desc: '适合剧集、番剧、电视剧库；tmdbid 调用 /tv 精确刮削', hasKey: true },
+  bangumi: { label: 'Bangumi', desc: '适合番剧、动画、二次元条目', hasKey: false },
+  javdatabase: { label: 'Javdatabase', desc: '适合 JAV 番号识别和刮削', hasKey: false },
+  auto: { label: '自动', desc: '自动判断刮削源，但可能效果不好', hasKey: true },
+  none: { label: '不刮削', desc: '只扫描本地文件，不联网刮削元数据', hasKey: false },
+}
+
+function normalizeScraper(scraper?: string) {
+  return scraper === 'tmdb' ? 'tmdb_movie' : (scraper || 'auto')
 }
 
 interface ScanState {
@@ -70,7 +76,7 @@ export default function Settings() {
       setLibraries(items.map(i => ({ ...i, settings: settingMap[i.path] })))
       const sp: Record<string, string> = {}
       items.forEach(i => {
-        sp[i.path] = settingMap[i.path]?.scraper || 'none'
+        sp[i.path] = normalizeScraper(settingMap[i.path]?.scraper)
       })
       setLibScraper(sp)
     }).catch(() => {}).finally(() => setLoading(false))
@@ -102,7 +108,7 @@ export default function Settings() {
     setLibSaving(media_root)
     setLibMsg('')
     try {
-      await api.saveLibrarySetting({ media_root, scraper: libScraper[media_root] || 'none' })
+      await api.saveLibrarySetting({ media_root, scraper: libScraper[media_root] || 'auto' })
       if (libPasswords[media_root]) {
         await api.setLibraryPassword(media_root, libPasswords[media_root])
       }
@@ -197,14 +203,14 @@ export default function Settings() {
   const cardClass = "p-4 bg-dark-800 rounded-lg border border-dark-700"
   const sectionTitle = "text-lg font-semibold mb-4"
   const labelClass = "block text-xs text-gray-500 mb-1.5"
-  const inputClass = "w-full px-3 py-1.5 bg-dark-700 border border-dark-600 rounded text-xs text-white focus:outline-none focus:border-blue-500 placeholder-gray-600"
-  const btnClass = "px-3 py-1.5 rounded text-xs transition-colors"
+  const inputClass = "w-full px-3 py-1.5 bg-dark-700 border border-dark-600 rounded-lg text-xs text-white focus:outline-none focus:border-blue-500 placeholder-gray-600"
+  const btnClass = "px-3 py-1.5 rounded-lg text-xs transition-colors"
   const btnPrimary = `${btnClass} bg-blue-600 hover:bg-blue-500 text-white`
   const btnDark = `${btnClass} bg-dark-700 hover:bg-dark-600 text-gray-400 hover:text-white`
 
   return (
     <div className="max-w-2xl space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-2xl font-bold">设置</h1>
         <button onClick={saveGlobal} disabled={saving} className={`${btnPrimary} disabled:opacity-50`}>
           {saving ? '保存中...' : '保存全局设置'}
@@ -215,7 +221,7 @@ export default function Settings() {
       <div className={cardClass}>
         <h2 className={sectionTitle}>账号安全</h2>
         <form onSubmit={handleChangeAuth} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={labelClass}>当前用户名</label>
               <input type="text" value={oldUser} onChange={e => setOldUser(e.target.value)} className={inputClass} />
@@ -225,7 +231,7 @@ export default function Settings() {
               <input type="password" value={oldPass} onChange={e => setOldPass(e.target.value)} className={inputClass} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={labelClass}>新用户名</label>
               <input type="text" value={newUser} onChange={e => setNewUser(e.target.value)} className={inputClass} />
@@ -248,7 +254,7 @@ export default function Settings() {
       <div className={cardClass}>
         <h2 className={sectionTitle}>刮削器</h2>
         <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
               { k: javdbCache, set: setJavdbCache, label: 'Javdatabase 缓存' },
               { k: tmdbCache, set: setTmdbCache, label: 'TMDB 缓存' },
@@ -259,7 +265,7 @@ export default function Settings() {
                 <div className="flex items-center gap-1">
                   <input type="number" min={1} max={720} value={k}
                     onChange={e => set(Number(e.target.value))}
-                    className="w-16 px-2 py-1.5 bg-dark-700 border border-dark-600 rounded text-xs text-white focus:outline-none focus:border-blue-500" />
+                    className="w-20 sm:w-16 px-2 py-1.5 bg-dark-700 border border-dark-600 rounded-lg text-xs text-white focus:outline-none focus:border-blue-500" />
                   <span className="text-xs text-gray-600">小时</span>
                 </div>
               </div>
@@ -269,7 +275,7 @@ export default function Settings() {
             <label className={labelClass}>请求间隔（秒）</label>
             <input type="number" min={1} max={30} value={reqInterval}
               onChange={e => setReqInterval(Number(e.target.value))}
-              className="w-20 px-2 py-1.5 bg-dark-700 border border-dark-600 rounded text-xs text-white focus:outline-none focus:border-blue-500" />
+              className="w-20 px-2 py-1.5 bg-dark-700 border border-dark-600 rounded-lg text-xs text-white focus:outline-none focus:border-blue-500" />
           </div>
           <div className="border-t border-dark-600 pt-3">
             <label className={labelClass}>TMDB API Key</label>
@@ -290,10 +296,13 @@ export default function Settings() {
                 <div key={key} className="p-3 bg-dark-700 rounded-lg border border-dark-600">
                   <p className="text-sm font-medium text-white">{val.label}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{val.desc}</p>
-                  <span className="inline-block mt-1.5 text-[10px] px-1.5 py-0.5 rounded bg-green-900/30 text-green-400">已内置</span>
+                  <span className="inline-block mt-1.5 text-[10px] px-1.5 py-0.5 rounded-md bg-green-900/30 text-green-400">已内置</span>
                 </div>
               ))}
             </div>
+            <p className="mt-3 text-xs text-gray-500 leading-relaxed">
+              自动会尝试判断刮削源，但可能效果不好；更推荐按媒体库类型选择 TMDB 电影、TMDB 剧集/番剧、Bangumi 或 Javdatabase。
+            </p>
           </div>
         </div>
       </div>
@@ -314,13 +323,13 @@ export default function Settings() {
         {plugins.filter(p => !p.builtin).length > 0 && (
           <div className="space-y-1">
             {plugins.filter(p => !p.builtin).map(p => (
-              <div key={p.name} className="flex items-center justify-between p-2 bg-dark-700 rounded border border-dark-600">
+              <div key={p.name} className="flex items-center justify-between gap-3 p-2 bg-dark-700 rounded-lg border border-dark-600">
                 <div>
                   <p className="text-sm text-white">{p.label}</p>
                   <p className="text-xs text-gray-500">{p.description}</p>
                 </div>
                 <button onClick={() => handleDeletePlugin(p.name)}
-                  className="px-2 py-1 text-xs text-red-400 hover:bg-red-500/10 rounded">
+                  className="px-2 py-1 text-xs text-red-400 hover:bg-red-500/10 rounded-lg">
                   删除
                 </button>
               </div>
@@ -349,9 +358,9 @@ export default function Settings() {
                     <p className="text-xs text-gray-500">{lib.movie_count} 部</p>
                   </div>
                   <select
-                    value={libScraper[lib.path] || 'none'}
+                    value={libScraper[lib.path] || 'auto'}
                     onChange={e => setLibScraper(prev => ({ ...prev, [lib.path]: e.target.value }))}
-                    className="px-2 py-1.5 bg-dark-700 border border-dark-600 rounded text-xs text-gray-300 focus:outline-none focus:border-blue-500"
+                    className="px-2 py-1.5 bg-dark-700 border border-dark-600 rounded-lg text-xs text-gray-300 focus:outline-none focus:border-blue-500"
                   >
                     {Object.entries(SCRAPER_META).map(([k, v]) => (
                       <option key={k} value={k}>{v.label}</option>
@@ -360,7 +369,7 @@ export default function Settings() {
                   <input type="password" placeholder="密码"
                     value={libPasswords[lib.path] || ''}
                     onChange={e => setLibPasswords(prev => ({ ...prev, [lib.path]: e.target.value }))}
-                    className="w-16 px-2 py-1.5 bg-dark-700 border border-dark-600 rounded text-xs text-white focus:outline-none focus:border-blue-500 placeholder-gray-600"
+                    className="w-24 sm:w-16 px-2 py-1.5 bg-dark-700 border border-dark-600 rounded-lg text-xs text-white focus:outline-none focus:border-blue-500 placeholder-gray-600"
                   />
                   <button onClick={() => saveLibrary(lib.path)}
                     disabled={libSaving === lib.path}
@@ -392,12 +401,12 @@ export default function Settings() {
                       </div>
                     )}
                     {st && st.status === 'done' && (
-                      <div className="text-xs text-green-400">刮削完成 ✓</div>
+                      <div className="text-xs text-green-400">刮削完成</div>
                     )}
                   </div>
                 )}
                 {logVisible[lib.path] && scanLogs[lib.path] && scanLogs[lib.path]!.length > 0 && (
-                  <div className="mt-2 max-h-48 overflow-y-auto bg-dark-900 rounded p-2 text-[11px] font-mono text-gray-400 space-y-0.5">
+                  <div className="mt-2 max-h-48 overflow-y-auto bg-dark-900 rounded-lg p-2 text-[11px] font-mono text-gray-400 space-y-0.5">
                     {scanLogs[lib.path]!.map((l, i) => (
                       <div key={i} className="break-all">{l}</div>
                     ))}

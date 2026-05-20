@@ -43,6 +43,19 @@ export default function Detail() {
   }
 
   const isFavorited = movie.tags?.includes('favorite')
+  const goStaff = (name: string) => {
+    const p = new URLSearchParams()
+    p.set('staff', name)
+    if (movie.media_root) p.set('media_root', movie.media_root)
+    navigate(`/browse?${p.toString()}`)
+  }
+  const cast = (movie.cast || []).filter(p => p.name)
+  const crew = (movie.crew || []).filter(p => p.name)
+  const crewByJob = (jobs: string[]) => crew.filter(p => jobs.some(j => (p.job || '').toLowerCase().includes(j.toLowerCase())))
+  const directors = crewByJob(['director', '导演'])
+  const supervisors = crewByJob(['supervisor', 'animation director', 'series director', '监督'])
+  const writers = crewByJob(['writer', '脚本', '编剧'])
+  const studios = crewByJob(['studio', '制作'])
 
   const toggleTag = async (tag: string) => {
     if (movie.tags?.includes(tag)) {
@@ -60,7 +73,7 @@ export default function Detail() {
         onClick={() => navigate(-1)}
         className="mb-4 px-4 py-2 bg-dark-700 hover:bg-dark-600 rounded-lg text-sm transition-colors"
       >
-        ← 返回
+        返回
       </button>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -68,7 +81,7 @@ export default function Detail() {
           <VideoPlayer src={api.streamUrl(movie.id)} poster={api.coverUrl(movie.id)} movieId={movie.id}
             onWatched={() => { if (!movie.tags?.includes('watched')) toggleTag('watched') }} />
 
-          <div className="mt-4 flex items-center gap-3">
+          <div className="mt-4 flex items-center gap-2 sm:gap-3 flex-wrap">
             <button
               onClick={() => toggleTag('favorite')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -212,6 +225,27 @@ export default function Detail() {
           </div>
 
           <MovieInfoPanel movie={movie} sourceName={sourceName} />
+
+          {(cast.length > 0 || crew.length > 0) && (
+            <div className="space-y-3 rounded-lg border border-dark-700 bg-dark-800 p-4">
+              <h3 className="text-sm font-semibold text-gray-300">Staff</h3>
+              {cast.length > 0 && (
+                <StaffGroup label="演员" items={cast.slice(0, 12).map(p => ({ name: p.name, sub: p.role || p.character }))} onClick={goStaff} />
+              )}
+              {directors.length > 0 && (
+                <StaffGroup label="导演" items={directors.slice(0, 8).map(p => ({ name: p.name, sub: p.job }))} onClick={goStaff} />
+              )}
+              {supervisors.length > 0 && (
+                <StaffGroup label="监督" items={supervisors.slice(0, 8).map(p => ({ name: p.name, sub: p.job }))} onClick={goStaff} />
+              )}
+              {writers.length > 0 && (
+                <StaffGroup label="编剧" items={writers.slice(0, 8).map(p => ({ name: p.name, sub: p.job }))} onClick={goStaff} />
+              )}
+              {studios.length > 0 && (
+                <StaffGroup label="制作" items={studios.slice(0, 8).map(p => ({ name: p.name, sub: p.job }))} onClick={goStaff} />
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -224,6 +258,26 @@ export default function Detail() {
           onNext={() => setLightboxIdx(i => Math.min((movie.javdb_thumbnails || []).length - 1, i + 1))}
         />
       )}
+    </div>
+  )
+}
+
+function StaffGroup({ label, items, onClick }: { label: string; items: { name: string; sub?: string }[]; onClick: (name: string) => void }) {
+  return (
+    <div>
+      <div className="mb-1.5 text-xs text-gray-500">{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((item, idx) => (
+          <button
+            key={`${item.name}-${idx}`}
+            onClick={() => onClick(item.name)}
+            className="rounded-md border border-dark-600 bg-dark-700 px-2 py-1 text-left text-xs text-gray-200 hover:border-blue-500/50 hover:text-blue-300"
+            title={item.sub || item.name}
+          >
+            {item.name}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

@@ -1,18 +1,34 @@
 import { getCached, setCache, clearCache } from './cache'
 
 const BASE = '/api'
+let memoryToken = ''
+let memoryActiveLibrary = ''
 
 function getToken(): string {
-  try { return localStorage.getItem('mediatree_token') || '' } catch { return '' }
+  try {
+    const stored = localStorage.getItem('mediatree_token') || ''
+    if (stored) memoryToken = stored
+    return stored || memoryToken
+  } catch {
+    return memoryToken
+  }
 }
 function setToken(t: string) {
+  memoryToken = t
   try { localStorage.setItem('mediatree_token', t) } catch {}
 }
 
 function getActiveLibrary(): string {
-  try { return localStorage.getItem('mediatree_library') || '' } catch { return '' }
+  try {
+    const stored = localStorage.getItem('mediatree_library') || ''
+    if (stored) memoryActiveLibrary = stored
+    return stored || memoryActiveLibrary
+  } catch {
+    return memoryActiveLibrary
+  }
 }
 function setActiveLibrary(lib: string) {
+  memoryActiveLibrary = lib
   try { localStorage.setItem('mediatree_library', lib) } catch {}
 }
 
@@ -76,9 +92,9 @@ export const api = {
     return request<{ tree: FolderNode[] }>(url, undefined, cacheKey)
   },
 
-  search: (q: string) => {
+  search: (q: string, field?: string) => {
     const lib = getActiveLibrary()
-    const url = `/search?q=${encodeURIComponent(q)}${lib ? `&media_root=${encodeURIComponent(lib)}` : ''}`
+    const url = `/search?q=${encodeURIComponent(q)}${field ? `&field=${encodeURIComponent(field)}` : ''}${lib ? `&media_root=${encodeURIComponent(lib)}` : ''}`
     return request<{ movies: Movie[]; total: number }>(url)
   },
 
@@ -87,21 +103,24 @@ export const api = {
     tag?: string
     code?: string
     actress?: string
+    staff?: string
     category_id?: number
     sort?: string
     limit?: number
     offset?: number
+    media_root?: string
   }) => {
     const qs = new URLSearchParams()
     if (params?.folder) qs.set('folder', params.folder)
     if (params?.tag) qs.set('tag', params.tag)
     if (params?.code) qs.set('code', params.code)
     if (params?.actress) qs.set('actress', params.actress)
+    if (params?.staff) qs.set('staff', params.staff)
     if (params?.category_id) qs.set('category_id', String(params.category_id))
     if (params?.sort) qs.set('sort', params.sort)
     if (params?.limit) qs.set('limit', String(params.limit))
     if (params?.offset) qs.set('offset', String(params.offset))
-    const lib = getActiveLibrary()
+    const lib = params?.media_root || getActiveLibrary()
     if (lib) qs.set('media_root', lib)
     return request<{ movies: Movie[]; total: number }>(`/movies?${qs}`)
   },
@@ -118,7 +137,20 @@ export const api = {
 
   detail: (id: number) => request<Movie>(`/detail/${id}`, undefined, `detail_${id}`),
 
+  mediaInfo: (id: number) => request<{ duration: number; video_codec: string; audio_codec: string; audio_channels?: number; container: string; external_audio_tracks?: ExternalAudioTrack[] }>(`/media-info/${id}`),
+
+  getProgress: (id: number) => request<{ position: number; played: boolean; progress_percent: number }>(`/progress/${id}`),
+
+  saveProgress: (id: number, position: number, duration?: number, stopped?: boolean) =>
+    request<{ ok: boolean; played: boolean; progress_percent: number }>(`/progress/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ position, duration, stopped }),
+    }),
+
   streamUrl: (id: number) => `${BASE}/stream/${id}`,
+
+  externalPlaylistUrl: (id: number) => `${BASE}/external-play/${id}.m3u`,
 
   coverUrl: (id: number) => `${BASE}/cover/${id}`,
 
@@ -186,11 +218,11 @@ export const api = {
 
   setupStatus: () => request<{ needs_setup: boolean; roots: string[] }>('/setup/status'),
 
-  setupSave: (libraries: any[]) =>
-    request<{ ok: boolean }>('/setup/save', {
+  setupSave: (libraries: any[], tmdbAccessToken?: string) =>
+    request<{ ok: boolean; scan_started?: boolean }>('/setup/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ libraries }),
+      body: JSON.stringify({ libraries, tmdb_access_token: tmdbAccessToken || '' }),
     }),
 
   librarySettings: () => request<LibrarySetting[]>('/library-settings'),
@@ -206,6 +238,34 @@ export const api = {
 
   subtitleUrl: (movieId: number, trackIndex: number) => `${BASE}/subtitle/${movieId}/${trackIndex}`,
 
+  subtitleContent: async (movieId: number, trackIndex: number) => {
+    const headers: Record<string, string> = {}
+    const token = getToken()
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${BASE}/subtitle-content/${movieId}/${trackIndex}`, { headers })
+    if (!res.ok) throw new Error(await res.text())
+    return res.text()
+  },
+
+  subtitleFonts: () => request<{ fonts: { name: string; size: number; family: string }[] }>('/subtitle-fonts'),
+
+  uploadFont: async (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const headers: Record<string, string> = {}
+    const token = getToken()
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    const res = await fetch(`${BASE}/subtitle-fonts/upload`, { method: 'POST', headers, body: formData })
+    if (!res.ok) throw new Error(await res.text())
+    return res.json()
+  },
+
+  deleteFont: (name: string) => request<{ ok: boolean }>(`/subtitle-fonts/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+
+  defaultSubtitleFontUrl: () => `${BASE}/subtitle-fonts/default`,
+
+  fontUrl: (name: string) => `${BASE}/subtitle-fonts/${name.split('/').map(encodeURIComponent).join('/')}`,
+
   cachedCoverUrl: (cacheKey: string) => `${BASE}/cached-cover/${cacheKey}`,
 
   episodeStillUrl: (movieId: number) => `${BASE}/episode-still/${movieId}`,
@@ -214,6 +274,9 @@ export const api = {
     request<{ media_root?: string; status: string; done: number; total: number; roots?: Record<string, any> }>(
       `/scan/status?media_root=${encodeURIComponent(mediaRoot)}`
     ),
+
+  scanStatusAll: () =>
+    request<{ roots: Record<string, { status: string; done: number; total: number }> }>('/scan/status'),
 
   scanLog: (mediaRoot: string, lines: number = 100) =>
     request<{ lines: string[]; total: number }>(
@@ -252,7 +315,7 @@ export const api = {
     request<{ results: { source: string; source_id: string; media_type: string; title: string; original_title: string; year: string; poster_url?: string; overview: string }[] }>('/search-scrape', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, scraper: scraper || 'tmdb' }),
+      body: JSON.stringify({ query, scraper: scraper || 'tmdb_movie' }),
     }),
 
   rescrapeFolderManual: (folder: string, mediaRoot: string, query: string, scraper?: string) =>
@@ -304,11 +367,11 @@ export const api = {
       body: JSON.stringify({ folder, media_root: mediaRoot }),
     }),
 
-  manualScrapeMovie: (movieId: number, query: string, scraper?: string) =>
+  manualScrapeMovie: (movieId: number, query: string, sourceId?: string, mediaType?: string, scraper?: string) =>
     request<{ ok: boolean; source: string; title: string }>(`/movies/${movieId}/manual-scrape`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, scraper }),
+      body: JSON.stringify({ query, source_id: sourceId, media_type: mediaType, scraper }),
     }),
 
   getAlternativeCovers: (movieId: number) =>
@@ -386,8 +449,23 @@ export interface SubtitleTrack {
   codec: string
   language: string
   title: string
+  name?: string
   source?: string
   path?: string
+  format?: string
+  is_external?: boolean
+  web_supported?: boolean
+}
+
+export interface ExternalAudioTrack {
+  path: string
+  name: string
+  source?: string
+  language?: string
+  codec?: string
+  format?: string
+  title?: string
+  is_external?: boolean
 }
 
 export interface FolderNode {
@@ -402,6 +480,9 @@ export interface FolderNode {
   children?: FolderNode[]
   media_root?: string
   created_max?: string
+  watched_count?: number
+  folder_watched?: boolean
+  progress_percent?: number
 }
 
 export interface Movie {
@@ -437,8 +518,16 @@ export interface Movie {
   episode_title?: string
   episode_overview?: string
   episode_still?: string
-  cast?: { name: string; character: string; profile_path?: string }[]
-  crew?: { name: string; job: string; profile_path?: string }[]
+  episode_still_local?: string
+  clean_title?: string
+  episode_number?: number
+  episode_label?: string
+  display_title?: string
+  external_audio_tracks?: ExternalAudioTrack[]
+  cast?: { name: string; character?: string; role?: string; profile_path?: string; source?: string }[]
+  crew?: { name: string; job: string; department?: string; profile_path?: string; source?: string }[]
+  playback_position?: number
+  progress_percent?: number
 }
 
 export interface Category {

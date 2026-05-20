@@ -1,55 +1,118 @@
 import asyncio
 from pathlib import Path
+
 from watchfiles import awatch
+
 from .config import settings, logger
-from .scanner import scan_media, scrape_for_library
-from .database import upsert_movie, get_db
+from .database import get_all_library_settings
+from .scanner import run_scan_for_root
+
+
+WATCH_EXTS = {
+    ".mkv", ".mp4", ".mov", ".avi", ".m2ts", ".ts", ".webm",
+    ".nfo", ".srt", ".ass", ".ssa", ".vtt",
+    ".jpg", ".jpeg", ".png", ".webp",
+}
+
+
+def _is_relative_to(path: Path, root: str) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _is_relevant_path(path: Path) -> bool:
+    if path.name.startswith("."):
+        return False
+    return path.suffix.lower() in WATCH_EXTS
+
+
+async def _enabled_media_roots() -> list[str]:
+    configured = [str(Path(r)) for r in settings.get_all_media_roots()]
+    try:
+        settings_rows = await get_all_library_settings()
+    except Exception as e:
+        logger.warning(f"Watcher could not load library settings, falling back to configured roots: {e}")
+        return [r for r in configured if Path(r).exists()]
+
+    if not settings_rows:
+        return [r for r in configured if Path(r).exists()]
+
+    enabled = {
+        str(Path(row["media_root"]))
+        for row in settings_rows
+        if int(row.get("enabled", 1)) == 1
+    }
+    return [r for r in configured if r in enabled and Path(r).exists()]
 
 
 async def start_file_watcher(startup_task: asyncio.Task | None = None):
+    await asyncio.sleep(1)
     if startup_task:
-        await startup_task
-
-    roots = settings.get_all_media_roots()
-    if not roots:
-        logger.info("No media roots to watch")
-        return
-    logger.info(f"File watcher started on {len(roots)} roots")
+        try:
+            await startup_task
+        except Exception as e:
+            logger.warning(f"Watcher ignored startup scan error: {e}")
 
     while True:
+        roots = await _enabled_media_roots()
+        if not roots:
+            logger.info("No enabled media roots to watch")
+            await asyncio.sleep(30)
+            continue
+
+        logger.info(f"File watcher started on {len(roots)} enabled roots")
         try:
-            async for changes in awatch(*roots, debounce=15000):
+            iterator = awatch(*roots, debounce=15000).__aiter__()
+            changes_task = asyncio.create_task(iterator.__anext__())
+            while True:
+                done, _pending = await asyncio.wait({changes_task}, timeout=60)
+                if not done:
+                    latest_roots = await _enabled_media_roots()
+                    if latest_roots != roots:
+                        logger.info("Watcher media roots changed, refreshing watch targets")
+                        changes_task.cancel()
+                        try:
+                            await changes_task
+                        except BaseException:
+                            pass
+                        break
+                    continue
+                try:
+                    changes = changes_task.result()
+                except StopAsyncIteration:
+                    break
+                changes_task = asyncio.create_task(iterator.__anext__())
+
+                relevant_paths = [Path(path_str) for _change_type, path_str in changes if _is_relevant_path(Path(path_str))]
+                if not relevant_paths:
+                    continue
+
                 affected: set[str] = set()
-                for _change_type, path_str in changes:
-                    p = Path(path_str)
+                for p in relevant_paths:
                     for root in roots:
-                        if p.is_relative_to(root):
+                        if _is_relative_to(p, root):
                             affected.add(root)
                             break
 
-                for root in affected:
-                    logger.info(f"Auto-scan triggered for {root}")
-                    results = scan_media(root)
-                    for item in results:
-                        await upsert_movie(item)
-                    await _cleanup_deleted(root)
-                    await scrape_for_library(root)
+                if not affected:
+                    continue
 
+                logger.info(
+                    f"Watcher detected changes: paths={len(relevant_paths)} roots={len(affected)}"
+                )
+                for root in sorted(affected):
+                    logger.info(f"Watcher triggering auto scan for {root}")
+                    asyncio.create_task(run_scan_for_root(root, trigger="watcher"))
+
+                latest_roots = await _enabled_media_roots()
+                if latest_roots != roots:
+                    logger.info("Watcher media roots changed after event, refreshing watch targets")
+                    break
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.error(f"Watcher error: {e}")
             await asyncio.sleep(30)
-
-
-async def _cleanup_deleted(media_root: str):
-    db = await get_db()
-    cur = await db.execute(
-        "SELECT id, path FROM movies WHERE media_root=?", (media_root,)
-    )
-    removed = 0
-    for row in await cur.fetchall():
-        if not Path(row["path"]).exists():
-            await db.execute("DELETE FROM movies WHERE id=?", (row["id"],))
-            removed += 1
-    if removed:
-        await db.commit()
-        logger.info(f"Auto-scan: removed {removed} deleted files from {media_root}")

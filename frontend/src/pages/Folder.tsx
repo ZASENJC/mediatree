@@ -13,17 +13,30 @@ const sortOptions = [
   { key: 'created_desc', label: '最近添加' },
   { key: 'created_asc', label: '最早添加' },
   { key: 'name', label: '名称' },
-  { key: 'release_date_desc', label: '发行日期↓' },
-  { key: 'release_date_asc', label: '发行日期↑' },
+  { key: 'release_date_desc', label: '发行日期新到旧' },
+  { key: 'release_date_asc', label: '发行日期旧到新' },
   { key: 'random', label: '随机' },
 ]
 
 interface SeasonTab { name: string; path: string; count: number }
 
+function cleanSeriesFolderLabel(label: string) {
+  return label
+    .replace(/\s*\[[^\]]*tmdbid[^\]]*\]\s*/ig, ' ')
+    .replace(/\s*\([12]\d{3}\)\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || label
+}
+
+function isSeasonLabel(label: string) {
+  return /^(S|Season\s*|第)\s*\d{1,2}$/i.test(label)
+}
+
 export default function FolderPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const folderPath = searchParams.get('path') || ''
+  const mediaRoot = searchParams.get('media_root') || ''
   const seasonFilter = searchParams.get('season') || ''
   const sort = (searchParams.get('sort') || 'created_desc') as SortMode
   const folderLabel = (() => {
@@ -46,24 +59,31 @@ export default function FolderPage() {
       setLoading(false)
       return
     }
-    api.movies({ folder: folderPath, sort, limit: 2000 })
+    api.movies({ folder: folderPath, sort, limit: 2000, media_root: mediaRoot || undefined })
       .then((data) => {
         setAllMovies(data.movies)
         setCache(cacheKey, { movies: data.movies })
         setLoading(false)
       })
       .catch(() => setLoading(false))
-  }, [folderPath, sort])
+  }, [folderPath, sort, mediaRoot])
 
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
     api.folders().then(data => {
-      for (const node of data.tree) {
-        if (node.path === folderPath) {
-          if (node.display_title) setFolderDisplayTitle(node.display_title)
-          if (node.backdrop) setFolderBackdrop(node.backdrop)
+      const findNode = (nodes: FolderNode[]): FolderNode | undefined => {
+        for (const node of nodes) {
+          if (node.path === folderPath) return node
+          const found = node.children ? findNode(node.children) : undefined
+          if (found) return found
         }
+        return undefined
+      }
+      const node = findNode(data.tree)
+      if (node) {
+        if (node.display_title) setFolderDisplayTitle(node.display_title)
+        if (node.backdrop) setFolderBackdrop(node.backdrop)
       }
     }).catch(() => {})
   }, [folderPath])
@@ -109,7 +129,13 @@ export default function FolderPage() {
 
   const showTitle = folderDisplayTitle || (
     (() => {
-      const m = allMovies.find(m => m.title && m.title !== m.code)
+      const allEpisodes = allMovies.length > 0 && allMovies.every(m => m.tmdb_type === 'tv' && m.tmdb_episode != null)
+      if (allEpisodes && !isSeasonLabel(folderLabel)) return cleanSeriesFolderLabel(folderLabel)
+      const m = allMovies.find(m => (
+        m.title
+        && m.title !== m.code
+        && !(m.tmdb_type === 'tv' && m.tmdb_episode != null && m.episode_title && m.title === m.episode_title)
+      ))
       return m?.title || folderLabel
     })()
   )
@@ -117,6 +143,7 @@ export default function FolderPage() {
   const handleSort = (s: string) => {
     const p = new URLSearchParams(searchParams)
     p.set('path', folderPath)
+    if (mediaRoot) p.set('media_root', mediaRoot)
     if (seasonFilter) p.set('season', seasonFilter)
     if (s !== 'created_desc') p.set('sort', s)
     else p.delete('sort')
@@ -126,6 +153,7 @@ export default function FolderPage() {
   const selectSeason = (tabPath: string | null) => {
     const p = new URLSearchParams(searchParams)
     p.set('path', folderPath)
+    if (mediaRoot) p.set('media_root', mediaRoot)
     if (sort !== 'created_desc') p.set('sort', sort)
     if (tabPath) p.set('season', tabPath)
     else p.delete('season')
@@ -143,19 +171,19 @@ export default function FolderPage() {
   return (
     <div>
       {folderBackdrop && (
-        <div className="relative -mx-4 -mt-6 mb-6 h-[42vh] min-h-[240px] max-h-[550px] overflow-hidden bg-dark-950">
+        <div className="relative -mx-3 sm:-mx-4 -mt-4 sm:-mt-6 mb-6 h-[38vh] sm:h-[42vh] min-h-[220px] max-h-[550px] overflow-hidden bg-dark-950">
           <img
             src={folderBackdrop}
             alt=""
             className="w-full h-full object-cover brightness-[0.45]"
           />
           <div className="absolute bottom-0 left-0 right-0 h-2/3 bg-gradient-to-t from-dark-900 via-dark-900/60 to-transparent pointer-events-none" />
-          <div className="absolute bottom-4 left-4 right-4">
+          <div className="absolute bottom-4 left-4 right-4 min-w-0">
             <button onClick={() => { saveScrollPos(); navigate('/') }}
               className="text-sm text-gray-400 hover:text-white transition-colors mb-1 block">
-              ← 返回首页
+              返回首页
             </button>
-            <h1 className="text-2xl font-bold truncate text-white drop-shadow-lg">{showTitle}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold break-words text-white drop-shadow-lg max-w-full">{showTitle}</h1>
             <p className="text-sm text-gray-400 mt-1">{movies.length} 部影片</p>
           </div>
         </div>
@@ -163,12 +191,12 @@ export default function FolderPage() {
 
       {!folderBackdrop && (
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-          <div>
+          <div className="min-w-0">
             <button onClick={() => { saveScrollPos(); navigate('/') }}
               className="text-sm text-gray-400 hover:text-white transition-colors mb-1 block">
-              ← 返回首页
+              返回首页
             </button>
-            <h1 className="text-2xl font-bold truncate">{showTitle}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold break-words max-w-full">{showTitle}</h1>
             <p className="text-sm text-gray-500 mt-1">{movies.length} 部影片</p>
           </div>
           <SortDropdown options={sortOptions} current={sort} onChange={handleSort} />
@@ -210,7 +238,7 @@ export default function FolderPage() {
           <p>此文件夹下没有影片</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3 sm:gap-4">
           {movies.map((movie) => (
             <MovieCard key={movie.id} movie={movie} onUpdated={load} />
           ))}

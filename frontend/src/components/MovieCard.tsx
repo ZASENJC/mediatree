@@ -23,6 +23,8 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
   const [altCovers, setAltCovers] = useState<{ url: string; source: string }[]>([])
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [searching, setSearching] = useState(false)
+  const [applying, setApplying] = useState(false)
+  const [coverVersion, setCoverVersion] = useState(() => movie.updated_at || '')
 
   const goDetail = () => {
     saveScrollPos()
@@ -36,17 +38,22 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
 
   const isEpisode = movie.tmdb_type === 'tv' && movie.tmdb_episode != null
   const hasEpisodeStill = !!(isEpisode && movie.episode_still)
-  const coverSrc = hasEpisodeStill
+  const versionSuffix = coverVersion ? `?v=${encodeURIComponent(coverVersion)}` : ''
+  const coverSrc = (hasEpisodeStill
     ? api.episodeStillUrl(movie.id)
-    : api.coverUrl(movie.id)
+    : api.coverUrl(movie.id)) + versionSuffix
   const displayTitle = isEpisode
     ? `E${String(movie.tmdb_episode).padStart(2, '0')} ${movie.episode_title || movie.title || movie.code}`
     : (movie.title || movie.code)
+  const watched = !!(movie.tags || []).includes('watched')
+  const progressPercent = Math.max(0, Math.min(100, movie.progress_percent || 0))
+  const showProgress = !watched && progressPercent > 0 && progressPercent < 90
 
   const handleRescrape = useCallback(async () => {
     try {
       await api.rescrapeMovie(movie.id)
       clearCache()
+      setCoverVersion(String(Date.now()))
       onUpdated?.()
     } catch {
       console.error('Rescrape failed for movie', movie.id)
@@ -69,17 +76,22 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
   }, [manualQuery, manualScraper])
 
   const handleSelectSearchResult = useCallback(async (result: any) => {
+    if (applying) return
+    setApplying(true)
     try {
-      await api.manualScrapeMovie(movie.id, result.title, result.source)
+      await api.manualScrapeMovie(movie.id, result.title, result.source_id, result.media_type, result.source)
       clearCache()
+      setCoverVersion(String(Date.now()))
       setShowManualSearch(false)
       setSearchResults([])
       setManualQuery('')
       onUpdated?.()
     } catch {
       console.error('Failed to apply scrape result')
+    } finally {
+      setApplying(false)
     }
-  }, [movie.id, onUpdated])
+  }, [movie.id, onUpdated, applying])
 
   const handleLoadAltCovers = useCallback(async () => {
     try {
@@ -99,6 +111,7 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
     try {
       await api.changeCover(movie.id, url)
       clearCache()
+      setCoverVersion(String(Date.now()))
       setShowCoverPicker(false)
       onUpdated?.()
     } catch {
@@ -116,6 +129,7 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
       try {
         await api.changeCover(movie.id, file)
         clearCache()
+        setCoverVersion(String(Date.now()))
         onUpdated?.()
       } catch {
         console.error('Failed to upload cover for movie', movie.id)
@@ -148,7 +162,7 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
       <div
         onClick={goDetail}
         onContextMenu={handleContextMenu}
-        className="group cursor-pointer bg-dark-800 rounded-xl overflow-hidden border border-dark-700 hover:border-blue-500/40 transition-all hover:bg-dark-700/50"
+        className="group cursor-pointer bg-dark-800 rounded-lg overflow-hidden border border-dark-700 hover:border-blue-500/40 transition-all hover:bg-dark-700/50"
       >
         <div className={`${hasEpisodeStill ? 'aspect-video' : 'aspect-[2/3]'} bg-dark-700 relative`}>
           <img
@@ -158,35 +172,40 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
             loading="lazy"
             onError={(e) => {
               const img = e.target as HTMLImageElement
-              if (img.src === movie.episode_still) {
-                img.src = api.coverUrl(movie.id)
+              if (hasEpisodeStill) {
+                img.src = api.coverUrl(movie.id) + versionSuffix
               } else {
                 img.style.display = 'none'
               }
             }}
           />
-          <WatchedBadge watched={!!(movie.tags || []).includes('watched')} />
+          <WatchedBadge watched={watched} />
 
           {movie.javdb_score != null && movie.javdb_score > 0 && (
-            <span className="absolute top-2 right-2 bg-dark-900/80 px-1.5 py-0.5 rounded text-xs text-yellow-400 z-10">
+            <span className="absolute top-2 right-2 bg-dark-900/80 px-1.5 py-0.5 rounded-md text-xs text-yellow-400 z-10">
               {movie.javdb_score.toFixed(1)}
             </span>
           )}
           {movie.javdb_likes != null && movie.javdb_likes > 0 && (
-            <span className="absolute top-7 right-2 bg-dark-900/80 px-1.5 py-0.5 rounded text-xs text-pink-400 z-10">
+            <span className="absolute top-7 right-2 bg-dark-900/80 px-1.5 py-0.5 rounded-md text-xs text-pink-400 z-10">
               {movie.javdb_likes >= 1000 ? `${(movie.javdb_likes / 1000).toFixed(1)}k` : movie.javdb_likes}
             </span>
           )}
 
           {isEpisode && (
-            <span className="absolute top-2 left-2 bg-blue-600/85 px-1.5 py-0.5 rounded text-[10px] text-white z-10 font-medium">
+            <span className="absolute top-2 left-2 bg-blue-600/85 px-1.5 py-0.5 rounded-md text-[10px] text-white z-10 font-medium">
               S{movie.tmdb_season}·E{movie.tmdb_episode}
             </span>
           )}
 
           <div className="absolute inset-0 bg-gradient-to-t from-dark-900 via-dark-900/30 to-transparent" />
-          <div className="absolute bottom-0 left-0 right-0 p-3">
-            <p className="text-sm font-semibold text-white truncate">{displayTitle}</p>
+          {showProgress && (
+            <div className="absolute bottom-0 left-0 right-0 z-20 h-1.5 bg-black/50">
+              <div className="h-full bg-blue-500" style={{ width: `${progressPercent}%` }} />
+            </div>
+          )}
+          <div className="absolute bottom-0 left-0 right-0 p-3 min-w-0">
+            <p className="text-sm font-semibold text-white leading-snug break-words line-clamp-2">{displayTitle}</p>
             <p className="text-xs text-gray-400 mt-0.5 truncate">{movie.code}</p>
           </div>
         </div>
@@ -211,27 +230,28 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
 
       {showManualSearch && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-dark-800 border border-dark-600 rounded-xl p-5 w-full max-w-lg mx-4 shadow-2xl max-h-[80vh] overflow-y-auto">
+          <div className="bg-dark-800 border border-dark-600 rounded-lg p-4 sm:p-5 w-full max-w-lg mx-4 shadow-2xl max-h-[80vh] overflow-y-auto">
             <h2 className="text-lg font-bold mb-3">手动刮削</h2>
             <p className="text-xs text-gray-500 mb-3">输入搜索关键词，选择刮削器</p>
-            <div className="flex gap-2 mb-3">
+            <div className="flex flex-col sm:flex-row gap-2 mb-3">
               <input
                 type="text" value={manualQuery} onChange={e => { setManualQuery(e.target.value); setSearchResults([]) }}
                 onKeyDown={e => { if (e.key === 'Enter') handleSearch() }}
                 placeholder="搜索关键词" autoFocus
-                className="flex-1 px-3 py-2 bg-dark-700 border border-dark-600 rounded text-sm text-white focus:outline-none focus:border-blue-500"
+                className="flex-1 px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
               />
               <select
                 value={manualScraper} onChange={e => setManualScraper(e.target.value)}
-                className="px-3 py-2 bg-dark-700 border border-dark-600 rounded text-sm text-gray-300 focus:outline-none focus:border-blue-500"
+                className="px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-sm text-gray-300 focus:outline-none focus:border-blue-500"
               >
                 <option value="">自动</option>
-                <option value="tmdb">TMDB</option>
+                <option value="tmdb_movie">TMDB 电影</option>
+                <option value="tmdb_tv">TMDB 剧集/番剧</option>
                 <option value="bangumi">Bangumi</option>
                 <option value="javdatabase">Javdatabase</option>
               </select>
               <button onClick={handleSearch} disabled={searching}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded text-sm">
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg text-sm">
                 {searching ? '搜索中...' : '搜索'}
               </button>
             </div>
@@ -241,7 +261,7 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
                 {searchResults.map((r, i) => (
                   <div key={i}
                     onClick={() => handleSelectSearchResult(r)}
-                    className="bg-dark-700 rounded overflow-hidden border border-dark-600 hover:border-blue-500 cursor-pointer transition-colors"
+                    className="bg-dark-700 rounded-lg overflow-hidden border border-dark-600 hover:border-blue-500 cursor-pointer transition-colors"
                   >
                     <div className="aspect-[2/3] bg-dark-800">
                       {r.poster_url ? (
@@ -261,7 +281,7 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
 
             <div className="flex gap-3 mt-4">
               <button onClick={() => { setShowManualSearch(false); setSearchResults([]) }}
-                className="flex-1 py-2 bg-dark-700 hover:bg-dark-600 rounded text-sm text-gray-400">
+                className="flex-1 py-2 bg-dark-700 hover:bg-dark-600 rounded-lg text-sm text-gray-400">
                 取消
               </button>
             </div>
@@ -269,16 +289,28 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
         </div>
       )}
 
+      {applying && (
+        <div className="fixed left-3 right-3 bottom-3 sm:left-auto sm:right-4 sm:bottom-4 z-[60] sm:w-64 rounded-lg border border-dark-600 bg-dark-800/95 shadow-2xl p-4 backdrop-blur">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-white">正在应用刮削结果...</p>
+              <p className="text-xs text-gray-500 mt-1">更新元数据和封面缓存</p>
+            </div>
+            <div className="w-4 h-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+          </div>
+        </div>
+      )}
+
       {showCoverPicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-dark-800 border border-dark-600 rounded-xl p-5 w-full max-w-lg mx-4 shadow-2xl max-h-[80vh] overflow-y-auto">
+          <div className="bg-dark-800 border border-dark-600 rounded-lg p-4 sm:p-5 w-full max-w-lg mx-4 shadow-2xl max-h-[80vh] overflow-y-auto">
             <h2 className="text-lg font-bold mb-3">更换封面</h2>
             <p className="text-xs text-gray-500 mb-3">选择封面或上传本地图片</p>
             <div className="grid grid-cols-3 gap-3 mb-4">
               {altCovers.map((c, i) => (
                 <div key={i}
                   onClick={() => handleSelectCover(c.url)}
-                  className="aspect-[2/3] bg-dark-700 rounded overflow-hidden border border-dark-600 hover:border-blue-500 cursor-pointer transition-colors"
+                  className="aspect-[2/3] bg-dark-700 rounded-lg overflow-hidden border border-dark-600 hover:border-blue-500 cursor-pointer transition-colors"
                 >
                   <img src={c.url} alt={c.source} className="w-full h-full object-cover" />
                 </div>
@@ -286,11 +318,11 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
             </div>
             <div className="flex gap-3">
               <button onClick={handleUploadCover}
-                className="flex-1 py-2 bg-dark-700 hover:bg-dark-600 rounded text-sm text-gray-400">
+                className="flex-1 py-2 bg-dark-700 hover:bg-dark-600 rounded-lg text-sm text-gray-400">
                 上传本地图片
               </button>
               <button onClick={() => setShowCoverPicker(false)}
-                className="flex-1 py-2 bg-dark-700 hover:bg-dark-600 rounded text-sm text-gray-400">
+                className="flex-1 py-2 bg-dark-700 hover:bg-dark-600 rounded-lg text-sm text-gray-400">
                 取消
               </button>
             </div>

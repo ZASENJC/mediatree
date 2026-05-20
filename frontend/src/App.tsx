@@ -31,6 +31,8 @@ export default function App() {
   const [passwordTarget, setPasswordTarget] = useState<MediaRoot | null>(null)
   const [showSetup, setShowSetup] = useState(false)
   const [checkingSetup, setCheckingSetup] = useState(true)
+  const [scanToast, setScanToast] = useState<{ visible: boolean; status: string; done: number; total: number }>({ visible: false, status: '', done: 0, total: 0 })
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   const currentLibraryLabel = (() => {
     if (!activeLib) return ''
@@ -56,12 +58,40 @@ export default function App() {
   }, [])
 
   useEffect(() => { loadLibraries() }, [loadLibraries])
+  useEffect(() => { setMobileNavOpen(false) }, [location.pathname])
 
   useEffect(() => {
     api.setupStatus().then(d => {
       if (d.needs_setup) setShowSetup(true)
       setCheckingSetup(false)
     }).catch(() => setCheckingSetup(false))
+  }, [])
+
+  useEffect(() => {
+    let timer = 0
+    let hadActive = false
+    const poll = async () => {
+      try {
+        const data = await api.scanStatusAll()
+        const roots = Object.values(data.roots || {})
+        const active = roots.filter(r => ['scanning', 'scanned', 'scraping'].includes(r.status))
+        if (active.length > 0) {
+          hadActive = true
+          const done = active.reduce((sum, r) => sum + (r.done || 0), 0)
+          const total = active.reduce((sum, r) => sum + (r.total || 0), 0)
+          const scanning = active.some(r => r.status === 'scanning' || r.status === 'scanned')
+          setScanToast({ visible: true, status: scanning ? '正在扫描媒体库...' : '正在刮削媒体信息...', done, total })
+        } else if (hadActive) {
+          hadActive = false
+          clearCache()
+          setScanToast({ visible: true, status: '媒体库刮削完成', done: 1, total: 1 })
+          window.setTimeout(() => setScanToast(t => ({ ...t, visible: false })), 4500)
+        }
+      } catch {}
+      timer = window.setTimeout(poll, 2500)
+    }
+    poll()
+    return () => clearTimeout(timer)
   }, [])
 
   const doSwitch = (libPath: string) => {
@@ -120,7 +150,7 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-50 bg-dark-800/95 backdrop-blur border-b border-dark-600">
-        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 min-h-14 py-2 flex flex-wrap items-center gap-2 sm:gap-3">
           <Link to="/" className="text-lg font-semibold tracking-tight text-white hover:text-blue-400 transition-colors shrink-0">
             MediaTree
           </Link>
@@ -130,6 +160,8 @@ export default function App() {
                 key={item.path}
                 to={item.path}
                 className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
+                  item.path === '/favorites' || item.path === '/settings' ? 'hidden sm:inline-flex' : 'inline-flex'
+                } ${
                   location.pathname === item.path
                     ? 'bg-dark-600 text-white'
                     : 'text-gray-400 hover:text-white hover:bg-dark-700'
@@ -138,8 +170,34 @@ export default function App() {
                 <span>{item.label}</span>
               </Link>
             ))}
+            <div className="relative sm:hidden">
+              <button
+                onClick={() => setMobileNavOpen(v => !v)}
+                className="px-2.5 py-1.5 rounded-md text-sm text-gray-400 hover:text-white hover:bg-dark-700 transition-colors"
+                aria-label="更多导航"
+              >
+                ···
+              </button>
+              {mobileNavOpen && (
+                <div className="absolute left-0 top-full mt-1 w-28 overflow-hidden rounded-lg border border-dark-600 bg-dark-800 shadow-2xl z-50">
+                  {navItems.filter(item => item.path === '/favorites' || item.path === '/settings').map(item => (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      className={`block px-3 py-2 text-sm transition-colors ${
+                        location.pathname === item.path
+                          ? 'bg-dark-600 text-white'
+                          : 'text-gray-300 hover:bg-dark-700 hover:text-white'
+                      }`}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
           </nav>
-          <div className="flex items-center gap-2 flex-1 justify-end">
+          <div className="flex items-center gap-2 flex-1 justify-end min-w-0">
             {libraries.length > 1 && (
               <button
                 onClick={() => setShowLibraryModal(true)}
@@ -156,20 +214,20 @@ export default function App() {
                 {currentLibraryLabel}
               </span>
             )}
-            <form onSubmit={handleSearch} className="relative">
+            <form onSubmit={handleSearch} className="relative order-3 w-full sm:order-none sm:w-auto">
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => { if (searchResults.length > 0 || searchQuery) setSearchOpen(true) }}
                 placeholder="搜索..."
-                className="w-32 md:w-48 pl-7 pr-2 py-1.5 bg-dark-700 border border-dark-600 rounded-md text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 focus:w-56 transition-all"
+                className="w-full sm:w-40 md:w-48 pl-7 pr-2 py-1.5 bg-dark-700 border border-dark-600 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 md:focus:w-56 transition-all"
               />
               <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               {searchOpen && (searchResults.length > 0 || searchLoading || (searchQuery && !searchLoading)) && (
-                <div className="absolute top-full mt-1 right-0 w-80 max-h-96 overflow-y-auto bg-dark-800 border border-dark-600 rounded-lg shadow-2xl z-50">
+                <div className="absolute top-full mt-1 right-0 w-full sm:w-80 max-h-96 overflow-y-auto bg-dark-800 border border-dark-600 rounded-lg shadow-2xl z-50">
                   {searchResults.length > 0 && (
                     <>
                       <div className="p-2 text-xs text-gray-500 border-b border-dark-600">
@@ -211,7 +269,7 @@ export default function App() {
                           }}
                           className="w-full p-2 text-xs text-blue-400 hover:text-blue-300 text-center border-t border-dark-600 hover:bg-dark-700"
                         >
-                          查看全部 {searchTotal} 个结果 →
+                          查看全部 {searchTotal} 个结果
                         </button>
                       )}
                     </>
@@ -238,17 +296,15 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 py-6 w-full">
-        {!searchOpen && (
-          <Routes key={activeLib}>
-            <Route path="/" element={<Home />} />
-            <Route path="/browse" element={<Browse />} />
-            <Route path="/folder" element={<FolderPage />} />
-            <Route path="/detail/:id" element={<Detail />} />
-            <Route path="/favorites" element={<Favorites />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
-        )}
+      <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 w-full">
+        <Routes key={activeLib}>
+          <Route path="/" element={<Home />} />
+          <Route path="/browse" element={<Browse />} />
+          <Route path="/folder" element={<FolderPage />} />
+          <Route path="/detail/:id" element={<Detail />} />
+          <Route path="/favorites" element={<Favorites />} />
+          <Route path="/settings" element={<Settings />} />
+        </Routes>
         {searchOpen && (
           <div className="fixed inset-0 z-40" onClick={() => setSearchOpen(false)} />
         )}
@@ -270,6 +326,29 @@ export default function App() {
           onCancel={() => setPasswordTarget(null)}
         />
       )}
+
+      {scanToast.visible && <ScanToast {...scanToast} />}
+    </div>
+  )
+}
+
+function ScanToast({ status, done, total }: { status: string; done: number; total: number }) {
+  const pct = total > 0 ? Math.max(4, Math.min(100, (done / total) * 100)) : 100
+  const complete = status.includes('完成')
+  return (
+    <div className="fixed left-3 right-3 bottom-3 sm:left-auto sm:right-4 sm:bottom-4 z-50 sm:w-72 rounded-lg border border-dark-600 bg-dark-800/95 shadow-2xl p-4 backdrop-blur">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className={`text-sm font-medium ${complete ? 'text-green-300' : 'text-white'}`}>{status}</p>
+          {!complete && total > 0 && <p className="text-xs text-gray-500 mt-1">{done}/{total}</p>}
+        </div>
+        {!complete && <div className="w-4 h-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />}
+      </div>
+      {!complete && (
+        <div className="mt-3 h-1.5 rounded-full bg-dark-700 overflow-hidden">
+          <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${pct}%` }} />
+        </div>
+      )}
     </div>
   )
 }
@@ -282,7 +361,7 @@ function LibraryModal({ libraries, activeLib, onSelect, onClose }: {
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-dark-900">
-      <div className="bg-dark-800 border border-dark-600 rounded-xl p-6 w-full max-w-sm mx-4 shadow-2xl">
+      <div className="bg-dark-800 border border-dark-600 rounded-lg p-6 w-full max-w-sm mx-4 shadow-2xl">
         <h2 className="text-lg font-bold mb-1">切换媒体库</h2>
         <p className="text-xs text-gray-500 mb-4">选择要浏览的媒体库</p>
         <div className="space-y-1.5">
@@ -352,7 +431,7 @@ function PasswordModal({ target, onOk, onCancel }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-dark-900">
-      <div className="bg-dark-800 border border-dark-600 rounded-xl p-6 w-full max-w-xs mx-4 shadow-2xl">
+      <div className="bg-dark-800 border border-dark-600 rounded-lg p-6 w-full max-w-xs mx-4 shadow-2xl">
         <div className="text-center mb-4">
           <svg className="w-8 h-8 text-yellow-500 mx-auto mb-2" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />

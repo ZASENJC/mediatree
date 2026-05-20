@@ -14,7 +14,8 @@ export default function SortDropdown({ options, current, onChange }: Props) {
     <select
       value={current}
       onChange={e => onChange(e.target.value)}
-      className="px-3 py-1.5 bg-dark-700 border border-dark-600 rounded text-xs text-gray-300 focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+      className="px-3 py-1.5 bg-dark-700 border border-dark-600 rounded-lg text-xs text-gray-300 text-center focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+      style={{ textAlignLast: 'center' }}
     >
       {options.map(opt => (
         <option key={opt.key} value={opt.key}>{opt.label}</option>

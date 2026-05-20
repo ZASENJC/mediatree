@@ -26,6 +26,45 @@ def _clean_html(text: str) -> str:
     return text
 
 
+def _bangumi_staff_from_infobox(infobox) -> tuple[list[dict], list[dict]]:
+    cast: list[dict] = []
+    crew: list[dict] = []
+    if not isinstance(infobox, list):
+        return cast, crew
+    cast_keys = {"声优", "主演", "演员", "Cast"}
+    crew_map = {
+        "导演": "Director",
+        "监督": "Supervisor",
+        "系列导演": "Series Director",
+        "动画监督": "Animation Director",
+        "脚本": "Writer",
+        "编剧": "Writer",
+        "原作": "Original Creator",
+        "制作": "Studio",
+        "动画制作": "Studio",
+    }
+    for item in infobox:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "")
+        val = item.get("value")
+        values = val if isinstance(val, list) else [val]
+        names: list[str] = []
+        for v in values:
+            if isinstance(v, dict):
+                name = v.get("v") or v.get("name")
+            else:
+                name = v
+            name = str(name or "").strip()
+            if name:
+                names.append(name)
+        if key in cast_keys:
+            cast.extend({"name": n, "role": "", "source": "bangumi"} for n in names)
+        elif key in crew_map:
+            crew.extend({"name": n, "job": crew_map[key], "department": key, "source": "bangumi"} for n in names)
+    return cast[:30], crew[:30]
+
+
 async def search_bangumi(query: str, lang: str = "") -> list[dict]:
     bangumi_type = "2"
     cache_data = await get_scraper_cache("bangumi", f"search:{query}:{bangumi_type}", 168)
@@ -87,6 +126,7 @@ async def fetch_bangumi_detail(source_id: str) -> dict | None:
             collection = data.get("collection", {})
 
             tags = [t["name"] for t in data.get("tags", [])[:10]]
+            cast, crew = _bangumi_staff_from_infobox(data.get("infobox"))
 
             result = {
                 "source": "bangumi",
@@ -105,6 +145,8 @@ async def fetch_bangumi_detail(source_id: str) -> dict | None:
                 "genre": ", ".join(tags) if tags else None,
                 "bgm_url": f"https://bgm.tv/subject/{source_id}",
                 "collection_total": collection.get("collect", 0),
+                "cast": cast,
+                "crew": crew,
             }
             await set_scraper_cache("bangumi", f"detail:{source_id}", result)
             return result

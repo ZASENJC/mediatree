@@ -4,6 +4,7 @@ export default {
   theme: {
     extend: {
       colors: {
+        jelly: '#00a4dc',
         dark: {
           50: '#f5f5f5',
           100: '#e0e0e0',
