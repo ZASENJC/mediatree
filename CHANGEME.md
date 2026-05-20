@@ -2,6 +2,71 @@
 
 ---
 
+## v3.0.2 (2026-05-20) - 刮削标题清洗重做、并行刮削、字幕偏移修复、ASS 全生命周期管理
+
+### 刮削标题清洗重写
+- 新增 `clean_search_title()` / `build_search_queries()` 统一入口，替代零散 `remove_tmdb_id_token()` 调用。
+- `_strip_search_noise()` 全面剥离技术标签（x264/x265/hevc/flac/aac/10bit/ma10p/hi10p）、语言标签（chs/cht/sc/tc/eng/jpn）、发布组（LoliHouse/VCB-Studio/喵萌/桜都/动漫国），以及集数/碟片/画质标记。
+- `_is_useful_search_query()` 验证查询有效性：纯 "S 01" / "01" / "1080p" 等不生成搜索查询，避免污染 TMDB/Bangumi 搜索结果。
+- `TMDB_MALFORMED_PATTERN` 识别 `tmdbid=`（等号后无数字）等畸形 token。
+- `title_matches()` 新增停用词分词匹配（the/a/an/of/and/or/to/in），提升多词英文标题的匹配精度。
+- `_is_specific_search_query()` 用于单候选宽松接受：搜索结果唯一且查询包含 >=4 字母或 >=2 汉字时即使 title_matches 失败也接受。
+
+### 并行刮削 Fallback（刮削速度优化）
+- `try_scrape_auto()` 和 `try_scrape_tmdb_typed()` 中 Bangumi 与 TMDB 标题搜索改为 `asyncio.wait(FIRST_COMPLETED)` 并发执行，任一成功即返回，取消另一任务。
+- `try_scrape_tmdb_title()` 和 `try_scrape_bangumi()` 内部改用 `build_search_queries()` 生成优化查询。
+- `build_fallback_chain("bangumi")` 扩展为 `["bangumi", "tmdb_tv_search", "tmdb_movie_search"]`，bangumi 搜索失败后自动尝试 TV 和 Movie 双路。
+- 并发配置提升：`scrape_concurrency_per_library=4→8`，`scrape_global_concurrency=8→16`，`scraper_api_concurrency=4→8`，`javdb_request_interval=3.0→1.0`。
+
+### 新增字段：original_title、overview、scraper_raw
+- 数据库迁移增加 `original_title TEXT`、`overview TEXT`、`scraper_raw TEXT` 列。
+- 刮削时写入原始标题、简介和完整原始响应 JSON，方便详情页展示和调试。
+- 所有 SELECT 查询（get_movies/search_movies/recent_watched）同步新增这些字段。
+- `_scrape_result_to_legacy()` 和 `_tmdb_scrape_data()` 返回 `original_title`、`overview`、`scraper_raw`。
+- `clear_library_scraped_data()` 同步清除这些新字段。
+- 前端 Detail.tsx 展示 `original_title`（不同于 title 时）和 `overview`。
+- `get_movie_detail()` 从 `scraper_raw` JSON 字段反序列化。
+
+### 字幕偏移修复（转码模式）
+- 转码播放时原生字幕（VTT/SRT）由于视频从 offset 开始而字幕从 0 开始，导致时间错位。
+- 新增 `parseVttTimestamp()` / `formatVttTimestamp()` / `offsetVttTimestamps()` 前端函数，客户端 fetch VTT 内容后按 `transcodeStart` 调整所有 cue 时间戳。
+- `fetchOffsetSubtitleBlob()` 将调整后的 VTT 转为 blob URL 传给 ArtPlayer。
+- ASS 字幕通过 `SubtitlesOctopus.timeOffset` 属性对齐，不受影响。
+
+### ASS 插件重写（完整生命周期管理）
+- `artplayerPluginAss.ts` 重写为延迟初始化模式：不再在 `plugins.add()` 时立即创建 SubtitlesOctopus，而是等 `switch()` 调用时才加载 worker/wasm 并创建实例。
+- 新增 `switch()`, `clear()`, `destroy()` 方法，支持运行时安全切换和销毁。
+- 序列号防竞态（`switchSeq`），避免并发调用导致多个 SubtitlesOctopus 实例冲突。
+- `VideoPlayer.tsx` 中 ASS 插件失败时自动回退到 ArtPlayer 原生字幕渲染。
+
+### VideoPlayer 竞态条件修复
+- 新增 `mountedRef`、`subtitleTrackRequestRef`、`subtitleSwitchRequestRef` 请求序列号，防止异步回调在组件卸载后修改状态。
+- `clearRenderedSubtitles()` / `clearNativeSubtitle()` 统一清理 ASS canvas 和原生 `<track>`/blob URL。
+- `manualSubtitleOffRef` 追踪用户手动关闭字幕操作，切换轨道/重挂载时不自动打开。
+- 字幕轨道选择优化：优先外挂轨迹，`subtitleLanguagePriority()` 支持 zh-cn/zh-tw 精确排序。
+
+### 外挂字幕扫描改进
+- `_collect_external_subtitle_files()` / `_collect_external_audio_files()` 增加 `_path_identity()` 基于 (st_dev, st_ino) 去重，避免符号链接或重复目录导致重复扫描。
+- `_guess_lang()` 细化为 `zh-cn` / `zh-tw` / `zh` 三级区分，使用正则而非纯 set 匹配。
+- SRT 字幕直接通过 `_srt_to_webvtt()` 纯 Python 转换（正则替换逗号为点），不再经过 ffmpeg。
+- `_ensure_webvtt()` 统一添加 WEBVTT header。
+- `SUBTITLE_CONTENT_TYPES` 映射确保 ASS/SSA 返回 `text/plain`、SRT 返回 `application/x-subrip`、VTT 返回 `text/vtt`。
+- `extract_subtitle_stream_raw()` 返回 `text/plain` 而非 `text/x-ssa`。
+
+### 本地元数据检测改进
+- `_meaningful_local_metadata()` 替换旧版 `bool(local_metadata and local_metadata != "{}")`，跳过 `anime_naming` 等非意义字段，要求包含 NFO/标题/简介/年份/首播等实质数据。
+
+### CSS 修复
+- 字幕层 `z-index: 25` 确保在 ASS canvas（z-index:20）之上。
+- `pointer-events: none` 修复字幕层/ASS canvas 阻止点击会穿透问题。
+
+### 验证
+- 前端 `npm run build` 通过。
+- Docker 构建 `docker build -t mediatree:3.0 .` 通过。
+- Docker 镜像推送 `zasenjc/mediatree:3.0` 和 `latest`。
+
+---
+
 ## v3.0.1 (2026-05-20) - 动画发布组命名与 VCB-Studio 兼容
 
 ### 扫描与标题清洗

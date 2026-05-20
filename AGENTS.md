@@ -22,7 +22,7 @@
 | Jellyfin 兼容层 | jellyfin_compat / _auth / _mappers / _models | 30+ Jellyfin API 端点，VidHub/Infuse 兼容 |
 | 前端 | React 18 + TypeScript 5 + TailwindCSS 3 | Vite 构建，原生 `<video>` 播放 |
 | 播放器 | ArtPlayer 5 + React wrapper | 自定义手势、键盘快捷键、外部播放器入口、转码入口 |
-| 字幕渲染 | ArtPlayer subtitle + @jellyfin/libass-wasm | ASS/SSA 走 libass canvas，VTT/SRT 走 ArtPlayer 原生字幕 |
+| 字幕渲染 | ArtPlayer subtitle + @jellyfin/libass-wasm | ASS/SSA 走 libass canvas（延迟初始化，支持 switch/clear/destroy），转码 VTT 客户端时间戳偏移，VTT/SRT 走 ArtPlayer 原生字幕 |
 | 数据库 | SQLite (aiosqlite) | WAL + busy_timeout 5s |
 | 刮削 | TMDB / Bangumi / Javdatabase | 插件化，Fallback 互备 |
 | 字幕 | ffprobe/ffmpeg | 内嵌+外挂，ASS 原文输出，其他格式转 WebVTT |

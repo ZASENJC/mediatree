@@ -58,6 +58,9 @@ async def init_db():
         "ALTER TABLE movies ADD COLUMN source_id TEXT",
         "ALTER TABLE movies ADD COLUMN bangumi_id TEXT",
         "ALTER TABLE movies ADD COLUMN javdb_id TEXT",
+        "ALTER TABLE movies ADD COLUMN original_title TEXT",
+        "ALTER TABLE movies ADD COLUMN overview TEXT",
+        "ALTER TABLE movies ADD COLUMN scraper_raw TEXT",
     ]
     for mig in migrations:
         try:
@@ -110,6 +113,9 @@ async def init_db():
             source_id TEXT,
             bangumi_id TEXT,
             javdb_id TEXT,
+            original_title TEXT,
+            overview TEXT,
+            scraper_raw TEXT,
             media_root TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now'))
@@ -326,7 +332,7 @@ async def get_movies(folder: str = "", tag: str = "", code: str = "",
     if folder and sort == "created_desc":
         order = f"ORDER BY {episode_order}, created_at DESC"
 
-    cols = "id, path, code, title, actress, duration, cover_local, cover_remote, javdb_score, javdb_likes, folder_levels, created_at, updated_at, media_root, tmdb_type, tmdb_season, tmdb_episode, episode_title, episode_overview, episode_still, episode_still_local, clean_title, episode_number, display_title, external_audio_tracks, \"cast\", crew"
+    cols = "id, path, code, title, original_title, overview, actress, duration, cover_local, cover_remote, javdb_score, javdb_likes, folder_levels, created_at, updated_at, media_root, tmdb_type, tmdb_season, tmdb_episode, episode_title, episode_overview, episode_still, episode_still_local, clean_title, episode_number, display_title, external_audio_tracks, \"cast\", crew"
     query = f"SELECT {cols} FROM movies{where} {order} LIMIT ? OFFSET ?"
     params.extend([limit, offset])
     cur = await db.execute(query, params)
@@ -438,7 +444,7 @@ async def get_recent_watched(media_root: str = "", limit: int = 200, offset: int
         params.append(media_root)
     count_cur = await db.execute(f"SELECT COUNT(*) FROM movies m{where}", params)
     total = (await count_cur.fetchone())[0]
-    cols = "m.id, m.path, m.code, m.title, m.actress, m.duration, m.cover_local, m.cover_remote, m.javdb_score, m.javdb_likes, m.folder_levels, m.created_at, m.updated_at, m.media_root, m.tmdb_type, m.tmdb_season, m.tmdb_episode, m.episode_title, m.episode_overview, m.episode_still, m.episode_still_local, m.clean_title, m.episode_number, m.display_title, m.external_audio_tracks, m.\"cast\", m.crew"
+    cols = "m.id, m.path, m.code, m.title, m.original_title, m.overview, m.actress, m.duration, m.cover_local, m.cover_remote, m.javdb_score, m.javdb_likes, m.folder_levels, m.created_at, m.updated_at, m.media_root, m.tmdb_type, m.tmdb_season, m.tmdb_episode, m.episode_title, m.episode_overview, m.episode_still, m.episode_still_local, m.clean_title, m.episode_number, m.display_title, m.external_audio_tracks, m.\"cast\", m.crew"
     query = f"""SELECT {cols} FROM movies m{where}
         ORDER BY (
             SELECT ud.last_played_date FROM user_data ud
@@ -484,7 +490,7 @@ async def search_movies(q: str, media_root: str = "", limit: int = 100, offset: 
         params.append(media_root)
     count_cur = await db.execute(f"SELECT COUNT(*) FROM movies{where}", params)
     total = (await count_cur.fetchone())[0]
-    cols = "id, path, code, title, actress, duration, cover_local, cover_remote, javdb_score, javdb_likes, folder_levels, created_at, updated_at, media_root, tmdb_type, tmdb_season, tmdb_episode, episode_title, episode_overview, episode_still, episode_still_local, clean_title, episode_number, display_title, external_audio_tracks, \"cast\", crew"
+    cols = "id, path, code, title, original_title, overview, actress, duration, cover_local, cover_remote, javdb_score, javdb_likes, folder_levels, created_at, updated_at, media_root, tmdb_type, tmdb_season, tmdb_episode, episode_title, episode_overview, episode_still, episode_still_local, clean_title, episode_number, display_title, external_audio_tracks, \"cast\", crew"
     cur = await db.execute(
         f"SELECT {cols} FROM movies{where} ORDER BY updated_at DESC LIMIT ? OFFSET ?",
         params + [limit, offset]
@@ -679,6 +685,11 @@ async def get_movie_detail(movie_id: int):
             movie["javdb_thumbnails"] = json.loads(movie["javdb_thumbnails"])
         except (json.JSONDecodeError, TypeError):
             movie["javdb_thumbnails"] = []
+    if isinstance(movie.get("scraper_raw"), str) and movie["scraper_raw"]:
+        try:
+            movie["scraper_raw"] = json.loads(movie["scraper_raw"])
+        except (json.JSONDecodeError, TypeError):
+            pass
     code = movie.get("code", "")
     if code:
         cc = await db.execute("SELECT data FROM javdb_cache WHERE code=?", (code,))
@@ -686,12 +697,18 @@ async def get_movie_detail(movie_id: int):
         if crow:
             try:
                 cached = json.loads(crow["data"])
+                comments = cached.get("javdb_comments") or []
+                if isinstance(comments, str):
+                    comments = [comments]
+                overview = cached.get("overview") or next((c for c in comments if c), "")
                 for key in ("director", "series", "studio", "genre", "dvd_id",
                            "javdb_score", "javdb_likes", "javdb_comments",
-                           "title", "actress", "release_date", "duration",
+                           "title", "original_title", "actress", "release_date", "duration",
                            "cover_remote"):
                     if cached.get(key) is not None and not movie.get(key):
                         movie[key] = cached[key]
+                if overview and not movie.get("overview"):
+                    movie["overview"] = overview
                 if cached.get("javdb_thumbnails") and not movie.get("javdb_thumbnails"):
                     try:
                         movie["javdb_thumbnails"] = json.loads(cached["javdb_thumbnails"])

@@ -52,6 +52,8 @@ canvas[data-mediatree-subtitle="ass"] {
 .mediatree-artplayer .art-subtitle {
   bottom: 12%;
   padding: 0 1rem;
+  pointer-events: none;
+  z-index: 25;
 }
 
 .mediatree-artplayer .art-subtitle-line {
@@ -71,6 +73,10 @@ canvas[data-mediatree-subtitle="ass"] {
 }
 
 .artplayer-plugin-ass {
+  pointer-events: none;
+}
+
+.artplayer-plugin-ass canvas {
   pointer-events: none;
 }
 

@@ -30,6 +30,12 @@ const ASS_CJK_FONT_ALIASES = [
 ]
 
 type SubtitleFont = { name: string; size: number; family: string }
+type AssPluginController = {
+  setVisible: (visible: boolean) => void
+  switch: (subtitleUrl: string, nextOptions?: Record<string, unknown>) => Promise<void>
+  clear: () => void
+  destroy: () => void
+}
 
 Artplayer.PLAYBACK_RATE = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]
 Artplayer.SEEK_STEP = SEEK_SMALL
@@ -76,6 +82,44 @@ function absoluteApiUrl(url: string) {
 
 function bundledCjkFontUrl() {
   return new URL(BUNDLED_CJK_FALLBACK_FONT, window.location.origin).toString()
+}
+
+function parseVttTimestamp(ts: string): number {
+  const parts = ts.split(':')
+  if (parts.length === 3) {
+    return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2])
+  }
+  if (parts.length === 2) {
+    return parseFloat(parts[0]) * 60 + parseFloat(parts[1])
+  }
+  return parseFloat(parts[0]) || 0
+}
+
+function formatVttTimestamp(totalSeconds: number): string {
+  const h = Math.floor(totalSeconds / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  const s = totalSeconds % 60
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toFixed(3).padStart(7, '0')}`
+}
+
+function offsetVttTimestamps(vtt: string, offsetSeconds: number): string {
+  if (Math.abs(offsetSeconds) < 0.001) return vtt
+  return vtt.replace(
+    /(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})/g,
+    (_match, start, end) => {
+      const newStart = formatVttTimestamp(Math.max(0, parseVttTimestamp(start) - offsetSeconds))
+      const newEnd = formatVttTimestamp(Math.max(0, parseVttTimestamp(end) - offsetSeconds))
+      return `${newStart} --> ${newEnd}`
+    }
+  )
+}
+
+async function fetchOffsetSubtitleBlob(baseUrl: string, offsetSeconds: number): Promise<string> {
+  const response = await fetch(baseUrl)
+  const text = await response.text()
+  const adjusted = offsetVttTimestamps(text, offsetSeconds)
+  const blob = new Blob([adjusted], { type: 'text/vtt' })
+  return URL.createObjectURL(blob)
 }
 
 function normalizeAssFontName(name: string) {
@@ -142,8 +186,19 @@ function isTextTrack(track: SubtitleTrack) {
   return ['ass', 'ssa', 'srt', 'subrip', 'webvtt', 'vtt', 'mov_text'].includes(codec)
 }
 
-function isChineseTrack(track: SubtitleTrack) {
-  return track.language === 'chi' || track.language === 'zh' || /chs|cht|中文|简体|繁体/i.test(`${track.title || ''} ${track.name || ''}`)
+function subtitleLanguagePriority(track: SubtitleTrack) {
+  const language = (track.language || '').toLowerCase()
+  const label = `${track.title || ''} ${track.name || ''}`.toLowerCase()
+  const hasToken = (token: string) => new RegExp(`(^|[\\s._-])${token}($|[\\s._-])`, 'i').test(label)
+  if (language === 'zh' || language === 'chi') return 0
+  if (language === 'chs' || hasToken('chs')) return 1
+  if (language === 'cht' || hasToken('cht')) return 2
+  if (language === 'sc' || hasToken('sc')) return 3
+  if (language === 'tc' || hasToken('tc')) return 4
+  if (language === 'zh-cn' || language === 'zh-hans' || /zh[\s._-]?cn|zh[\s._-]?hans/.test(label)) return 5
+  if (language === 'zh-tw' || language === 'zh-hant' || /zh[\s._-]?tw|zh[\s._-]?hant/.test(label)) return 6
+  if (/chinese|中文|简体|繁体/.test(label)) return 7
+  return 100
 }
 
 function trackLabel(track: SubtitleTrack) {
@@ -163,6 +218,11 @@ function sortSubtitleTracks(trackList: SubtitleTrack[]) {
     if (bySource) return bySource
     return a.index - b.index
   })
+}
+
+function getAssPlugin(art: Artplayer): AssPluginController | null {
+  const plugin = art.plugins.artplayerPluginAss as AssPluginController | undefined
+  return plugin || null
 }
 
 function htmlLabel(text: string) {
@@ -350,6 +410,13 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   const streamSrcRef = useRef('')
   const currentAssModeRef = useRef(false)
   const subtitleVisibleRef = useRef(true)
+  const artReadyRef = useRef(false)
+  const mountedRef = useRef(true)
+  const manualSubtitleOffRef = useRef(false)
+  const subtitleTrackRequestRef = useRef(0)
+  const subtitleSwitchRequestRef = useRef(0)
+  const assPluginAddPromiseRef = useRef<Promise<unknown> | null>(null)
+  const subtitleBlobUrlRef = useRef<string | null>(null)
   const resumeTimerRef = useRef(0)
   const progressSaveTimerRef = useRef(0)
   const lastProgressSaveAtRef = useRef(0)
@@ -387,6 +454,36 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   const externalPlaylistUrl = new URL(api.externalPlaylistUrl(movieId), localPlayerOrigin()).toString()
   const localPlaybackUrl = hasExternalSubtitles ? externalPlaylistUrl : streamUrl
 
+  const clearNativeSubtitle = useCallback((art: Artplayer) => {
+    try { art.subtitle.show = false } catch {}
+    try { art.template.$subtitle.innerHTML = '' } catch {}
+    try {
+      const track = art.template.$track as HTMLTrackElement | undefined
+      if (track) {
+        const oldSrc = track.src || ''
+        if (oldSrc.startsWith('blob:')) URL.revokeObjectURL(oldSrc)
+        track.removeAttribute('src')
+        track.src = ''
+        if (track.track) track.track.mode = 'disabled'
+      }
+    } catch (err) {
+      console.warn('VideoPlayer: native subtitle cleanup failed', err)
+    }
+  }, [])
+
+  const clearRenderedSubtitles = useCallback((art = artRef.current, cancelPending = true) => {
+    if (cancelPending) subtitleSwitchRequestRef.current += 1
+    if (!art) return
+    try { getAssPlugin(art)?.clear() } catch (err) { console.warn('VideoPlayer: ASS subtitle cleanup failed', err) }
+    try { art.emit('artplayer-plugin-ass:visible', false) } catch {}
+    clearNativeSubtitle(art)
+    currentAssModeRef.current = false
+    if (subtitleBlobUrlRef.current) {
+      URL.revokeObjectURL(subtitleBlobUrlRef.current)
+      subtitleBlobUrlRef.current = null
+    }
+  }, [clearNativeSubtitle])
+
   useEffect(() => { useTranscodeRef.current = useTranscode }, [useTranscode])
   useEffect(() => { transcodeStartRef.current = transcodeStart }, [transcodeStart])
   useEffect(() => { displayDurationRef.current = mediaDuration || displayDurationRef.current }, [mediaDuration])
@@ -395,9 +492,22 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   useEffect(() => { subtitleVisibleRef.current = subtitleVisible }, [subtitleVisible])
 
   useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      subtitleTrackRequestRef.current += 1
+      subtitleSwitchRequestRef.current += 1
+    }
+  }, [])
+
+  useEffect(() => {
     const saved = getSavedPos(movieId)
     setResumePos(saved)
     watchedRef.current = false
+    subtitleTrackRequestRef.current += 1
+    subtitleSwitchRequestRef.current += 1
+    manualSubtitleOffRef.current = false
+    artReadyRef.current = false
     tracksRef.current = []
     activeTrackRef.current = -1
     currentAssModeRef.current = false
@@ -473,31 +583,48 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
 
   function chooseDefaultTrack(trackList: SubtitleTrack[]) {
     const sorted = sortSubtitleTracks(trackList)
-    const externalText = sorted.find(track => track.source === 'external')
-    const chineseText = sorted.find(isChineseTrack)
-    const anyText = sorted[0]
-    return externalText || chineseText || anyText
+    const external = sorted.filter(track => track.source === 'external' || track.is_external)
+    const pool = external.length > 0 ? external : sorted
+    return [...pool].sort((a, b) => {
+      const byLanguage = subtitleLanguagePriority(a) - subtitleLanguagePriority(b)
+      if (byLanguage) return byLanguage
+      return sorted.indexOf(a) - sorted.indexOf(b)
+    })[0]
   }
 
   useEffect(() => {
-    let cancelled = false
+    const requestId = ++subtitleTrackRequestRef.current
     api.subtitleTracks(movieId)
       .then(trackList => {
-        if (cancelled) return
+        if (!mountedRef.current || requestId !== subtitleTrackRequestRef.current) return
+        console.info('VideoPlayer: subtitle tracks loaded', {
+          movieId,
+          total: trackList.length,
+          external: trackList.filter(track => track.source === 'external' || track.is_external).length,
+        })
         tracksRef.current = trackList
         setTracks(trackList)
-        const selected = chooseDefaultTrack(trackList)
+        const selected = manualSubtitleOffRef.current ? undefined : chooseDefaultTrack(trackList)
         const selectedIndex = selected?.index ?? -1
         activeTrackRef.current = selectedIndex
         setActiveTrack(selectedIndex)
+        const art = artRef.current
+        if (art) art.setting.update(buildSubtitleSetting(trackList, selectedIndex))
         if (selectedIndex >= 0) {
-          window.setTimeout(() => {
-            if (!cancelled) applyActiveSubtitle(selectedIndex, trackList)
-          }, 0)
+          console.info('VideoPlayer: selected default subtitle', {
+            movieId,
+            index: selectedIndex,
+            language: selected?.language,
+            format: selected?.format || selected?.codec,
+            title: trackLabel(selected as SubtitleTrack),
+          })
+          applyActiveSubtitle(selectedIndex, trackList)
+        } else if (artReadyRef.current) {
+          clearRenderedSubtitles()
         }
       })
       .catch(err => console.error('VideoPlayer: track fetch error', err))
-    return () => { cancelled = true }
+    return () => { subtitleTrackRequestRef.current += 1 }
   }, [movieId])
 
   const notice = useCallback((message: string) => {
@@ -671,57 +798,137 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
     window.location.href = href
   }, [localPlaybackUrl])
 
-  const setSubtitleVisible = useCallback((visible: boolean, art = artRef.current) => {
+  const setSubtitleVisible = useCallback((visible: boolean, art = artRef.current, manual = false) => {
     subtitleVisibleRef.current = visible
     setSubtitleVisibleState(visible)
+    if (manual) manualSubtitleOffRef.current = !visible
     if (!art) return
+    if (!visible) {
+      clearRenderedSubtitles(art)
+      return
+    }
+    manualSubtitleOffRef.current = false
     if (currentAssModeRef.current) {
       art.subtitle.show = false
+      getAssPlugin(art)?.setVisible(visible)
       art.emit('artplayer-plugin-ass:visible', visible)
     } else {
       art.subtitle.show = visible
-      art.emit('artplayer-plugin-ass:visible', false)
     }
-  }, [])
+  }, [clearRenderedSubtitles])
 
   const activateSubtitleTrack = useCallback(async (art: Artplayer, track: SubtitleTrack) => {
+    const requestId = ++subtitleSwitchRequestRef.current
     const label = trackLabel(track)
-    const url = absoluteApiUrl(api.subtitleUrl(movieId, track.index))
+    const url = absoluteApiUrl(track.url || api.subtitleUrl(movieId, track.index))
+    const isCurrentRequest = () => (
+      mountedRef.current
+      && artRef.current === art
+      && !art.isDestroy
+      && artReadyRef.current
+      && subtitleSwitchRequestRef.current === requestId
+      && activeTrackRef.current === track.index
+    )
+    console.info('VideoPlayer: switching subtitle', {
+      movieId,
+      index: track.index,
+      format: track.format || track.codec,
+      language: track.language,
+      source: track.source || (track.is_external ? 'external' : 'embedded'),
+    })
     setActiveTrack(track.index)
     activeTrackRef.current = track.index
+    manualSubtitleOffRef.current = false
+    if (!artReadyRef.current) return label
+
     if (isAssTrack(track)) {
-      currentAssModeRef.current = true
-      art.subtitle.show = false
-      if (!art.plugins.artplayerPluginAss) {
-        await art.plugins.add(artplayerPluginAss({
-          subUrl: url,
+      try {
+        clearNativeSubtitle(art)
+        let plugin = getAssPlugin(art)
+        if (!plugin) {
+          if (!assPluginAddPromiseRef.current) {
+            assPluginAddPromiseRef.current = art.plugins.add(artplayerPluginAss({
+              fonts: fontUrls,
+              availableFonts,
+              fallbackFont: assFallbackFont,
+              timeOffset: useTranscodeRef.current ? transcodeStartRef.current : 0,
+            })).finally(() => {
+              assPluginAddPromiseRef.current = null
+            })
+          }
+          await assPluginAddPromiseRef.current
+          plugin = getAssPlugin(art)
+        }
+        if (!plugin || !isCurrentRequest()) return label
+        await plugin.switch(url, {
           fonts: fontUrls,
           availableFonts,
           fallbackFont: assFallbackFont,
           timeOffset: useTranscodeRef.current ? transcodeStartRef.current : 0,
-        }))
-      } else {
-        art.emit('artplayer-plugin-ass:switch', url)
+        })
+        if (!isCurrentRequest()) {
+          plugin.clear()
+          return label
+        }
+        currentAssModeRef.current = true
+        art.subtitle.show = false
+        art.emit('subtitleOffset', useTranscodeRef.current ? transcodeStartRef.current : 0)
+        plugin.setVisible(subtitleVisibleRef.current)
+        console.info('VideoPlayer: ASS subtitle switch complete', { movieId, index: track.index })
+        return label
+      } catch (assError) {
+        console.warn('VideoPlayer: ASS plugin failed, falling back to native subtitle', {
+          movieId, index: track.index, error: assError,
+        })
+        // Fall through to native subtitle rendering below
       }
-      art.emit('subtitleOffset', useTranscodeRef.current ? transcodeStartRef.current : 0)
-      art.emit('artplayer-plugin-ass:visible', subtitleVisibleRef.current)
-      return label
     }
 
     currentAssModeRef.current = false
+    getAssPlugin(art)?.clear()
     art.emit('artplayer-plugin-ass:visible', false)
-    await art.subtitle.switch(url, {
+    clearNativeSubtitle(art)
+
+    let subtitleUrl = url
+    let subtitleType = 'vtt'
+    const offset = useTranscodeRef.current ? transcodeStartRef.current : 0
+    if (offset > 0 && !isAssTrack(track)) {
+      try {
+        if (subtitleBlobUrlRef.current) {
+          URL.revokeObjectURL(subtitleBlobUrlRef.current)
+          subtitleBlobUrlRef.current = null
+        }
+        const blobUrl = await fetchOffsetSubtitleBlob(url, offset)
+        if (isCurrentRequest()) {
+          subtitleUrl = blobUrl
+          subtitleBlobUrlRef.current = blobUrl
+        } else {
+          URL.revokeObjectURL(blobUrl)
+          return label
+        }
+      } catch (offsetErr) {
+        console.warn('VideoPlayer: subtitle offset fetch failed, using original timestamps', offsetErr)
+      }
+    }
+
+    await art.subtitle.switch(subtitleUrl, {
       name: label,
-      type: 'vtt',
+      type: subtitleType,
+      encoding: 'utf-8',
       style: {
         color: '#fff',
         fontSize: isMobileRef.current ? '18px' : '26px',
         textShadow: '0 2px 4px #000, 0 0 2px #000',
       },
     })
+    if (!isCurrentRequest()) {
+      clearNativeSubtitle(art)
+      return label
+    }
     art.subtitle.show = subtitleVisibleRef.current
+    console.info('VideoPlayer: ArtPlayer subtitle switch complete', { movieId, index: track.index, url })
     return label
-  }, [availableFonts, assFallbackFont, fontUrls, movieId])
+  }, [availableFonts, assFallbackFont, clearNativeSubtitle, fontUrls, movieId])
 
   const buildSubtitleSetting = useCallback((trackList: SubtitleTrack[], selectedIndex: number): Setting => {
     const textTracks = sortSubtitleTracks(trackList)
@@ -738,14 +945,24 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         onSwitch: function (item: SettingOption) {
           const nextVisible = !item.switch
           item.tooltip = nextVisible ? '开' : '关'
-          if (nextVisible && activeTrackRef.current < 0 && textTracks.length > 0) {
-            activeTrackRef.current = textTracks[0].index
-            setActiveTrack(textTracks[0].index)
-            activateSubtitleTrack(this, textTracks[0]).catch(err => console.error('VideoPlayer: subtitle activation failed', err))
+          if (nextVisible) {
+            manualSubtitleOffRef.current = false
+            subtitleVisibleRef.current = true
+            setSubtitleVisibleState(true)
+            const target = textTracks.find(track => track.index === activeTrackRef.current) || chooseDefaultTrack(textTracks)
+            if (target) {
+              activeTrackRef.current = target.index
+              setActiveTrack(target.index)
+              activateSubtitleTrack(this, target).catch(err => console.error('VideoPlayer: subtitle activation failed', err))
+            } else {
+              setSubtitleVisible(true, this)
+            }
+          } else {
+            manualSubtitleOffRef.current = true
+            setSubtitleVisible(false, this, true)
           }
-          setSubtitleVisible(nextVisible, this)
           const menu = this.setting.find('setting_subtitle')
-          const tooltipTrack = textTracks.find(track => track.index === activeTrackRef.current) || textTracks[0]
+          const tooltipTrack = textTracks.find(track => track.index === activeTrackRef.current) || chooseDefaultTrack(textTracks)
           if (menu) menu.tooltip = nextVisible ? (tooltipTrack ? trackLabel(tooltipTrack) : '开') : '关闭'
           return nextVisible
         },
@@ -777,14 +994,16 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
       onSelect: async function (item: SettingOption) {
         if (item.name === 'setting_subtitle_display') return item.tooltip
         if (item.name === 'subtitle-off') {
+          manualSubtitleOffRef.current = true
           activeTrackRef.current = -1
           setActiveTrack(-1)
           currentAssModeRef.current = false
-          setSubtitleVisible(false, this)
+          setSubtitleVisible(false, this, true)
           return '关'
         }
         const selectedTrack = item.track as SubtitleTrack | undefined
         if (!selectedTrack) return item.tooltip
+        manualSubtitleOffRef.current = false
         subtitleVisibleRef.current = true
         setSubtitleVisibleState(true)
         const label = await activateSubtitleTrack(this, selectedTrack)
@@ -802,24 +1021,26 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
     const art = artRef.current
     if (!art) return
     const resolvedIndex = index >= 0 ? index : -1
-    if (resolvedIndex >= 0 && resolvedIndex !== activeTrackRef.current) {
-      activeTrackRef.current = resolvedIndex
-      setActiveTrack(resolvedIndex)
-    }
+    activeTrackRef.current = resolvedIndex
+    setActiveTrack(resolvedIndex)
     art.setting.update(buildSubtitleSetting(trackList, resolvedIndex))
+    if (!artReadyRef.current) return
+    if (manualSubtitleOffRef.current) {
+      clearRenderedSubtitles(art)
+      return
+    }
     const track = trackList.find(track => track.index === resolvedIndex && isTextTrack(track))
     if (!track) {
-      currentAssModeRef.current = false
-      art.subtitle.show = false
-      art.emit('artplayer-plugin-ass:visible', false)
+      clearRenderedSubtitles(art)
       return
     }
     activateSubtitleTrack(art, track).then(label => {
+      if (!mountedRef.current || activeTrackRef.current !== track.index) return
       art.setting.update(buildSubtitleSetting(trackList, track.index))
       const menu = art.setting.find('setting_subtitle')
       if (menu) menu.tooltip = subtitleVisibleRef.current ? label : '隐藏'
     }).catch(err => console.error('VideoPlayer: subtitle activation failed', err))
-  }, [activateSubtitleTrack, buildSubtitleSetting, setSubtitleVisible])
+  }, [activateSubtitleTrack, buildSubtitleSetting, clearRenderedSubtitles])
 
   useEffect(() => {
     if (!artContainerRef.current) return
@@ -935,10 +1156,11 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
     streamSrcRef.current = streamSrc
 
     art.on('ready', () => {
+      artReadyRef.current = true
       if (!useTranscodeRef.current && resumePos > 5) {
         art.currentTime = resumePos
       }
-      applyActiveSubtitle(activeTrack)
+      applyActiveSubtitle(activeTrackRef.current)
     })
     art.on('video:loadedmetadata', () => {
       const loadedDuration = isFinite(art.duration) && art.duration > 0 ? art.duration : 0
@@ -1013,13 +1235,15 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         })
       }
       console.info('VideoPlayer cleanup: destroying ArtPlayer and subtitle resources')
+      artReadyRef.current = false
+      subtitleSwitchRequestRef.current += 1
       window.clearTimeout(progressSaveTimerRef.current)
       window.clearTimeout(resumeTimerRef.current)
       window.clearTimeout(keyHoldTimer.current)
       gestureCleanupRef.current?.()
       gestureCleanupRef.current = null
+      clearRenderedSubtitles(art)
       try { art.emit('artplayer-plugin-ass:destroy') } catch {}
-      try { art.subtitle.show = false } catch {}
       try { art.pause() } catch {}
       try { art.destroy() } catch (err) { console.warn('VideoPlayer: ArtPlayer destroy failed', err) }
       try {
@@ -1042,10 +1266,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
     const wasPlaying = pendingAutoPlay.current || art.playing
     streamSrcRef.current = streamSrc
     setVideoError(false)
-    try {
-      art.subtitle.show = false
-      art.emit('artplayer-plugin-ass:visible', false)
-    } catch {}
+    clearRenderedSubtitles(art)
     art.pause()
     art.switchUrl(streamSrc).then(() => {
       try {
@@ -1062,9 +1283,11 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   }, [streamSrc])
 
   useEffect(() => {
-    if (!artRef.current) return
-    applyActiveSubtitle(activeTrack)
-  }, [activeTrack, applyActiveSubtitle, fontUrls, availableFonts])
+    const art = artRef.current
+    if (!art || !artReadyRef.current || manualSubtitleOffRef.current) return
+    const track = tracksRef.current.find(track => track.index === activeTrackRef.current)
+    if (track && isAssTrack(track)) applyActiveSubtitle(track.index)
+  }, [fontUrls, availableFonts, assFallbackFont])
 
   useEffect(() => {
     const art = artRef.current

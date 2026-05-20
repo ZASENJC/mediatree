@@ -184,6 +184,7 @@ def _parse_movie_page(html: str, page_url: str) -> dict:
         text = unescape(text)
         text = re.sub(r"\s+", " ", text).strip()
         if text and len(text) > 10:
+            result["overview"] = text
             result["javdb_comments"] = [text]
 
     return result

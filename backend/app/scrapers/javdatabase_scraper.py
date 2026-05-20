@@ -61,6 +61,10 @@ class JavdatabaseScraper(BaseScraper):
         source_id = str(raw.get("dvd_id") or raw.get("source_id") or "")
         cover = raw.get("cover_remote")
         thumbs = _load_thumbnails(raw.get("javdb_thumbnails"))
+        comments = raw.get("javdb_comments") or []
+        if isinstance(comments, str):
+            comments = [comments]
+        overview = raw.get("overview") or next((c for c in comments if c), "")
         cast = [
             ScrapeStaff(name=name.strip(), role="", source=self.name)
             for name in re.split(r"[,，、/]", raw.get("actress", "") or "")
@@ -76,8 +80,10 @@ class JavdatabaseScraper(BaseScraper):
             source=self.name,
             source_id=source_id,
             title=raw.get("title") or "",
+            original_title=raw.get("original_title") or raw.get("title") or None,
             year=parse_year(raw.get("release_date")),
             media_type="movie",
+            overview=overview or None,
             cover_url=cover,
             poster_url=cover,
             thumbnail_url=thumbs[0] if thumbs else cover,
@@ -104,6 +110,7 @@ class JavdatabaseScraper(BaseScraper):
         data = await search_javdb(code)
         if data is not None:
             data.setdefault("source_id", code)
+            data.setdefault("dvd_id", code)
         await set_scraper_cache(self.name, cache_key, data or {})
         return data
 
