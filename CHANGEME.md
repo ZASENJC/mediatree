@@ -2,6 +2,37 @@
 
 ---
 
+## v3.0.1 (2026-05-21) - 刮削顺序搜索、标题清洗增强、JAV 展示改进
+
+### 顺序搜索 Fallback（替代并行）
+- `try_scrape_tmdb_typed()` 和 `try_scrape_auto()` 中 Bangumi 与 TMDB 标题搜索从 `asyncio.FIRST_COMPLETED` 并行改为顺序执行：先 Bangumi 搜索 API，失败则继续 TMDB 标题搜索。
+- javdatabase 刮削器独立运行，不参与 tmdb_movie/tmdb_tv/auto/bangumi 的 fallback 链（`build_fallback_chain` 过滤）。
+
+### 标题清洗增强
+- `MEDIA_NOISE_PATTERN` 扩展约 40+ 标签：`japanese/english/imax/uhd/hdr/dovi/dv/remux/hq/60fps/itunes/nf/netflix/amazon/ddp5_1/truehd7_1/ma5_1/dts5_1/数字修复/内封/内嵌/简繁/简日/繁日/双语/中字/外挂/硬字幕` 等。
+- `TRAILING_RELEASE_GROUP_PATTERN` 新增末尾发布组剥离：`-FGT/-BATWEB/-DreamHD/-CMCTV/-BYNDR/-QHstudIo/-FRDS` 等。
+- `LEADING_BRACKET_GROUP_PATTERN` 新增开头 `[Snow-Raws]`、`[VCB-Studio]` 等方括号发布组前缀剥离，在 `remove_tmdb_id_token` 最前面执行。
+- `STANDALONE_EPISODE_NUMBER_PATTERN` 修复为字符边界匹配，防止误删标题数字（如"Ne Zha 2"）。
+
+### 搜索优化
+- 使用文件夹名替代视频文件名作为搜索关键词（Jellyfin 风格）。
+- 宽松接受逻辑优化：候选数 <= 2 时直接接受，提升跨语言标题匹配成功率。
+- 字幕语言代码补充：zh 相关变体（zh-cn/zh-tw/zh-hans/zh-hant）强制映射 chi。
+
+### JAV 前端改进
+- MovieInfoPanel "在 Javdatabase 查看" → "查看更多信息"。
+
+### 文档
+- CLAUDE.md / AGENTS.md 新增 Push 工作流准则：push 前必须同步更新所有文档。
+- CHANGEME.md / AGENTS.md / README.md 同步更新至 v3.0.1。
+
+### 验证
+- `backend/tests/test_scanner_tmdbid.py` 28 个测试全部通过。
+- 前端 `npm run build` 通过。
+- `docker compose up -d --build` 通过。
+
+---
+
 ## v3.0.2 (2026-05-20) - 刮削标题清洗重做、并行刮削、字幕偏移修复、ASS 全生命周期管理
 
 ### 刮削标题清洗重写

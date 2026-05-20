@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Push 工作流
+
+- 每次 push 前，先同步更新 `AGENTS.md` 和 `CLAUDE.md`，确保文档反映当前代码状态。
+- 将文档更新纳入同一个 commit，不要单独提交。
+
 ## 交互语言规则
 
 - 所有面向用户的解释、计划、总结、问题询问、变更报告必须使用中文。
