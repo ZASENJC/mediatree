@@ -496,6 +496,8 @@ export interface Movie {
   path: string
   code: string
   title?: string
+  original_title?: string
+  overview?: string
   actress?: string
   director?: string
   series?: string
@@ -508,6 +510,9 @@ export interface Movie {
   cover_remote?: string
   fanart_local?: string
   javdb_url?: string
+  scraper_source?: string
+  source_id?: string
+  javdb_id?: string
   javdb_score?: number
   javdb_likes?: number
   javdb_thumbnails?: string[]

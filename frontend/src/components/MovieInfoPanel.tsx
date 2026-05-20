@@ -118,7 +118,7 @@ export default function MovieInfoPanel({ movie, sourceName }: Props) {
           rel="noreferrer"
           className="inline-block mt-4 text-xs text-blue-400 hover:text-blue-300 transition-colors"
         >
-          在 {sourceName} 查看
+          查看更多信息
         </a>
       )}
 

@@ -54,6 +54,12 @@ ENCODING_GUESS = [
     "cp949",
     "latin-1",
 ]
+SUBTITLE_CONTENT_TYPES = {
+    ".ass": "text/plain",
+    ".ssa": "text/plain",
+    ".srt": "application/x-subrip",
+    ".vtt": "text/vtt",
+}
 EXTERNAL_SUB_CACHE_TTL = 5.0
 _external_sub_cache: dict[str, tuple[float, list[dict]]] = {}
 _external_audio_cache: dict[str, tuple[float, list[dict]]] = {}
@@ -297,17 +303,23 @@ def find_external_subtitles(file_path: str) -> list[dict]:
         if str(f) in seen:
             continue
         seen.add(str(f))
+        fmt = f.suffix.lower().lstrip(".")
+        language = _guess_lang(f)
         subs.append({
             "path": str(f),
             "name": f.name,
             "source": "external",
-            "language": _guess_lang(f),
-            "codec": f.suffix.lower().lstrip("."),
-            "format": f.suffix.lower().lstrip("."),
+            "language": language,
+            "codec": fmt,
+            "format": fmt,
             "title": f.stem,
             "is_external": True,
             "web_supported": f.suffix.lower() in TEXT_SUBTITLE_EXTS,
         })
+        logger.info(
+            f"Matched external subtitle: video='{video_path.name}' path='{f}' "
+            f"format={fmt} language={language}"
+        )
     logger.info(
         f"Subtitle scan: video='{video_path.name}' candidates={len(all_subs)} matched={len(subs)}"
     )
@@ -371,15 +383,24 @@ def find_external_audio_tracks(file_path: str) -> list[dict]:
 
 def _collect_external_subtitle_files(folder: Path) -> list[Path]:
     candidates: list[Path] = []
-    scan_dirs: list[Path] = [folder]
+    scan_dirs: list[Path] = []
+    scan_seen = set()
+
+    def add_scan_dir(path: Path) -> None:
+        key = _path_identity(path)
+        if key not in scan_seen:
+            scan_seen.add(key)
+            scan_dirs.append(path)
+
+    add_scan_dir(folder)
     for base in (folder, folder.parent):
         for name in SUBTITLE_DIR_NAMES:
             p = base / name
-            if p.is_dir() and p not in scan_dirs:
-                scan_dirs.append(p)
+            if p.is_dir():
+                add_scan_dir(p)
                 nested_by_folder = p / folder.name
-                if nested_by_folder.is_dir() and nested_by_folder not in scan_dirs:
-                    scan_dirs.append(nested_by_folder)
+                if nested_by_folder.is_dir():
+                    add_scan_dir(nested_by_folder)
     for d in scan_dirs:
         try:
             entries = list(d.iterdir())
@@ -395,20 +416,29 @@ def _collect_external_subtitle_files(folder: Path) -> list[Path]:
                     )
         except OSError:
             continue
-    return sorted(set(candidates), key=lambda p: (p.parent.name.lower(), p.name.lower()))
+    return sorted(_unique_paths(candidates), key=lambda p: (p.parent.name.lower(), p.name.lower()))
 
 
 def _collect_external_audio_files(folder: Path) -> list[Path]:
     candidates: list[Path] = []
-    scan_dirs: list[Path] = [folder]
+    scan_dirs: list[Path] = []
+    scan_seen = set()
+
+    def add_scan_dir(path: Path) -> None:
+        key = _path_identity(path)
+        if key not in scan_seen:
+            scan_seen.add(key)
+            scan_dirs.append(path)
+
+    add_scan_dir(folder)
     for base in (folder, folder.parent):
         for name in SUBTITLE_DIR_NAMES:
             p = base / name
-            if p.is_dir() and p not in scan_dirs:
-                scan_dirs.append(p)
+            if p.is_dir():
+                add_scan_dir(p)
                 nested_by_folder = p / folder.name
-                if nested_by_folder.is_dir() and nested_by_folder not in scan_dirs:
-                    scan_dirs.append(nested_by_folder)
+                if nested_by_folder.is_dir():
+                    add_scan_dir(nested_by_folder)
     for d in scan_dirs:
         try:
             candidates.extend(
@@ -417,7 +447,27 @@ def _collect_external_audio_files(folder: Path) -> list[Path]:
             )
         except OSError:
             continue
-    return sorted(set(candidates), key=lambda p: (p.parent.name.lower(), p.name.lower()))
+    return sorted(_unique_paths(candidates), key=lambda p: (p.parent.name.lower(), p.name.lower()))
+
+
+def _path_identity(path: Path) -> tuple[int, int] | str:
+    try:
+        stat = path.stat()
+        return (stat.st_dev, stat.st_ino)
+    except OSError:
+        return str(path).casefold()
+
+
+def _unique_paths(paths: list[Path]) -> list[Path]:
+    result: list[Path] = []
+    seen = set()
+    for path in paths:
+        key = _path_identity(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(path)
+    return result
 
 
 def _count_video_files(folder: Path) -> int:
@@ -546,11 +596,14 @@ def _extract_episode_number(name: str) -> int | None:
 
 def _guess_lang(filepath: Path) -> str:
     name = filepath.stem.lower()
-    parts = set(name.replace('.', ' ').replace('_', ' ').replace('-', ' ').split())
-    if parts & {"chs", "sc", "chi", "zh", "cn", "hans", "gb", "zh-hans", "简体", "中文"}:
-        return "chi"
-    if parts & {"cht", "tc", "繁", "tw", "hant", "big5", "zh-hant", "繁体"}:
-        return "chi"
+    normalized = re.sub(r'[\._]+', ' ', name)
+    parts = set(re.split(r'[\s._-]+', name))
+    if re.search(r'(?<![a-z0-9])zh[-_ ]?(?:cn|hans|sg)(?![a-z0-9])', normalized) or parts & {"chs", "sc", "hans", "gb", "简体"}:
+        return "zh-cn"
+    if re.search(r'(?<![a-z0-9])zh[-_ ]?(?:tw|hant|hk)(?![a-z0-9])', normalized) or parts & {"cht", "tc", "hant", "big5", "繁", "繁体"}:
+        return "zh-tw"
+    if parts & {"chi", "zh", "cn", "中文", "chinese"}:
+        return "zh"
     if parts & {"jpn", "jp", "ja", "japanese", "日"}:
         return "jpn"
     if parts & {"kor", "ko", "kr", "korean", "韩"}:
@@ -592,7 +645,12 @@ def extract_subtitle_stream_raw(file_path: str, stream_index: int, codec: str = 
                 capture_output=True, timeout=30
             )
             if result.returncode == 0 and result.stdout:
-                return result.stdout.decode("utf-8", errors="replace"), "text/x-ssa"
+                return result.stdout.decode("utf-8", errors="replace"), "text/plain"
+            if result.returncode != 0:
+                logger.warning(
+                    f"ASS subtitle extraction failed for {file_path} stream {stream_index}: "
+                    f"ffmpeg exit={result.returncode} stderr={result.stderr.decode('utf-8', errors='replace')[:500]}"
+                )
         except Exception as e:
             logger.warning(f"ASS subtitle extraction failed for {file_path} stream {stream_index}: {e}")
     return extract_subtitle_stream(file_path, stream_index), "text/vtt"
@@ -603,15 +661,24 @@ def convert_external_to_webvtt(file_path: str) -> str | None:
     if ext == ".vtt":
         enc = _detect_encoding(file_path)
         try:
-            return Path(file_path).read_text(encoding=enc, errors="replace")
+            text = Path(file_path).read_text(encoding=enc, errors="replace")
+            logger.info(f"Subtitle read encoding: path='{file_path}' encoding={enc} format=vtt")
+            return _ensure_webvtt(text)
         except Exception as e:
             logger.warning(f"Read VTT subtitle failed for {file_path}: {e}")
             return None
 
+    if ext == ".srt":
+        raw = get_subtitle_content(file_path)
+        if raw:
+            return _srt_to_webvtt(raw)
+        return None
+
+    enc = _detect_encoding(file_path)
     try:
         args = ["ffmpeg", "-y"]
-        if ext in {".srt", ".sub"}:
-            args.extend(["-sub_charenc", _detect_encoding(file_path)])
+        if ext == ".sub":
+            args.extend(["-sub_charenc", enc])
         args.extend([
              "-i", file_path,
              "-c:s", "webvtt",
@@ -625,7 +692,12 @@ def convert_external_to_webvtt(file_path: str) -> str | None:
         if result.returncode == 0 and result.stdout:
             vtt = result.stdout.decode("utf-8", errors="replace")
             vtt = _post_process_vtt(vtt)
+            logger.info(f"Subtitle read encoding: path='{file_path}' encoding={enc} format={ext.lstrip('.')} converted=vtt")
             return vtt
+        logger.warning(
+            f"External subtitle conversion failed for {file_path}: "
+            f"ffmpeg exit={result.returncode} stderr={result.stderr.decode('utf-8', errors='replace')[:500]}"
+        )
     except Exception as e:
         logger.warning(f"External subtitle conversion failed for {file_path}: {e}")
     return None
@@ -634,18 +706,24 @@ def convert_external_to_webvtt(file_path: str) -> str | None:
 def load_external_subtitle(file_path: str) -> tuple[str | None, str]:
     ext = Path(file_path).suffix.lower()
     if ext in {".ass", ".ssa"}:
-        return get_subtitle_content(file_path), "text/x-ssa"
+        return get_subtitle_content(file_path), SUBTITLE_CONTENT_TYPES[ext]
     if ext == ".vtt":
-        return get_subtitle_content(file_path), "text/vtt"
+        content = get_subtitle_content(file_path)
+        return (_ensure_webvtt(content) if content else None), SUBTITLE_CONTENT_TYPES[ext]
     return convert_external_to_webvtt(file_path), "text/vtt"
 
 
 def get_subtitle_content(file_path: str) -> str | None:
     if not Path(file_path).exists():
+        logger.warning(f"Read subtitle failed for {file_path}: file does not exist")
         return None
     enc = _detect_encoding(file_path)
     try:
         text = Path(file_path).read_text(encoding=enc, errors="replace")
+        logger.info(
+            f"Subtitle read encoding: path='{file_path}' encoding={enc} "
+            f"format={Path(file_path).suffix.lower().lstrip('.')}"
+        )
         if "\ufffd" in text:
             logger.warning(f"Subtitle decoded with replacement characters: {file_path} ({enc})")
         return text
@@ -655,7 +733,21 @@ def get_subtitle_content(file_path: str) -> str | None:
 
 
 def _post_process_vtt(vtt: str) -> str:
-    return _normalize_ass_styles_in_text(vtt)
+    return _ensure_webvtt(_normalize_ass_styles_in_text(vtt))
+
+
+def _ensure_webvtt(text: str) -> str:
+    cleaned = text.lstrip("\ufeff")
+    if cleaned.startswith("WEBVTT"):
+        return cleaned
+    return "WEBVTT\n\n" + cleaned
+
+
+def _srt_to_webvtt(text: str) -> str:
+    vtt = text.lstrip("\ufeff")
+    vtt = re.sub(r'(?m)^(\d{2}:\d{2}:\d{2}),(\d{1,3})', lambda m: f"{m.group(1)}.{m.group(2).ljust(3, '0')[:3]}", vtt)
+    vtt = re.sub(r'(?m)(-->\s*\d{2}:\d{2}:\d{2}),(\d{1,3})', lambda m: f"{m.group(1)}.{m.group(2).ljust(3, '0')[:3]}", vtt)
+    return _ensure_webvtt(_normalize_ass_styles_in_text(vtt))
 
 
 def _normalize_ass_styles_in_text(text: str) -> str:

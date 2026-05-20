@@ -34,14 +34,14 @@ class Settings(BaseSettings):
     javdb_enabled: bool = True
     javdb_base_url: str = "https://www.javdatabase.com"
     javdb_cache_hours: int = 24
-    javdb_request_interval: float = 3.0
+    javdb_request_interval: float = 1.0
     tmdb_cache_hours: int = 168
     bangumi_cache_hours: int = 168
     tmdb_api_key: str = ""
     tmdb_access_token: str = ""
-    scrape_concurrency_per_library: int = 4
-    scrape_global_concurrency: int = 8
-    scraper_api_concurrency: int = 4
+    scrape_concurrency_per_library: int = 8
+    scrape_global_concurrency: int = 16
+    scraper_api_concurrency: int = 8
     scraper_http_timeout: float = 10.0
 
     scan_on_startup: bool = True

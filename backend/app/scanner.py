@@ -22,6 +22,7 @@ TMDB_ID_PATTERN = re.compile(r"(?i)\btmdb(?:id)?[\s:=._-]+(\d{1,10})\b")
 TMDB_BRACKET_PATTERN = re.compile(
     r"(?i)[\[\(\{]\s*[^]\)\}]*\btmdb(?:id)?[\s:=._-]+(?:movie|tv|m|t)?[\s:=._-]*\d{1,10}\b[^]\)\}]*[\]\)\}]"
 )
+TMDB_MALFORMED_PATTERN = re.compile(r"(?i)\btmdb(?:id)?[\s:=._-]*(?:movie|tv|m|t)?[\s:=._-]*(?=$|[\s\]\)\}\-_])")
 EPISODE_HINT_PATTERN = re.compile(
     r"(?i)(?:\bS\d{1,2}E\d{1,3}\b|\bS\d{1,2}\s*[-_. ]?\s*E\d{1,3}\b|\b\d{1,2}x\d{1,3}\b|"
     r"\bEP(?:ISODE)?\s*\.?\s*\d{1,3}\b|\bE\d{1,3}\b|第\s*\d{1,3}\s*[集話话]|"
@@ -152,10 +153,15 @@ def extract_tmdb_id_from_name(name: str) -> int | None:
         return None
     return token.id
 
+LEADING_BRACKET_GROUP_PATTERN = re.compile(r"^\[[A-Za-z0-9\-_. ]{2,30}\]\s*")
+
 def remove_tmdb_id_token(name: str) -> str:
-    clean = TMDB_BRACKET_PATTERN.sub(" ", name or "")
+    # 先去开发布组标签 [GROUP] 如 [Snow-Raws]、[VCB-Studio]、[ANi]
+    clean = LEADING_BRACKET_GROUP_PATTERN.sub(" ", name or "")
+    clean = TMDB_BRACKET_PATTERN.sub(" ", clean)
     clean = TMDB_TYPED_PATTERN.sub(" ", clean)
     clean = TMDB_ID_PATTERN.sub(" ", clean)
+    clean = TMDB_MALFORMED_PATTERN.sub(" ", clean)
     clean = re.sub(r"[\[\(\{]\s*[\]\)\}]", " ", clean)
     clean = re.sub(r"\s*[-_]\s*$", " ", clean)
     clean = re.sub(r"^\s*[-_]\s*", " ", clean)
@@ -274,16 +280,133 @@ def generate_folder_identifier(folder_name: str) -> str:
     clean = re.sub(r'\s+', ' ', clean).strip()
     return clean or folder_name.strip()
 
-def generate_keyword_queries(name: str) -> list[str]:
-    name = remove_tmdb_id_token(name)
-    clean = re.sub(r'[\(\[\{][^\)\]\}]*[\)\]\}]', '', name)
-    clean = re.sub(r'\d{3,4}p', '', clean, flags=re.I)
-    clean = re.sub(r'(?i)\b(bluray|bdrip|webrip|web-dl|brrip|dvdrip|hdtv|hdcam|x264|x265|hevc|h264|avc|av1)\b', '', clean)
+RELEASE_GROUP_TOKENS = {
+    "lolihouse", "vcb", "vcb-studio", "tone", "tone-studio", "喵萌", "桜都", "动漫国",
+}
+MEDIA_NOISE_PATTERN = re.compile(
+    r"(?ix)\b(?:"
+    r"bluray|blu-ray|bdrip|webrip|web-dl|webdl|brrip|dvdrip|hdtv|hdcam|"
+    r"x264|x265|hevc|h264|avc|av1|ma10p|hi10p|10bit|8bit|12bit|"
+    r"aac|flac|opus|ac3|eac3|dts|truehd|atmos|\d+flac|\d+aac|"
+    r"chs|cht|sc|tc|gb|big5|zh(?:[-_ ]?(?:hans|hant|cn|tw))?|jpn?|eng?|multi|字幕组|"
+    r"japanese|english|chinese|korean|french|german|"
+    r"imax|uhd|hdr|hdr10\+?|hdrplus|dovi|dv|remux|60fps|"
+    r"hq|itunes|it\b|nf\b|netflix|amazon|hulu|"
+    r"ddp\d?(?:[\s_]*\d+)?|dts[\s-]?hd|dts[\s-]?x|atmos|"
+    r"truehd\d?(?:[\s_]*\d+)?|pcm|eac3|ac3|mp4|avi|mkv|"
+    r"baha|cr|funi|hidive|bglobal|"
+    r"ddp5[._\s]*1|truehd7[._\s]*1|ma5[._\s]*1|dts5[._\s]*1|"
+    r"数字修复|内封|内嵌|简繁|简日|繁日|双语|中字|外挂|硬字幕"
+    r")\b"
+)
+LANGUAGE_COMBO_PATTERN = re.compile(r"(?i)\b(?:chs|cht|sc|tc|zh[-_ ]?(?:hans|hant|cn|tw))(?:\s*&\s*(?:chs|cht|sc|tc|zh[-_ ]?(?:hans|hant|cn|tw)))+\b")
+# 修复：不在字母/CJK字符后面的数字不应被当作集数去除（如 "Ne Zha 2" 中的 2、"5 Centimeters" 中的 5）
+STANDALONE_EPISODE_NUMBER_PATTERN = re.compile(r"(?<![a-zA-Z0-9_\u4e00-\u9fff\u3040-\u30ff])\b\d{1,3}\b(?!\d)")
+GENERIC_SEARCH_QUERY_PATTERN = re.compile(r"(?i)^(?:s\s*\d{1,2}|e\s*\d{1,3}|ep\s*\d{1,3}|\d{1,3}|\d{3,4}p|ma\s*10|ma10p)$")
+
+
+TRAILING_RELEASE_GROUP_PATTERN = re.compile(
+    r'(?i)\s*[-–—@]\s*(?:[A-Z0-9]{2,10}|'
+    r'[A-Z][a-z]*[A-Z][a-z]{0,10}(?:HD|Studio|Web|TV|Team|Group|Raw|Team|Sub)s?|'
+    r'(?:[A-Z][a-z]*){1,2}HD|'
+    r'mn?hd|cmctv|mp4ba|frds|sonyhd|batweb|byndr|qhstudio)\s*$'
+)
+
+
+def _strip_search_noise(value: str) -> str:
+    # 去除开头的发布组标签 [GROUPNAME] 如 [VCB-Studio]、[Snow-Raws]、[ANi]
+    # 必须在 remove_tmdb_id_token 之前执行，因为后者会 strip 掉开头的 [
+    clean = re.sub(r'^\[[A-Za-z0-9\-\_. ]{2,30}\]\s*', '', value)
+    clean = remove_tmdb_id_token(clean)
     clean = clean.replace('\u2019', "'").replace('\u2018', "'").replace('\u201c', '"').replace('\u201d', '"')
+    clean = LANGUAGE_COMBO_PATTERN.sub(' ', clean)
+    clean = EPISODE_HINT_PATTERN.sub(' ', clean)
+    clean = DISC_HINT_PATTERN.sub(' ', clean)
+    clean = re.sub(r'\d{3,4}p', ' ', clean, flags=re.I)
+    clean = MEDIA_NOISE_PATTERN.sub(' ', clean)
+    clean = re.sub(r'(?i)(?:^|\s)-\s*(' + '|'.join(re.escape(t) for t in RELEASE_GROUP_TOKENS) + r')\b', ' ', clean)
     clean = re.sub(r'[._\-\[\]{}()!！?？：:．,、\'\"\u300c\u300d\u300e\u300f\u3010\u3011\u2019\u2018\u201c\u201d]', ' ', clean)
-    clean = re.sub(r'\s+', ' ', clean).strip()
+    clean = MEDIA_NOISE_PATTERN.sub(' ', clean)
+    # 去除末尾的发布组标签（如：-FGT, -BATWEB, @ADWeb, -CMCTV）
+    clean = TRAILING_RELEASE_GROUP_PATTERN.sub(' ', clean)
+    clean = STANDALONE_EPISODE_NUMBER_PATTERN.sub(' ', clean)
+    tokens = [token for token in re.split(r'\s+', clean.strip()) if token]
+    tokens = [token for token in tokens if token.lower() not in RELEASE_GROUP_TOKENS]
+    return re.sub(r'\s+', ' ', ' '.join(tokens)).strip()
+
+
+def _is_useful_search_query(query: str) -> bool:
+    clean = re.sub(r"\s+", " ", str(query or "")).strip()
+    if not clean or GENERIC_SEARCH_QUERY_PATTERN.match(clean):
+        return False
+    cjk = extract_cjk(clean)
+    alpha = extract_alpha(clean)
+    if cjk:
+        return len(cjk) >= 2
+    if alpha:
+        return len(alpha.replace(" ", "")) >= 3
+    return False
+
+
+def generate_keyword_queries(name: str) -> list[str]:
+    clean = _strip_search_noise(name)
     if not clean or clean == name: return []
     return [clean]
+
+
+def _dedupe_queries(values: list[str]) -> list[str]:
+    queries: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        query = re.sub(r"\s+", " ", str(value or "")).strip()
+        if not query:
+            continue
+        key = query.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        queries.append(query)
+    return queries
+
+
+def build_search_queries(raw_title: str, fallback_names: list[str] | None = None) -> list[str]:
+    """Return cleaned title-search queries, with the strongest cleaned title first."""
+    values = [raw_title, *(fallback_names or [])]
+    variants: list[str] = []
+    for value in values:
+        base = remove_tmdb_id_token(str(value or ""))
+        if not base.strip():
+            continue
+        variants.extend(generate_keyword_queries(base))
+        variants.append(_strip_search_noise(generate_folder_identifier(base)))
+        variants.append(_strip_search_noise(clean_folder_name(base)))
+    return [query for query in _dedupe_queries(variants) if _is_useful_search_query(query)]
+
+
+def clean_search_title(raw_title: str, fallback_names: list[str] | None = None) -> str:
+    queries = build_search_queries(raw_title, fallback_names)
+    return queries[0] if queries else ""
+
+
+def _meaningful_local_metadata(raw) -> bool:
+    if not raw or raw == "{}":
+        return False
+    metadata = raw
+    if isinstance(raw, str):
+        try:
+            metadata = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return False
+    if not isinstance(metadata, dict):
+        return False
+    ignored = {"anime_naming"}
+    meaningful = {k: v for k, v in metadata.items() if k not in ignored and v not in (None, "", {}, [])}
+    if not meaningful:
+        return False
+    nfo = meaningful.get("nfo")
+    if isinstance(nfo, dict) and nfo:
+        return True
+    return any(key in meaningful for key in ("title", "original_title", "plot", "year", "premiered"))
 
 def clean_folder_name(name: str) -> str:
     name = remove_tmdb_id_token(name)
@@ -291,6 +414,8 @@ def clean_folder_name(name: str) -> str:
     name = re.sub(r'\[.*?\]', '', name)
     name = re.sub(r'\{.*?\}', '', name)
     name = re.sub(r'\d{3,4}p', '', name, flags=re.I)
+    name = EPISODE_HINT_PATTERN.sub(' ', name)
+    name = DISC_HINT_PATTERN.sub(' ', name)
     name = re.sub(r'(?i)\b(bluray|bdrip|webrip|web-dl|brrip|dvdrip|hdtv|hdcam|x264|x265|hevc|h264|avc|av1)\b', '', name)
     name = name.replace('\u2019', "'").replace('\u2018', "'").replace('\u201c', '"').replace('\u201d', '"')
     name = re.sub(r'[._\-!！?？：:．,、\'\"\u300c\u300d\u300e\u300f\u3010\u3011\u2019\u2018\u201c\u201d]', ' ', name)
@@ -333,6 +458,14 @@ def title_matches(scraped_title: str, folder_name: str, code: str | None = None)
     f_alpha = extract_alpha(folder_name)
     if s_alpha and f_alpha and len(s_alpha) >= 4 and len(f_alpha) >= 4:
         if s_alpha == f_alpha or s_alpha in f_alpha or f_alpha in s_alpha: return True
+        stopwords = {"the", "a", "an", "of", "and", "or", "to", "in"}
+        s_tokens = {w for w in s_alpha.split() if len(w) > 1 and w not in stopwords}
+        f_tokens = {w for w in f_alpha.split() if len(w) > 1 and w not in stopwords}
+        if s_tokens and f_tokens:
+            overlap = len(s_tokens & f_tokens)
+            smaller = min(len(s_tokens), len(f_tokens))
+            if smaller >= 2 and overlap / smaller >= 0.75:
+                return True
 
     if code:
         if code.upper() in scraped_title.upper(): return True
@@ -344,6 +477,15 @@ def candidate_title_matches(candidate: ScrapeCandidate, folder_name: str, query:
         if title_matches(title, folder_name, code) or title_matches(title, query, code):
             return True
     return False
+
+
+def _is_specific_search_query(query: str) -> bool:
+    clean = clean_folder_name(query)
+    alpha = extract_alpha(clean)
+    if alpha and len(alpha.replace(" ", "")) >= 4:
+        return True
+    cjk = extract_cjk(clean)
+    return len(cjk) >= 2
 
 
 def _local_metadata(movie: dict) -> dict:
@@ -541,7 +683,7 @@ def build_fallback_chain(preferred: str) -> list[str]:
     if preferred == "tmdb_tv":
         return ["tmdb_tv"]
     if preferred == "bangumi":
-        return ["bangumi", "tmdb_tv_search"]
+        return ["bangumi", "tmdb_tv_search", "tmdb_movie_search"]
     return ["auto"]
 
 
@@ -603,6 +745,7 @@ def _scrape_result_to_legacy(result: ScrapeResult, *, exact: bool = False) -> di
         "source_id": source_id,
         "title": result.title or raw.get("title", ""),
         "original_title": result.original_title or raw.get("original_title") or "",
+        "overview": result.overview or raw.get("overview") or "",
         "actress": actress,
         "release_date": release_date,
         "duration": duration,
@@ -624,6 +767,7 @@ def _scrape_result_to_legacy(result: ScrapeResult, *, exact: bool = False) -> di
         "episode_still": result.episode_still_url or raw.get("episode_still") or "",
         "_exact_match": exact,
         "_raw": raw,
+        "scraper_raw": json.dumps(raw, ensure_ascii=False) if raw else "",
     }
     if result.season is not None:
         data["tmdb_season"] = result.season
@@ -675,6 +819,8 @@ def _tmdb_scrape_data(detail: dict, source_id: str, media_type: str, exact: bool
     return {
         "source": "tmdb", "scraper_source": "tmdb", "source_id": str(source_id),
         "title": detail.get("title", ""),
+        "original_title": detail.get("original_title", ""),
+        "overview": detail.get("overview", ""),
         "release_date": detail.get("release_date", ""),
         "duration": detail.get("runtime") or detail.get("duration", 0),
         "cover_remote": detail.get("poster_url", ""),
@@ -684,6 +830,7 @@ def _tmdb_scrape_data(detail: dict, source_id: str, media_type: str, exact: bool
         "seasons": detail.get("seasons", []), "cast": detail.get("cast", []),
         "crew": detail.get("crew", []), "imdb_id": detail.get("imdb_id"),
         "_raw": detail,
+        "scraper_raw": json.dumps(detail, ensure_ascii=False) if detail else "",
         "_exact_match": exact,
     }
 
@@ -702,27 +849,52 @@ async def try_scrape_tmdb_title(
     media_type: Literal["movie", "tv"] | None = None,
 ) -> dict | None:
     from .config import logger
-    if not settings.tmdb_api_key and not settings.tmdb_access_token:
-        logger.warning(f"TMDB credentials not configured, skipping for '{folder_name}'")
+    clean_title = clean_search_title(folder_name, [code])
+    scope = media_type or "movie+tv"
+    if not clean_title:
+        logger.info(f"  TMDB {scope}: no clean title for raw_title='{folder_name}', skipping search")
         return None
-    clean_name = remove_tmdb_id_token(folder_name)
-    queries = [clean_name, clean_folder_name(clean_name), generate_folder_identifier(clean_name)]
-    queries.extend(generate_keyword_queries(folder_name))
+    if not settings.tmdb_api_key and not settings.tmdb_access_token:
+        logger.warning(f"  TMDB {scope}: API key/access token missing, cannot search clean_title='{clean_title}'")
+        return None
+    queries = build_search_queries(clean_title, [folder_name, code])
     best: ScrapeCandidate | None = None
     scraper_names = ["tmdb_tv" if media_type == "tv" else "tmdb_movie"] if media_type else ["tmdb_movie", "tmdb_tv"]
     failures: list[str] = []
+    primary_query = queries[0] if queries else clean_title
     for query in queries:
         if not query: continue
         for scraper_name in scraper_names:
             endpoint_type = "tv" if scraper_name == "tmdb_tv" else "movie"
-            logger.info(f"  {scraper_name}: search endpoint /search/{endpoint_type} query='{query}'")
+            api_type = "tmdb_search_tv" if endpoint_type == "tv" else "tmdb_search_movie"
+            logger.info(
+                f"  fallback step={api_type} raw_title='{folder_name}' clean_title='{clean_title}' "
+                f"query='{query}' cache_key='tmdb_search:{endpoint_type}:{query}'"
+            )
             results = await _search_scraper_candidates(scraper_name, query, media_type=media_type, limit=5)
+            logger.info(f"  {api_type}: candidates={len(results)} query='{query}'")
             if not results:
                 failures.append(f"{scraper_name}:{query}: no results")
                 continue
             rejected = []
             for candidate in results[:3]:
-                if candidate_title_matches(candidate, clean_name, query, code):
+                matched = candidate_title_matches(candidate, clean_title, query, code)
+                if (
+                    not matched
+                    and query == primary_query
+                    and len(results) <= 2
+                    and _is_specific_search_query(query)
+                ):
+                    matched = True
+                    logger.info(
+                        f"  {api_type}: title_matches relaxed accept (candidates={len(results)}) "
+                        f"query='{query}' source_id='{candidate.source_id}'"
+                    )
+                logger.info(
+                    f"  {api_type}: title_matches={matched} source_id='{candidate.source_id}' "
+                    f"title='{candidate.title}' original_title='{candidate.original_title or ''}'"
+                )
+                if matched:
                     best = candidate
                     break
                 rejected.append(candidate.title)
@@ -735,8 +907,7 @@ async def try_scrape_tmdb_title(
             if best: break
         if best: break
     if not best:
-        scope = f" {media_type}" if media_type else ""
-        logger.info(f"  TMDB{scope}: no match for '{folder_name}', failures={'; '.join(failures)}")
+        logger.info(f"  TMDB {scope}: no match for clean_title='{clean_title}', failures={'; '.join(failures)}")
         return None
     logger.info(
         f"  TMDB {best.media_type}: selected source_id={best.source_id} "
@@ -747,6 +918,7 @@ async def try_scrape_tmdb_title(
         return None
     if not data.get("title"):
         data["title"] = best.title
+    data["_search_match_passed"] = True
     return data
 
 
@@ -761,7 +933,7 @@ async def try_scrape_tmdb_typed(
     candidates = candidate_names or [search_name, code]
     token = _first_tmdb_token(candidates)
     scraper_name = "tmdb_movie" if media_type == "movie" else "tmdb_tv"
-    clean_title = remove_tmdb_id_token(search_name)
+    clean_title = clean_search_title(search_name, candidates)
     existing_tmdb_id = str((movie or {}).get("tmdb_id") or "").strip()
     existing_tmdb_type = str((movie or {}).get("tmdb_type") or "").strip()
     if not token and existing_tmdb_id and (not existing_tmdb_type or existing_tmdb_type == media_type):
@@ -769,6 +941,11 @@ async def try_scrape_tmdb_typed(
             token = TmdbIdToken(int(existing_tmdb_id), media_type, existing_tmdb_id, f"{media_type}.tmdb_id", "explicit")
         except ValueError:
             logger.warning(f"  {scraper_name}: invalid stored tmdb_id='{existing_tmdb_id}', fallback to title search")
+
+    logger.info(
+        f"  {scraper_name}: raw_title='{search_name}' clean_title='{clean_title}' "
+        f"tmdb_token={'yes' if token else 'no'}"
+    )
 
     if token:
         logger.info(
@@ -784,14 +961,25 @@ async def try_scrape_tmdb_typed(
         else:
             logger.warning(f"  {scraper_name}: TMDB credentials not configured, fallback to title search")
 
-    logger.info(f"  {scraper_name}: fallback to Bangumi title search for '{clean_title}'")
+    if not clean_title:
+        logger.info(f"  {scraper_name}: no clean title after TMDB ID fallback, cannot run search APIs")
+        return None
+
+    # 顺序 fallback：先 Bangumi 搜索 API，失败则 TMDB 标题搜索 API
+    logger.info(f"  {scraper_name}: sequential fallback to Bangumi for '{clean_title}'")
     data = await try_scrape_bangumi(clean_title, code)
-    if data:
-        logger.info(f"  {scraper_name}: Bangumi fallback success title='{data.get('title', '')}'")
+    if data and data.get("title"):
+        logger.info(f"  {scraper_name}: sequential fallback Bangumi success for '{clean_title}'")
         return data
 
-    logger.info(f"  {scraper_name}: Bangumi fallback failed; fallback to TMDB {media_type} title search for '{clean_title}'")
-    return await try_scrape_tmdb_title(clean_title, code, media_type)
+    logger.info(f"  {scraper_name}: sequential fallback to TMDB {media_type} title search for '{clean_title}'")
+    data = await try_scrape_tmdb_title(clean_title, code, media_type)
+    if data and data.get("title"):
+        logger.info(f"  {scraper_name}: sequential fallback TMDB title search success for '{clean_title}'")
+        return data
+
+    logger.info(f"  {scraper_name}: all sequential fallbacks failed for '{clean_title}'")
+    return None
 
 
 async def try_scrape_tmdb_movie(
@@ -899,26 +1087,60 @@ async def try_scrape_tmdb_id(
 
 async def try_scrape_bangumi(folder_name: str, code: str) -> dict | None:
     from .config import logger
-    folder_name = remove_tmdb_id_token(folder_name)
-    queries = [folder_name, clean_folder_name(folder_name), generate_folder_identifier(folder_name)]
-    queries.extend(generate_keyword_queries(folder_name))
+    raw_title = folder_name
+    clean_title = clean_search_title(folder_name, [code])
+    if not clean_title:
+        logger.info(f"  Bangumi: no clean title for raw_title='{raw_title}', skipping search")
+        return None
+    queries = build_search_queries(clean_title, [raw_title, code])
     best: ScrapeCandidate | None = None
+    failures: list[str] = []
+    primary_query = queries[0] if queries else clean_title
     for query in queries:
         if not query: continue
+        logger.info(
+            f"  fallback step=bangumi_search raw_title='{raw_title}' clean_title='{clean_title}' "
+            f"query='{query}' cache_key='bangumi_search:anime:{query}'"
+        )
         results = await _search_scraper_candidates("bangumi", query, limit=5)
+        logger.info(f"  bangumi_search: candidates={len(results)} query='{query}'")
+        if not results:
+            failures.append(f"{query}: no results")
+            continue
+        rejected = []
         for candidate in results[:3]:
-            if candidate_title_matches(candidate, folder_name, query, code):
+            matched = candidate_title_matches(candidate, clean_title, query, code)
+            if (
+                not matched
+                and query == primary_query
+                and len(results) <= 2
+                and _is_specific_search_query(query)
+            ):
+                matched = True
+                logger.info(
+                    f"  bangumi_search: title_matches relaxed accept (candidates={len(results)}) "
+                    f"query='{query}' source_id='{candidate.source_id}'"
+                )
+            logger.info(
+                f"  bangumi_search: title_matches={matched} source_id='{candidate.source_id}' "
+                f"title='{candidate.title}' original_title='{candidate.original_title or ''}'"
+            )
+            if matched:
                 best = candidate
                 break
+            rejected.append(candidate.title)
+        if not best:
+            failures.append(f"{query}: title mismatch {rejected[:3]}")
         if best: break
     if not best:
-        logger.info(f"  Bangumi: no match for '{folder_name}'")
+        logger.info(f"  Bangumi: no match for clean_title='{clean_title}', failures={'; '.join(failures)}")
         return None
     data = await _fetch_detail_legacy("bangumi", best.source_id, best.media_type, exact=False)
     if not data:
         return None
     if not data.get("title"):
         data["title"] = best.title
+    data["_search_match_passed"] = True
     return data
 
 async def try_scrape_auto(
@@ -946,16 +1168,29 @@ async def try_scrape_auto(
             return data
         logger.warning("  TMDB ID 精确匹配失败，fallback 到标题搜索")
 
-    clean_title = remove_tmdb_id_token(search_name)
-    logger.info(f"  Auto scraper trying Bangumi for '{clean_title}'")
+    clean_title = clean_search_title(search_name, candidates)
+    logger.info(
+        f"  Auto scraper fallback title search raw_title='{search_name}' "
+        f"clean_title='{clean_title}' tmdb_token={'yes' if token else 'no'}"
+    )
+    if not clean_title:
+        logger.info(f"  Auto scraper failed: no clean title for '{search_name}'")
+        return None
+
+    # 顺序 fallback：先 Bangumi 搜索 API，失败则 TMDB 标题搜索 API
+    logger.info(f"  Auto scraper: sequential fallback to Bangumi for '{clean_title}'")
     data = await try_scrape_bangumi(clean_title, code)
-    if data:
+    if data and data.get("title"):
+        logger.info(f"  Auto scraper: sequential fallback Bangumi success for '{clean_title}'")
         return data
-    logger.info(f"  Auto scraper Bangumi failed, trying TMDB title search for '{clean_title}'")
+
+    logger.info(f"  Auto scraper: sequential fallback to TMDB title search for '{clean_title}'")
     data = await try_scrape_tmdb(clean_title, code)
-    if data:
+    if data and data.get("title"):
+        logger.info(f"  Auto scraper: sequential fallback TMDB title search success for '{clean_title}'")
         return data
-    logger.info(f"  Auto scraper failed all sources for '{clean_title}'")
+
+    logger.info(f"  Auto scraper: all sequential fallbacks failed for '{clean_title}'")
     return None
 
 
@@ -979,8 +1214,7 @@ FALLBACK_HANDLERS = {
 }
 
 def has_local_data(movie_row: dict) -> bool:
-    local_metadata = movie_row.get("local_metadata")
-    has_metadata = bool(local_metadata and local_metadata != "{}")
+    has_metadata = _meaningful_local_metadata(movie_row.get("local_metadata"))
     cover = movie_row.get("cover_local")
     has_cover = bool(cover and (len(str(cover)) <= 64 or Path(str(cover)).exists()))
     return has_metadata and has_cover
@@ -1004,6 +1238,8 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
     db = await get_db()
     fields = {
         "title": data.get("title") or "",
+        "original_title": data.get("original_title") or "",
+        "overview": data.get("overview") or "",
         "actress": data.get("actress") or "",
         "release_date": data.get("release_date") or "",
         "duration": data.get("duration"),
@@ -1023,12 +1259,15 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
         "source_id": data.get("source_id") or "",
         "bangumi_id": data.get("bangumi_id") or "",
         "javdb_id": data.get("javdb_id") or "",
+        "scraper_raw": data.get("scraper_raw") or (json.dumps(data.get("_raw"), ensure_ascii=False) if data.get("_raw") else ""),
         "cast": json.dumps(data.get("cast") or [], ensure_ascii=False),
         "crew": json.dumps(data.get("crew") or [], ensure_ascii=False),
     }
     if replace:
         set_sql = """
                title=NULLIF(?, ''),
+               original_title=NULLIF(?, ''),
+               overview=NULLIF(?, ''),
                actress=NULLIF(?, ''),
                release_date=NULLIF(?, ''),
                duration=?,
@@ -1046,6 +1285,7 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
                source_id=NULLIF(?, ''),
                bangumi_id=NULLIF(?, ''),
                javdb_id=NULLIF(?, ''),
+               scraper_raw=NULLIF(?, ''),
                tmdb_season=?,
                tmdb_episode=?,
                episode_title=NULLIF(?, ''),
@@ -1057,6 +1297,8 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
     else:
         set_sql = """
                title=COALESCE(NULLIF(?, ''), title),
+               original_title=COALESCE(NULLIF(?, ''), original_title),
+               overview=COALESCE(NULLIF(?, ''), overview),
                actress=COALESCE(NULLIF(?, ''), actress),
                release_date=COALESCE(NULLIF(?, ''), release_date),
                duration=COALESCE(?, duration),
@@ -1074,6 +1316,7 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
                source_id=COALESCE(NULLIF(?, ''), source_id),
                bangumi_id=COALESCE(NULLIF(?, ''), bangumi_id),
                javdb_id=COALESCE(NULLIF(?, ''), javdb_id),
+               scraper_raw=COALESCE(NULLIF(?, ''), scraper_raw),
                tmdb_season=COALESCE(?, tmdb_season),
                tmdb_episode=COALESCE(?, tmdb_episode),
                episode_title=COALESCE(NULLIF(?, ''), episode_title),
@@ -1081,11 +1324,13 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
                updated_at=datetime('now')
         """
     values = (
-        fields["title"], fields["actress"], fields["release_date"], fields["duration"],
+        fields["title"], fields["original_title"], fields["overview"],
+        fields["actress"], fields["release_date"], fields["duration"],
         fields["javdb_url"], fields["javdb_score"], fields["javdb_likes"],
         fields["javdb_thumbnails"], fields["cover_remote"], fields["fanart_local"],
         fields["tmdb_id"], fields["tmdb_type"], fields["cast"], fields["crew"],
         fields["scraper_source"], fields["source_id"], fields["bangumi_id"], fields["javdb_id"],
+        fields["scraper_raw"],
         fields["tmdb_season"], fields["tmdb_episode"], fields["episode_title"], fields["episode_still"],
     )
     if media_root:
@@ -1192,7 +1437,7 @@ async def scrape_for_library(media_root: str):
 
     db = await get_db()
     cur = await db.execute(
-        """SELECT DISTINCT code, folder_levels, path, title, cover_local, cover_remote,
+        """SELECT DISTINCT id, code, folder_levels, path, title, cover_local, cover_remote,
                   javdb_url, local_metadata, tmdb_id, tmdb_type, tmdb_season, tmdb_episode,
                   clean_title, episode_number, display_title, source_id, bangumi_id, javdb_id
            FROM movies WHERE media_root=?""",
@@ -1272,15 +1517,13 @@ async def scrape_for_library(media_root: str):
                 _set_scan_progress(media_root, done=done_count, skipped=skipped_count)
             return
 
-        search_name = row_clean_title or folder_name
+        # 使用源文件夹名进行搜索（参考 Jellyfin 刮削逻辑），而非视频文件名
+        search_name = folder_name
         search_levels = folder_levels
         if is_season_folder(folder_name):
             parent = Path(folder_levels).parent
             parent_name = parent.name if str(parent) != "." else ""
-            if row_clean_title:
-                search_name = row_clean_title
-                search_levels = str(parent) if parent_name else folder_levels
-            elif parent_name:
+            if parent_name:
                 search_name = parent_name
                 search_levels = str(parent)
 
@@ -1297,6 +1540,14 @@ async def scrape_for_library(media_root: str):
             code,
             search_name,
         ]
+        clean_title_for_log = clean_search_title(search_name, candidate_names)
+        token_for_log = _first_tmdb_token(candidate_names)
+        logger.info(
+            f"Scrape item: media_root='{media_root}' movie_id={r.get('id') or ''} "
+            f"scraper='{normalize_scraper_name(scraper)}' raw_title='{search_name}' "
+            f"clean_title='{clean_title_for_log}' tmdb_token={'yes' if token_for_log else 'no'} "
+            f"tmdb_id='{r.get('tmdb_id') or ''}'"
+        )
 
         scraped = False
         async with per_library_sem:
@@ -1326,13 +1577,18 @@ async def scrape_for_library(media_root: str):
                             else:
                                 passed = (
                                     bool(data.get("_exact_match"))
+                                    or bool(data.get("_search_match_passed"))
                                     or title_matches(data.get("title", ""), search_name, code)
                                     or title_matches(data.get("original_title", ""), search_name, code)
                                 )
                             if passed:
                                 async with _sqlite_write_semaphore:
                                     await _apply_scraped_data(folder_levels, data, media_root)
-                                logger.info(f"  {sb}: {search_name} → {data.get('title', search_name)}")
+                                logger.info(
+                                    f"  {sb}: applied source='{data.get('source') or data.get('scraper_source') or sb}' "
+                                    f"source_id='{data.get('source_id') or data.get('tmdb_id') or data.get('bangumi_id') or data.get('javdb_id') or ''}' "
+                                    f"clean_title='{clean_title_for_log}' title='{data.get('title', search_name)}'"
+                                )
 
                                 if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
                                     season_num = infer_season_number(folder_name, data)
@@ -1487,6 +1743,7 @@ async def clear_library_scraped_data(media_root: str):
            javdb_url=NULL, javdb_score=NULL, javdb_likes=NULL, javdb_thumbnails=NULL,
            tmdb_id=NULL, tmdb_type=NULL, tmdb_season=NULL, tmdb_episode=NULL,
            scraper_source=NULL, source_id=NULL, bangumi_id=NULL, javdb_id=NULL,
+           original_title=NULL, overview=NULL, scraper_raw=NULL,
            episode_title=NULL, episode_overview=NULL, episode_still=NULL, episode_still_local=NULL,
            "cast"='[]', crew='[]',
            updated_at=datetime('now')
@@ -1529,15 +1786,12 @@ async def rescrape_movie(movie_id: int) -> dict:
     chain = build_fallback_chain(scraper)
 
     row_clean_title = (movie.get("clean_title") or "").strip()
-    search_name = row_clean_title or folder_name
+    search_name = folder_name
     search_levels = folder_levels
     if is_season_folder(folder_name):
         parent = Path(folder_levels).parent
         parent_name = parent.name if str(parent) != "." else ""
-        if row_clean_title:
-            search_name = row_clean_title
-            search_levels = str(parent) if parent_name else folder_levels
-        elif parent_name:
+        if parent_name:
             search_name = parent_name
             search_levels = str(parent)
 
@@ -1557,6 +1811,14 @@ async def rescrape_movie(movie_id: int) -> dict:
         code,
         search_name,
     ]
+    clean_title_for_log = clean_search_title(search_name, candidate_names)
+    token_for_log = _first_tmdb_token(candidate_names)
+    logger.info(
+        f"rescrape_movie item: media_root='{media_root}' movie_id={movie_id} "
+        f"scraper='{normalize_scraper_name(scraper)}' raw_title='{search_name}' "
+        f"clean_title='{clean_title_for_log}' tmdb_token={'yes' if token_for_log else 'no'} "
+        f"tmdb_id='{movie.get('tmdb_id') or ''}'"
+    )
 
     failures: list[str] = []
     for sb in chain:
@@ -1585,6 +1847,7 @@ async def rescrape_movie(movie_id: int) -> dict:
             else:
                 passed = (
                     bool(data.get("_exact_match"))
+                    or bool(data.get("_search_match_passed"))
                     or title_matches(data.get("title", ""), search_name, code)
                     or title_matches(data.get("original_title", ""), search_name, code)
                 )

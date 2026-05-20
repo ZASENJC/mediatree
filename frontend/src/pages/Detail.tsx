@@ -51,6 +51,10 @@ export default function Detail() {
   }
   const cast = (movie.cast || []).filter(p => p.name)
   const crew = (movie.crew || []).filter(p => p.name)
+  const isJavdatabase = movie.scraper_source === 'javdatabase' || Boolean(movie.javdb_id || movie.javdb_url)
+  const castNames = cast.map(p => p.name).filter(Boolean)
+  const performerText = movie.actress || castNames.join(', ')
+  const overview = movie.overview || movie.episode_overview || ''
   const crewByJob = (jobs: string[]) => crew.filter(p => jobs.some(j => (p.job || '').toLowerCase().includes(j.toLowerCase())))
   const directors = crewByJob(['director', '导演'])
   const supervisors = crewByJob(['supervisor', 'animation director', 'series director', '监督'])
@@ -140,15 +144,18 @@ export default function Detail() {
         <div className="space-y-6">
           <div>
             <h2 className="text-xl font-bold">{movie.title || movie.code}</h2>
+            {movie.original_title && movie.original_title !== movie.title && (
+              <p className="text-sm text-gray-300 mt-1">{movie.original_title}</p>
+            )}
             <p className="text-sm text-gray-400 mt-1">{movie.code}</p>
           </div>
 
           <div className="space-y-2 text-sm">
-            {movie.actress && (
+            {performerText && (
               <div className="flex gap-2">
-                <span className="text-gray-500 shrink-0">演员:</span>
+                <span className="text-gray-500 shrink-0">{isJavdatabase ? '女优:' : '演员:'}</span>
                 <span>
-                  {movie.actress.split(/[,，、]/).map((name: string, i: number, arr: string[]) => (
+                  {performerText.split(/[,，、]/).map((name: string, i: number, arr: string[]) => (
                     <span key={i}>
                       <span
                         onClick={(e) => {
@@ -163,6 +170,12 @@ export default function Detail() {
                     </span>
                   ))}
                 </span>
+              </div>
+            )}
+            {overview && (
+              <div className="flex gap-2">
+                <span className="text-gray-500 shrink-0">简介:</span>
+                <span className="text-gray-300 text-xs leading-relaxed">{overview}</span>
               </div>
             )}
             {movie.release_date && (
@@ -207,7 +220,7 @@ export default function Detail() {
                 <span className="font-medium">{movie.episode_title}</span>
               </div>
             )}
-            {movie.episode_overview && (
+            {movie.episode_overview && movie.episode_overview !== overview && (
               <div className="flex gap-2">
                 <span className="text-gray-500 shrink-0">集概述:</span>
                 <span className="text-gray-300 text-xs leading-relaxed">{movie.episode_overview}</span>
