@@ -54,7 +54,12 @@ async function request<T>(url: string, options?: RequestInit, cacheKey?: string)
   }
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(text || res.statusText)
+    let message = text || res.statusText
+    try {
+      const parsed = JSON.parse(text)
+      message = parsed?.detail || parsed?.error || message
+    } catch {}
+    throw new Error(message)
   }
   const data = await res.json()
   if (cacheKey) setCache(cacheKey, data)
@@ -452,6 +457,7 @@ export interface SubtitleTrack {
   name?: string
   source?: string
   path?: string
+  url?: string
   format?: string
   is_external?: boolean
   web_supported?: boolean

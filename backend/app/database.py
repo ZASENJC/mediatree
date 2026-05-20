@@ -54,6 +54,10 @@ async def init_db():
         "ALTER TABLE movies ADD COLUMN external_audio_tracks TEXT DEFAULT '[]'",
         "ALTER TABLE movies ADD COLUMN \"cast\" TEXT DEFAULT '[]'",
         "ALTER TABLE movies ADD COLUMN crew TEXT DEFAULT '[]'",
+        "ALTER TABLE movies ADD COLUMN scraper_source TEXT",
+        "ALTER TABLE movies ADD COLUMN source_id TEXT",
+        "ALTER TABLE movies ADD COLUMN bangumi_id TEXT",
+        "ALTER TABLE movies ADD COLUMN javdb_id TEXT",
     ]
     for mig in migrations:
         try:
@@ -102,6 +106,10 @@ async def init_db():
             external_audio_tracks TEXT DEFAULT '[]',
             "cast" TEXT DEFAULT '[]',
             crew TEXT DEFAULT '[]',
+            scraper_source TEXT,
+            source_id TEXT,
+            bangumi_id TEXT,
+            javdb_id TEXT,
             media_root TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now'))

@@ -55,8 +55,9 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
       clearCache()
       setCoverVersion(String(Date.now()))
       onUpdated?.()
-    } catch {
-      console.error('Rescrape failed for movie', movie.id)
+    } catch (err) {
+      console.error('Rescrape failed for movie', movie.id, err)
+      alert(`刮削失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
     }
   }, [movie.id, onUpdated])
 

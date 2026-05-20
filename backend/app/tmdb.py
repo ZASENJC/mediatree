@@ -8,7 +8,7 @@ from .database import get_scraper_cache, set_scraper_cache
 TMDB_BASE = "https://api.themoviedb.org/3"
 IMAGE_BASE = "https://image.tmdb.org/t/p"
 _tmdb_client: httpx.AsyncClient | None = None
-_tmdb_semaphore = asyncio.Semaphore(6)
+_tmdb_semaphore = asyncio.Semaphore(max(1, settings.scraper_api_concurrency))
 _tmdb_id_tasks: dict[tuple[int, str], asyncio.Task] = {}
 _warned_missing_auth = False
 
@@ -27,7 +27,7 @@ def _has_tmdb_auth() -> bool:
 async def _tmdb_get(path: str, params: dict | None = None) -> httpx.Response:
     global _tmdb_client
     if _tmdb_client is None or _tmdb_client.is_closed:
-        _tmdb_client = httpx.AsyncClient(timeout=20, follow_redirects=True)
+        _tmdb_client = httpx.AsyncClient(timeout=settings.scraper_http_timeout, follow_redirects=True)
     async with _tmdb_semaphore:
         url = f"{TMDB_BASE}{path}"
         headers = _get_tmdb_headers()
@@ -54,20 +54,25 @@ async def search_tmdb(
     query = (query or "").strip()
     if not query:
         return []
-    cache_key = f"tmdb_search:{requested_type}:{query}" if requested_type else f"search:{query}"
-    cache_data = await get_scraper_cache("tmdb", cache_key, 168)
+    cache_key = f"tmdb_search:{requested_type}:{query}" if requested_type else f"tmdb_search:multi:{query}"
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
     if cache_data is not None:
+        logger.info(f"TMDB cache hit: {cache_key}")
         return cache_data
 
     results = []
     try:
         for mtype in ([requested_type] if requested_type else ["movie", "tv"]):
+            logger.info(f"TMDB search endpoint: /search/{mtype} query='{query}'")
             resp = await _tmdb_get(f"/search/{mtype}", {"query": query, "language": lang})
             data = resp.json()
             for item in data.get("results", [])[:5]:
                 poster = None
                 if item.get("poster_path"):
                     poster = f"{IMAGE_BASE}/w500{item['poster_path']}"
+                backdrop = None
+                if item.get("backdrop_path"):
+                    backdrop = f"{IMAGE_BASE}/w1280{item['backdrop_path']}"
                 results.append({
                     "source": "tmdb",
                     "source_id": str(item["id"]),
@@ -76,11 +81,15 @@ async def search_tmdb(
                     "original_title": item.get("original_title") or item.get("original_name", ""),
                     "overview": item.get("overview", ""),
                     "poster_url": poster,
+                    "backdrop_url": backdrop,
                     "release_date": item.get("release_date") or item.get("first_air_date"),
                     "score": item.get("vote_average"),
                     "votes": item.get("vote_count"),
                     "genre_ids": item.get("genre_ids", []),
                 })
+    except HTTPStatusError as e:
+        scope = f"{requested_type} " if requested_type else ""
+        logger.warning(f"TMDB {scope}search HTTP error for '{query}': status={e.response.status_code}")
     except Exception as e:
         scope = f"{requested_type} " if requested_type else ""
         logger.warning(f"TMDB {scope}search error for '{query}': {e}")
@@ -100,12 +109,14 @@ async def search_tmdb_tv_by_title(query: str, lang: str = "zh-CN") -> list[dict]
 async def fetch_tmdb_detail(source_id: str, media_type: str, lang: str = "zh-CN") -> dict | None:
     if not _has_tmdb_auth():
         return None
-    cache_key = f"detail:{media_type}:{source_id}"
-    cache_data = await get_scraper_cache("tmdb", cache_key, 168)
+    cache_key = f"tmdb_id:{media_type}:{source_id}"
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
     if cache_data is not None:
+        logger.info(f"TMDB cache hit: {cache_key}")
         return cache_data
 
     try:
+        logger.info(f"TMDB detail endpoint: /{media_type}/{source_id}")
         resp = await _tmdb_get(
             f"/{media_type}/{source_id}",
             {"language": lang, "append_to_response": "credits,external_ids,keywords"}
@@ -126,6 +137,7 @@ async def fetch_tmdb_detail(source_id: str, media_type: str, lang: str = "zh-CN"
                         "profile_path": f"{IMAGE_BASE}/w185{c['profile_path']}" if c.get("profile_path") else None})
 
         external = data.get("external_ids", {}) or {}
+        studios = [c.get("name") for c in data.get("production_companies", []) if c.get("name")]
         seasons = []
         for s in data.get("seasons", []):
             sp = f"{IMAGE_BASE}/w500{s['poster_path']}" if s.get("poster_path") else None
@@ -161,16 +173,18 @@ async def fetch_tmdb_detail(source_id: str, media_type: str, lang: str = "zh-CN"
             "status": data.get("status"),
             "cast": cast,
             "crew": crew,
+            "studios": studios,
             "imdb_id": external.get("imdb_id"),
             "seasons": seasons,
             "number_of_seasons": data.get("number_of_seasons", 0),
             "number_of_episodes": data.get("number_of_episodes", 0),
+            "raw": data,
         }
         await set_scraper_cache("tmdb", cache_key, result)
         return result
     except HTTPStatusError as e:
         if e.response.status_code != 404:
-            logger.warning(f"TMDB detail error for {media_type}/{source_id}: {e}")
+            logger.warning(f"TMDB detail HTTP error for {media_type}/{source_id}: status={e.response.status_code}")
         return None
     except Exception as e:
         logger.warning(f"TMDB detail error for {source_id}: {e}")
@@ -191,7 +205,7 @@ async def fetch_tmdb_by_id(tmdb_id: int, media_type: Literal["movie", "tv"], lan
         return None
 
     cache_key = f"tmdb_id:{requested_type}:{tmdb_id}"
-    cache_data = await get_scraper_cache("tmdb", cache_key, 168)
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
     if cache_data is not None:
         return cache_data
 
@@ -247,7 +261,7 @@ async def fetch_tv_season(series_id: str, season_number: int, lang: str = "zh-CN
     if not _has_tmdb_auth():
         return None
     cache_key = f"season:{series_id}:{season_number}"
-    cache_data = await get_scraper_cache("tmdb", cache_key, 168)
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
     if cache_data is not None:
         return cache_data
 
@@ -291,7 +305,7 @@ async def fetch_tv_episode(series_id: str, season_number: int, episode_number: i
     if not _has_tmdb_auth():
         return None
     cache_key = f"episode:{series_id}:{season_number}:{episode_number}"
-    cache_data = await get_scraper_cache("tmdb", cache_key, 168)
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
     if cache_data is not None:
         return cache_data
 

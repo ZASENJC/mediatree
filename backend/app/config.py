@@ -32,12 +32,17 @@ class Settings(BaseSettings):
     data_dir: str = str(Path(__file__).parent.parent.parent / "data")
 
     javdb_enabled: bool = True
+    javdb_base_url: str = "https://www.javdatabase.com"
     javdb_cache_hours: int = 24
     javdb_request_interval: float = 3.0
     tmdb_cache_hours: int = 168
     bangumi_cache_hours: int = 168
     tmdb_api_key: str = ""
     tmdb_access_token: str = ""
+    scrape_concurrency_per_library: int = 4
+    scrape_global_concurrency: int = 8
+    scraper_api_concurrency: int = 4
+    scraper_http_timeout: float = 10.0
 
     scan_on_startup: bool = True
 
@@ -96,12 +101,17 @@ class Settings(BaseSettings):
             Path(self.data_dir).mkdir(parents=True, exist_ok=True)
             data = {
                 "javdb_enabled": self.javdb_enabled,
+                "javdb_base_url": self.javdb_base_url,
                 "javdb_cache_hours": self.javdb_cache_hours,
                 "javdb_request_interval": self.javdb_request_interval,
                 "tmdb_cache_hours": self.tmdb_cache_hours,
                 "bangumi_cache_hours": self.bangumi_cache_hours,
                 "tmdb_api_key": self.tmdb_api_key,
                 "tmdb_access_token": self.tmdb_access_token,
+                "scrape_concurrency_per_library": self.scrape_concurrency_per_library,
+                "scrape_global_concurrency": self.scrape_global_concurrency,
+                "scraper_api_concurrency": self.scraper_api_concurrency,
+                "scraper_http_timeout": self.scraper_http_timeout,
                 "auth_user": self.auth_user,
                 "auth_pass": self.auth_pass,
             }

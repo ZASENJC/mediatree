@@ -5,11 +5,13 @@ import asyncio
 from datetime import datetime, timedelta
 from html import unescape
 import httpx
-from .config import settings
+from .config import settings, logger
 from .database import get_db
 
 _last_request = 0.0
 _req_lock = asyncio.Lock()
+_javdb_client: httpx.AsyncClient | None = None
+_javdb_semaphore = asyncio.Semaphore(max(1, settings.scraper_api_concurrency))
 
 
 def _clean_html_text(fragment: str) -> str:
@@ -29,12 +31,20 @@ async def _rate_limit():
 
 
 async def _get_client() -> httpx.AsyncClient:
+    global _javdb_client
+    if _javdb_client is not None and not _javdb_client.is_closed:
+        return _javdb_client
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
         "Accept": "text/html,application/xhtml+xml",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
     }
-    return httpx.AsyncClient(headers=headers, timeout=30, follow_redirects=True)
+    _javdb_client = httpx.AsyncClient(
+        headers=headers,
+        timeout=settings.scraper_http_timeout,
+        follow_redirects=True,
+    )
+    return _javdb_client
 
 
 async def _get_cached(code: str) -> dict | None:
@@ -184,62 +194,67 @@ async def search_javdb(code: str) -> dict | None:
         return None
 
     cached = await _get_cached(code)
-    if cached:
-        return cached
+    if cached is not None:
+        logger.info(f"Javdatabase cache hit: code={code}")
+        return cached or None
 
     try:
         client = await _get_client()
-        try:
-            await _rate_limit()
-            search_url = f"{settings.javdb_base_url}/?post_type=movies%2Cuncensored&s={code}"
+        await _rate_limit()
+        search_url = f"{settings.javdb_base_url}/?post_type=movies%2Cuncensored&s={code}"
+        logger.info(f"Javdatabase search endpoint: /?post_type=movies,uncensored code={code}")
+        async with _javdb_semaphore:
             resp = await client.get(search_url)
-            resp.raise_for_status()
-            html = resp.text
+        resp.raise_for_status()
+        html = resp.text
 
-            card_pat = re.compile(
-                r"(?is)<div[^>]+class=\"[^\"]*\bcard\b[^\"]*\bborderlesscard\b[^\"]*\"[^>]*>(.*?)</div>"
-            )
-            found_url = None
-            for m in card_pat.finditer(html):
-                block = m.group(1)
-                link_m = re.search(r"(?is)<a[^>]+href=\"(/movies/[^\"]+)\"[^>]*>(.*?)</a>", block)
-                if link_m:
-                    link = link_m.group(1)
-                    link_code = _clean_html_text(link_m.group(2))
-                    if code.upper() in link_code.upper():
-                        found_url = f"{settings.javdb_base_url}{link}"
-                        break
-                    if not found_url:
-                        found_url = f"{settings.javdb_base_url}{link}"
+        card_pat = re.compile(
+            r"(?is)<div[^>]+class=\"[^\"]*\bcard\b[^\"]*\bborderlesscard\b[^\"]*\"[^>]*>(.*?)</div>"
+        )
+        found_url = None
+        for m in card_pat.finditer(html):
+            block = m.group(1)
+            link_m = re.search(r"(?is)<a[^>]+href=\"(/movies/[^\"]+)\"[^>]*>(.*?)</a>", block)
+            if link_m:
+                link = link_m.group(1)
+                link_code = _clean_html_text(link_m.group(2))
+                if code.upper() in link_code.upper():
+                    found_url = f"{settings.javdb_base_url}{link}"
+                    break
+                if not found_url:
+                    found_url = f"{settings.javdb_base_url}{link}"
 
-            # Fallback: try direct URL by lowercased code
-            if not found_url:
-                direct_url = f"{settings.javdb_base_url}/movies/{code.lower()}/"
+        # Fallback: try direct URL by lowercased code
+        if not found_url:
+            direct_url = f"{settings.javdb_base_url}/movies/{code.lower()}/"
+            async with _javdb_semaphore:
                 resp2 = await client.get(direct_url)
-                if resp2.status_code == 200 and len(resp2.text) > 5000:
-                    found_url = direct_url
-                    html = resp2.text
+            if resp2.status_code == 200 and len(resp2.text) > 5000:
+                found_url = direct_url
+                html = resp2.text
 
-            if not found_url:
-                await _set_cache(code, {})
-                return None
+        if not found_url:
+            await _set_cache(code, {})
+            return None
 
-            if not found_url.endswith("/"):
-                found_url += "/"
+        if not found_url.endswith("/"):
+            found_url += "/"
 
-            if "/movies/" not in html or len(html) < 5000:
-                await _rate_limit()
+        if "/movies/" not in html or len(html) < 5000:
+            await _rate_limit()
+            async with _javdb_semaphore:
                 detail_resp = await client.get(found_url)
-                detail_resp.raise_for_status()
-                html = detail_resp.text
+            detail_resp.raise_for_status()
+            html = detail_resp.text
 
-            result = _parse_movie_page(html, found_url)
-            await _set_cache(code, result)
-            return result
-
-        finally:
-            await client.aclose()
-    except Exception:
+        result = _parse_movie_page(html, found_url)
+        await _set_cache(code, result)
+        return result
+    except httpx.HTTPStatusError as e:
+        logger.warning(f"Javdatabase HTTP error for '{code}': status={e.response.status_code}")
+        return None
+    except Exception as e:
+        logger.warning(f"Javdatabase search error for '{code}': {e}")
         return None
 
 
