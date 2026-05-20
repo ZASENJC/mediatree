@@ -10,6 +10,8 @@ from xml.etree import ElementTree as ET
 from datetime import datetime
 from .config import settings
 from .anime_naming import parse_anime_filename
+from .scrapers.base import ScrapeCandidate, ScrapeResult, ScrapeStaff
+from .scrapers.registry import get_scraper
 
 CODE_PATTERN = re.compile(r"(?i)([A-Z]{1,})-?(\d{2,6})")
 CODE_PATTERN_UNDERSCORE = re.compile(r"(?i)([A-Z]{1,})_(\d{2,6})")
@@ -39,6 +41,40 @@ SEASON_PATTERN = re.compile(r'^(S|Season\s*|第)\s*\d{1,2}$', re.I)
 _scan_progress: dict[str, dict] = {}
 _scan_locks: dict[str, asyncio.Lock] = {}
 _scan_pending: set[str] = set()
+_global_scrape_semaphore: asyncio.Semaphore | None = None
+_global_scrape_limit = 0
+_sqlite_write_semaphore = asyncio.Semaphore(1)
+
+
+def _bounded_int(value, default: int, minimum: int = 1) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, parsed)
+
+
+def _get_global_scrape_semaphore() -> asyncio.Semaphore:
+    global _global_scrape_semaphore, _global_scrape_limit
+    limit = _bounded_int(settings.scrape_global_concurrency, 8)
+    if _global_scrape_semaphore is None or _global_scrape_limit != limit:
+        _global_scrape_semaphore = asyncio.Semaphore(limit)
+        _global_scrape_limit = limit
+    return _global_scrape_semaphore
+
+
+def _set_scan_progress(media_root: str, **fields):
+    current = dict(_scan_progress.get(media_root, {}))
+    current.update(fields)
+    current.setdefault("media_root", media_root)
+    current.setdefault("done", 0)
+    current.setdefault("total", 0)
+    current.setdefault("success", 0)
+    current.setdefault("failed", 0)
+    current.setdefault("skipped", 0)
+    current.setdefault("active_concurrency", 0)
+    current.setdefault("trigger", current.get("trigger"))
+    _scan_progress[media_root] = current
 
 
 @dataclass(frozen=True)
@@ -303,6 +339,13 @@ def title_matches(scraped_title: str, folder_name: str, code: str | None = None)
     return False
 
 
+def candidate_title_matches(candidate: ScrapeCandidate, folder_name: str, query: str, code: str | None = None) -> bool:
+    for title in (candidate.title, candidate.original_title or ""):
+        if title_matches(title, folder_name, code) or title_matches(title, query, code):
+            return True
+    return False
+
+
 def _local_metadata(movie: dict) -> dict:
     raw = movie.get("local_metadata") if movie else None
     if isinstance(raw, dict):
@@ -413,7 +456,7 @@ def scan_media(root: str = None) -> list[dict]:
         base = Path(media_root)
         if not base.exists(): continue
         trigger = _scan_progress.get(media_root, {}).get("trigger")
-        _scan_progress[media_root] = {"status": "scanning", "done": 0, "total": 0, "trigger": trigger}
+        _set_scan_progress(media_root, status="scanning", done=0, total=0, trigger=trigger)
         for dirpath, dirnames, filenames in os.walk(base):
             folder = Path(dirpath)
             media_files = find_media_files(folder)
@@ -473,7 +516,7 @@ def scan_media(root: str = None) -> list[dict]:
                     item["created_at"] = datetime.fromtimestamp(folder_mtime).strftime("%Y-%m-%d %H:%M:%S")
                 results.append(item)
             dirnames[:] = [d for d in dirnames if not _should_skip_dir(d)]
-        _scan_progress[media_root] = {"status": "scanned", "done": 0, "total": 0, "trigger": trigger}
+        _set_scan_progress(media_root, status="scanned", done=0, total=0, trigger=trigger)
     return results
 
 def normalize_scraper_name(scraper: str | None) -> str:
@@ -501,33 +544,137 @@ def build_fallback_chain(preferred: str) -> list[str]:
         return ["bangumi", "tmdb_tv_search"]
     return ["auto"]
 
+
+def _staff_to_dict(staff: ScrapeStaff) -> dict:
+    return {
+        "name": staff.name,
+        "role": staff.role or "",
+        "job": staff.job or "",
+        "department": staff.department or "",
+        "person_id": staff.person_id or "",
+        "source": staff.source or "",
+    }
+
+
+def _candidate_to_dict(candidate: ScrapeCandidate) -> dict:
+    return {
+        "source": candidate.source,
+        "source_id": candidate.source_id,
+        "media_type": candidate.media_type or "",
+        "title": candidate.title,
+        "original_title": candidate.original_title or "",
+        "year": str(candidate.year or ""),
+        "poster_url": candidate.poster_url,
+        "backdrop_url": candidate.backdrop_url,
+        "overview": candidate.overview or "",
+        "score": candidate.score,
+    }
+
+
+def _thumbnail_json(result: ScrapeResult) -> str:
+    raw = result.raw or {}
+    existing = raw.get("javdb_thumbnails")
+    if existing:
+        return existing if isinstance(existing, str) else json.dumps(existing, ensure_ascii=False)
+    thumbs = []
+    for url in (result.thumbnail_url, result.still_url, result.episode_still_url):
+        if url and url not in thumbs:
+            thumbs.append(url)
+    return json.dumps(thumbs, ensure_ascii=False) if thumbs else ""
+
+
+def _scrape_result_to_legacy(result: ScrapeResult, *, exact: bool = False) -> dict:
+    raw = result.raw or {}
+    source = result.source
+    cover = result.cover_url or result.poster_url or raw.get("cover_remote") or raw.get("poster_url") or ""
+    media_type = result.media_type or raw.get("media_type") or ""
+    source_id = str(result.source_id or raw.get("source_id") or "")
+    release_date = raw.get("release_date") or raw.get("date") or (str(result.year) if result.year else "")
+    duration = raw.get("runtime") or raw.get("duration")
+    cast = [_staff_to_dict(item) for item in result.cast]
+    crew = [_staff_to_dict(item) for item in result.crew]
+    actress = raw.get("actress") or ""
+    if not actress and source == "javdatabase" and cast:
+        actress = ", ".join(item["name"] for item in cast if item.get("name"))
+
+    data = {
+        "source": source,
+        "scraper_source": source,
+        "source_id": source_id,
+        "title": result.title or raw.get("title", ""),
+        "original_title": result.original_title or raw.get("original_title") or "",
+        "actress": actress,
+        "release_date": release_date,
+        "duration": duration,
+        "cover_remote": cover,
+        "backdrop_url": result.backdrop_url or raw.get("backdrop_url") or "",
+        "javdb_url": raw.get("javdb_url") or raw.get("bgm_url") or "",
+        "javdb_score": raw.get("score") or raw.get("javdb_score"),
+        "javdb_likes": raw.get("votes") or raw.get("collection_total") or raw.get("javdb_likes"),
+        "javdb_thumbnails": _thumbnail_json(result),
+        "tmdb_id": int(result.tmdb_id) if result.tmdb_id and str(result.tmdb_id).isdigit() else raw.get("tmdb_id"),
+        "tmdb_type": media_type if source == "tmdb" else "",
+        "bangumi_id": result.bangumi_id,
+        "javdb_id": result.javdb_id,
+        "seasons": raw.get("seasons", []),
+        "cast": cast,
+        "crew": crew,
+        "imdb_id": raw.get("imdb_id"),
+        "episode_title": result.episode_title or raw.get("episode_title") or "",
+        "episode_still": result.episode_still_url or raw.get("episode_still") or "",
+        "_exact_match": exact,
+        "_raw": raw,
+    }
+    if result.season is not None:
+        data["tmdb_season"] = result.season
+    if result.episode is not None:
+        data["tmdb_episode"] = result.episode
+    return data
+
+
+def _scraper_name_for_source(source: str | None, media_type: str | None = None) -> str:
+    value = (source or "auto").strip().lower()
+    if value in {"tmdb", "tmdb_movie", "tmdb_tv"}:
+        return "tmdb_tv" if media_type == "tv" or value == "tmdb_tv" else "tmdb_movie"
+    return normalize_scraper_name(value)
+
+
+async def _fetch_detail_legacy(
+    source: str,
+    source_id: str,
+    media_type: str | None = None,
+    *,
+    exact: bool = True,
+) -> dict | None:
+    scraper_name = _scraper_name_for_source(source, media_type)
+    try:
+        scraper = get_scraper(scraper_name)
+        result = await scraper.get_detail(source_id, media_type=media_type)
+    except Exception as e:
+        from .config import logger
+        logger.warning(f"  {scraper_name}: detail error for {source_id}: {e}")
+        return None
+    if not result or not result.title:
+        return None
+    return _scrape_result_to_legacy(result, exact=exact)
+
+
+async def _search_scraper_candidates(scraper_name: str, query: str, media_type: str | None = None, limit: int = 10) -> list[ScrapeCandidate]:
+    try:
+        scraper = get_scraper(scraper_name)
+        return await scraper.search(query, media_type=media_type, limit=limit)
+    except Exception as e:
+        from .config import logger
+        logger.warning(f"  {scraper_name}: search error for '{query}': {e}")
+        return []
+
 async def try_scrape_javdb(code: str) -> dict | None:
-    from .javdb import search_javdb
-    data = await search_javdb(code)
-    if data and data.get("title"):
-        cast = [
-            {"name": name.strip(), "role": "", "source": "javdb"}
-            for name in re.split(r"[,，、/]", data.get("actress", "") or "")
-            if name.strip()
-        ]
-        crew = []
-        if data.get("director"):
-            crew.append({"name": data["director"], "job": "Director", "source": "javdb"})
-        if data.get("studio"):
-            crew.append({"name": data["studio"], "job": "Studio", "source": "javdb"})
-        return {
-            "source": "javdatabase", "title": data.get("title", ""),
-            "actress": data.get("actress", ""), "release_date": data.get("release_date", ""),
-            "duration": data.get("duration"), "cover_remote": data.get("cover_remote", ""),
-            "javdb_url": data.get("javdb_url", ""), "javdb_score": data.get("javdb_score"),
-            "javdb_likes": data.get("javdb_likes"), "javdb_thumbnails": data.get("javdb_thumbnails", ""),
-            "cast": cast, "crew": crew,
-        }
-    return None
+    return await _fetch_detail_legacy("javdatabase", code, "movie")
 
 def _tmdb_scrape_data(detail: dict, source_id: str, media_type: str, exact: bool = False) -> dict:
     return {
-        "source": "tmdb", "title": detail.get("title", ""),
+        "source": "tmdb", "scraper_source": "tmdb", "source_id": str(source_id),
+        "title": detail.get("title", ""),
         "release_date": detail.get("release_date", ""),
         "duration": detail.get("runtime") or detail.get("duration", 0),
         "cover_remote": detail.get("poster_url", ""),
@@ -536,6 +683,7 @@ def _tmdb_scrape_data(detail: dict, source_id: str, media_type: str, exact: bool
         "tmdb_id": int(source_id), "tmdb_type": media_type,
         "seasons": detail.get("seasons", []), "cast": detail.get("cast", []),
         "crew": detail.get("crew", []), "imdb_id": detail.get("imdb_id"),
+        "_raw": detail,
         "_exact_match": exact,
     }
 
@@ -553,7 +701,6 @@ async def try_scrape_tmdb_title(
     code: str,
     media_type: Literal["movie", "tv"] | None = None,
 ) -> dict | None:
-    from .tmdb import search_tmdb, fetch_tmdb_detail
     from .config import logger
     if not settings.tmdb_api_key and not settings.tmdb_access_token:
         logger.warning(f"TMDB credentials not configured, skipping for '{folder_name}'")
@@ -561,25 +708,45 @@ async def try_scrape_tmdb_title(
     clean_name = remove_tmdb_id_token(folder_name)
     queries = [clean_name, clean_folder_name(clean_name), generate_folder_identifier(clean_name)]
     queries.extend(generate_keyword_queries(folder_name))
-    best = None
+    best: ScrapeCandidate | None = None
+    scraper_names = ["tmdb_tv" if media_type == "tv" else "tmdb_movie"] if media_type else ["tmdb_movie", "tmdb_tv"]
+    failures: list[str] = []
     for query in queries:
         if not query: continue
-        results = await search_tmdb(query, media_type=media_type)
-        if results:
+        for scraper_name in scraper_names:
+            endpoint_type = "tv" if scraper_name == "tmdb_tv" else "movie"
+            logger.info(f"  {scraper_name}: search endpoint /search/{endpoint_type} query='{query}'")
+            results = await _search_scraper_candidates(scraper_name, query, media_type=media_type, limit=5)
+            if not results:
+                failures.append(f"{scraper_name}:{query}: no results")
+                continue
+            rejected = []
             for candidate in results[:3]:
-                if title_matches(candidate.get("title", ""), clean_name, code):
+                if candidate_title_matches(candidate, clean_name, query, code):
                     best = candidate
                     break
+                rejected.append(candidate.title)
+            if not best:
+                logger.info(
+                    f"  {scraper_name}: title_matches rejected query='{query}' "
+                    f"candidates={rejected[:3]}"
+                )
+                failures.append(f"{scraper_name}:{query}: title mismatch")
             if best: break
+        if best: break
     if not best:
         scope = f" {media_type}" if media_type else ""
-        logger.info(f"  TMDB{scope}: no match for '{folder_name}'")
+        logger.info(f"  TMDB{scope}: no match for '{folder_name}', failures={'; '.join(failures)}")
         return None
-    detail = await fetch_tmdb_detail(best["source_id"], best["media_type"])
-    if not detail: return None
-    data = _tmdb_scrape_data(detail, best["source_id"], best["media_type"])
+    logger.info(
+        f"  TMDB {best.media_type}: selected source_id={best.source_id} "
+        f"title='{best.title}' original_title='{best.original_title or ''}'"
+    )
+    data = await _fetch_detail_legacy("tmdb", best.source_id, best.media_type, exact=False)
+    if not data:
+        return None
     if not data.get("title"):
-        data["title"] = best.get("title", "")
+        data["title"] = best.title
     return data
 
 
@@ -588,13 +755,20 @@ async def try_scrape_tmdb_typed(
     code: str,
     media_type: Literal["movie", "tv"],
     candidate_names: list[str] | None = None,
+    movie: dict | None = None,
 ) -> dict | None:
-    from .tmdb import fetch_tmdb_by_id
     from .config import logger
     candidates = candidate_names or [search_name, code]
     token = _first_tmdb_token(candidates)
     scraper_name = "tmdb_movie" if media_type == "movie" else "tmdb_tv"
     clean_title = remove_tmdb_id_token(search_name)
+    existing_tmdb_id = str((movie or {}).get("tmdb_id") or "").strip()
+    existing_tmdb_type = str((movie or {}).get("tmdb_type") or "").strip()
+    if not token and existing_tmdb_id and (not existing_tmdb_type or existing_tmdb_type == media_type):
+        try:
+            token = TmdbIdToken(int(existing_tmdb_id), media_type, existing_tmdb_id, f"{media_type}.tmdb_id", "explicit")
+        except ValueError:
+            logger.warning(f"  {scraper_name}: invalid stored tmdb_id='{existing_tmdb_id}', fallback to title search")
 
     if token:
         logger.info(
@@ -602,10 +776,10 @@ async def try_scrape_tmdb_typed(
             f"using /{media_type}/{token.id}"
         )
         if settings.tmdb_api_key or settings.tmdb_access_token:
-            detail = await fetch_tmdb_by_id(token.id, media_type)
-            if detail and detail.get("title"):
+            data = await _fetch_detail_legacy("tmdb", str(token.id), media_type, exact=True)
+            if data and data.get("title"):
                 logger.info(f"  {scraper_name}: TMDB ID exact match success /{media_type}/{token.id}")
-                return _tmdb_scrape_data(detail, str(token.id), media_type, exact=True)
+                return data
             logger.warning("  TMDB ID 精确匹配失败，fallback 到标题搜索")
         else:
             logger.warning(f"  {scraper_name}: TMDB credentials not configured, fallback to title search")
@@ -613,9 +787,10 @@ async def try_scrape_tmdb_typed(
     logger.info(f"  {scraper_name}: fallback to Bangumi title search for '{clean_title}'")
     data = await try_scrape_bangumi(clean_title, code)
     if data:
+        logger.info(f"  {scraper_name}: Bangumi fallback success title='{data.get('title', '')}'")
         return data
 
-    logger.info(f"  {scraper_name}: fallback to TMDB {media_type} title search for '{clean_title}'")
+    logger.info(f"  {scraper_name}: Bangumi fallback failed; fallback to TMDB {media_type} title search for '{clean_title}'")
     return await try_scrape_tmdb_title(clean_title, code, media_type)
 
 
@@ -625,7 +800,7 @@ async def try_scrape_tmdb_movie(
     candidate_names: list[str] | None = None,
     movie: dict | None = None,
 ) -> dict | None:
-    return await try_scrape_tmdb_typed(search_name, code, "movie", candidate_names)
+    return await try_scrape_tmdb_typed(search_name, code, "movie", candidate_names, movie)
 
 
 async def try_scrape_tmdb_tv(
@@ -634,7 +809,7 @@ async def try_scrape_tmdb_tv(
     candidate_names: list[str] | None = None,
     movie: dict | None = None,
 ) -> dict | None:
-    return await try_scrape_tmdb_typed(search_name, code, "tv", candidate_names)
+    return await try_scrape_tmdb_typed(search_name, code, "tv", candidate_names, movie)
 
 
 async def try_scrape_tmdb(folder_name: str, code: str) -> dict | None:
@@ -698,6 +873,13 @@ async def try_scrape_tmdb_id(
     candidate_names: list[str] | None = None,
 ) -> dict | None:
     from .config import logger
+    if media_type in {"movie", "tv"}:
+        data = await _fetch_detail_legacy("tmdb", str(tmdb_id), media_type, exact=True)
+        if data and data.get("title"):
+            return data
+        logger.info(f"  TMDB ID exact match failed for tmdbid={tmdb_id}")
+        return None
+
     token = TmdbIdToken(
         id=tmdb_id,
         media_type=media_type,
@@ -716,35 +898,28 @@ async def try_scrape_tmdb_id(
     return _tmdb_scrape_data(detail, str(tmdb_id), resolved_type, exact=True)
 
 async def try_scrape_bangumi(folder_name: str, code: str) -> dict | None:
-    from .bangumi import search_bangumi, fetch_bangumi_detail
     from .config import logger
     folder_name = remove_tmdb_id_token(folder_name)
     queries = [folder_name, clean_folder_name(folder_name), generate_folder_identifier(folder_name)]
     queries.extend(generate_keyword_queries(folder_name))
-    best = None
+    best: ScrapeCandidate | None = None
     for query in queries:
         if not query: continue
-        results = await search_bangumi(query)
-        if results:
-            for candidate in results[:3]:
-                if title_matches(candidate.get("title", ""), folder_name, code):
-                    best = candidate
-                    break
-            if best: break
+        results = await _search_scraper_candidates("bangumi", query, limit=5)
+        for candidate in results[:3]:
+            if candidate_title_matches(candidate, folder_name, query, code):
+                best = candidate
+                break
+        if best: break
     if not best:
         logger.info(f"  Bangumi: no match for '{folder_name}'")
         return None
-    detail = await fetch_bangumi_detail(best["source_id"])
-    if not detail: return None
-    return {
-        "source": "bangumi", "title": detail.get("title", best.get("title", "")),
-        "release_date": detail.get("release_date", ""),
-        "cover_remote": detail.get("poster_url", ""),
-        "javdb_score": detail.get("score"),
-        "javdb_likes": detail.get("votes") or detail.get("collection_total"),
-        "cast": detail.get("cast", []),
-        "crew": detail.get("crew", []),
-    }
+    data = await _fetch_detail_legacy("bangumi", best.source_id, best.media_type, exact=False)
+    if not data:
+        return None
+    if not data.get("title"):
+        data["title"] = best.title
+    return data
 
 async def try_scrape_auto(
     search_name: str,
@@ -810,6 +985,19 @@ def has_local_data(movie_row: dict) -> bool:
     has_cover = bool(cover and (len(str(cover)) <= 64 or Path(str(cover)).exists()))
     return has_metadata and has_cover
 
+
+def has_complete_scraped_data(movie_row: dict) -> bool:
+    title = bool((movie_row.get("title") or "").strip())
+    cover = bool(movie_row.get("cover_local") or movie_row.get("cover_remote"))
+    source_id = bool(
+        movie_row.get("tmdb_id")
+        or movie_row.get("source_id")
+        or movie_row.get("bangumi_id")
+        or movie_row.get("javdb_id")
+        or movie_row.get("javdb_url")
+    )
+    return title and cover and source_id
+
 async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = "", replace: bool = False) -> int:
     from .database import get_db
     from .config import logger
@@ -827,6 +1015,14 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
         "fanart_local": data.get("backdrop_url") or data.get("fanart_local") or "",
         "tmdb_id": data.get("tmdb_id"),
         "tmdb_type": data.get("tmdb_type") or "",
+        "tmdb_season": data.get("tmdb_season"),
+        "tmdb_episode": data.get("tmdb_episode"),
+        "episode_title": data.get("episode_title") or "",
+        "episode_still": data.get("episode_still") or "",
+        "scraper_source": data.get("scraper_source") or data.get("source") or "",
+        "source_id": data.get("source_id") or "",
+        "bangumi_id": data.get("bangumi_id") or "",
+        "javdb_id": data.get("javdb_id") or "",
         "cast": json.dumps(data.get("cast") or [], ensure_ascii=False),
         "crew": json.dumps(data.get("crew") or [], ensure_ascii=False),
     }
@@ -846,11 +1042,15 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
                tmdb_type=NULLIF(?, ''),
                "cast"=NULLIF(?, '[]'),
                crew=NULLIF(?, '[]'),
-               tmdb_season=NULL,
-               tmdb_episode=NULL,
-               episode_title=NULL,
+               scraper_source=NULLIF(?, ''),
+               source_id=NULLIF(?, ''),
+               bangumi_id=NULLIF(?, ''),
+               javdb_id=NULLIF(?, ''),
+               tmdb_season=?,
+               tmdb_episode=?,
+               episode_title=NULLIF(?, ''),
                episode_overview=NULL,
-               episode_still=NULL,
+               episode_still=NULLIF(?, ''),
                episode_still_local=NULL,
                updated_at=datetime('now')
         """
@@ -870,6 +1070,14 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
                tmdb_type=COALESCE(NULLIF(?, ''), tmdb_type),
                "cast"=COALESCE(NULLIF(?, '[]'), "cast"),
                crew=COALESCE(NULLIF(?, '[]'), crew),
+               scraper_source=COALESCE(NULLIF(?, ''), scraper_source),
+               source_id=COALESCE(NULLIF(?, ''), source_id),
+               bangumi_id=COALESCE(NULLIF(?, ''), bangumi_id),
+               javdb_id=COALESCE(NULLIF(?, ''), javdb_id),
+               tmdb_season=COALESCE(?, tmdb_season),
+               tmdb_episode=COALESCE(?, tmdb_episode),
+               episode_title=COALESCE(NULLIF(?, ''), episode_title),
+               episode_still=COALESCE(NULLIF(?, ''), episode_still),
                updated_at=datetime('now')
         """
     values = (
@@ -877,6 +1085,8 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
         fields["javdb_url"], fields["javdb_score"], fields["javdb_likes"],
         fields["javdb_thumbnails"], fields["cover_remote"], fields["fanart_local"],
         fields["tmdb_id"], fields["tmdb_type"], fields["cast"], fields["crew"],
+        fields["scraper_source"], fields["source_id"], fields["bangumi_id"], fields["javdb_id"],
+        fields["tmdb_season"], fields["tmdb_episode"], fields["episode_title"], fields["episode_still"],
     )
     if media_root:
         cur = await db.execute(
@@ -895,13 +1105,22 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
     if is_season_folder(folder_name) and data.get("cover_remote"):
         parent = str(Path(folder_levels).parent) if str(Path(folder_levels).parent) != "." else ""
         if parent:
-            await db.execute(
-                """UPDATE movies SET
-                   cover_remote=COALESCE(NULLIF(?, ''), cover_remote),
-                   updated_at=datetime('now')
-                   WHERE folder_levels LIKE ?""",
-                (data.get("cover_remote", ""), parent + "/%")
-            )
+            if media_root:
+                await db.execute(
+                    """UPDATE movies SET
+                       cover_remote=COALESCE(NULLIF(?, ''), cover_remote),
+                       updated_at=datetime('now')
+                       WHERE folder_levels LIKE ? AND media_root=?""",
+                    (data.get("cover_remote", ""), parent + "/%", media_root)
+                )
+            else:
+                await db.execute(
+                    """UPDATE movies SET
+                       cover_remote=COALESCE(NULLIF(?, ''), cover_remote),
+                       updated_at=datetime('now')
+                       WHERE folder_levels LIKE ?""",
+                    (data.get("cover_remote", ""), parent + "/%")
+                )
 
     if data.get("cover_remote") or replace:
         if media_root:
@@ -965,7 +1184,7 @@ async def scrape_for_library(media_root: str):
     trigger = _scan_progress.get(media_root, {}).get("trigger")
     if scraper == "none":
         logger.info(f"Scraping disabled for {media_root}")
-        _scan_progress[media_root] = {"status": "disabled", "done": 0, "total": 0, "trigger": trigger}
+        _set_scan_progress(media_root, status="disabled", done=0, total=0, trigger=trigger)
         return
 
     chain = build_fallback_chain(scraper)
@@ -973,37 +1192,85 @@ async def scrape_for_library(media_root: str):
 
     db = await get_db()
     cur = await db.execute(
-        """SELECT DISTINCT code, folder_levels, path, title, cover_local, local_metadata,
-                  tmdb_type, tmdb_season, tmdb_episode, clean_title, episode_number, display_title
+        """SELECT DISTINCT code, folder_levels, path, title, cover_local, cover_remote,
+                  javdb_url, local_metadata, tmdb_id, tmdb_type, tmdb_season, tmdb_episode,
+                  clean_title, episode_number, display_title, source_id, bangumi_id, javdb_id
            FROM movies WHERE media_root=?""",
         (media_root,)
     )
     rows = await cur.fetchall()
     if not rows:
-        _scan_progress[media_root] = {"status": "done", "done": 0, "total": 0, "trigger": trigger}
+        _set_scan_progress(media_root, status="done", done=0, total=0, trigger=trigger)
         return
 
-    total_folders = len(set(r["folder_levels"] for r in rows if r["folder_levels"]))
-    _scan_progress[media_root] = {"status": "scraping", "done": 0, "total": total_folders, "trigger": trigger}
-
-    scraped_folders = set()
-    done_count = 0
+    folder_rows: list[dict] = []
+    seen_folders = set()
     for r in rows:
         folder_levels = r["folder_levels"] or ""
-        folder_name = Path(folder_levels).name if folder_levels else ""
-        code = r["code"] or ""
-        movie_path = r["path"] or ""
-        row_clean_title = (r["clean_title"] or "").strip()
-
-        if not folder_name: continue
-        if folder_levels in scraped_folders: continue
-
-        if has_local_data(dict(r)):
-            logger.info(f"  Skip (local data exists): {folder_name}")
-            scraped_folders.add(folder_levels)
-            done_count += 1
-            _scan_progress[media_root] = {"status": "scraping", "done": done_count, "total": total_folders, "trigger": trigger}
+        if not folder_levels or folder_levels in seen_folders:
             continue
+        seen_folders.add(folder_levels)
+        folder_rows.append(dict(r))
+
+    total_folders = len(folder_rows)
+    if not total_folders:
+        _set_scan_progress(media_root, status="done", done=0, total=0, trigger=trigger)
+        return
+
+    per_library_limit = _bounded_int(settings.scrape_concurrency_per_library, 4)
+    per_library_sem = asyncio.Semaphore(per_library_limit)
+    global_sem = _get_global_scrape_semaphore()
+    done_count = 0
+    success_count = 0
+    failed_count = 0
+    skipped_count = 0
+    active_count = 0
+    progress_lock = asyncio.Lock()
+
+    _set_scan_progress(
+        media_root,
+        status="scraping",
+        done=0,
+        total=total_folders,
+        success=0,
+        failed=0,
+        skipped=0,
+        active_concurrency=0,
+        trigger=trigger,
+        per_library_concurrency=per_library_limit,
+        global_concurrency=_global_scrape_limit,
+    )
+
+    async def process_folder(r: dict):
+        nonlocal done_count, success_count, failed_count, skipped_count, active_count
+        folder_levels = r.get("folder_levels") or ""
+        folder_name = Path(folder_levels).name if folder_levels else ""
+        code = r.get("code") or ""
+        movie_path = r.get("path") or ""
+        row_clean_title = (r.get("clean_title") or "").strip()
+
+        if not folder_name:
+            async with progress_lock:
+                skipped_count += 1
+                done_count += 1
+                _set_scan_progress(media_root, done=done_count, skipped=skipped_count)
+            return
+
+        if has_local_data(r):
+            logger.info(f"  Skip (local data exists): {folder_name}")
+            async with progress_lock:
+                skipped_count += 1
+                done_count += 1
+                _set_scan_progress(media_root, done=done_count, skipped=skipped_count)
+            return
+
+        if has_complete_scraped_data(r):
+            logger.info(f"  Skip (complete scraped data exists): {folder_name}")
+            async with progress_lock:
+                skipped_count += 1
+                done_count += 1
+                _set_scan_progress(media_root, done=done_count, skipped=skipped_count)
+            return
 
         search_name = row_clean_title or folder_name
         search_levels = folder_levels
@@ -1025,63 +1292,107 @@ async def scrape_for_library(media_root: str):
             folder_name,
             Path(folder_levels).parent.name if folder_levels and str(Path(folder_levels).parent) != "." else "",
             Path(movie_path).stem if movie_path else "",
-            r["title"] or "",
-            r["display_title"] or "",
+            r.get("title") or "",
+            r.get("display_title") or "",
             code,
             search_name,
         ]
 
         scraped = False
-        for sb in chain:
-            handler = FALLBACK_HANDLERS.get(sb)
-            if not handler: continue
-            try:
-                if sb == "javdatabase":
-                    data = await handler(code)
-                elif sb in {"auto", "tmdb_movie", "tmdb_tv", "tmdb"}:
-                    data = await handler(search_name, code, candidate_names, dict(r))
-                else:
-                    data = await handler(search_name, code)
-                if not data or not data.get("title"):
-                    logger.info(f"  {sb}: no result for '{search_name}'")
-                    continue
-                if sb in {"javdatabase", "auto"} and data.get("_exact_match"):
-                    passed = True
-                elif sb == "javdatabase":
-                    passed = True
-                else:
-                    passed = bool(data.get("_exact_match")) or title_matches(data.get("title", ""), search_name, code)
-                if passed:
-                    await _apply_scraped_data(folder_levels, data, media_root)
-                    logger.info(f"  {sb}: {search_name} → {data.get('title', search_name)}")
-
-                    if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
-                        season_num = infer_season_number(folder_name, data)
-                        if season_num:
-                            try:
-                                from .tmdb import match_episodes_in_folder
-                                matched = await match_episodes_in_folder(
-                                    str(data["tmdb_id"]), season_num, folder_levels, media_root
+        async with per_library_sem:
+            async with global_sem:
+                async with progress_lock:
+                    active_count += 1
+                    _set_scan_progress(media_root, active_concurrency=active_count)
+                try:
+                    for sb in chain:
+                        handler = FALLBACK_HANDLERS.get(sb)
+                        if not handler:
+                            continue
+                        try:
+                            if sb == "javdatabase":
+                                data = await handler(code)
+                            elif sb in {"auto", "tmdb_movie", "tmdb_tv", "tmdb"}:
+                                data = await handler(search_name, code, candidate_names, r)
+                            else:
+                                data = await handler(search_name, code)
+                            if not data or not data.get("title"):
+                                logger.info(f"  {sb}: no result for '{search_name}'")
+                                continue
+                            if sb in {"javdatabase", "auto"} and data.get("_exact_match"):
+                                passed = True
+                            elif sb == "javdatabase":
+                                passed = True
+                            else:
+                                passed = (
+                                    bool(data.get("_exact_match"))
+                                    or title_matches(data.get("title", ""), search_name, code)
+                                    or title_matches(data.get("original_title", ""), search_name, code)
                                 )
-                                if matched:
-                                    logger.info(f"  TMDB: matched {matched} episodes in '{folder_levels}'")
-                            except Exception as e:
-                                logger.warning(f"  TMDB: episode matching error: {e}")
+                            if passed:
+                                async with _sqlite_write_semaphore:
+                                    await _apply_scraped_data(folder_levels, data, media_root)
+                                logger.info(f"  {sb}: {search_name} → {data.get('title', search_name)}")
 
-                    scraped = True
-                    break
-                else:
-                    logger.info(f"  {sb}: title mismatch '{data.get('title', '')}' vs '{search_name}', trying fallback")
-            except Exception as e:
-                logger.warning(f"  {sb}: error for '{folder_name}': {e}")
+                                if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
+                                    season_num = infer_season_number(folder_name, data)
+                                    if season_num:
+                                        try:
+                                            from .tmdb import match_episodes_in_folder
+                                            async with _sqlite_write_semaphore:
+                                                matched = await match_episodes_in_folder(
+                                                    str(data["tmdb_id"]), season_num, folder_levels, media_root
+                                                )
+                                            if matched:
+                                                logger.info(f"  TMDB: matched {matched} episodes in '{folder_levels}'")
+                                        except Exception as e:
+                                            logger.warning(f"  TMDB: episode matching error: {e}")
 
-        if not scraped:
-            logger.info(f"  All scrapers failed for '{search_name}'")
-        scraped_folders.add(folder_levels)
-        done_count += 1
-        _scan_progress[media_root] = {"status": "scraping", "done": done_count, "total": total_folders, "trigger": trigger}
+                                scraped = True
+                                break
+                            logger.info(f"  {sb}: title mismatch '{data.get('title', '')}' vs '{search_name}', trying fallback")
+                        except Exception:
+                            logger.exception(
+                                f"  {sb}: error for media_root='{media_root}' folder='{folder_name}' "
+                                f"cleaned_title='{search_name}'"
+                            )
+                finally:
+                    async with progress_lock:
+                        active_count -= 1
+                        _set_scan_progress(media_root, active_concurrency=active_count)
 
-    _scan_progress[media_root] = {"status": "done", "done": total_folders, "total": total_folders, "trigger": trigger}
+        async with progress_lock:
+            if scraped:
+                success_count += 1
+            else:
+                failed_count += 1
+                logger.info(f"  All scrapers failed for '{search_name}'")
+            done_count += 1
+            _set_scan_progress(
+                media_root,
+                done=done_count,
+                success=success_count,
+                failed=failed_count,
+                skipped=skipped_count,
+            )
+
+    results = await asyncio.gather(*(process_folder(row) for row in folder_rows), return_exceptions=True)
+    for result in results:
+        if isinstance(result, Exception):
+            logger.warning(f"Scrape task failed for {media_root}: {result}")
+            failed_count += 1
+
+    _set_scan_progress(
+        media_root,
+        status="done",
+        done=total_folders,
+        total=total_folders,
+        success=success_count,
+        failed=failed_count,
+        skipped=skipped_count,
+        active_concurrency=0,
+        trigger=trigger,
+    )
 
 
 def _scan_lock_for(media_root: str) -> asyncio.Lock:
@@ -1124,19 +1435,26 @@ async def run_scan_for_root(media_root: str, trigger: str = "manual") -> dict:
         while True:
             _scan_pending.discard(media_root)
             runs += 1
-            _scan_progress[media_root] = {"status": "scanning", "done": 0, "total": 0, "trigger": trigger}
+            _set_scan_progress(
+                media_root,
+                status="scanning",
+                done=0,
+                total=0,
+                success=0,
+                failed=0,
+                skipped=0,
+                active_concurrency=0,
+                trigger=trigger,
+            )
             logger.info(f"Scan started for {media_root} trigger={trigger}")
             results = await asyncio.to_thread(scan_media, root=media_root)
             for item in results:
-                await upsert_movie(item)
-            removed_total += await cleanup_deleted_files(media_root)
+                async with _sqlite_write_semaphore:
+                    await upsert_movie(item)
+            async with _sqlite_write_semaphore:
+                removed_total += await cleanup_deleted_files(media_root)
             total_results += len(results)
-            _scan_progress[media_root] = {
-                "status": "scraping",
-                "done": 0,
-                "total": 0,
-                "trigger": trigger,
-            }
+            _set_scan_progress(media_root, status="scraping", done=0, total=0, trigger=trigger)
             await scrape_for_library(media_root)
             logger.info(f"Scan and scrape complete for {media_root} trigger={trigger} files={len(results)}")
             if media_root not in _scan_pending:
@@ -1157,45 +1475,35 @@ async def run_scan_for_root(media_root: str, trigger: str = "manual") -> dict:
 async def clear_library_scraped_data(media_root: str):
     from .database import get_db
     from .config import logger
-    import shutil
+
+    if not media_root:
+        logger.warning("clear_library_scraped_data rejected: media_root is required")
+        raise ValueError("media_root required")
 
     db = await get_db()
-    await db.execute(
+    cur = await db.execute(
         """UPDATE movies SET title=NULL, actress=NULL, release_date=NULL,
-           duration=NULL, cover_remote=NULL, javdb_url=NULL, javdb_score=NULL,
-           javdb_likes=NULL, javdb_thumbnails=NULL,
+           duration=NULL, cover_local=NULL, cover_remote=NULL, fanart_local=NULL,
+           javdb_url=NULL, javdb_score=NULL, javdb_likes=NULL, javdb_thumbnails=NULL,
            tmdb_id=NULL, tmdb_type=NULL, tmdb_season=NULL, tmdb_episode=NULL,
-           episode_title=NULL, episode_overview=NULL, episode_still=NULL,
+           scraper_source=NULL, source_id=NULL, bangumi_id=NULL, javdb_id=NULL,
+           episode_title=NULL, episode_overview=NULL, episode_still=NULL, episode_still_local=NULL,
            "cast"='[]', crew='[]',
            updated_at=datetime('now')
-           WHERE media_root=? AND local_metadata='{}'""",
+           WHERE media_root=?""",
         (media_root,)
     )
-    await db.execute(
-        """UPDATE movies SET cover_remote=NULL, javdb_url=NULL, javdb_score=NULL,
-           javdb_likes=NULL, javdb_thumbnails=NULL,
-           tmdb_id=NULL, tmdb_type=NULL, tmdb_season=NULL, tmdb_episode=NULL,
-           episode_title=NULL, episode_overview=NULL, episode_still=NULL,
-           "cast"='[]', crew='[]',
-           updated_at=datetime('now')
-           WHERE media_root=? AND local_metadata!='{}'""",
-        (media_root,)
-    )
-    await db.execute("DELETE FROM scraper_cache WHERE query LIKE ?", (f"%{media_root}%",))
-    await db.execute("DELETE FROM javdb_cache WHERE code IN (SELECT code FROM movies WHERE media_root=?)", (media_root,))
     await db.commit()
 
-    covers_dir = Path(settings.covers_dir)
-    if covers_dir.exists():
-        for f in covers_dir.glob("*.jpg"):
-            try: f.unlink()
-            except Exception: pass
-
-    logger.info(f"Cleared all scraped data for {media_root}")
+    affected = cur.rowcount if cur.rowcount is not None else 0
+    logger.info(
+        f"Cleared scraped fields for media_root='{media_root}', affected={affected}; "
+        "scraper_cache/javdb_cache and other media roots preserved"
+    )
 
 
 async def rescrape_movie(movie_id: int) -> dict:
-    from .database import get_db
+    from .database import get_db, get_library_settings
     from .config import logger
 
     db = await get_db()
@@ -1233,6 +1541,12 @@ async def rescrape_movie(movie_id: int) -> dict:
             search_name = parent_name
             search_levels = str(parent)
 
+    logger.info(
+        f"rescrape_movie start: media_root='{media_root}' movie_id={movie_id} "
+        f"scraper='{scraper}' chain={chain} folder='{folder_levels}' clean_title='{row_clean_title}' "
+        f"search_name='{search_name}' tmdb_id='{movie.get('tmdb_id') or ''}'"
+    )
+
     candidate_names = [
         row_clean_title,
         folder_name,
@@ -1244,9 +1558,11 @@ async def rescrape_movie(movie_id: int) -> dict:
         search_name,
     ]
 
+    failures: list[str] = []
     for sb in chain:
         handler = FALLBACK_HANDLERS.get(sb)
         if not handler:
+            failures.append(f"{sb}: handler missing")
             continue
         try:
             if sb == "javdatabase":
@@ -1256,36 +1572,65 @@ async def rescrape_movie(movie_id: int) -> dict:
             else:
                 data = await handler(search_name, code)
             if not data or not data.get("title"):
+                failures.append(f"{sb}: no result")
+                logger.info(
+                    f"rescrape_movie no result: media_root='{media_root}' movie_id={movie_id} "
+                    f"scraper='{sb}' search='{search_name}'"
+                )
                 continue
             if sb in {"javdatabase", "auto"} and data.get("_exact_match"):
                 passed = True
             elif sb == "javdatabase":
                 passed = True
             else:
-                passed = bool(data.get("_exact_match")) or title_matches(data.get("title", ""), search_name, code)
+                passed = (
+                    bool(data.get("_exact_match"))
+                    or title_matches(data.get("title", ""), search_name, code)
+                    or title_matches(data.get("original_title", ""), search_name, code)
+                )
             if passed:
-                await _apply_scraped_data(folder_levels, data, media_root)
+                async with _sqlite_write_semaphore:
+                    affected = await _apply_scraped_data(folder_levels, data, media_root)
                 if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
                     season_num = infer_season_number(folder_name, data)
                     if season_num:
                         try:
                             from .tmdb import match_episodes_in_folder
-                            await match_episodes_in_folder(
-                                str(data["tmdb_id"]), season_num, folder_levels, media_root
-                            )
+                            async with _sqlite_write_semaphore:
+                                await match_episodes_in_folder(
+                                    str(data["tmdb_id"]), season_num, folder_levels, media_root
+                                )
                         except Exception:
                             pass
-                return {"ok": True, "source": sb, "title": data.get("title", search_name)}
+                logger.info(
+                    f"rescrape_movie success: media_root='{media_root}' movie_id={movie_id} "
+                    f"scraper='{sb}' title='{data.get('title', search_name)}' affected={affected}"
+                )
+                return {"ok": True, "source": sb, "title": data.get("title", search_name), "affected": affected}
             else:
-                logger.info(f"  rescrape: {sb} title mismatch")
+                failures.append(f"{sb}: title mismatch '{data.get('title', '')}'")
+                logger.info(
+                    f"rescrape_movie title mismatch: media_root='{media_root}' movie_id={movie_id} "
+                    f"scraper='{sb}' cleaned_title='{search_name}' result_title='{data.get('title', '')}' "
+                    f"source_id='{data.get('source_id') or data.get('tmdb_id') or data.get('bangumi_id') or data.get('javdb_id') or ''}'"
+                )
         except Exception as e:
-            logger.warning(f"  rescrape: {sb} error: {e}")
+            failures.append(f"{sb}: {e}")
+            logger.exception(
+                f"rescrape_movie error: media_root='{media_root}' movie_id={movie_id} "
+                f"scraper='{sb}' cleaned_title='{search_name}'"
+            )
 
-    return {"ok": False, "error": "All scrapers failed"}
+    failure_text = "; ".join(failures) if failures else "no handlers tried"
+    logger.warning(
+        f"rescrape_movie failed: media_root='{media_root}' movie_id={movie_id} "
+        f"library_scraper='{scraper}' cleaned_title='{search_name}' failures={failure_text}"
+    )
+    return {"ok": False, "error": f"All scrapers failed: {failure_text}"}
 
 
 async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: str = None, source_id: str = None, media_type: str = "movie") -> dict:
-    from .database import get_db
+    from .database import get_db, get_library_settings
     from .config import logger
 
     db = await get_db()
@@ -1304,44 +1649,26 @@ async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: st
     if source_id and preferred_scraper:
         data = None
         if preferred in {"tmdb_movie", "tmdb_tv"}:
-            from .tmdb import fetch_tmdb_detail
             forced_media_type = "tv" if preferred == "tmdb_tv" else "movie"
-            detail = await fetch_tmdb_detail(source_id, forced_media_type)
-            if detail:
-                data = {
-                    "source": "tmdb", "title": detail.get("title") or "",
-                    "release_date": detail.get("release_date") or "",
-                    "duration": detail.get("runtime") or detail.get("duration", 0),
-                    "cover_remote": detail.get("poster_url") or "",
-                    "backdrop_url": detail.get("backdrop_url") or "",
-                    "tmdb_id": int(source_id), "tmdb_type": forced_media_type,
-                    "cast": detail.get("cast", []), "crew": detail.get("crew", []),
-                    "seasons": detail.get("seasons", []),
-                    "imdb_id": detail.get("imdb_id") or "",
-                }
-        elif preferred_scraper == "bangumi":
-            from .bangumi import fetch_bangumi_detail
-            detail = await fetch_bangumi_detail(source_id)
-            if detail:
-                data = {
-                    "source": "bangumi", "title": detail.get("title") or "",
-                    "release_date": detail.get("release_date") or "",
-                    "cover_remote": detail.get("poster_url") or "",
-                }
-        elif preferred_scraper == "javdatabase":
-            data = await try_scrape_javdb(source_id)
+            data = await _fetch_detail_legacy("tmdb", source_id, forced_media_type)
+        elif preferred == "bangumi":
+            data = await _fetch_detail_legacy("bangumi", source_id, "tv")
+        elif preferred == "javdatabase":
+            data = await _fetch_detail_legacy("javdatabase", source_id, "movie")
 
         if data and data.get("title"):
-            await _apply_scraped_data(folder_levels, data, media_root, replace=True)
+            async with _sqlite_write_semaphore:
+                await _apply_scraped_data(folder_levels, data, media_root, replace=True)
             if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
                 folder_name = Path(folder_levels).name if folder_levels else ""
                 season_num = infer_season_number(folder_name, data)
                 if season_num:
                     try:
                         from .tmdb import match_episodes_in_folder
-                        await match_episodes_in_folder(
-                            str(data["tmdb_id"]), season_num, folder_levels, media_root
-                        )
+                        async with _sqlite_write_semaphore:
+                            await match_episodes_in_folder(
+                                str(data["tmdb_id"]), season_num, folder_levels, media_root
+                            )
                     except Exception:
                         pass
             return {"ok": True, "source": preferred, "title": data.get("title", query)}
@@ -1368,16 +1695,18 @@ async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: st
                 data = await handler(query, code)
             if not data or not data.get("title"):
                 continue
-            await _apply_scraped_data(folder_levels, data, media_root, replace=True)
+            async with _sqlite_write_semaphore:
+                await _apply_scraped_data(folder_levels, data, media_root, replace=True)
             if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
                 folder_name = Path(folder_levels).name if folder_levels else ""
                 season_num = infer_season_number(folder_name, data)
                 if season_num:
                     try:
                         from .tmdb import match_episodes_in_folder
-                        await match_episodes_in_folder(
-                            str(data["tmdb_id"]), season_num, folder_levels, media_root
-                        )
+                        async with _sqlite_write_semaphore:
+                            await match_episodes_in_folder(
+                                str(data["tmdb_id"]), season_num, folder_levels, media_root
+                            )
                     except Exception:
                         pass
             return {"ok": True, "source": sb, "title": data.get("title", query)}
@@ -1391,72 +1720,60 @@ async def rescrape_folder(folder_levels: str, media_root: str) -> dict:
     from .database import get_db
     from .config import logger
 
+    if not media_root:
+        return {"ok": False, "error": "media_root required"}
+
     db = await get_db()
-    if media_root:
-        cur = await db.execute("SELECT id FROM movies WHERE folder_levels=? AND media_root=?", (folder_levels, media_root))
-    else:
-        cur = await db.execute("SELECT id FROM movies WHERE folder_levels=?", (folder_levels,))
-    rows = await cur.fetchall()
-    if not rows:
+    cur = await db.execute(
+        "SELECT COUNT(*) AS total FROM movies WHERE folder_levels=? AND media_root=?",
+        (folder_levels, media_root),
+    )
+    count_row = await cur.fetchone()
+    total = int(count_row["total"] or 0) if count_row else 0
+    if total <= 0:
         return {"ok": False, "error": "No movies found in folder"}
 
-    count = 0
-    for row in rows:
-        result = await rescrape_movie(row["id"])
-        if result.get("ok"):
-            count += 1
+    cur = await db.execute(
+        "SELECT id FROM movies WHERE folder_levels=? AND media_root=? ORDER BY id LIMIT 1",
+        (folder_levels, media_root),
+    )
+    row = await cur.fetchone()
+    if not row:
+        return {"ok": False, "error": "No movies found in folder"}
 
-    logger.info(f"Folder rescrape: {count}/{len(rows)} movies updated in {folder_levels}")
-    return {"ok": True, "rescraped": count, "total": len(rows)}
+    logger.info(
+        f"Folder rescrape start: media_root='{media_root}' folder='{folder_levels}' "
+        f"movie_count={total} representative_movie_id={row['id']}"
+    )
+    result = await rescrape_movie(row["id"])
+    if not result.get("ok"):
+        logger.warning(
+            f"Folder rescrape failed: media_root='{media_root}' folder='{folder_levels}' "
+            f"movie_count={total} error='{result.get('error', '')}'"
+        )
+        return result
+
+    affected = int(result.get("affected") or total)
+    logger.info(
+        f"Folder rescrape complete: media_root='{media_root}' folder='{folder_levels}' "
+        f"affected={affected} total={total} source='{result.get('source')}'"
+    )
+    return {"ok": True, "rescraped": affected, "total": total, "source": result.get("source"), "title": result.get("title")}
 
 
 async def search_for_scrape(query: str, scraper: str = "tmdb") -> list[dict]:
-    results = []
     scraper = normalize_scraper_name(scraper)
     if scraper in {"tmdb_movie", "tmdb_tv"}:
-        from .tmdb import search_tmdb
         media_type = "tv" if scraper == "tmdb_tv" else "movie"
-        items = await search_tmdb(query, media_type=media_type)
-        for item in items[:10]:
-            results.append({
-                "source": "tmdb",
-                "source_id": item.get("source_id", ""),
-                "media_type": item.get("media_type", ""),
-                "title": item.get("title", ""),
-                "original_title": item.get("original_title", ""),
-                "year": item.get("release_date", "")[:4] if item.get("release_date") else "",
-                "poster_url": item.get("poster_url"),
-                "overview": item.get("overview", ""),
-            })
+        items = await _search_scraper_candidates(scraper, query, media_type=media_type, limit=10)
+        return [_candidate_to_dict(item) for item in items]
     elif scraper == "bangumi":
-        from .bangumi import search_bangumi
-        items = await search_bangumi(query)
-        for item in items[:10]:
-            results.append({
-                "source": "bangumi",
-                "source_id": item.get("source_id", ""),
-                "media_type": "tv",
-                "title": item.get("title", ""),
-                "original_title": item.get("original_title", ""),
-                "year": item.get("release_date", "")[:4] if item.get("release_date") else "",
-                "poster_url": item.get("poster_url"),
-                "overview": item.get("overview", ""),
-            })
+        items = await _search_scraper_candidates("bangumi", query, limit=10)
+        return [_candidate_to_dict(item) for item in items]
     elif scraper == "javdatabase":
-        from .javdb import search_javdb
-        data = await search_javdb(query)
-        if data and data.get("title"):
-            results.append({
-                "source": "javdatabase",
-                "source_id": query,
-                "media_type": "movie",
-                "title": data.get("title", ""),
-                "original_title": "",
-                "year": data.get("release_date", "")[:4] if data.get("release_date") else "",
-                "poster_url": data.get("cover_remote"),
-                "overview": "",
-            })
-    return results
+        items = await _search_scraper_candidates("javdatabase", query, media_type="movie", limit=10)
+        return [_candidate_to_dict(item) for item in items]
+    return []
 
 
 async def fetch_search_backdrops(results: list[dict]) -> list[dict]:
@@ -1471,13 +1788,12 @@ async def fetch_search_backdrops(results: list[dict]) -> list[dict]:
             continue
         seen.add(key)
         backdrop = None
-        detail = None
         if src == "tmdb":
-            from .tmdb import fetch_tmdb_detail
-            detail = await fetch_tmdb_detail(sid, mtype)
+            detail = await _fetch_detail_legacy("tmdb", sid, mtype)
         elif src == "bangumi":
-            from .bangumi import fetch_bangumi_detail
-            detail = await fetch_bangumi_detail(sid)
+            detail = await _fetch_detail_legacy("bangumi", sid, "tv")
+        else:
+            detail = None
         backdrop = detail.get("backdrop_url") if detail else None
         backdrops.append({"source_id": sid, "source": src, "backdrop_url": backdrop, "poster_url": r.get("poster_url")})
     return backdrops
@@ -1488,11 +1804,10 @@ async def change_folder_backdrop(folder_levels: str, media_root: str, fanart_url
     from .config import logger
     if not fanart_url:
         return {"ok": False, "error": "No URL provided"}
+    if not media_root:
+        return {"ok": False, "error": "media_root required"}
     db = await get_db()
-    if media_root:
-        await db.execute("UPDATE movies SET fanart_local=?, updated_at=datetime('now') WHERE folder_levels=? AND media_root=?", (fanart_url, folder_levels, media_root))
-    else:
-        await db.execute("UPDATE movies SET fanart_local=?, updated_at=datetime('now') WHERE folder_levels=?", (fanart_url, folder_levels))
+    await db.execute("UPDATE movies SET fanart_local=?, updated_at=datetime('now') WHERE folder_levels=? AND media_root=?", (fanart_url, folder_levels, media_root))
     await db.commit()
     logger.info(f"Backdrop changed for folder {folder_levels}")
     return {"ok": True}
@@ -1501,6 +1816,9 @@ async def change_folder_backdrop(folder_levels: str, media_root: str, fanart_url
 async def rescrape_folder_manual(folder_levels: str, media_root: str, query: str, preferred_scraper: str = "") -> dict:
     from .database import get_db, get_library_settings
     from .config import logger
+
+    if not media_root:
+        return {"ok": False, "error": "media_root required"}
 
     db = await get_db()
     folder_name = Path(folder_levels).name if folder_levels else ""
@@ -1520,10 +1838,7 @@ async def rescrape_folder_manual(folder_levels: str, media_root: str, query: str
         scraper = lib_setting.get("scraper", "auto") if lib_setting else "auto"
         chain = build_fallback_chain(scraper) if scraper != "none" else ["tmdb_movie", "bangumi"]
 
-    if media_root:
-        cur = await db.execute("SELECT code FROM movies WHERE folder_levels=? AND media_root=? LIMIT 1", (folder_levels, media_root))
-    else:
-        cur = await db.execute("SELECT code FROM movies WHERE folder_levels=? LIMIT 1", (folder_levels,))
+    cur = await db.execute("SELECT code FROM movies WHERE folder_levels=? AND media_root=? LIMIT 1", (folder_levels, media_root))
     row = await cur.fetchone()
     code = row["code"] if row else ""
 
@@ -1540,13 +1855,15 @@ async def rescrape_folder_manual(folder_levels: str, media_root: str, query: str
                 data = await handler(query, code or query)
             if not data or not data.get("title"):
                 continue
-            await _apply_scraped_data(folder_levels, data, media_root, replace=True)
+            async with _sqlite_write_semaphore:
+                await _apply_scraped_data(folder_levels, data, media_root, replace=True)
             if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
                 season_num = infer_season_number(folder_name, data)
                 if season_num:
                     try:
                         from .tmdb import match_episodes_in_folder
-                        await match_episodes_in_folder(str(data["tmdb_id"]), season_num, folder_levels, media_root)
+                        async with _sqlite_write_semaphore:
+                            await match_episodes_in_folder(str(data["tmdb_id"]), season_num, folder_levels, media_root)
                     except Exception:
                         pass
             return {"ok": True, "source": sb, "title": data.get("title", search_name)}
@@ -1559,46 +1876,31 @@ async def apply_folder_scrape_result(folder_levels: str, media_root: str, source
     from .config import logger
     from pathlib import Path
 
+    if not media_root:
+        return {"ok": False, "error": "media_root required"}
+
     data = None
     if source == "tmdb":
-        from .tmdb import fetch_tmdb_detail
-        detail = await fetch_tmdb_detail(source_id, media_type)
-        if detail:
-            data = {
-                "source": "tmdb", "title": detail.get("title") or "",
-                "release_date": detail.get("release_date") or "",
-                "duration": detail.get("runtime") or detail.get("duration", 0),
-                "cover_remote": detail.get("poster_url") or "",
-                "backdrop_url": detail.get("backdrop_url") or "",
-                "tmdb_id": int(source_id), "tmdb_type": media_type,
-                "cast": detail.get("cast", []), "crew": detail.get("crew", []),
-                "seasons": detail.get("seasons", []),
-                "imdb_id": detail.get("imdb_id") or "",
-            }
+        data = await _fetch_detail_legacy("tmdb", source_id, media_type)
     elif source == "bangumi":
-        from .bangumi import fetch_bangumi_detail
-        detail = await fetch_bangumi_detail(source_id)
-        if detail:
-            data = {
-                "source": "bangumi", "title": detail.get("title") or "",
-                "release_date": detail.get("release_date") or "",
-                "cover_remote": detail.get("poster_url") or "",
-            }
+        data = await _fetch_detail_legacy("bangumi", source_id, "tv")
     elif source == "javdatabase":
-        data = await try_scrape_javdb(source_id)
+        data = await _fetch_detail_legacy("javdatabase", source_id, "movie")
 
     if not data or not data.get("title"):
         return {"ok": False, "error": f"Failed to fetch detail from {source}"}
 
     folder_name = Path(folder_levels).name if folder_levels else ""
-    affected = await _apply_scraped_data(folder_levels, data, media_root, replace=True)
+    async with _sqlite_write_semaphore:
+        affected = await _apply_scraped_data(folder_levels, data, media_root, replace=True)
 
     if source == "tmdb" and media_type == "tv" and data.get("tmdb_id"):
         season_num = infer_season_number(folder_name, data)
         if season_num:
             try:
                 from .tmdb import match_episodes_in_folder
-                await match_episodes_in_folder(str(data["tmdb_id"]), season_num, folder_levels, media_root)
+                async with _sqlite_write_semaphore:
+                    await match_episodes_in_folder(str(data["tmdb_id"]), season_num, folder_levels, media_root)
             except Exception:
                 pass
 
@@ -1611,21 +1913,17 @@ async def change_folder_cover(folder_levels: str, media_root: str, cover_url: st
     from .config import logger
     import hashlib
 
+    if not media_root:
+        return {"ok": False, "error": "media_root required"}
     db = await get_db()
     try:
         from .covers import download_and_compress_cover
         cache_key = hashlib.md5(cover_url.encode()).hexdigest()[:16]
         await download_and_compress_cover(cover_url, cache_key)
-        if media_root:
-            await db.execute(
-                "UPDATE movies SET cover_remote=?, cover_local=?, updated_at=datetime('now') WHERE folder_levels=? AND media_root=?",
-                (cover_url, cache_key, folder_levels, media_root)
-            )
-        else:
-            await db.execute(
-                "UPDATE movies SET cover_remote=?, cover_local=?, updated_at=datetime('now') WHERE folder_levels=?",
-                (cover_url, cache_key, folder_levels)
-            )
+        await db.execute(
+            "UPDATE movies SET cover_remote=?, cover_local=?, updated_at=datetime('now') WHERE folder_levels=? AND media_root=?",
+            (cover_url, cache_key, folder_levels, media_root)
+        )
         await db.commit()
         logger.info(f"Cover changed for folder {folder_levels}")
         return {"ok": True}
@@ -1638,6 +1936,8 @@ async def edit_folder_movies(folder_levels: str, media_root: str, fields: dict) 
     from .database import get_db
     from .config import logger
 
+    if not media_root:
+        return {"ok": False, "error": "media_root required"}
     db = await get_db()
     sets = []
     values = []
@@ -1648,18 +1948,11 @@ async def edit_folder_movies(folder_levels: str, media_root: str, fields: dict) 
     if not sets:
         return {"ok": False, "error": "No fields to update"}
     sets.append("updated_at=datetime('now')")
-    if media_root:
-        values.extend([folder_levels, media_root])
-        await db.execute(
-            f"UPDATE movies SET {', '.join(sets)} WHERE folder_levels=? AND media_root=?",
-            values
-        )
-    else:
-        values.append(folder_levels)
-        await db.execute(
-            f"UPDATE movies SET {', '.join(sets)} WHERE folder_levels=?",
-            values
-        )
+    values.extend([folder_levels, media_root])
+    await db.execute(
+        f"UPDATE movies SET {', '.join(sets)} WHERE folder_levels=? AND media_root=?",
+        values
+    )
     await db.commit()
     logger.info(f"Edited {len(sets)-1} fields for folder {folder_levels}")
     return {"ok": True}
@@ -1669,19 +1962,15 @@ async def delete_folder_movies(folder_levels: str, media_root: str) -> dict:
     from .database import get_db
     from .config import logger
 
+    if not media_root:
+        return {"ok": False, "error": "media_root required"}
     db = await get_db()
-    if media_root:
-        cur = await db.execute("SELECT id FROM movies WHERE folder_levels=? AND media_root=?", (folder_levels, media_root))
-    else:
-        cur = await db.execute("SELECT id FROM movies WHERE folder_levels=?", (folder_levels,))
+    cur = await db.execute("SELECT id FROM movies WHERE folder_levels=? AND media_root=?", (folder_levels, media_root))
     rows = await cur.fetchall()
     count = len(rows)
     for r in rows:
         await db.execute("DELETE FROM tags WHERE movie_id=?", (r["id"],))
-    if media_root:
-        await db.execute("DELETE FROM movies WHERE folder_levels=? AND media_root=?", (folder_levels, media_root))
-    else:
-        await db.execute("DELETE FROM movies WHERE folder_levels=?", (folder_levels,))
+    await db.execute("DELETE FROM movies WHERE folder_levels=? AND media_root=?", (folder_levels, media_root))
     await db.commit()
     logger.info(f"Deleted {count} movies from folder {folder_levels}")
     return {"ok": True, "deleted": count}

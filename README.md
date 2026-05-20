@@ -12,15 +12,15 @@
 - **ArtPlayer 播放器** — ArtPlayer 5 + React，触控手势（双击快进/快退、左右滑动 seek）、键盘快捷键、画中画、转码入口、本地播放器入口、基础 VR 模式
 - **客户端字幕渲染** — ASS/SSA 使用 `@jellyfin/libass-wasm` canvas 渲染，VTT/SRT 使用 ArtPlayer 原生字幕层，保留外挂字幕和外部播放器播放列表
 - **本地播放器调用** — 一键拉起 IINA / MPV 播放，外挂字幕通过播放列表传递，支持复制流链接
-- **插件化刮削** — 自动模式（显式 TMDB movie/tv ID → 本地类型推断 → Bangumi → TMDB）、TMDB（电影/电视剧/集数匹配）、Bangumi（动画）、Javdatabase（JAV）
+- **插件化刮削** — 统一 `BaseScraper` 模板，内置 `tmdb_movie`、`tmdb_tv`、`bangumi`、`javdatabase`、`auto`、`none`
 - **Jellyfin 结构兼容** — 识别 NFO 元数据、递归封面查找、本地数据优先
-- **Fallback 链** — 刮削器互备（tmdb↔bangumi），javdb 独立运行
+- **Fallback 链** — TMDB Movie/TV 严格区分 `/movie` 与 `/tv`，Bangumi 失败后继续回落到对应 TMDB 标题搜索，Javdatabase 独立运行
 - **集数匹配** — TMDB TV 季节/集数自动识别，兼容 `[组标] 片名 [01][画质][格式].mkv` 番剧命名，集剧照本地压缩缓存
 - **动画发布组命名兼容** — 扫描时清洗 `[ANi]`、`[NC-Raws]`、`[VCB-Studio]` 等发布组标签和 `[1080P]`、`[Ma10p_1080p]`、`[x265_flac]` 等技术标签，识别 `[01]`、`[EP01]`、`S01E01`、`1x01`、`第1话` 集数并按数字排序
 - **单集资源匹配** — 支持同 basename 的单集封面/剧照（`.jpg/.png/.webp`、`.cover/.still/.thumb`）和 VCB-Studio 常见外挂字幕、外挂音轨命名
 - **季度选项卡** — Folder 页自动检测 S01/S02 等子目录
 - **右键菜单** — 首页文件夹/Folder 页影片右键操作：重新/手动刮削、换封面/背景、编辑、删除
-- **文件监控** — watchfiles 自动检测视频、字幕、NFO、封面变更，15 秒防抖后按启用媒体库自动增量扫描和刮削
+- **文件监控** — watchfiles 自动检测视频、字幕、NFO、封面变更，15 秒防抖后按启用媒体库自动增量扫描和刮削，同一媒体库不会重复并发扫描
 - **首次引导** — 首次打开自动弹出 SetupWizard，逐库配置刮削源，保存后自动启动首次全库扫描和刮削
 - **多媒体库** — 多个库挂载于 `/media/` 下，独立配置
 - **库密码** — 为敏感媒体库设置独立密码
@@ -56,7 +56,8 @@ docker compose up -d
 
 | 数据源 | 需要 Key | 适合 | 说明 |
 |---|---|---|---|
-| TMDB | 是 ([免费申请](https://www.themoviedb.org/settings/api)) | 电影/电视剧/集数 | 推荐填写 API 读访问令牌，兼容旧版 API Key |
+| TMDB Movie | 是 ([免费申请](https://www.themoviedb.org/settings/api)) | 电影 | `tmdb_movie` 只调用 `/search/movie` 和 `/movie/{id}` |
+| TMDB TV | 是 | 电视剧/番剧季集 | `tmdb_tv` 只调用 `/search/tv` 和 `/tv/{id}` |
 | Bangumi | 否 | 动画/番剧 | 仅搜索动画 (type=2) |
 | Javdatabase | 否 | JAV 番号 | 独立运行，不参与 fallback |
 | 自动 | 视 TMDB 是否配置 | 混合媒体库 | 支持 `[tmdb-movie=123]` / `[tmdb-tv=123]`；无类型 `tmdbid=123` 会先用本地集数/季目录/年份/NFO 推断 movie/tv，不明确时 fallback 到 Bangumi → TMDB 标题搜索 |
@@ -81,7 +82,7 @@ MediaTree 实现 Jellyfin Server 兼容 API 层，第三方客户端可直接添
 ## 设置页功能
 
 - **全局刮削器设置**：TMDB API Key/Token、缓存时间
-- **媒体库配置**：每库选择刮削器（默认自动）+ 密码 + 重新扫描（带进度条+实时日志）
+- **媒体库配置**：每库选择刮削器（默认自动）+ 密码 + 重新扫描（只影响当前 `media_root`，带进度条+实时日志）
 - **数据备份恢复**：下载数据库（core）/ 完整备份（含封面），上传恢复
 
 ## 字幕字体

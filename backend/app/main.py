@@ -19,7 +19,7 @@ from .database import (
     get_media_roots, get_folder_tree_from_db,
     get_library_passwords, set_library_password, verify_library_password_v2,
     get_all_library_settings, save_library_settings, has_any_library_setting,
-    save_progress, get_progress,
+    get_library_settings, save_progress, get_progress,
 )
 from .scanner import scan_media, scrape_for_library, run_scan_for_root, rescrape_movie, rescrape_movie_manual, rescrape_folder, rescrape_folder_manual, search_for_scrape, apply_folder_scrape_result, fetch_search_backdrops, change_folder_cover, change_folder_backdrop, edit_folder_movies, delete_folder_movies
 from .javdb import search_javdb
@@ -112,8 +112,9 @@ async def run_startup_scan():
         await db.execute("DELETE FROM movies WHERE media_root = ''")
         await db.commit()
 
-        for root in settings.get_all_media_roots():
-            await run_scan_for_root(root, trigger="startup")
+        roots = settings.get_all_media_roots()
+        if roots:
+            await asyncio.gather(*(run_scan_for_root(root, trigger="startup") for root in roots))
 
         logger.info("Startup scan complete")
     except Exception as e:
@@ -160,14 +161,28 @@ async def health():
     return {"status": "ok"}
 
 
+async def _require_enabled_media_root(media_root: str) -> dict | None:
+    if not media_root:
+        raise HTTPException(status_code=400, detail="media_root required")
+    known_roots = set(settings.get_all_media_roots())
+    if known_roots and media_root not in known_roots:
+        logger.warning(f"media_root validation failed: unknown media_root='{media_root}'")
+        raise HTTPException(status_code=404, detail="media_root not found")
+    lib_setting = await get_library_settings(media_root)
+    if lib_setting and not bool(lib_setting.get("enabled", 1)):
+        logger.warning(f"media_root validation failed: disabled media_root='{media_root}'")
+        raise HTTPException(status_code=400, detail="media_root disabled")
+    return lib_setting
+
+
 # ─── Scan ───
 
 @app.get("/api/scan")
 async def api_scan(media_root: str = Query("")):
+    if media_root:
+        await _require_enabled_media_root(media_root)
     roots = [media_root] if media_root else settings.get_all_media_roots()
-    results = []
-    for r in roots:
-        results.append(await run_scan_for_root(r, trigger="manual"))
+    results = await asyncio.gather(*(run_scan_for_root(r, trigger="manual") for r in roots))
     total = sum(int(r.get("total") or 0) for r in results)
     return {"total": total, "roots": results, "all_codes_count": total}
 
@@ -207,8 +222,7 @@ async def api_scan_log(media_root: str = Query(""), lines: int = Query(100)):
 @app.post("/api/library/clear")
 async def api_library_clear(data: dict):
     media_root = data.get("media_root", "")
-    if not media_root:
-        raise HTTPException(status_code=400, detail="media_root required")
+    await _require_enabled_media_root(media_root)
     from .scanner import clear_library_scraped_data
     await clear_library_scraped_data(media_root)
     return {"ok": True, "message": f"Cleared scraped data for {media_root}"}
@@ -432,23 +446,46 @@ async def api_subtitle_tracks(movie_id: int):
         raise HTTPException(status_code=404)
     track_list = get_subtitle_tracks(movie["path"])
     external = find_external_subtitles(movie["path"])
-    logger.info(f"Subtitle tracks for movie_id={movie_id}: embedded={len(track_list)} external={len(external)}")
+    logger.info(
+        f"Subtitle tracks count: movie_id={movie_id} embedded={len(track_list)} "
+        f"external={len(external)} total={len(track_list) + len(external)}"
+    )
     all_tracks = []
-    for i, t in enumerate(external):
+    for t in track_list:
+        idx = t.get("index")
+        codec = t.get("codec") or "unknown"
         all_tracks.append({
-            "index": 1000 + i,
+            **t,
+            "format": t.get("format") or codec,
+            "url": f"/api/subtitle/{movie_id}/{idx}",
+            "path": movie["path"],
+            "source": "embedded",
+            "is_external": False,
+            "web_supported": codec.lower() in {"ass", "ssa", "srt", "subrip", "webvtt", "vtt", "mov_text"},
+        })
+    for i, t in enumerate(external):
+        idx = 1000 + i
+        fmt = t.get("format") or Path(t["path"]).suffix.lstrip(".")
+        language = t.get("language", "und")
+        logger.info(
+            f"Subtitle track external: movie_id={movie_id} index={idx} "
+            f"format={fmt} language={language} path='{t['path']}'"
+        )
+        all_tracks.append({
+            "index": idx,
             "stream_index": -1,
             "codec": t.get("codec") or Path(t["path"]).suffix.lstrip("."),
-            "language": t.get("language", "und"),
+            "language": language,
             "title": t.get("name", ""),
             "name": t.get("name", ""),
             "source": "external",
             "path": t["path"],
-            "format": t.get("format") or Path(t["path"]).suffix.lstrip("."),
+            "format": fmt,
+            "url": f"/api/subtitle/{movie_id}/{idx}",
             "is_external": True,
             "web_supported": t.get("web_supported", False),
         })
-    return track_list + all_tracks
+    return all_tracks
 
 
 @app.get("/api/subtitle/{movie_id}/{track_index}")
@@ -622,12 +659,17 @@ async def api_serve_font(name: str):
 async def api_get_config():
     return {
         "javdb_enabled": settings.javdb_enabled,
+        "javdb_base_url": settings.javdb_base_url,
         "javdb_cache_hours": settings.javdb_cache_hours,
         "javdb_request_interval": settings.javdb_request_interval,
         "tmdb_cache_hours": getattr(settings, 'tmdb_cache_hours', 168),
         "bangumi_cache_hours": getattr(settings, 'bangumi_cache_hours', 168),
         "tmdb_api_key": settings.tmdb_api_key,
         "tmdb_access_token": settings.tmdb_access_token,
+        "scrape_concurrency_per_library": settings.scrape_concurrency_per_library,
+        "scrape_global_concurrency": settings.scrape_global_concurrency,
+        "scraper_api_concurrency": settings.scraper_api_concurrency,
+        "scraper_http_timeout": settings.scraper_http_timeout,
         "media_root": settings.media_root,
     }
 
@@ -636,6 +678,8 @@ async def api_get_config():
 async def api_update_config(data: dict):
     if "javdb_enabled" in data:
         settings.javdb_enabled = data["javdb_enabled"]
+    if "javdb_base_url" in data:
+        settings.javdb_base_url = data["javdb_base_url"]
     if "javdb_cache_hours" in data:
         settings.javdb_cache_hours = data["javdb_cache_hours"]
     if "javdb_request_interval" in data:
@@ -648,6 +692,14 @@ async def api_update_config(data: dict):
         settings.tmdb_api_key = data["tmdb_api_key"]
     if "tmdb_access_token" in data:
         settings.tmdb_access_token = data["tmdb_access_token"]
+    if "scrape_concurrency_per_library" in data:
+        settings.scrape_concurrency_per_library = int(data["scrape_concurrency_per_library"])
+    if "scrape_global_concurrency" in data:
+        settings.scrape_global_concurrency = int(data["scrape_global_concurrency"])
+    if "scraper_api_concurrency" in data:
+        settings.scraper_api_concurrency = int(data["scraper_api_concurrency"])
+    if "scraper_http_timeout" in data:
+        settings.scraper_http_timeout = float(data["scraper_http_timeout"])
     settings.save_config()
     return {"ok": True}
 
@@ -855,6 +907,8 @@ async def api_rescrape_folder(data: dict):
     media_root = data.get("media_root", "")
     if not folder:
         raise HTTPException(status_code=400, detail="folder required")
+    await _require_enabled_media_root(media_root)
+    logger.info(f"rescrape-folder request: folder='{folder}' media_root='{media_root}'")
     result = await rescrape_folder(folder, media_root)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Scrape failed"))
@@ -883,6 +937,11 @@ async def api_rescrape_folder_manual(data: dict):
     scraper = data.get("scraper", "")
     if not folder or not query:
         raise HTTPException(status_code=400, detail="folder and query required")
+    await _require_enabled_media_root(media_root)
+    logger.info(
+        f"rescrape-folder-manual request: folder='{folder}' media_root='{media_root}' "
+        f"scraper='{scraper or 'library-default'}' query='{query}'"
+    )
     result = await rescrape_folder_manual(folder, media_root, query, scraper)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Scrape failed"))
@@ -901,6 +960,7 @@ async def api_apply_folder_scrape(data: dict):
     logger.info(f"apply-folder-scrape: folder='{folder}' media_root='{media_root}' source_id='{source_id}' source='{source}' media_type='{media_type}'")
     if not folder or not source_id:
         raise HTTPException(status_code=400, detail="folder and source_id required")
+    await _require_enabled_media_root(media_root)
     result = await apply_folder_scrape_result(folder, media_root, source_id, source, media_type)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Apply failed"))
@@ -925,6 +985,9 @@ async def api_folder_backdrop(data: dict):
     folder = data.get("folder", "")
     media_root = data.get("media_root", "")
     url = data.get("url", "")
+    if not folder:
+        raise HTTPException(status_code=400, detail="folder required")
+    await _require_enabled_media_root(media_root)
     result = await change_folder_backdrop(folder, media_root, url)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Failed"))
@@ -940,6 +1003,7 @@ async def api_folder_cover(data: dict):
     cover_url = data.get("url", "")
     if not folder or not cover_url:
         raise HTTPException(status_code=400, detail="folder and url required")
+    await _require_enabled_media_root(media_root)
     result = await change_folder_cover(folder, media_root, cover_url)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Cover change failed"))
@@ -955,6 +1019,7 @@ async def api_folder_edit(data: dict):
     fields = data.get("fields", {})
     if not folder:
         raise HTTPException(status_code=400, detail="folder required")
+    await _require_enabled_media_root(media_root)
     result = await edit_folder_movies(folder, media_root, fields)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Edit failed"))
@@ -969,6 +1034,7 @@ async def api_folder_delete(data: dict):
     media_root = data.get("media_root", "")
     if not folder:
         raise HTTPException(status_code=400, detail="folder required")
+    await _require_enabled_media_root(media_root)
     result = await delete_folder_movies(folder, media_root)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Delete failed"))
@@ -1261,6 +1327,8 @@ class SPAFallbackMiddleware(BaseHTTPMiddleware):
         except HTTPException:
             raise
         except Exception:
+            if request.url.path.startswith("/api"):
+                raise
             import traceback
             traceback.print_exc()
             return Response(content=INDEX_HTML, media_type="text/html")

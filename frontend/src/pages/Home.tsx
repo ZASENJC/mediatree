@@ -136,8 +136,8 @@ export default function Home() {
       alert('刮削任务已触发')
       setFolderMenu(null)
       load()
-    } catch {
-      alert('刮削失败，请检查刮削器配置')
+    } catch (err) {
+      alert(`刮削失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
     }
   }, [activeFolderPath, activeMediaRoot, load])
 
@@ -184,8 +184,8 @@ export default function Home() {
       } else {
         alert('应用失败')
       }
-    } catch {
-      alert('替换失败，请检查刮削器配置')
+    } catch (err) {
+      alert(`替换失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
     } finally {
       setFolderScrapeApplying(false)
     }
@@ -194,7 +194,7 @@ export default function Home() {
   const handleChangeFolderCover = useCallback(async () => {
     setFolderMenu(null)
     try {
-      const movies = await api.movies({ folder: activeFolderPath, limit: 1 })
+      const movies = await api.movies({ folder: activeFolderPath, media_root: activeMediaRoot, limit: 1 })
       if (!movies.movies || movies.movies.length === 0) { alert('目录下无影片'); return }
       const movieId = movies.movies[0].id
       const data = await api.getAlternativeCovers(movieId)
@@ -209,7 +209,7 @@ export default function Home() {
     } catch {
       console.error('Load covers failed')
     }
-  }, [activeFolderPath])
+  }, [activeFolderPath, activeMediaRoot])
 
   const handleSelectFolderCover = useCallback(async (url: string) => {
     try {
@@ -225,14 +225,14 @@ export default function Home() {
   const handleEditFolder = useCallback(async () => {
     setFolderMenu(null)
     try {
-      const data = await api.movies({ folder: activeFolderPath, limit: 1 })
+      const data = await api.movies({ folder: activeFolderPath, media_root: activeMediaRoot, limit: 1 })
       if (!data.movies || data.movies.length === 0) { alert('目录下无影片'); return }
       setEditFolderMovie(data.movies[0])
       setShowFolderEdit(true)
     } catch {
       console.error('Load movie for edit failed')
     }
-  }, [activeFolderPath])
+  }, [activeFolderPath, activeMediaRoot])
 
   const handleFolderEditSave = useCallback(async (fields: Record<string, any>) => {
     clearCache()
