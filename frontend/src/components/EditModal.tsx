@@ -25,6 +25,8 @@ export default function EditModal({ movie, onClose, onSaved, onSave }: Props) {
       if (onSave) {
         await onSave({
           title: title || undefined,
+          code: code || undefined,
+          actress: actress || undefined,
           release_date: releaseDate || undefined,
           duration: duration || undefined,
         })

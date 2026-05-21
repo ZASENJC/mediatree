@@ -45,9 +45,13 @@ export default function App() {
     return parts[parts.length - 1] || activeLib
   })()
 
+  const mountedRef = useRef(true)
+  useEffect(() => { return () => { mountedRef.current = false } }, [])
+
   const loadLibraries = useCallback(async () => {
     try {
       const data = await api.mediaRoots()
+      if (!mountedRef.current) return
       const items = data.items || []
       setLibraries(items)
       if (items.length > 1 && !getActiveLibrary()) {
@@ -102,8 +106,9 @@ export default function App() {
     }).catch(() => setCheckingSetup(false))
   }, [])
 
+  const scanTimerRef = useRef(0)
+
   useEffect(() => {
-    let timer = 0
     let hadActive = false
     const poll = async () => {
       try {
@@ -123,10 +128,10 @@ export default function App() {
           window.setTimeout(() => setScanToast(t => ({ ...t, visible: false })), 4500)
         }
       } catch {}
-      timer = window.setTimeout(poll, 2500)
+      scanTimerRef.current = window.setTimeout(poll, 2500)
     }
     poll()
-    return () => clearTimeout(timer)
+    return () => clearTimeout(scanTimerRef.current)
   }, [])
 
   const doSwitch = (libPath: string) => {

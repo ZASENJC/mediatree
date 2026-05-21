@@ -202,7 +202,8 @@ def find_nfo_file(folder: Path) -> str | None:
 
 def parse_nfo(filepath: str) -> dict:
     try:
-        tree = ET.parse(filepath)
+        parser = ET.XMLParser(resolve_entities=False)
+        tree = ET.parse(filepath, parser=parser)
         root = tree.getroot()
     except Exception:
         return {}

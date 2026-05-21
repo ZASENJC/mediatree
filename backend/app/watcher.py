@@ -8,6 +8,13 @@ from .database import get_all_library_settings
 from .scanner import run_scan_for_root
 
 
+_MAX_CONCURRENT_SCANS = 3
+_active_scans: set[asyncio.Task] = set()
+
+def _track_scan_task(task: asyncio.Task):
+    _active_scans.add(task)
+    task.add_done_callback(_active_scans.discard)
+
 WATCH_EXTS = {
     ".mkv", ".mp4", ".mov", ".avi", ".m2ts", ".ts", ".webm",
     ".nfo", ".srt", ".ass", ".ssa", ".vtt",
@@ -104,8 +111,13 @@ async def start_file_watcher(startup_task: asyncio.Task | None = None):
                     f"Watcher detected changes: paths={len(relevant_paths)} roots={len(affected)}"
                 )
                 for root in sorted(affected):
+                    pending = len(_active_scans)
+                    if pending >= _MAX_CONCURRENT_SCANS:
+                        logger.warning(f"Watcher throttled: {pending} scans already in progress, skipping {root}")
+                        continue
                     logger.info(f"Watcher triggering auto scan for {root}")
-                    asyncio.create_task(run_scan_for_root(root, trigger="watcher"))
+                    t = asyncio.create_task(run_scan_for_root(root, trigger="watcher"))
+                    _track_scan_task(t)
 
                 latest_roots = await _enabled_media_roots()
                 if latest_roots != roots:
