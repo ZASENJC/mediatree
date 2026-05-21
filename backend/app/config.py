@@ -89,7 +89,7 @@ class Settings(BaseSettings):
                     data = json.load(f)
                 for key, val in data.items():
                     if hasattr(self, key):
-                        if key in ("auth_user", "auth_pass") and val:
+                        if key == "auth_user" and val:
                             setattr(self, key, val)
                         elif key not in ("auth_user", "auth_pass"):
                             setattr(self, key, val)
@@ -113,7 +113,6 @@ class Settings(BaseSettings):
                 "scraper_api_concurrency": self.scraper_api_concurrency,
                 "scraper_http_timeout": self.scraper_http_timeout,
                 "auth_user": self.auth_user,
-                "auth_pass": self.auth_pass,
             }
             with open(self.config_path, "w") as f:
                 json.dump(data, f, indent=2)
