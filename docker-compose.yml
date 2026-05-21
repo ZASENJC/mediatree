@@ -1,17 +1,17 @@
 services:
   mediatree:
-    image: zasenjc/mediatree:3.0
     build: .
     container_name: mediatree
     ports:
-      - "27580:27580"
+      - "27580:27580" 
     volumes:
-      - /Volumes/o1/media/ss/01:/media/o1:ro
-      - /Volumes/o1/media/ss/02:/media/o2:ro
-      - /Volumes/o1/media/Movie:/media/movie:ro
-      - /Volumes/o1/media/Bangumi:/media/bgm:ro
-      - /Volumes/STU/Code/mediatree/data:/app/data
+      - /Volumes/o1/media/ss/01:/media/o1:ro                                                 
+      - /Volumes/o1/media/ss/02:/media/o2:ro                                                 
+      - /Volumes/o1/media/Movie:/media/movie:ro                                              
+      - /Volumes/o1/media/Bangumi:/media/bgm:ro                                              
+      - /Volumes/STU/Code/mediatree/data:/app/data 
     environment:
+      - PORT=27580
       - AUTH_USER=admin
       - AUTH_PASS=changeme
     restart: unless-stopped

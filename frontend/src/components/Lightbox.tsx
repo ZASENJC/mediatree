@@ -29,7 +29,7 @@ export default function Lightbox({ images, index, onClose, onPrev, onNext }: Pro
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-2xl"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4 backdrop-blur-2xl"
       onClick={onClose}
     >
       <button

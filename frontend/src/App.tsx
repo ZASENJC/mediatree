@@ -35,6 +35,7 @@ export default function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const moreBtnRef = useRef<HTMLButtonElement | null>(null)
 
   const currentLibraryLabel = (() => {
     if (!activeLib) return ''
@@ -67,6 +68,30 @@ export default function App() {
   useEffect(() => {
     if (mobileSearchOpen) searchInputRef.current?.focus()
   }, [mobileSearchOpen])
+
+  // auto-search with debounce when typing
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults([])
+      setSearchTotal(0)
+      setSearchOpen(false)
+      return
+    }
+    const timer = setTimeout(async () => {
+      setSearchLoading(true)
+      setSearchOpen(true)
+      try {
+        const data = await api.search(searchQuery.trim())
+        setSearchResults(data.movies)
+        setSearchTotal(data.total)
+      } catch {
+        setSearchResults([])
+        setSearchTotal(0)
+      }
+      setSearchLoading(false)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
 
   useEffect(() => {
     api.setupStatus().then(d => {
@@ -127,6 +152,7 @@ export default function App() {
     e.preventDefault()
     if (!searchQuery.trim()) return
     setSearchLoading(true)
+    setSearchOpen(true)
     try {
       const data = await api.search(searchQuery.trim())
       setSearchResults(data.movies)
@@ -226,9 +252,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-50 px-3 pt-2 sm:px-4 sm:pt-3">
-        <div className="mx-auto flex h-12 max-w-7xl items-center justify-between gap-2 transform-gpu sm:h-14 sm:gap-3">
-          <div className="flex min-w-0 items-center gap-2 rounded-3xl border border-white/15 bg-white/[0.08] px-3 py-1.5 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150 sm:px-4 sm:py-2">
+      <header className="sticky top-0 z-50 pt-2 sm:pt-3">
+        <div className="mx-auto flex h-12 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6 transform-gpu sm:h-14 sm:gap-3">
+          <div className="relative">
+          <div className="flex min-w-0 items-center gap-2 rounded-3xl border border-white/15 bg-white/[0.08] pl-3 pr-3 py-1.5 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150 sm:pl-4 sm:pr-4 sm:py-2">
             <Link to="/" className="shrink-0 text-base font-semibold tracking-tight text-white transition-colors hover:text-apple-blue sm:text-lg">
               <span className="hidden min-[380px]:inline">MediaTree</span>
               <span className="min-[380px]:hidden">MT</span>
@@ -251,37 +278,43 @@ export default function App() {
             ))}
             <div className="relative shrink-0 sm:hidden">
               <button
+                ref={moreBtnRef}
                 onClick={() => setMobileNavOpen(v => !v)}
                 className="rounded-full px-1.5 py-1.5 text-xs text-gray-400 transition-colors hover:bg-white/10 hover:text-white sm:px-2"
                 aria-label="更多导航"
               >
                 ···
               </button>
-              {mobileNavOpen && (
-                <div className="glass-popover absolute left-0 top-full z-[70] mt-2 w-32 overflow-hidden p-1">
-                  {navItems.filter(item => item.path === '/favorites' || item.path === '/settings').map(item => (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      className={`block rounded-xl px-3 py-2 text-sm transition-colors ${
-                        location.pathname === item.path
-                          ? 'bg-white/15 text-white'
-                          : 'text-gray-300 hover:bg-white/10 hover:text-white'
-                      }`}
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
-                </div>
-              )}
             </div>
             </nav>
           </div>
-          <div className="flex shrink-0 items-center justify-end gap-1 rounded-3xl border border-white/15 bg-white/[0.08] px-2 py-1.5 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150 sm:gap-2 sm:px-3 sm:py-2">
+          {mobileNavOpen && (
+            <>
+              <div className="absolute right-0 top-full z-[70] mt-2 w-32 p-1 rounded-3xl border border-white/15 bg-white/[0.08] shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150">
+                {navItems.filter(item => item.path === '/favorites' || item.path === '/settings').map(item => (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`block rounded-3xl px-3 py-2 text-sm transition-colors ${
+                      location.pathname === item.path
+                        ? 'bg-white/15 text-white'
+                        : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+              <div className="fixed inset-0 z-[60]" onClick={() => setMobileNavOpen(false)} />
+            </>
+          )}
+          </div>
+          <div className="relative shrink-0">
+            <div className="flex items-center justify-end gap-1 rounded-3xl border border-white/15 bg-white/[0.08] px-2 py-1.5 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150 sm:gap-2 sm:px-3 sm:py-2">
             {libraries.length > 1 && (
               <button
                 onClick={() => setShowLibraryModal(true)}
-                className="glass-button h-8 max-w-9 px-2 text-xs sm:max-w-none sm:px-3"
+                className="glass-button h-8 max-w-9 gap-1.5 px-2 text-xs sm:max-w-none sm:px-3"
                 title={currentLibraryLabel || '切换媒体库'}
               >
                 <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -295,20 +328,21 @@ export default function App() {
                 {currentLibraryLabel}
               </span>
             )}
-            <form onSubmit={handleSearch} className="relative hidden sm:block">
+            <form onSubmit={handleSearch} className="hidden sm:block">
+              <div className="relative">
               <input
                 ref={searchInputRef}
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => { if (searchResults.length > 0 || searchQuery) setSearchOpen(true) }}
+                onFocus={() => setSearchOpen(true)}
                 placeholder="搜索..."
                 className="glass-input w-44 py-1.5 pl-8 pr-3 text-sm md:w-52 md:focus:w-60"
               />
               <svg className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              {renderSearchPanel('glass-popover absolute right-0 top-full z-50 mt-2 max-h-96 w-96 overflow-y-auto p-1')}
+              </div>
             </form>
             <button
               type="button"
@@ -329,28 +363,32 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
             </button>
+            </div>
+            {renderSearchPanel('hidden sm:block absolute right-0 top-full z-50 mt-2 max-h-96 w-96 overflow-y-auto p-1 rounded-3xl border border-white/15 bg-white/[0.08] shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150')}
           </div>
         </div>
         {mobileSearchOpen && (
-          <form onSubmit={handleSearch} className="relative mx-auto mt-2 max-w-7xl sm:hidden">
+          <form onSubmit={handleSearch} className="relative mx-auto mt-2 max-w-7xl px-4 sm:hidden">
+            <div className="relative">
             <input
               ref={searchInputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => { if (searchResults.length > 0 || searchQuery) setSearchOpen(true) }}
+              onFocus={() => setSearchOpen(true)}
               placeholder="搜索..."
               className="glass-input w-full py-2 pl-9 pr-3 text-sm"
             />
             <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
-            {renderSearchPanel('glass-popover absolute left-0 right-0 top-full z-50 mt-2 max-h-80 overflow-y-auto p-1')}
+            </div>
+            {renderSearchPanel('absolute left-0 right-0 top-full z-50 mt-2 max-h-80 overflow-y-auto p-1 rounded-3xl border border-white/15 bg-white/[0.08] shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150')}
           </form>
         )}
       </header>
 
-      <main className="flex-1 w-full max-w-7xl mx-auto py-5 sm:py-7">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-7">
         <Routes key={activeLib}>
           <Route path="/" element={<Home />} />
           <Route path="/browse" element={<Browse />} />
@@ -414,7 +452,7 @@ function LibraryModal({ libraries, activeLib, onSelect, onClose }: {
   onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-aurora p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
       <div className="glass-modal w-full max-w-sm p-6">
         <h2 className="mb-1 text-lg font-bold">切换媒体库</h2>
         <p className="mb-4 text-xs text-gray-500">选择要浏览的媒体库</p>
@@ -484,7 +522,7 @@ function PasswordModal({ target, onOk, onCancel }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-aurora p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
       <div className="glass-modal w-full max-w-xs p-6">
         <div className="mb-4 text-center">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-apple-yellow/30 bg-apple-yellow/10">

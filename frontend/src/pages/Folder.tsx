@@ -178,11 +178,11 @@ export default function FolderPage() {
               alt=""
               className="h-full w-full scale-[1.04] object-cover opacity-80 saturate-115 [mask-image:radial-gradient(ellipse_at_center,black_40%,rgba(0,0,0,0.9)_58%,rgba(0,0,0,0.42)_78%,transparent_100%)] [-webkit-mask-image:radial-gradient(ellipse_at_center,black_40%,rgba(0,0,0,0.9)_58%,rgba(0,0,0,0.42)_78%,transparent_100%)]"
             />
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_36%,rgba(3,4,10,0.18)_72%,transparent_100%),linear-gradient(180deg,transparent_0%,rgba(3,4,10,0.12)_58%,rgba(3,4,10,0.22)_100%)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_36%,rgba(3,4,10,0.18)_72%,transparent_100%),linear-gradient(180deg,transparent_0%,rgba(3,4,10,0.08)_35%,rgba(3,4,10,0.25)_55%,rgba(3,4,10,0.6)_75%,rgba(3,4,10,0.95)_100%)]" />
           </div>
           <div className="absolute inset-x-0 bottom-0 p-4 sm:p-7">
             <button onClick={() => { saveScrollPos(); navigate('/') }}
-              className="mb-4 text-sm text-gray-300 drop-shadow transition-colors hover:text-white">
+              className="glass-chip mb-4 text-sm text-gray-300 drop-shadow hover:text-white">
               返回首页
             </button>
             <p className="text-xs uppercase tracking-[0.28em] text-apple-blue/90 drop-shadow">Folder</p>
@@ -191,7 +191,6 @@ export default function FolderPage() {
                 <h1 className="max-w-4xl break-words text-3xl font-bold tracking-tight text-white drop-shadow-2xl sm:text-5xl">{showTitle}</h1>
                 <p className="mt-3 text-sm text-gray-300 drop-shadow">{movies.length} 部影片</p>
               </div>
-              <SortDropdown options={sortOptions} current={sort} onChange={handleSort} />
             </div>
           </div>
         </div>
@@ -199,19 +198,19 @@ export default function FolderPage() {
         <div className="glass-panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <div className="min-w-0">
             <button onClick={() => { saveScrollPos(); navigate('/') }}
-              className="mb-2 text-sm text-gray-400 transition-colors hover:text-white">
+              className="glass-chip mb-2 text-sm text-gray-400 hover:text-white">
               返回首页
             </button>
             <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">Folder</p>
             <h1 className="break-words text-2xl font-bold tracking-tight text-white sm:text-3xl">{showTitle}</h1>
             <p className="mt-1 text-sm text-gray-500">{movies.length} 部影片</p>
           </div>
-          <SortDropdown options={sortOptions} current={sort} onChange={handleSort} />
         </div>
       )}
 
-      {seasonTabs.length > 0 && (
-        <div className="inline-flex flex-wrap items-center gap-2 rounded-3xl border border-white/15 bg-white/[0.08] p-2 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150">
+      <div className="flex justify-between items-start">
+        {seasonTabs.length > 0 && (
+        <div className="-mt-2 inline-flex flex-wrap items-center gap-2 rounded-3xl border border-white/15 bg-white/[0.08] p-2 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150">
           <button
             onClick={() => selectSeason(null)}
             className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
@@ -231,7 +230,9 @@ export default function FolderPage() {
             </button>
           ))}
         </div>
-      )}
+        )}
+        <SortDropdown options={sortOptions} current={sort} onChange={handleSort} />
+      </div>
 
       {movies.length === 0 ? (
         <div className="glass-panel py-20 text-center text-gray-500">
@@ -241,7 +242,7 @@ export default function FolderPage() {
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
           {movies.map((movie) => (
-            <MovieCard key={movie.id} movie={movie} onUpdated={load} />
+            <MovieCard key={movie.id} movie={movie} onUpdated={load} showBadges={false} />
           ))}
         </div>
       )}

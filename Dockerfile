@@ -1,7 +1,7 @@
 FROM node:20-alpine AS frontend-build
 WORKDIR /build
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install 2>/dev/null || npm install --legacy-peer-deps
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --legacy-peer-deps
 COPY frontend/ ./
 RUN npm run build
 
@@ -14,7 +14,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-cjk \
     fonts-noto-color-emoji \
     fonts-wqy-microhei \
-    && fc-cache -f -v \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt ./
@@ -32,6 +31,9 @@ ENV JAVDB_CACHE_HOURS=24
 ENV JAVDB_REQUEST_INTERVAL=5
 ENV SCAN_ON_STARTUP=true
 
-EXPOSE 80
+ARG PORT=80
+ENV PORT=$PORT
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "27580"]
+EXPOSE $PORT
+
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]

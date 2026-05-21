@@ -15,7 +15,7 @@ from .config import settings, logger, setup_file_logging
 from .database import (
     init_db, close_db_pool, upsert_movie, get_movies, get_movie_detail,
     get_categories, save_category, delete_category, add_tag, remove_tag,
-    delete_movie, search_movies, get_recent_watched,
+    delete_movie, search_movies, get_recent_watched, set_folder_tag,
     get_media_roots, get_folder_tree_from_db,
     get_library_passwords, set_library_password, verify_library_password_v2,
     get_all_library_settings, save_library_settings, has_any_library_setting,
@@ -1039,6 +1039,21 @@ async def api_folder_delete(data: dict):
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Delete failed"))
     return result
+
+
+# ─── Folder Watched ───
+
+@app.post("/api/folder/watched")
+async def api_folder_watched(data: dict):
+    path = data.get("folder", "")
+    media_root = data.get("media_root", "")
+    watched = data.get("watched", True)
+    if not path:
+        raise HTTPException(status_code=400, detail="folder required")
+    if media_root:
+        await _require_enabled_media_root(media_root)
+    await set_folder_tag(path, "watched", watched, media_root)
+    return {"ok": True}
 
 
 # ─── Alternative Covers ───

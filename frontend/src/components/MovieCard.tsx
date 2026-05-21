@@ -10,9 +10,11 @@ import { clearCache } from '../cache'
 interface MovieCardProps {
   movie: Movie
   onUpdated?: () => void
+  showBadges?: boolean
+  hideTitle?: boolean
 }
 
-export function MovieCard({ movie, onUpdated }: MovieCardProps) {
+export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = false }: MovieCardProps) {
   const navigate = useNavigate()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [showEdit, setShowEdit] = useState(false)
@@ -25,6 +27,8 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
   const [searching, setSearching] = useState(false)
   const [applying, setApplying] = useState(false)
   const [coverVersion, setCoverVersion] = useState(() => movie.updated_at || '')
+  const [hovered, setHovered] = useState(false)
+  const [localWatched, setLocalWatched] = useState<boolean | null>(null)
 
   const goDetail = () => {
     saveScrollPos()
@@ -36,6 +40,23 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
     setContextMenu({ x: e.clientX, y: e.clientY })
   }
 
+  const handleToggleWatched = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const hasWatched = (movie.tags || []).includes('watched')
+    const newWatched = !hasWatched
+    setLocalWatched(newWatched)
+    try {
+      if (hasWatched) {
+        await api.removeTag(movie.id, 'watched')
+      } else {
+        await api.addTag(movie.id, 'watched')
+      }
+      clearCache()
+    } catch {
+      setLocalWatched(null)
+    }
+  }, [movie.id, movie.tags])
+
   const isEpisode = movie.tmdb_type === 'tv' && movie.tmdb_episode != null
   const hasEpisodeStill = !!(isEpisode && movie.episode_still)
   const versionSuffix = coverVersion ? `?v=${encodeURIComponent(coverVersion)}` : ''
@@ -45,7 +66,7 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
   const displayTitle = isEpisode
     ? `E${String(movie.tmdb_episode).padStart(2, '0')} ${movie.episode_title || movie.title || movie.code}`
     : (movie.title || movie.code)
-  const watched = !!(movie.tags || []).includes('watched')
+  const watched = localWatched !== null ? localWatched : (movie.tags || []).includes('watched')
   const progressPercent = Math.max(0, Math.min(100, movie.progress_percent || 0))
   const showProgress = !watched && progressPercent > 0 && progressPercent < 90
 
@@ -163,6 +184,8 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
       <div
         onClick={goDetail}
         onContextMenu={handleContextMenu}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         className="glass-card apple-focus group cursor-pointer overflow-hidden"
       >
         <div className={`${hasEpisodeStill ? 'aspect-video' : 'aspect-[2/3]'} relative bg-white/[0.04]`}>
@@ -182,6 +205,23 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
           />
           <WatchedBadge watched={watched} />
 
+          {hovered && (
+            <button
+              onClick={handleToggleWatched}
+              className={`absolute right-2 top-2 z-20 flex h-8 w-8 items-center justify-center rounded-full shadow-lg backdrop-blur-xl transition-all ${
+                watched
+                  ? 'border border-apple-mint/40 bg-apple-mint/80 text-white'
+                  : 'border border-white/20 bg-black/50 text-white/70 hover:bg-apple-mint/80 hover:text-white hover:border-apple-mint/40'
+              }`}
+              title={watched ? '取消已看' : '标记已看'}
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </button>
+          )}
+
+          {showBadges && (
           <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
             {movie.javdb_score != null && movie.javdb_score > 0 && (
               <span className="rounded-full border border-apple-yellow/30 bg-black/45 px-2 py-0.5 text-xs font-semibold text-apple-yellow shadow-sm backdrop-blur-xl">
@@ -194,13 +234,16 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
               </span>
             )}
           </div>
+          )}
 
-          {isEpisode && (
+          {showBadges && isEpisode && (
             <span className="absolute left-2 top-2 z-10 rounded-full border border-apple-blue/35 bg-apple-blue/70 px-2 py-0.5 text-[10px] font-semibold text-white shadow-glow backdrop-blur-xl">
               S{movie.tmdb_season}·E{movie.tmdb_episode}
             </span>
           )}
 
+          {!hideTitle && (
+          <>
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-transparent opacity-95" />
           {showProgress && (
             <div className="absolute bottom-0 left-0 right-0 z-20 h-1 bg-white/15 backdrop-blur">
@@ -211,6 +254,8 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
             <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-white drop-shadow">{displayTitle}</p>
             <p className="mt-0.5 truncate text-xs text-gray-400">{movie.code}</p>
           </div>
+          </>
+          )}
         </div>
       </div>
 
@@ -232,7 +277,7 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
       )}
 
       {showManualSearch && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-xl">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
           <div className="glass-modal w-full max-w-lg p-4 sm:p-5 max-h-[80vh] overflow-y-auto">
             <h2 className="mb-1 text-lg font-bold text-white">手动刮削</h2>
             <p className="mb-4 text-xs text-gray-500">输入搜索关键词，选择刮削器</p>
@@ -305,7 +350,7 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
       )}
 
       {showCoverPicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-xl">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
           <div className="glass-modal w-full max-w-lg p-4 sm:p-5 max-h-[80vh] overflow-y-auto">
             <h2 className="mb-1 text-lg font-bold text-white">更换封面</h2>
             <p className="mb-4 text-xs text-gray-500">选择封面或上传本地图片</p>

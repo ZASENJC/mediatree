@@ -48,6 +48,22 @@ export default function Home() {
   const [activeFolderName, setActiveFolderName] = useState('')
   const hideHomeTitleText = getUiPrefs().hideHomeTitleText
 
+  const [hoveredFolder, setHoveredFolder] = useState<string | null>(null)
+  const [folderWatched, setFolderWatched] = useState<Record<string, boolean>>({})
+
+  const handleToggleFolderWatched = async (e: React.MouseEvent, node: FolderNode) => {
+    e.stopPropagation()
+    const current = folderWatched[node.path] ?? !!node.folder_watched
+    const newVal = !current
+    setFolderWatched(prev => ({ ...prev, [node.path]: newVal }))
+    try {
+      await api.setFolderWatched(node.path, node.media_root || '', newVal)
+      clearCache()
+    } catch {
+      setFolderWatched(prev => ({ ...prev, [node.path]: current }))
+    }
+  }
+
   const [showFolderScrape, setShowFolderScrape] = useState(false)
   const [folderScrapeQuery, setFolderScrapeQuery] = useState('')
   const [folderScrapeSrc, setFolderScrapeSrc] = useState('')
@@ -277,17 +293,15 @@ export default function Home() {
   return (
     <div className="space-y-5">
       <div className="glass-panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-        {!hideHomeTitleText && (
-          <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">Library</p>
-            <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-              {tab === 'recent' ? '最近观看' : '我的媒体库'}
-            </h1>
-            <p className="mt-1 text-sm text-gray-500">
-              {tab === 'recent' ? `共 ${recentTotal} 部` : `共 ${tree.length} 个目录`}
-            </p>
-          </div>
-        )}
+        <div>
+          <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">Library</p>
+          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            {tab === 'recent' ? '最近观看' : '我的媒体库'}
+          </h1>
+          <p className="mt-1 text-sm text-gray-500">
+            {tab === 'recent' ? `共 ${recentTotal} 部` : `共 ${tree.length} 个目录`}
+          </p>
+        </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <div className="flex rounded-full border border-white/10 bg-white/[0.06] p-1 backdrop-blur-xl">
             <button onClick={() => setTab('library')}
@@ -313,7 +327,7 @@ export default function Home() {
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
             {recentMovies.map((movie) => (
-              <MovieCard key={movie.id} movie={movie} onUpdated={loadRecent} />
+              <MovieCard key={movie.id} movie={movie} onUpdated={loadRecent} hideTitle={hideHomeTitleText} />
             ))}
           </div>
         )
@@ -332,6 +346,8 @@ export default function Home() {
                 <div key={node.path}
                   onClick={() => goFolder(node.path, node.media_root)}
                   onContextMenu={(e) => handleFolderContextMenu(e, node)}
+                  onMouseEnter={() => setHoveredFolder(node.path)}
+                  onMouseLeave={() => setHoveredFolder(null)}
                   className="glass-card apple-focus group cursor-pointer overflow-hidden"
                 >
                   <div className="relative aspect-[2/3] bg-white/[0.04]">
@@ -341,9 +357,26 @@ export default function Home() {
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-4xl text-white/10" />
                     )}
-                    <WatchedBadge watched={!!node.folder_watched} />
+                    <WatchedBadge watched={folderWatched[node.path] ?? !!node.folder_watched} />
+                    {hoveredFolder === node.path && (
+                      <button
+                        onClick={(e) => handleToggleFolderWatched(e, node)}
+                        className={`absolute right-2 top-2 z-20 flex h-8 w-8 items-center justify-center rounded-full shadow-lg backdrop-blur-xl transition-all ${
+                          (folderWatched[node.path] ?? !!node.folder_watched)
+                            ? 'border border-apple-mint/40 bg-apple-mint/80 text-white'
+                            : 'border border-white/20 bg-black/50 text-white/70 hover:bg-apple-mint/80 hover:text-white hover:border-apple-mint/40'
+                        }`}
+                        title={(folderWatched[node.path] ?? !!node.folder_watched) ? '取消已看' : '标记已看'}
+                      >
+                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      </button>
+                    )}
+                    {!hideHomeTitleText && (
+                    <>
                     <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-transparent opacity-95" />
-                    {!node.folder_watched && (node.progress_percent || 0) > 0 && (
+                    {!(folderWatched[node.path] ?? !!node.folder_watched) && (node.progress_percent || 0) > 0 && (
                       <div className="absolute bottom-0 left-0 right-0 z-20 h-1 bg-white/15 backdrop-blur">
                         <div className="h-full rounded-r-full bg-apple-blue shadow-glow" style={{ width: `${node.progress_percent || 0}%` }} />
                       </div>
@@ -352,6 +385,8 @@ export default function Home() {
                       <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-white drop-shadow">{node.display_title || node.name}</p>
                       <p className="mt-1 text-xs text-gray-400">{node.movie_count} 部</p>
                     </div>
+                    </>
+                    )}
                   </div>
                 </div>
               )
@@ -366,7 +401,7 @@ export default function Home() {
       )}
 
       {showFolderScrape && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-xl">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
           <div className="glass-modal max-h-[85vh] w-full max-w-3xl overflow-y-auto p-4 sm:p-5">
             <h2 className="mb-1 text-lg font-bold text-white">手动刮削目录: {activeFolderName}</h2>
             <p className="mb-4 text-xs text-gray-500">搜索关键词，选择结果应用到整个目录</p>
@@ -450,7 +485,7 @@ export default function Home() {
       )}
 
       {showFolderCover && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-xl">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
           <div className="glass-modal max-h-[85vh] w-full max-w-3xl overflow-y-auto p-4 sm:p-5">
             <h2 className="mb-1 text-lg font-bold text-white">更换封面与背景: {activeFolderName}</h2>
             <p className="mb-4 text-xs text-gray-500">选择封面图或背景图应用到该目录下所有影片</p>
