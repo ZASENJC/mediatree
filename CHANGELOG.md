@@ -2,14 +2,21 @@
 
 
 ---
-## v3.1.2 (2026-05-22) - 安全审计与 Bug 修复
+## v3.1.2 (2026-05-22) - 全量代码审计与安全加固
+
+全量审查 30+ 文件，修复 41 个问题，覆盖严重崩溃、安全漏洞、性能优化和前端健壮性。
 
 ### 严重 Bug 修复
 - **Jellyfin 崩溃**: `make_collection_folder` 和 `map_movie_to_jellyfin_item` 中未定义变量导致 `/Views`、`/Items`、`/PlaybackInfo` 等端点 500
 - **Jellyfin 崩溃**: `StartIndex`/`Limit` 的 `int()` 转换无异常防护，非数字输入导致 500
 - **数据写入错误**: `save_category` 使用 `total_changes` 而非 `lastrowid` 获取插入行 ID，导致分类更新/删除操作错误目标行
 
-### 安全修复
+### 安全修复 (13 项)
+- **密码哈希升级**: SHA-256 无盐替换为 `pbkdf2_hmac('sha256')` + 随机 salt (100,000 迭代)，向后兼容旧哈希
+- **修改密码加固**: 同时校验 Authorization token 和旧凭证
+- **Docker 非 root**: Dockerfile 添加 `appuser` (uid 1000)，不再以 root 运行
+- **SSRF 防护**: `api_cover` 和 Jellyfin 图片端点限制为 TMDB/JavDB/Bangumi 图片 CDN 域名白名单
+- **/api/media/ 库密码检查**: 媒体文件 URL 支持 Authorization 或 `?pwd=` 参数验证库密码
 - **密码硬编码**: docker-compose.yml 移除明文密码，改用 `env_file: .env`
 - **CORS 配置**: `allow_origins=["*"]` + `allow_credentials=True` 无效组合改为 `allow_credentials=False`
 - **凭据泄露**: `GET /api/config` 脱敏 TMDB API Key/Token；`POST /api/config` 跳过脱敏值回写
@@ -17,9 +24,36 @@
 - **路径遍历**: `remove_font` 使用 `Path(name).name` 防止删除 fonts 目录外文件
 - **插件安全**: 上传限制 100KB + 危险模式检测 (`os.system`, `subprocess.`, `exec(` 等)
 - **Jellyfin 认证绕过**: UserData 路由增加 `_verify_user_ownership` 校验，防止跨用户操作
+- **NFO XXE 防护**: NFO 解析显式 `resolve_entities=False`
 
-### 文档修复
+### 性能与优化
+- **扫描加速**: `find_media_files` 替换为 inline suffix 过滤，消除重复 glob
+- **字幕 I/O 优化**: `_detect_encoding` 文件仅读一次，内存中尝试 12 种编码
+- **LIKE 注入修复**: `search_movies` 转义 `%`/`_`/`\` 防止通配符注入
+- **Jellyfin 全表扫描**: 6 个无限制查询添加 `LIMIT 10000` 安全边界
+- **Watcher 限流**: 扫描任务上限 3 个并发，防止无限积累
+- **Scraper cache 清理**: `_task_cache` 超过 256 项自动清理已完成任务
+
+### 前端修复
+- **alert → toast**: 所有 `alert()` 替换为 glassmorphism toast 通知组件
+- **Settings 定时器清理**: 组件卸载时清除所有 `scanTimers` setInterval
+- **MovieCard 封面同步**: `coverVersion` 通过 `useEffect` 跟随 movie prop 变化
+- **EditModal 字段补全**: `onSave` 路径补充 `code`/`actress` 字段
+- **Lightbox 触控**: 添加移动端触控滑动手势导航
+- **扫描轮询修复**: 使用 `useRef` 追踪 timer，防 race condition
+- **nountedRef**: `loadLibraries` 添加卸载保护，防 setState on unmount
+- **CSS 前缀**: 添加 `:-webkit-full-screen` 兼容旧版 Safari
+
+### 后端清理
+- **死代码删除**: `_sync_tags_to_user_data` (Jellyfin) + hasattr 无用检查
+- **Token 过期**: Jellyfin token 添加 `created_at` 检查 + 过期清除
+- **错误日志**: 播放 body 解析失败、SPA fallback 异常添加日志记录
+- **配置 I/O 异常**: `load_persisted_config`/`save_config` 记录日志
+
+### 文档与配置
 - README.md 移除已删除文件 (AGENTS.md, TECHNICAL.md, CHANGEME.md) 的引用
+- `.env.example` `JAVDB_REQUEST_INTERVAL` 对齐 config.py 默认值 1.0
+- SVG noise filter 在 `prefers-reduced-motion` 和移动端禁用
 
 ---
 ## v3.1.0 (2026-05-21) - 前端 UI 重设计：玻璃拟态 + Apple 风格
