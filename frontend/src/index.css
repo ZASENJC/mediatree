@@ -95,6 +95,12 @@ body::after {
   background-size: 256px 256px;
 }
 
+@media (prefers-reduced-motion: reduce), (max-width: 640px) {
+  body::after {
+    background-image: none;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

@@ -520,6 +520,32 @@ async def search_movies(q: str, media_root: str = "", limit: int = 100, offset: 
     return {"movies": movies, "total": total}
 
 
+def _hash_password(password: str) -> str:
+    import hashlib
+    import os
+    salt = os.urandom(16)
+    key = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
+    return 'pbkdf2:' + salt.hex() + ':' + key.hex()
+
+
+def _verify_password(password: str, stored_hash: str) -> bool:
+    import hashlib
+    if not stored_hash:
+        return True
+    if stored_hash.startswith('pbkdf2:'):
+        parts = stored_hash.split(':')
+        if len(parts) == 3:
+            try:
+                salt = bytes.fromhex(parts[1])
+                key = bytes.fromhex(parts[2])
+                new_key = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
+                return new_key == key
+            except (ValueError, IndexError):
+                return False
+    legacy = hashlib.sha256(password.encode()).hexdigest()
+    return legacy == stored_hash
+
+
 def _normalize_cover_path(cover: str) -> str:
     if cover.startswith("http://") or cover.startswith("https://"):
         return cover
@@ -854,10 +880,9 @@ async def get_library_passwords() -> list[dict]:
 
 
 async def set_library_password(media_root: str, password: str) -> bool:
-    import hashlib
     db = await get_db()
     if password:
-        h = hashlib.sha256(password.encode()).hexdigest()
+        h = _hash_password(password)
         await db.execute(
             "INSERT OR REPLACE INTO library_passwords (media_root, password_hash) VALUES (?,?)",
             (media_root, h)
@@ -869,14 +894,12 @@ async def set_library_password(media_root: str, password: str) -> bool:
 
 
 async def verify_library_password(media_root: str, password: str) -> bool:
-    import hashlib
     db = await get_db()
     cur = await db.execute("SELECT password_hash FROM library_passwords WHERE media_root=?", (media_root,))
     row = await cur.fetchone()
     if not row:
         return True
-    h = hashlib.sha256(password.encode()).hexdigest()
-    return h == row["password_hash"]
+    return _verify_password(password, row["password_hash"])
 
 
 async def get_library_settings(media_root: str = "") -> dict | None:
@@ -1008,7 +1031,6 @@ async def set_scraper_cache(source: str, query: str, data: dict):
 
 
 async def verify_library_password_v2(media_root: str, password: str) -> bool:
-    import hashlib
     db = await get_db()
     pwd_hash = None
     cur = await db.execute("SELECT password_hash FROM library_passwords WHERE media_root=?", (media_root,))
@@ -1022,5 +1044,4 @@ async def verify_library_password_v2(media_root: str, password: str) -> bool:
             pwd_hash = row2["password_hash"]
     if not pwd_hash:
         return True
-    h = hashlib.sha256(password.encode()).hexdigest()
-    return h == pwd_hash
+    return _verify_password(password, pwd_hash)
