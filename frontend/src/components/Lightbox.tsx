@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useRef } from 'react'
 
 type LightboxImage = string | { src: string; fallback?: string; alt?: string }
 
@@ -11,6 +11,9 @@ interface Props {
 }
 
 export default function Lightbox({ images, index, onClose, onPrev, onNext }: Props) {
+  const touchStartX = useRef(0)
+  const touchStartY = useRef(0)
+
   const handleKey = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') onClose()
     if (e.key === 'ArrowLeft') onPrev()
@@ -31,6 +34,17 @@ export default function Lightbox({ images, index, onClose, onPrev, onNext }: Pro
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4 backdrop-blur-2xl"
       onClick={onClose}
+      onTouchStart={(e) => {
+        touchStartX.current = e.touches[0].clientX
+        touchStartY.current = e.touches[0].clientY
+      }}
+      onTouchEnd={(e) => {
+        const dx = e.changedTouches[0].clientX - touchStartX.current
+        const dy = e.changedTouches[0].clientY - touchStartY.current
+        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 60) {
+          dx > 0 ? onPrev() : onNext()
+        }
+      }}
     >
       <button
         onClick={(e) => { e.stopPropagation(); onClose() }}

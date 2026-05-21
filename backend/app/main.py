@@ -1405,7 +1405,7 @@ class SPAFallbackMiddleware(BaseHTTPMiddleware):
             if request.url.path.startswith("/api"):
                 raise
             import traceback
-            traceback.print_exc()
+            logger.warning(f"SPA fallback: unhandled error on non-API route {request.url.path}:\n{traceback.format_exc()}")
             return Response(content=INDEX_HTML, media_type="text/html")
         if response.status_code == 404 and INDEX_HTML \
                 and not request.url.path.startswith("/api") \

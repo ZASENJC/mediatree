@@ -215,6 +215,18 @@ canvas[data-mediatree-subtitle="ass"] {
   opacity: 0;
 }
 
+:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+}
+
+:-webkit-full-screen video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 :fullscreen {
   width: 100vw;
   height: 100vh;

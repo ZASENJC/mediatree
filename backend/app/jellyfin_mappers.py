@@ -560,7 +560,7 @@ def build_series_items(
 
         cov = sinfo.get("cover_local") or sinfo.get("cover_remote")
         if cov:
-            cov_path = _normalize_cover_path(cov) if hasattr(__import__("sys").modules["app.jellyfin_mappers"], '_normalize_cover_path') else _normalize_cover_path(cov)
+            cov_path = _normalize_cover_path(cov)
             series_item["ImageTags"] = {"Primary": hashlib.md5(cov.encode()).hexdigest()[:16]}
         else:
             series_item["ImageTags"] = {}

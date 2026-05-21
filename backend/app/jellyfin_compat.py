@@ -1013,7 +1013,8 @@ async def _parse_playing_body(request: Request) -> PlayingRequest:
             return PlayingRequest()
         data = json_module.loads(raw.decode("utf-8"))
         return PlayingRequest(**data)
-    except Exception:
+    except Exception as e:
+        _jf_logger.warning(f"Failed to parse playing body: {e}")
         return PlayingRequest()
 
 
@@ -1312,44 +1313,6 @@ async def jf_display_preferences(user_id: str, request: Request):
 @router.post("/DisplayPreferences/{user_id}")
 async def jf_display_preferences_save(user_id: str, request: Request):
     return {"ok": True}
-
-
-async def _sync_tags_to_user_data(user_name: str):
-    """Sync MediaTree 'favorite' and 'watched' tags to user_data table."""
-    user_id = get_user_id_from_username(user_name)
-    db = await get_db()
-
-    fav_rows = await db.execute(
-        "SELECT movie_id FROM tags WHERE tag='favorite'"
-    )
-    for row in await fav_rows.fetchall():
-        item_id = str(row["movie_id"])
-        await db.execute(
-            """INSERT OR IGNORE INTO user_data (user_id, item_id, is_favorite, updated_at)
-               VALUES (?,?,1,datetime('now'))""",
-            (user_id, item_id),
-        )
-        await db.execute(
-            "UPDATE user_data SET is_favorite=1 WHERE user_id=? AND item_id=?",
-            (user_id, item_id),
-        )
-
-    watched_rows = await db.execute(
-        "SELECT movie_id FROM tags WHERE tag='watched'"
-    )
-    for row in await watched_rows.fetchall():
-        item_id = str(row["movie_id"])
-        await db.execute(
-            """INSERT OR IGNORE INTO user_data (user_id, item_id, played, updated_at)
-               VALUES (?,?,1,datetime('now'))""",
-            (user_id, item_id),
-        )
-        await db.execute(
-            "UPDATE user_data SET played=1 WHERE user_id=? AND item_id=?",
-            (user_id, item_id),
-        )
-
-    await db.commit()
 
 
 # ─── Series/Season image helpers ───

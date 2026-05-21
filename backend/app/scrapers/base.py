@@ -77,6 +77,15 @@ class ScraperInfo:
 
 _task_cache: dict[tuple[Any, ...], asyncio.Task] = {}
 _task_cache_lock = asyncio.Lock()
+_MAX_TASK_CACHE_SIZE = 256
+
+
+async def _cleanup_task_cache():
+    async with _task_cache_lock:
+        if len(_task_cache) > _MAX_TASK_CACHE_SIZE:
+            done = [k for k, v in _task_cache.items() if v.done()]
+            for k in done:
+                del _task_cache[k]
 
 
 class BaseScraper:
@@ -133,6 +142,10 @@ class BaseScraper:
             if task is None or task.done():
                 task = asyncio.create_task(factory())
                 _task_cache[key] = task
+                if len(_task_cache) > _MAX_TASK_CACHE_SIZE:
+                    done = [k for k, v in _task_cache.items() if v.done()]
+                    for k in done:
+                        del _task_cache[k]
         try:
             return await task
         finally:
