@@ -1,7 +1,27 @@
-# CHANGEME - MediaTree 版本更新记录
+# MediaTree 版本更新记录
+
 
 ---
+## v3.1.2 (2026-05-22) - 安全审计与 Bug 修复
 
+### 严重 Bug 修复
+- **Jellyfin 崩溃**: `make_collection_folder` 和 `map_movie_to_jellyfin_item` 中未定义变量导致 `/Views`、`/Items`、`/PlaybackInfo` 等端点 500
+- **Jellyfin 崩溃**: `StartIndex`/`Limit` 的 `int()` 转换无异常防护，非数字输入导致 500
+- **数据写入错误**: `save_category` 使用 `total_changes` 而非 `lastrowid` 获取插入行 ID，导致分类更新/删除操作错误目标行
+
+### 安全修复
+- **密码硬编码**: docker-compose.yml 移除明文密码，改用 `env_file: .env`
+- **CORS 配置**: `allow_origins=["*"]` + `allow_credentials=True` 无效组合改为 `allow_credentials=False`
+- **凭据泄露**: `GET /api/config` 脱敏 TMDB API Key/Token；`POST /api/config` 跳过脱敏值回写
+- **密码持久化**: `config.json` 不再存储 `auth_pass`，密码仅来自环境变量
+- **路径遍历**: `remove_font` 使用 `Path(name).name` 防止删除 fonts 目录外文件
+- **插件安全**: 上传限制 100KB + 危险模式检测 (`os.system`, `subprocess.`, `exec(` 等)
+- **Jellyfin 认证绕过**: UserData 路由增加 `_verify_user_ownership` 校验，防止跨用户操作
+
+### 文档修复
+- README.md 移除已删除文件 (AGENTS.md, TECHNICAL.md, CHANGEME.md) 的引用
+
+---
 ## v3.1.0 (2026-05-21) - 前端 UI 重设计：玻璃拟态 + Apple 风格
 
 ### 设计系统 — 玻璃拟态（Glassmorphism）
