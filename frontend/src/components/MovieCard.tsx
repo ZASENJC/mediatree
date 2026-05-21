@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, Movie } from '../api'
 import { saveScrollPos } from '../scroll'
@@ -27,7 +27,15 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const [searching, setSearching] = useState(false)
   const [applying, setApplying] = useState(false)
   const [coverVersion, setCoverVersion] = useState(() => movie.updated_at || '')
+  const prevMovieId = useRef(movie.id)
   const [hovered, setHovered] = useState(false)
+
+  useEffect(() => {
+    if (prevMovieId.current !== movie.id) {
+      prevMovieId.current = movie.id
+      setCoverVersion(movie.updated_at || '')
+    }
+  }, [movie.id, movie.updated_at])
   const [localWatched, setLocalWatched] = useState<boolean | null>(null)
 
   const goDetail = () => {

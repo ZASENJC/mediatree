@@ -84,6 +84,14 @@ export default function Settings() {
     }).catch(() => {}).finally(() => setLoading(false))
 
     api.getPlugins().then(d => setPlugins(d.plugins)).catch(() => {})
+
+    return () => {
+      // Clear all scan polling timers on unmount
+      for (const timer of Object.values(scanTimers.current)) {
+        clearInterval(timer)
+      }
+      scanTimers.current = {}
+    }
   }, [])
 
   const saveGlobal = async () => {

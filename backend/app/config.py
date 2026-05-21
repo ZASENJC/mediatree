@@ -122,6 +122,40 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
 
 
+_SAFE_IMAGE_HOSTS = {
+    "image.tmdb.org",
+    "www.themoviedb.org",
+    "javdatabase.com",
+    "www.javdatabase.com",
+    "lain.bgm.tv",
+    "bangumi.tv",
+    "bgm.tv",
+    "img.bgm.tv",
+}
+
+
+def is_safe_image_url(url: str) -> bool:
+    if not url:
+        return False
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+        if not parsed.scheme:
+            return True
+        if parsed.scheme not in ("http", "https"):
+            return False
+        if host in _SAFE_IMAGE_HOSTS:
+            return True
+        for safe_host in _SAFE_IMAGE_HOSTS:
+            if host == safe_host or host.endswith("." + safe_host):
+                return True
+        logger.warning(f"Blocked image fetch for untrusted host: {host}")
+        return False
+    except Exception:
+        return False
+
+
 settings = Settings()
 settings.load_persisted_config()
 logger.info("MediaTree config loaded")

@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .config import settings, logger, setup_file_logging
+from .config import settings, logger, setup_file_logging, is_safe_image_url
 from .database import (
     init_db, close_db_pool, upsert_movie, get_movies, get_movie_detail,
     get_categories, save_category, delete_category, add_tag, remove_tag,
@@ -245,8 +245,8 @@ async def api_setup_save(data: dict):
     for item in items:
         pwd_hash = None
         if item.get("password"):
-            import hashlib
-            pwd_hash = hashlib.sha256(item["password"].encode()).hexdigest()
+            from .database import _hash_password
+            pwd_hash = _hash_password(item["password"])
         await save_library_settings({
             "media_root": item["media_root"],
             "scraper": item.get("scraper") or "auto",
@@ -362,7 +362,7 @@ async def api_cover(movie_id: int):
     if cover_path and Path(cover_path).exists():
         return FileResponse(cover_path, headers={"Cache-Control": "no-store"})
     remote = movie.get("cover_remote")
-    if remote:
+    if remote and is_safe_image_url(remote):
         import httpx
         try:
             async with httpx.AsyncClient(timeout=15) as client:
@@ -871,13 +871,20 @@ async def api_recent_watched(media_root: str = Query(""), limit: int = Query(200
 # ─── Auth Change Password ───
 
 @app.post("/api/auth/change-password")
-async def api_change_password(data: dict):
+async def api_change_password(request: Request, data: dict):
     old_user = data.get("old_username", "")
     old_pass = data.get("old_password", "")
     new_user = data.get("new_username", "")
     new_pass = data.get("new_password", "")
 
     if settings.auth_enabled:
+        # Verify both token and old password to prevent token-only attacks
+        auth = request.headers.get("Authorization", "")
+        if auth != f"Bearer {settings.auth_token}" and not (
+            auth.startswith("Basic ") and old_user == settings.auth_user and old_pass == settings.auth_pass
+        ):
+            logger.warning("Change password rejected: invalid auth or old credentials")
+            raise HTTPException(status_code=401, detail="Invalid credentials")
         if old_user != settings.auth_user or old_pass != settings.auth_pass:
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
@@ -1332,7 +1339,7 @@ async def api_delete_movie(movie_id: int):
 # ─── Static Media ───
 
 @app.get("/api/media/{file_path:path}")
-async def api_media_file(file_path: str):
+async def api_media_file(file_path: str, request: Request):
     full_path = Path(settings.media_root) / file_path
     try:
         real = full_path.resolve()
@@ -1341,6 +1348,36 @@ async def api_media_file(file_path: str):
             raise HTTPException(status_code=404)
     except (OSError, ValueError):
         raise HTTPException(status_code=404)
+    # Check library password protection for files under media roots
+    from .database import get_library_passwords, verify_library_password_v2
+    for lib in await get_library_passwords():
+        lib_root = Path(lib["media_root"]).resolve()
+        try:
+            if real.is_relative_to(lib_root) or str(real).startswith(str(lib_root)):
+                # Check for library password - if set, require auth
+                auth = request.headers.get("Authorization", "")
+                valid = False
+                if auth == f"Bearer {settings.auth_token}":
+                    valid = True
+                elif auth.startswith("Basic "):
+                    import base64
+                    try:
+                        decoded = base64.b64decode(auth[6:]).decode()
+                        user, _, pwd = decoded.partition(":")
+                        if user == settings.auth_user and pwd == settings.auth_pass:
+                            valid = True
+                    except Exception:
+                        pass
+                # If auth is not valid, check library-specific password via query param or header
+                if not valid:
+                    lib_pwd = request.query_params.get("pwd") or request.headers.get("X-Library-Password", "")
+                    if not lib_pwd or not await verify_library_password_v2(lib["media_root"], lib_pwd):
+                        raise HTTPException(status_code=401, detail="Library password required")
+                break
+        except HTTPException:
+            raise
+        except (ValueError, AttributeError):
+            pass
     return FileResponse(real)
 
 

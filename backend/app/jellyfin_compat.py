@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request, Query, HTTPException, Response
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .config import settings, logger
+from .config import settings, logger, is_safe_image_url
 from .database import get_db, get_movie_detail
 from .stream import _full_stream, _range_stream, MIME_MAP as STREAM_MIME_MAP
 from .subtitles import (
@@ -343,7 +343,7 @@ async def _get_item_detail(item_id: str, request: Request, user: dict):
 async def _get_series_detail(series_id: str, user_id: str, host_base: str) -> dict:
     from .database import get_db
     db = await get_db()
-    cur = await db.execute("SELECT folder_levels, title, cover_local, cover_remote, fanart_local FROM movies WHERE folder_levels != '' ORDER BY folder_levels")
+    cur = await db.execute("SELECT folder_levels, title, cover_local, cover_remote, fanart_local FROM movies WHERE folder_levels != '' ORDER BY folder_levels LIMIT 10000")
     all_movies = [dict(r) for r in await cur.fetchall()]
 
     series_movies = []
@@ -386,7 +386,7 @@ async def _get_series_detail(series_id: str, user_id: str, host_base: str) -> di
 async def _get_season_detail(season_id: str, user_id: str, host_base: str) -> dict:
     from .database import get_db
     db = await get_db()
-    cur = await db.execute("SELECT folder_levels FROM movies WHERE folder_levels != '' ORDER BY folder_levels")
+    cur = await db.execute("SELECT folder_levels FROM movies WHERE folder_levels != '' ORDER BY folder_levels LIMIT 10000")
     all_movies = [dict(r) for r in await cur.fetchall()]
 
     season_movies = []
@@ -479,7 +479,7 @@ async def _get_items(request: Request, user: dict) -> dict:
     cols = "id, path, code, title, cover_local, cover_remote, fanart_local, folder_levels, media_root, tmdb_type, tmdb_season, tmdb_episode, episode_title, duration, created_at"
     where = " WHERE media_root = ?"
     params = [media_root]
-    cur = await db.execute(f"SELECT {cols} FROM movies{where} ORDER BY folder_levels, path", params)
+    cur = await db.execute(f"SELECT {cols} FROM movies{where} ORDER BY folder_levels, path LIMIT 10000", params)
     all_movies = [dict(r) for r in await cur.fetchall()]
 
     if not all_movies:
@@ -558,7 +558,7 @@ async def _items_for_season(season_id: str, user_id: str, host_base: str, start_
     from .database import get_db
     db = await get_db()
     cols = "id, path, code, title, cover_local, cover_remote, fanart_local, folder_levels, media_root, tmdb_type, tmdb_season, tmdb_episode, episode_title, duration"
-    cur = await db.execute(f"SELECT {cols} FROM movies WHERE folder_levels != '' ORDER BY folder_levels, path")
+    cur = await db.execute(f"SELECT {cols} FROM movies WHERE folder_levels != '' ORDER BY folder_levels, path LIMIT 10000")
     all_movies = [dict(r) for r in await cur.fetchall()]
 
     # Filter episodes belonging to this season
@@ -599,7 +599,7 @@ async def _items_for_series(series_id: str, user_id: str, host_base: str, start_
     from .database import get_db
     db = await get_db()
     cols = "id, path, code, title, folder_levels, media_root, tmdb_type, tmdb_season, tmdb_episode, episode_title, duration"
-    cur = await db.execute(f"SELECT {cols} FROM movies WHERE folder_levels != '' ORDER BY folder_levels, path")
+    cur = await db.execute(f"SELECT {cols} FROM movies WHERE folder_levels != '' ORDER BY folder_levels, path LIMIT 10000")
     all_movies = [dict(r) for r in await cur.fetchall()]
 
     # Filter movies belonging to this series
@@ -870,7 +870,7 @@ async def _serve_image(item_id: str, image_type: str, request: Request):
                     headers={"ETag": f'"{etag}"', "Cache-Control": "public, max-age=3600"},
                 )
         cover_remote = movie.get("cover_remote")
-        if cover_remote:
+        if cover_remote and is_safe_image_url(cover_remote):
             import httpx
             try:
                 async with httpx.AsyncClient(timeout=15) as client:
@@ -887,7 +887,7 @@ async def _serve_image(item_id: str, image_type: str, request: Request):
     elif image_type == "backdrop":
         fanart = movie.get("fanart_local")
         if fanart:
-            if fanart.startswith("http://") or fanart.startswith("https://"):
+            if (fanart.startswith("http://") or fanart.startswith("https://")) and is_safe_image_url(fanart):
                 import httpx
                 try:
                     async with httpx.AsyncClient(timeout=15) as client:
@@ -1358,7 +1358,7 @@ async def _serve_series_image(series_id: str, image_type: str):
     from .database import get_db
     db = await get_db()
     cur = await db.execute(
-        "SELECT cover_local, cover_remote, fanart_local, folder_levels FROM movies WHERE folder_levels != ''"
+        "SELECT cover_local, cover_remote, fanart_local, folder_levels FROM movies WHERE folder_levels != '' LIMIT 10000"
     )
     all_movies = [dict(r) for r in await cur.fetchall()]
 
@@ -1387,7 +1387,7 @@ async def _serve_season_image(season_id: str, image_type: str):
     from .database import get_db
     db = await get_db()
     cur = await db.execute(
-        "SELECT cover_local, cover_remote, fanart_local, folder_levels FROM movies WHERE folder_levels != ''"
+        "SELECT cover_local, cover_remote, fanart_local, folder_levels FROM movies WHERE folder_levels != '' LIMIT 10000"
     )
     all_movies = [dict(r) for r in await cur.fetchall()]
 
@@ -1428,7 +1428,7 @@ async def _serve_image_blob(cover_local: str, cover_remote_or_fanart: str, etag_
             return FileResponse(cover_local, media_type="image/jpeg",
                                 headers={"ETag": f'"{etag}"', "Cache-Control": "public, max-age=3600"})
 
-    if url and (url.startswith("http://") or url.startswith("https://")):
+    if url and (url.startswith("http://") or url.startswith("https://")) and is_safe_image_url(url):
         import httpx
         try:
             async with httpx.AsyncClient(timeout=15) as client:
