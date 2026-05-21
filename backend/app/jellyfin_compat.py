@@ -422,8 +422,14 @@ async def _get_items(request: Request, user: dict) -> dict:
     parent_id = request.query_params.get("ParentId", "")
     include_item_types = request.query_params.get("IncludeItemTypes", "")
     recursive = request.query_params.get("Recursive", "").lower() == "true"
-    start_index = int(request.query_params.get("StartIndex", "0"))
-    limit = int(request.query_params.get("Limit", "50"))
+    try:
+        start_index = int(request.query_params.get("StartIndex", "0"))
+    except (ValueError, TypeError):
+        start_index = 0
+    try:
+        limit = int(request.query_params.get("Limit", "50"))
+    except (ValueError, TypeError):
+        limit = 50
     sort_by = request.query_params.get("SortBy", "SortName")
     sort_order = request.query_params.get("SortOrder", "Ascending").lower()
     search_term = request.query_params.get("SearchTerm", "")
