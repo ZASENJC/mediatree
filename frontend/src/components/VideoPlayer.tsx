@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import Artplayer, { Option, Setting, SettingOption } from 'artplayer'
 import { api, SubtitleTrack } from '../api'
 import artplayerPluginAss from './artplayerPluginAss'
@@ -440,7 +441,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   const [assFallbackFont, setAssFallbackFont] = useState(() => buildAssFontConfig([]).fallbackFont)
   const [artInstance, setArtInstance] = useState<Artplayer | null>(null)
   const [vrMode, setVrMode] = useState<VRMode>('off')
-
+  const [videoAspect, setVideoAspect] = useState(16 / 9)
   const streamUrl = useMemo(() => new URL(api.streamUrl(movieId), localPlayerOrigin()).toString(), [movieId])
   const streamSrc = useMemo(() => {
     if (!useTranscode) return src
@@ -453,6 +454,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   const hasExternalSubtitles = tracks.some(t => t.source === 'external')
   const externalPlaylistUrl = new URL(api.externalPlaylistUrl(movieId), localPlayerOrigin()).toString()
   const localPlaybackUrl = hasExternalSubtitles ? externalPlaylistUrl : streamUrl
+  const playerStyle = { '--mediatree-video-aspect': videoAspect } as CSSProperties
 
   const clearNativeSubtitle = useCallback((art: Artplayer) => {
     try { art.subtitle.show = false } catch {}
@@ -1163,6 +1165,12 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
       applyActiveSubtitle(activeTrackRef.current)
     })
     art.on('video:loadedmetadata', () => {
+      const video = art.video
+      const naturalWidth = video?.videoWidth || 0
+      const naturalHeight = video?.videoHeight || 0
+      if (naturalWidth > 0 && naturalHeight > 0) {
+        setVideoAspect(Math.max(4 / 5, Math.min(21 / 9, naturalWidth / naturalHeight)))
+      }
       const loadedDuration = isFinite(art.duration) && art.duration > 0 ? art.duration : 0
       const total = useTranscodeRef.current ? (displayDurationRef.current || loadedDuration) : loadedDuration
       if (total) {
@@ -1375,40 +1383,40 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   }
 
   return (
-    <div>
-      <div className="relative overflow-hidden rounded-lg bg-black">
+    <div className="mx-auto w-full max-w-[calc((100vh-11rem)*var(--mediatree-video-aspect))]" style={playerStyle}>
+      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black shadow-glass">
         <div ref={artContainerRef} className="mediatree-artplayer w-full bg-black" />
         <VRVideoLayer art={artInstance} mode={vrMode} />
 
         {seekOsd && (
-          <div className="absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-black/75 px-4 py-2 text-sm font-semibold text-white shadow-xl">
+          <div className="glass-popover absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 px-4 py-2 text-sm font-semibold text-white">
             {seekOsd.delta >= 0 ? '+' : '-'}{fmt(Math.abs(seekOsd.delta))} &nbsp; {fmt(seekOsd.target)} / {fmt(seekOsd.duration)}
           </div>
         )}
 
         {showResume && (
-          <div className="absolute bottom-[20%] left-1/2 z-30 flex -translate-x-1/2 items-center overflow-hidden rounded-lg bg-jelly/90 text-sm font-semibold text-white shadow-xl">
-            <button onClick={handleResume} className="px-5 py-3 transition-all hover:bg-jelly">
+          <div className="absolute bottom-[20%] left-1/2 z-30 flex -translate-x-1/2 items-center overflow-hidden rounded-full border border-apple-blue/35 bg-apple-blue/75 text-sm font-semibold text-white shadow-glow backdrop-blur-2xl">
+            <button onClick={handleResume} className="px-5 py-3 transition-all hover:bg-white/10">
               从上次位置继续 ({fmt(resumePos)})
             </button>
-            <button onClick={hideResumePrompt} className="border-l border-white/20 px-3 py-3 text-white/80 hover:bg-jelly" aria-label="关闭继续播放提示">
+            <button onClick={hideResumePrompt} className="border-l border-white/20 px-3 py-3 text-white/80 hover:bg-white/10" aria-label="关闭继续播放提示">
               ×
             </button>
           </div>
         )}
 
         {unsupportedAudio && !useTranscode && !videoError && (
-          <div className="absolute left-3 right-3 top-3 z-30 rounded-lg border border-amber-400/30 bg-dark-900/90 px-3 py-2 shadow-xl backdrop-blur">
+          <div className="absolute left-3 right-3 top-3 z-30 rounded-2xl border border-amber-400/25 bg-black/55 px-3 py-2 shadow-glass backdrop-blur-2xl">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <p className="text-xs font-medium text-amber-200">当前音频编码 {unsupportedAudio.toUpperCase()} 可能无声</p>
                 <p className="mt-0.5 text-[11px] text-gray-400">直传不会占用转码资源；需要声音时再手动开启音频转码或外部播放器。</p>
               </div>
               <div className="flex shrink-0 gap-1.5">
-                <button onClick={() => startTranscode('audio')} className="rounded border border-amber-400/30 bg-amber-500/20 px-2.5 py-1 text-xs text-amber-100 hover:bg-amber-500/30">
+                <button onClick={() => startTranscode('audio')} className="rounded-full border border-amber-400/30 bg-amber-500/20 px-2.5 py-1 text-xs text-amber-100 transition-all hover:bg-amber-500/30">
                   音频转码
                 </button>
-                <button onClick={openMpv} className="rounded border border-dark-600 bg-dark-700 px-2.5 py-1 text-xs text-gray-200 hover:bg-dark-600">
+                <button onClick={openMpv} className="rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-200 transition-all hover:bg-white/[0.14] hover:text-white">
                   MPV
                 </button>
               </div>
@@ -1417,16 +1425,18 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         )}
 
         {videoError && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-            <div className="text-center">
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 p-4 backdrop-blur-xl">
+            <div className="glass-modal max-w-sm p-5 text-center">
               <p className="mb-2 font-semibold text-white">该视频解码失败</p>
               <p className="mb-4 text-xs text-gray-400">浏览器不支持此视频的音视频编码</p>
-              <button onClick={() => startTranscode('audio')} className="rounded-lg bg-jelly px-4 py-2 text-sm text-white transition-colors hover:bg-jelly/80">
-                音频转码播放
-              </button>
-              <button onClick={() => startTranscode('full')} className="ml-2 rounded-lg bg-dark-700 px-4 py-2 text-sm text-white transition-colors hover:bg-dark-600">
-                完整转码
-              </button>
+              <div className="flex flex-col justify-center gap-2 sm:flex-row">
+                <button onClick={() => startTranscode('audio')} className="glass-button-primary px-4 py-2 text-sm">
+                  音频转码播放
+                </button>
+                <button onClick={() => startTranscode('full')} className="glass-button px-4 py-2 text-sm">
+                  完整转码
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1434,22 +1444,22 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
 
       <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
         <span className="shrink-0 text-[11px] text-gray-500">本地播放:</span>
-        <a href={`iina://weblink?url=${encodeURIComponent(localPlaybackUrl)}`} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-lg border border-dark-600 bg-dark-700 px-2.5 py-1 text-xs text-gray-300 transition-colors hover:bg-dark-600 hover:text-white">
+        <a href={`iina://weblink?url=${encodeURIComponent(localPlaybackUrl)}`} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-300 backdrop-blur-xl transition-all hover:bg-white/[0.14] hover:text-white">
           IINA
         </a>
-        <button onClick={openMpv} className="shrink-0 rounded-lg border border-dark-600 bg-dark-700 px-2.5 py-1 text-xs text-gray-300 transition-colors hover:bg-dark-600 hover:text-white">
+        <button onClick={openMpv} className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-300 backdrop-blur-xl transition-all hover:bg-white/[0.14] hover:text-white">
           MPV
         </button>
-        <button onClick={copyStreamUrl} className="shrink-0 rounded-lg border border-dark-600 bg-dark-700 px-2.5 py-1 text-xs text-gray-300 transition-colors hover:bg-dark-600 hover:text-white">
+        <button onClick={copyStreamUrl} className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-300 backdrop-blur-xl transition-all hover:bg-white/[0.14] hover:text-white">
           {linkCopied ? '已复制' : '复制链接'}
         </button>
         {hasExternalSubtitles && (
-          <a href={externalPlaylistUrl} className="shrink-0 rounded-lg border border-dark-600 bg-dark-700 px-2.5 py-1 text-xs text-gray-300 transition-colors hover:bg-dark-600 hover:text-white">
+          <a href={externalPlaylistUrl} className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-300 backdrop-blur-xl transition-all hover:bg-white/[0.14] hover:text-white">
             字幕播放列表
           </a>
         )}
         {useTranscode && (
-          <span className="shrink-0 rounded-lg border border-amber-400/20 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-200">
+          <span className="shrink-0 rounded-full border border-amber-400/20 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-200 backdrop-blur-xl">
             {transcodeMode === 'full' ? '完整转码' : '音频转码'} · {fmt(currentTimeRef.current || transcodeStart)}
           </span>
         )}

@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { api, Movie, FolderNode } from '../api'
 import { getExcluded, setExcluded } from '../store'
 import { getCached, setCache } from '../cache'
-import { saveScrollPos, restoreScrollPos } from '../scroll'
+import { saveScrollPos } from '../scroll'
 import { WatchedBadge } from '../components/WatchedBadge'
 import SortDropdown from '../components/SortDropdown'
 
@@ -42,8 +42,6 @@ export default function Browse() {
   useEffect(() => {
     api.folders().then(data => setFolders(data.tree))
   }, [])
-
-  useEffect(() => { restoreScrollPos() }, [])
 
   useEffect(() => {
     setPage(0)
@@ -143,37 +141,43 @@ export default function Browse() {
   )
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+    <div className="space-y-5">
+      <div className="glass-panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
             <button
               onClick={() => setMobileTreeOpen(true)}
-              className="lg:hidden w-9 h-9 flex items-center justify-center rounded-lg bg-dark-700 border border-dark-600 text-gray-300 hover:text-white hover:bg-dark-600 transition-colors shrink-0"
+              className="glass-button h-9 w-9 shrink-0 p-0 lg:hidden"
               aria-label="打开文件夹"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
                 <path strokeLinecap="round" d="M4 7h16M4 12h16M4 17h16" />
               </svg>
             </button>
-            <h1 className="text-xl sm:text-2xl font-bold break-words min-w-0">
-              {staff ? `Staff: ${decodeURIComponent(staff)}` : actress ? `演员: ${decodeURIComponent(actress)}` : codeQuery ? `搜索: ${decodeURIComponent(codeQuery)}` : folder ? `浏览: ${decodeURIComponent(folder)}` : '全部影片'}
-            </h1>
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">Browse</p>
+              <h1 className="min-w-0 break-words text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                {staff ? `Staff: ${decodeURIComponent(staff)}` : actress ? `演员: ${decodeURIComponent(actress)}` : codeQuery ? `搜索: ${decodeURIComponent(codeQuery)}` : folder ? `浏览: ${decodeURIComponent(folder)}` : '全部影片'}
+              </h1>
+              <p className="mt-1 text-sm text-gray-500">共 {total} 部</p>
+            </div>
           </div>
-          <p className="text-sm text-gray-500 mt-1">共 {total} 部</p>
         </div>
         <SortDropdown options={sortOptions} current={sort} onChange={handleSortChange} />
       </div>
 
       {mobileTreeOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setMobileTreeOpen(false)} />
-          <aside className="absolute left-0 top-0 h-full w-[82vw] max-w-xs bg-dark-900 border-r border-dark-600 shadow-2xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-gray-300">文件夹</h2>
+          <div className="absolute inset-0 bg-black/65 backdrop-blur-xl" onClick={() => setMobileTreeOpen(false)} />
+          <aside className="glass-modal absolute left-3 top-3 h-[calc(100%-1.5rem)] w-[82vw] max-w-xs overflow-hidden p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-apple-blue/70">Folders</p>
+                <h2 className="text-sm font-semibold text-white">文件夹</h2>
+              </div>
               <button
                 onClick={() => setMobileTreeOpen(false)}
-                className="w-8 h-8 rounded-lg bg-dark-700 text-gray-400 hover:text-white"
+                className="glass-button h-8 w-8 p-0 text-gray-300"
                 aria-label="关闭文件夹"
               >
                 ×
@@ -184,40 +188,40 @@ export default function Browse() {
         </div>
       )}
 
-      <div className="flex gap-6">
-        <div className="w-56 shrink-0 hidden lg:block">
-          <div className="sticky top-20">
-            <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">文件夹</h3>
+      <div className="flex gap-5">
+        <div className="hidden w-60 shrink-0 lg:block">
+          <div className="glass-panel sticky top-20 p-4">
+            <h3 className="mb-3 text-xs font-medium uppercase tracking-[0.24em] text-gray-500">文件夹</h3>
             {renderFolderTree()}
           </div>
         </div>
 
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0 flex-1">
           {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
               {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="aspect-[2/3] bg-dark-800 rounded-lg animate-pulse" />
+                <div key={i} className="aspect-[2/3] animate-pulse rounded-2xl border border-white/10 bg-white/[0.06]" />
               ))}
             </div>
           ) : movies.length === 0 ? (
-            <div className="text-center py-20 text-gray-500">
-              <p className="text-2xl font-light mb-2">--</p>
+            <div className="glass-panel py-20 text-center text-gray-500">
+              <p className="mb-2 text-3xl font-light text-white/60">--</p>
               <p>没有找到影片</p>
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
                 {movies.map((movie) => (
                   <div
                     key={movie.id}
                     onClick={() => { saveScrollPos(); navigate(`/detail/${movie.id}`) }}
-                    className="group cursor-pointer bg-dark-800 rounded-lg overflow-hidden border border-dark-700 hover:border-blue-500/40 transition-all hover:bg-dark-700/50"
+                    className="glass-card apple-focus group cursor-pointer overflow-hidden"
                   >
-                    <div className="aspect-[2/3] bg-dark-700 relative overflow-hidden group/thumb">
+                    <div className="relative aspect-[2/3] overflow-hidden bg-white/[0.04]">
                       <img
                         src={api.coverUrl(movie.id)}
                         alt={movie.code}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                         loading="lazy"
                         onError={(e) => {
                           (e.target as HTMLImageElement).style.display = 'none'
@@ -230,25 +234,34 @@ export default function Browse() {
                           <>
                             <WatchedBadge watched={watched} />
                             {!watched && progress > 0 && progress < 90 && (
-                              <div className="absolute bottom-0 left-0 right-0 z-20 h-1.5 bg-black/50">
-                                <div className="h-full bg-blue-500" style={{ width: `${progress}%` }} />
+                              <div className="absolute bottom-0 left-0 right-0 z-20 h-1 bg-white/15 backdrop-blur">
+                                <div className="h-full rounded-r-full bg-apple-blue shadow-glow" style={{ width: `${progress}%` }} />
                               </div>
                             )}
                           </>
                         )
                       })()}
-                      <div className="absolute inset-0 bg-gradient-to-t from-dark-900 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <div className="absolute inset-0 flex items-center justify-center p-2 pointer-events-none opacity-0 group-hover:opacity-100">
-                        <span className="text-xs text-gray-400 text-center line-clamp-3 break-all">{getDisplayTitle(movie)}</span>
+                      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-transparent opacity-95" />
+                      <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
+                        {movie.javdb_score != null && movie.javdb_score > 0 && (
+                          <span className="rounded-full border border-apple-yellow/30 bg-black/45 px-2 py-0.5 text-xs font-semibold text-apple-yellow backdrop-blur-xl">
+                            {movie.javdb_score.toFixed(1)}
+                          </span>
+                        )}
+                        {movie.javdb_likes != null && movie.javdb_likes > 0 && (
+                          <span className="rounded-full border border-apple-pink/30 bg-black/45 px-2 py-0.5 text-xs font-semibold text-apple-pink backdrop-blur-xl">
+                            {movie.javdb_likes >= 1000 ? `${(movie.javdb_likes / 1000).toFixed(1)}k` : movie.javdb_likes}
+                          </span>
+                        )}
                       </div>
-                    </div>
-                    <div className="p-2.5 min-w-0">
-                      <p className="text-xs font-medium text-white leading-tight break-words line-clamp-2">
-                        {getDisplayTitle(movie)}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-500">
-                        <span>{movie.code}</span>
-                        {movie.duration && <span>{movie.duration}分</span>}
+                      <div className="absolute bottom-0 left-0 right-0 min-w-0 p-3">
+                        <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-white drop-shadow">
+                          {getDisplayTitle(movie)}
+                        </p>
+                        <div className="mt-1 flex items-center gap-2 text-xs text-gray-400">
+                          <span className="truncate">{movie.code}</span>
+                          {movie.duration && <span className="shrink-0">{movie.duration}分</span>}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -256,21 +269,21 @@ export default function Browse() {
               </div>
 
               {totalPages > 1 && (
-                <div className="flex justify-center items-center gap-2 mt-8">
+                <div className="mt-8 flex items-center justify-center gap-2">
                   <button
                     onClick={() => setPage(Math.max(0, page - 1))}
                     disabled={page === 0}
-                    className="px-4 py-2 bg-dark-700 rounded-lg text-sm disabled:opacity-30 hover:bg-dark-600 transition-colors"
+                    className="glass-button px-4 py-2 text-sm"
                   >
                     上一页
                   </button>
-                  <span className="text-sm text-gray-400 px-3">
+                  <span className="glass-chip px-3 py-2 text-sm text-gray-300">
                     {page + 1} / {totalPages}
                   </span>
                   <button
                     onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
                     disabled={page >= totalPages - 1}
-                    className="px-4 py-2 bg-dark-700 rounded-lg text-sm disabled:opacity-30 hover:bg-dark-600 transition-colors"
+                    className="glass-button px-4 py-2 text-sm"
                   >
                     下一页
                   </button>
@@ -300,17 +313,17 @@ function TreeItem({ node, selectedPath, onSelect, excluded, onToggleExclude, dep
   return (
     <div>
       <div
-        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-sm transition-colors group ${
+        className={`group flex items-center gap-1 rounded-xl px-2 py-1 text-sm transition-all ${
           isSelected
-            ? 'bg-blue-600/20 text-blue-400'
-            : 'text-gray-400 hover:bg-dark-800'
+            ? 'border border-apple-blue/30 bg-apple-blue/15 text-apple-blue shadow-glow'
+            : 'text-gray-400 hover:bg-white/[0.08] hover:text-white'
         }`}
-        style={{ paddingLeft: `${depth * 16 + 4}px` }}
+        style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
         {hasChildren && (
           <span
             onClick={(e) => { e.stopPropagation(); setOpen(!open) }}
-            className="text-[10px] w-4 text-center shrink-0 cursor-pointer hover:text-white"
+            className="w-4 shrink-0 cursor-pointer text-center text-[10px] text-gray-500 hover:text-white"
           >
             {open ? '\u25BC' : '\u25B6'}
           </span>
@@ -323,16 +336,16 @@ function TreeItem({ node, selectedPath, onSelect, excluded, onToggleExclude, dep
             e.stopPropagation()
             onToggleExclude(node.path)
           }}
-          className="w-3 h-3 shrink-0 rounded accent-blue-600 cursor-pointer"
+          className="h-3 w-3 shrink-0 cursor-pointer rounded accent-apple-blue"
         />
         <span
           onClick={() => onSelect(node.path)}
-          className={`truncate flex-1 cursor-pointer ${included ? '' : 'opacity-40'}`}
+          className={`min-w-0 flex-1 cursor-pointer truncate ${included ? '' : 'opacity-40'}`}
         >
           {node.name}
         </span>
         {node.movie_count > 0 && (
-          <span className="text-[10px] text-gray-600 shrink-0">{node.movie_count}</span>
+          <span className="shrink-0 rounded-full bg-white/[0.08] px-1.5 py-0.5 text-[10px] text-gray-500">{node.movie_count}</span>
         )}
       </div>
       {open && hasChildren && node.children!.map((child) => (

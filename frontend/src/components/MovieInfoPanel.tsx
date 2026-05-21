@@ -2,132 +2,63 @@ import { Movie } from '../api'
 
 interface Props {
   movie: Movie
-  sourceName: string
+  sourceName?: string
+  compact?: boolean
 }
 
-export default function MovieInfoPanel({ movie, sourceName }: Props) {
+export default function MovieInfoPanel({ movie, compact = false }: Props) {
   const comments = movie.javdb_comments || []
-  const cast = movie.cast || []
-  const crew = movie.crew || []
+  const visibleComments = compact ? comments.slice(0, 1) : comments
+
+  const rows = [
+    movie.title ? { label: '标题', value: movie.title } : null,
+    movie.actress ? { label: '演员', value: movie.actress } : null,
+    movie.director ? { label: '导演', value: movie.director } : null,
+    movie.series ? { label: '系列', value: movie.series } : null,
+    movie.studio ? { label: '片商', value: movie.studio } : null,
+    movie.genre ? { label: '类型', value: movie.genre } : null,
+    movie.dvd_id ? { label: '番号', value: movie.dvd_id } : null,
+    movie.release_date ? { label: '发行日', value: movie.release_date } : null,
+    movie.duration ? { label: '时长', value: `${movie.duration} 分钟` } : null,
+    movie.javdb_score != null && movie.javdb_score > 0 ? { label: '评分', value: `${movie.javdb_score.toFixed(1)} / 5.0`, tone: 'text-apple-yellow' } : null,
+    movie.javdb_likes != null && movie.javdb_likes > 0 ? { label: '票数', value: movie.javdb_likes.toLocaleString(), tone: 'text-apple-pink' } : null,
+  ].filter(Boolean) as { label: string; value: string; tone?: string }[]
 
   return (
-    <div className="p-4 bg-dark-800 rounded-lg border border-dark-700">
-      <h3 className="text-sm font-semibold mb-3 text-gray-300">影片信息</h3>
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+      <h3 className="mb-3 text-sm font-semibold text-gray-200">影片信息</h3>
 
-      <div className="space-y-1.5 text-sm">
-        {movie.title && (
-          <div className="flex justify-between">
-            <span className="text-gray-500 shrink-0">标题</span>
-            <span className="text-gray-200 text-right ml-4">{movie.title}</span>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {rows.map(row => (
+          <div key={row.label} className="rounded-2xl border border-white/10 bg-black/15 px-3 py-2">
+            <p className="mb-1 text-xs text-gray-500">{row.label}</p>
+            <p className={`break-words text-sm ${row.tone || 'text-gray-200'}`}>{row.value}</p>
           </div>
-        )}
-        {movie.actress && (
-          <div className="flex justify-between">
-            <span className="text-gray-500 shrink-0">演员</span>
-            <span className="text-gray-200 text-right ml-4">{movie.actress}</span>
-          </div>
-        )}
-        {movie.director && (
-          <div className="flex justify-between">
-            <span className="text-gray-500 shrink-0">导演</span>
-            <span className="text-gray-200 text-right ml-4">{movie.director}</span>
-          </div>
-        )}
-        {movie.series && (
-          <div className="flex justify-between">
-            <span className="text-gray-500 shrink-0">系列</span>
-            <span className="text-gray-200 text-right ml-4">{movie.series}</span>
-          </div>
-        )}
-        {movie.studio && (
-          <div className="flex justify-between">
-            <span className="text-gray-500 shrink-0">片商</span>
-            <span className="text-gray-200 text-right ml-4">{movie.studio}</span>
-          </div>
-        )}
-        {movie.genre && (
-          <div className="flex justify-between">
-            <span className="text-gray-500 shrink-0">类型</span>
-            <span className="text-gray-200 text-right ml-4">{movie.genre}</span>
-          </div>
-        )}
-        {movie.dvd_id && (
-          <div className="flex justify-between">
-            <span className="text-gray-500 shrink-0">番号</span>
-            <span className="text-gray-200 text-right ml-4">{movie.dvd_id}</span>
-          </div>
-        )}
-        {movie.release_date && (
-          <div className="flex justify-between">
-            <span className="text-gray-500 shrink-0">发行日</span>
-            <span className="text-gray-200 text-right ml-4">{movie.release_date}</span>
-          </div>
-        )}
-        {movie.duration && (
-          <div className="flex justify-between">
-            <span className="text-gray-500 shrink-0">时长</span>
-            <span className="text-gray-200 text-right ml-4">{movie.duration} 分钟</span>
-          </div>
-        )}
-        {movie.javdb_score != null && movie.javdb_score > 0 && (
-          <div className="flex justify-between">
-            <span className="text-gray-500 shrink-0">评分</span>
-            <span className="text-yellow-400 text-right ml-4">{movie.javdb_score.toFixed(1)} / 5.0</span>
-          </div>
-        )}
-        {movie.javdb_likes != null && movie.javdb_likes > 0 && (
-          <div className="flex justify-between">
-            <span className="text-gray-500 shrink-0">票数</span>
-            <span className="text-pink-400 text-right ml-4">{movie.javdb_likes.toLocaleString()}</span>
-          </div>
-        )}
+        ))}
       </div>
-
-      {cast.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-dark-700">
-          <p className="text-xs text-gray-500 mb-2">演员表</p>
-          <div className="space-y-1">
-            {cast.slice(0, 8).map((c, i) => (
-              <div key={i} className="flex justify-between text-xs">
-                <span className="text-gray-300">{c.name}</span>
-                <span className="text-gray-500 ml-4 truncate">{c.character}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {crew.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-dark-700">
-          <p className="text-xs text-gray-500 mb-2">制作团队</p>
-          <div className="space-y-1">
-            {crew.map((c, i) => (
-              <div key={i} className="flex justify-between text-xs">
-                <span className="text-gray-300">{c.name}</span>
-                <span className="text-gray-500 ml-4">{c.job}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {movie.javdb_url && (
         <a
           href={movie.javdb_url}
           target="_blank"
           rel="noreferrer"
-          className="inline-block mt-4 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+          className="mt-4 inline-flex rounded-full border border-apple-blue/25 bg-apple-blue/10 px-3 py-1.5 text-xs text-apple-blue transition-all hover:bg-apple-blue/20"
         >
           查看更多信息
         </a>
       )}
 
-      {comments.length > 0 && (
-        <div className="mt-4 pt-3 border-t border-dark-700">
-          <p className="text-xs text-gray-500 mb-2">简介</p>
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {comments.map((comment, i) => (
-              <p key={i} className="text-xs text-gray-400 leading-relaxed bg-dark-700/50 p-2 rounded">
+      {visibleComments.length > 0 && (
+        <div className="mt-4 border-t border-white/10 pt-4">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-xs text-gray-500">简介</p>
+            {compact && comments.length > visibleComments.length && (
+              <span className="text-xs text-gray-600">+{comments.length - visibleComments.length}</span>
+            )}
+          </div>
+          <div className={`space-y-2 ${compact ? 'max-h-48 overflow-hidden' : ''}`}>
+            {visibleComments.map((comment, i) => (
+              <p key={i} className="rounded-2xl border border-white/10 bg-black/15 p-3 text-xs leading-relaxed text-gray-400">
                 {comment}
               </p>
             ))}

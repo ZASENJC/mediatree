@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - 每次 push 前，先同步更新 `AGENTS.md` 和 `CLAUDE.md`，确保文档反映当前代码状态。
 - 将文档更新纳入同一个 commit，不要单独提交。
+- 版本号规则：`v3.1` 起使用 `v3.1.0`、`v3.1.1`、`v3.1.2` 三级格式，不再跳主次版本号。
 
 ## 交互语言规则
 
@@ -130,14 +131,29 @@ scan_media(root)
 ### Frontend key patterns
 - API client in `api.ts`: single `request()` function with 120s TTL cache, auth token management, all typed methods
 - `cache.ts`: `clearCache()` called after mutations (rescrape, delete, edit)
-- `store.ts`: excluded folders persisted in localStorage
+- `store.ts`: excluded folders and UI preferences (e.g. `hideHomeTitleText`) persisted in localStorage
 - `scroll.ts`: scroll position save/restore in sessionStorage
 - All pages are in `src/pages/`, components in `src/components/`, utilities in `src/utils/`
-- `App.tsx`: root component with nav bar, route definitions (`/`, `/folder`, `/browse`, `/detail/:id`, `/favorites`, `/settings`, `/login`, `/setup`), search overlay, library modal
-- `ContextMenu.tsx`: singleton right-click menu with inline styles (no CSS module)
+- `App.tsx`: root component with glassmorphism nav bar, route definitions (`/`, `/folder`, `/browse`, `/detail/:id`, `/favorites`, `/settings`, `/login`, `/setup`), search overlay (desktop dropdown + mobile standalone bar), library modal
+- `ContextMenu.tsx`: singleton right-click menu with glassmorphism inline styles (backdrop blur, rounded-2xl, semi-transparent background)
+
+### UI Design System (Glassmorphism + Apple style)
+- `tailwind.config.js` defines custom color palettes: `apple-*` (blue/purple/pink/mint/yellow), `glass-*` (surface/elevated/border/muted), `dark-*` (retained for legacy), plus custom shadows (`glass`, `glow`, `card`) and `aurora` background.
+- `index.css` defines reusable `@layer components` classes — use these instead of raw Tailwind classes for consistency:
+  - `glass-panel` — large container (rounded-3xl, heavy blur, shadow-glass)
+  - `glass-card` — card element (rounded-2xl, medium blur, shadow-card)
+  - `glass-button` / `glass-button-primary` — pill buttons (rounded-full, glass or apple-blue tinted)
+  - `glass-input` — form input (rounded-2xl, glass surface, apple-blue focus ring)
+  - `glass-popover` — dropdown/popover (rounded-2xl, dark glass with heavy blur)
+  - `glass-modal` — modal dialog (rounded-3xl, dark glass, heavy blur)
+  - `glass-chip` — inline tag/pill (rounded-full, translucent)
+  - `apple-focus` — card hover animation (translate-y -1, scale 1.02, glow shadow)
+- Navigation header: two separate glass capsules (brand+nav left, actions right). On mobile (<380px), "MediaTree" abbreviates to "MT". Favorites/Settings hidden in "..." dropdown on mobile.
+- Search: desktop inline search in actions capsule; mobile standalone search bar triggered by magnifying glass icon. Both share same results panel (`glass-popover`).
 
 ### Where to modify for common tasks
-- Style changes: `pages/*.tsx` + `index.css`
+- Style changes: `index.css` (`@layer components` 中定义全局 glass-* / apple-focus 类) + `tailwind.config.js` (color palette、shadow、background) + `pages/*.tsx` / `components/*.tsx` (使用预定义组件 class)
+- Glass component class reference: `glass-panel` (大容器), `glass-card` (卡片), `glass-button` (普通按钮), `glass-button-primary` (主按钮), `glass-input` (输入框), `glass-popover` (浮层), `glass-modal` (弹窗), `glass-chip` (标签), `apple-focus` (悬停动画)
 - New API: `main.py` (route) + `database.py` (CRUD) + `api.ts` (frontend client)
 - New scraper: create in `backend/app/scrapers/`, subclass `BaseScraper`, register in `registry.py`
 - Scan logic: `scanner.py` `scan_media()` / `scrape_for_library()`

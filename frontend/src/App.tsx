@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import { getActiveLibrary, setActiveLibrary, api, clearCache, MediaRoot } from './api'
 import Home from './pages/Home'
@@ -33,6 +33,8 @@ export default function App() {
   const [checkingSetup, setCheckingSetup] = useState(true)
   const [scanToast, setScanToast] = useState<{ visible: boolean; status: string; done: number; total: number }>({ visible: false, status: '', done: 0, total: 0 })
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
 
   const currentLibraryLabel = (() => {
     if (!activeLib) return ''
@@ -58,7 +60,13 @@ export default function App() {
   }, [])
 
   useEffect(() => { loadLibraries() }, [loadLibraries])
-  useEffect(() => { setMobileNavOpen(false) }, [location.pathname])
+  useEffect(() => {
+    setMobileNavOpen(false)
+    setMobileSearchOpen(false)
+  }, [location.pathname])
+  useEffect(() => {
+    if (mobileSearchOpen) searchInputRef.current?.focus()
+  }, [mobileSearchOpen])
 
   useEffect(() => {
     api.setupStatus().then(d => {
@@ -130,8 +138,77 @@ export default function App() {
     setSearchLoading(false)
   }
 
+  const closeSearch = () => {
+    setSearchOpen(false)
+    setMobileSearchOpen(false)
+  }
+
+  const clearSearch = () => {
+    setSearchQuery('')
+    setSearchResults([])
+  }
+
+  const openMovieFromSearch = (movieId: number) => {
+    navigate(`/detail/${movieId}`)
+    closeSearch()
+    clearSearch()
+  }
+
+  const renderSearchPanel = (className: string) => (
+    searchOpen && (searchResults.length > 0 || searchLoading || (searchQuery && !searchLoading)) ? (
+      <div className={className}>
+        {searchResults.length > 0 && (
+          <>
+            <div className="border-b border-white/10 p-3 text-xs text-gray-400">
+              找到 {searchTotal} 个结果
+            </div>
+            {searchResults.slice(0, 15).map((movie: any) => (
+              <div
+                key={movie.id}
+                onClick={() => openMovieFromSearch(movie.id)}
+                className="flex cursor-pointer items-center gap-3 rounded-2xl p-2 transition-colors hover:bg-white/10"
+              >
+                <img
+                  src={api.coverUrl(movie.id)}
+                  alt={movie.code}
+                  className="h-14 w-10 shrink-0 rounded-lg bg-white/10 object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-white">{movie.title || movie.code}</p>
+                  <p className="text-xs text-gray-500">{movie.code}</p>
+                  {movie.actress && (
+                    <p className="truncate text-xs text-gray-600">{movie.actress}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+            {searchTotal > 15 && (
+              <button
+                onClick={() => {
+                  navigate(`/browse?code=${encodeURIComponent(searchQuery)}`)
+                  closeSearch()
+                  clearSearch()
+                }}
+                className="w-full rounded-2xl border-t border-white/10 p-2 text-center text-xs text-apple-blue transition-colors hover:bg-white/10 hover:text-white"
+              >
+                查看全部 {searchTotal} 个结果
+              </button>
+            )}
+          </>
+        )}
+        {searchLoading && (
+          <div className="p-4 text-center text-sm text-gray-400">搜索中...</div>
+        )}
+        {!searchLoading && searchResults.length === 0 && searchQuery && (
+          <div className="p-4 text-center text-sm text-gray-400">未找到结果</div>
+        )}
+      </div>
+    ) : null
+  )
+
   if (checkingSetup) {
-    return <div className="min-h-screen bg-dark-900" />
+    return <div className="min-h-screen bg-aurora" />
   }
 
   if (showSetup) {
@@ -149,45 +226,47 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-50 bg-dark-800/95 backdrop-blur border-b border-dark-600">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 min-h-14 py-2 flex flex-wrap items-center gap-2 sm:gap-3">
-          <Link to="/" className="text-lg font-semibold tracking-tight text-white hover:text-blue-400 transition-colors shrink-0">
-            MediaTree
-          </Link>
-          <nav className="flex items-center gap-1 shrink-0">
+      <header className="sticky top-0 z-50 px-3 pt-2 sm:px-4 sm:pt-3">
+        <div className="mx-auto flex h-12 max-w-7xl items-center justify-between gap-2 transform-gpu sm:h-14 sm:gap-3">
+          <div className="flex min-w-0 items-center gap-2 rounded-3xl border border-white/15 bg-white/[0.08] px-3 py-1.5 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150 sm:px-4 sm:py-2">
+            <Link to="/" className="shrink-0 text-base font-semibold tracking-tight text-white transition-colors hover:text-apple-blue sm:text-lg">
+              <span className="hidden min-[380px]:inline">MediaTree</span>
+              <span className="min-[380px]:hidden">MT</span>
+            </Link>
+            <nav className="flex min-w-0 items-center justify-center gap-1 overflow-visible">
             {navItems.map((item) => (
               <Link
                 key={item.path}
                 to={item.path}
-                className={`px-3 py-1.5 rounded-md text-sm transition-colors ${
+                className={`shrink-0 rounded-full px-1.5 py-1.5 text-xs transition-all sm:px-3 sm:text-sm ${
                   item.path === '/favorites' || item.path === '/settings' ? 'hidden sm:inline-flex' : 'inline-flex'
                 } ${
                   location.pathname === item.path
-                    ? 'bg-dark-600 text-white'
-                    : 'text-gray-400 hover:text-white hover:bg-dark-700'
+                    ? 'bg-white/18 text-white shadow-sm'
+                    : 'text-gray-400 hover:bg-white/10 hover:text-white'
                 }`}
               >
                 <span>{item.label}</span>
               </Link>
             ))}
-            <div className="relative sm:hidden">
+            <div className="relative shrink-0 sm:hidden">
               <button
                 onClick={() => setMobileNavOpen(v => !v)}
-                className="px-2.5 py-1.5 rounded-md text-sm text-gray-400 hover:text-white hover:bg-dark-700 transition-colors"
+                className="rounded-full px-1.5 py-1.5 text-xs text-gray-400 transition-colors hover:bg-white/10 hover:text-white sm:px-2"
                 aria-label="更多导航"
               >
                 ···
               </button>
               {mobileNavOpen && (
-                <div className="absolute left-0 top-full mt-1 w-28 overflow-hidden rounded-lg border border-dark-600 bg-dark-800 shadow-2xl z-50">
+                <div className="glass-popover absolute left-0 top-full z-[70] mt-2 w-32 overflow-hidden p-1">
                   {navItems.filter(item => item.path === '/favorites' || item.path === '/settings').map(item => (
                     <Link
                       key={item.path}
                       to={item.path}
-                      className={`block px-3 py-2 text-sm transition-colors ${
+                      className={`block rounded-xl px-3 py-2 text-sm transition-colors ${
                         location.pathname === item.path
-                          ? 'bg-dark-600 text-white'
-                          : 'text-gray-300 hover:bg-dark-700 hover:text-white'
+                          ? 'bg-white/15 text-white'
+                          : 'text-gray-300 hover:bg-white/10 hover:text-white'
                       }`}
                     >
                       {item.label}
@@ -196,107 +275,82 @@ export default function App() {
                 </div>
               )}
             </div>
-          </nav>
-          <div className="flex items-center gap-2 flex-1 justify-end min-w-0">
+            </nav>
+          </div>
+          <div className="flex shrink-0 items-center justify-end gap-1 rounded-3xl border border-white/15 bg-white/[0.08] px-2 py-1.5 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150 sm:gap-2 sm:px-3 sm:py-2">
             {libraries.length > 1 && (
               <button
                 onClick={() => setShowLibraryModal(true)}
-                className="text-xs text-gray-400 hover:text-white px-2 py-1 rounded bg-dark-700 hover:bg-dark-600 transition-colors flex items-center gap-1"
+                className="glass-button h-8 max-w-9 px-2 text-xs sm:max-w-none sm:px-3"
+                title={currentLibraryLabel || '切换媒体库'}
               >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                 </svg>
-                <span>{currentLibraryLabel || '库'}</span>
+                <span className="hidden truncate sm:inline">{currentLibraryLabel || '库'}</span>
               </button>
             )}
             {currentLibraryLabel && libraries.length <= 1 && (
-              <span className="text-xs text-gray-600 px-2 py-1 rounded bg-dark-700/50">
+              <span className="glass-chip hidden max-w-32 truncate text-gray-400 sm:inline-flex">
                 {currentLibraryLabel}
               </span>
             )}
-            <form onSubmit={handleSearch} className="relative order-3 w-full sm:order-none sm:w-auto">
+            <form onSubmit={handleSearch} className="relative hidden sm:block">
               <input
+                ref={searchInputRef}
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => { if (searchResults.length > 0 || searchQuery) setSearchOpen(true) }}
                 placeholder="搜索..."
-                className="w-full sm:w-40 md:w-48 pl-7 pr-2 py-1.5 bg-dark-700 border border-dark-600 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 md:focus:w-56 transition-all"
+                className="glass-input w-44 py-1.5 pl-8 pr-3 text-sm md:w-52 md:focus:w-60"
               />
-              <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              {searchOpen && (searchResults.length > 0 || searchLoading || (searchQuery && !searchLoading)) && (
-                <div className="absolute top-full mt-1 right-0 w-full sm:w-80 max-h-96 overflow-y-auto bg-dark-800 border border-dark-600 rounded-lg shadow-2xl z-50">
-                  {searchResults.length > 0 && (
-                    <>
-                      <div className="p-2 text-xs text-gray-500 border-b border-dark-600">
-                        找到 {searchTotal} 个结果
-                      </div>
-                      {searchResults.slice(0, 15).map((movie: any) => (
-                        <div
-                          key={movie.id}
-                          onClick={() => {
-                            navigate(`/detail/${movie.id}`)
-                            setSearchOpen(false)
-                            setSearchQuery('')
-                            setSearchResults([])
-                          }}
-                          className="flex items-center gap-3 p-2 hover:bg-dark-700 cursor-pointer transition-colors"
-                        >
-                          <img
-                            src={api.coverUrl(movie.id)}
-                            alt={movie.code}
-                            className="w-10 h-14 object-cover rounded shrink-0 bg-dark-700"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                          />
-                          <div className="min-w-0">
-                            <p className="text-sm text-white truncate">{movie.title || movie.code}</p>
-                            <p className="text-xs text-gray-500">{movie.code}</p>
-                            {movie.actress && (
-                              <p className="text-xs text-gray-600 truncate">{movie.actress}</p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                      {searchTotal > 15 && (
-                        <button
-                          onClick={() => {
-                            navigate(`/browse?code=${encodeURIComponent(searchQuery)}`)
-                            setSearchOpen(false)
-                            setSearchQuery('')
-                            setSearchResults([])
-                          }}
-                          className="w-full p-2 text-xs text-blue-400 hover:text-blue-300 text-center border-t border-dark-600 hover:bg-dark-700"
-                        >
-                          查看全部 {searchTotal} 个结果
-                        </button>
-                      )}
-                    </>
-                  )}
-                  {searchLoading && (
-                    <div className="p-4 text-center text-sm text-gray-400">搜索中...</div>
-                  )}
-                  {!searchLoading && searchResults.length === 0 && searchQuery && (
-                    <div className="p-4 text-center text-sm text-gray-400">未找到结果</div>
-                  )}
-                </div>
-              )}
+              {renderSearchPanel('glass-popover absolute right-0 top-full z-50 mt-2 max-h-96 w-96 overflow-y-auto p-1')}
             </form>
             <button
+              type="button"
+              onClick={() => setMobileSearchOpen(v => !v)}
+              className="rounded-full p-1.5 text-gray-400 transition-colors hover:bg-white/10 hover:text-white sm:p-2 sm:hidden"
+              aria-label="搜索"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </button>
+            <button
               onClick={() => api.logout()}
-              className="text-xs text-gray-500 hover:text-red-400 px-2 py-1 rounded hover:bg-dark-700 transition-colors"
+              className="rounded-full p-1.5 text-gray-500 transition-colors hover:bg-red-500/10 hover:text-red-300 sm:p-2"
               title="登出"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
             </button>
           </div>
         </div>
+        {mobileSearchOpen && (
+          <form onSubmit={handleSearch} className="relative mx-auto mt-2 max-w-7xl sm:hidden">
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => { if (searchResults.length > 0 || searchQuery) setSearchOpen(true) }}
+              placeholder="搜索..."
+              className="glass-input w-full py-2 pl-9 pr-3 text-sm"
+            />
+            <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            {renderSearchPanel('glass-popover absolute left-0 right-0 top-full z-50 mt-2 max-h-80 overflow-y-auto p-1')}
+          </form>
+        )}
       </header>
 
-      <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 w-full">
+      <main className="flex-1 w-full max-w-7xl mx-auto py-5 sm:py-7">
         <Routes key={activeLib}>
           <Route path="/" element={<Home />} />
           <Route path="/browse" element={<Browse />} />
@@ -306,7 +360,7 @@ export default function App() {
           <Route path="/settings" element={<Settings />} />
         </Routes>
         {searchOpen && (
-          <div className="fixed inset-0 z-40" onClick={() => setSearchOpen(false)} />
+          <div className="fixed inset-0 z-40" onClick={closeSearch} />
         )}
       </main>
 
@@ -336,17 +390,17 @@ function ScanToast({ status, done, total }: { status: string; done: number; tota
   const pct = total > 0 ? Math.max(4, Math.min(100, (done / total) * 100)) : 100
   const complete = status.includes('完成')
   return (
-    <div className="fixed left-3 right-3 bottom-3 sm:left-auto sm:right-4 sm:bottom-4 z-50 sm:w-72 rounded-lg border border-dark-600 bg-dark-800/95 shadow-2xl p-4 backdrop-blur">
+    <div className="fixed bottom-3 left-3 right-3 z-50 rounded-3xl border border-white/10 bg-black/60 p-4 shadow-glass backdrop-blur-2xl sm:bottom-4 sm:left-auto sm:right-4 sm:w-80">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className={`text-sm font-medium ${complete ? 'text-green-300' : 'text-white'}`}>{status}</p>
-          {!complete && total > 0 && <p className="text-xs text-gray-500 mt-1">{done}/{total}</p>}
+          {!complete && total > 0 && <p className="mt-1 text-xs text-gray-500">{done}/{total}</p>}
         </div>
-        {!complete && <div className="w-4 h-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />}
+        {!complete && <div className="h-4 w-4 animate-spin rounded-full border-2 border-apple-blue border-t-transparent" />}
       </div>
       {!complete && (
-        <div className="mt-3 h-1.5 rounded-full bg-dark-700 overflow-hidden">
-          <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${pct}%` }} />
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+          <div className="h-full rounded-full bg-apple-blue transition-all duration-500" style={{ width: `${pct}%` }} />
         </div>
       )}
     </div>
@@ -360,25 +414,25 @@ function LibraryModal({ libraries, activeLib, onSelect, onClose }: {
   onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-dark-900">
-      <div className="bg-dark-800 border border-dark-600 rounded-lg p-6 w-full max-w-sm mx-4 shadow-2xl">
-        <h2 className="text-lg font-bold mb-1">切换媒体库</h2>
-        <p className="text-xs text-gray-500 mb-4">选择要浏览的媒体库</p>
-        <div className="space-y-1.5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-aurora p-4">
+      <div className="glass-modal w-full max-w-sm p-6">
+        <h2 className="mb-1 text-lg font-bold">切换媒体库</h2>
+        <p className="mb-4 text-xs text-gray-500">选择要浏览的媒体库</p>
+        <div className="space-y-2">
           {libraries.map((lib) => (
             <button
               key={lib.path}
               onClick={() => onSelect(lib)}
-              className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors border ${
+              className={`w-full rounded-2xl border px-3 py-2.5 text-left transition-all ${
                 lib.path === activeLib
-                  ? 'bg-blue-600/10 border-blue-500/30 text-blue-400'
-                  : 'bg-dark-700 border-dark-600 hover:bg-dark-600 text-gray-300'
+                  ? 'border-apple-blue/40 bg-apple-blue/15 text-apple-blue'
+                  : 'border-white/10 bg-white/[0.06] text-gray-300 hover:border-white/20 hover:bg-white/[0.1]'
               }`}
             >
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium flex items-center gap-1.5">
+              <div className="flex items-center justify-between gap-3">
+                <span className="flex items-center gap-1.5 text-sm font-medium">
                   {lib.locked && (
-                    <svg className="w-3 h-3 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                    <svg className="h-3 w-3 text-apple-yellow" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                     </svg>
                   )}
@@ -393,7 +447,7 @@ function LibraryModal({ libraries, activeLib, onSelect, onClose }: {
         </div>
         <button
           onClick={onClose}
-          className="mt-4 w-full py-2 text-sm text-gray-500 hover:text-white transition-colors"
+          className="mt-4 w-full rounded-full py-2 text-sm text-gray-500 transition-colors hover:bg-white/10 hover:text-white"
         >
           取消
         </button>
@@ -430,14 +484,16 @@ function PasswordModal({ target, onOk, onCancel }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-dark-900">
-      <div className="bg-dark-800 border border-dark-600 rounded-lg p-6 w-full max-w-xs mx-4 shadow-2xl">
-        <div className="text-center mb-4">
-          <svg className="w-8 h-8 text-yellow-500 mx-auto mb-2" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-          </svg>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-aurora p-4">
+      <div className="glass-modal w-full max-w-xs p-6">
+        <div className="mb-4 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-apple-yellow/30 bg-apple-yellow/10">
+            <svg className="h-6 w-6 text-apple-yellow" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+            </svg>
+          </div>
           <h2 className="text-lg font-bold">{target.label}</h2>
-          <p className="text-xs text-gray-500 mt-1">此媒体库已加密，请输入密码</p>
+          <p className="mt-1 text-xs text-gray-500">此媒体库已加密，请输入密码</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-3">
           <input
@@ -446,17 +502,17 @@ function PasswordModal({ target, onOk, onCancel }: {
             onChange={e => setPwd(e.target.value)}
             placeholder="输入密码"
             autoFocus
-            className="w-full px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500 placeholder-gray-600"
+            className="glass-input w-full px-3 py-2 text-sm"
           />
-          {error && <p className="text-red-400 text-xs">{error}</p>}
+          {error && <p className="text-xs text-red-400">{error}</p>}
           <button
             type="submit"
             disabled={checking}
-            className="w-full py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            className="glass-button-primary w-full"
           >
             {checking ? '验证中...' : '确认'}
           </button>
-          <button type="button" onClick={onCancel} className="w-full py-2 text-sm text-gray-400 hover:text-white transition-colors">
+          <button type="button" onClick={onCancel} className="w-full rounded-full py-2 text-sm text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
             取消
           </button>
         </form>

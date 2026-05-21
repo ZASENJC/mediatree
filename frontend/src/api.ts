@@ -486,6 +486,7 @@ export interface FolderNode {
   children?: FolderNode[]
   media_root?: string
   created_max?: string
+  release_date_max?: string
   watched_count?: number
   folder_watched?: boolean
   progress_percent?: number

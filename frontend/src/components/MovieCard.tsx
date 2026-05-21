@@ -163,13 +163,13 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
       <div
         onClick={goDetail}
         onContextMenu={handleContextMenu}
-        className="group cursor-pointer bg-dark-800 rounded-lg overflow-hidden border border-dark-700 hover:border-blue-500/40 transition-all hover:bg-dark-700/50"
+        className="glass-card apple-focus group cursor-pointer overflow-hidden"
       >
-        <div className={`${hasEpisodeStill ? 'aspect-video' : 'aspect-[2/3]'} bg-dark-700 relative`}>
+        <div className={`${hasEpisodeStill ? 'aspect-video' : 'aspect-[2/3]'} relative bg-white/[0.04]`}>
           <img
             src={coverSrc}
             alt={movie.code}
-            className="w-full h-full object-cover"
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
             loading="lazy"
             onError={(e) => {
               const img = e.target as HTMLImageElement
@@ -182,32 +182,34 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
           />
           <WatchedBadge watched={watched} />
 
-          {movie.javdb_score != null && movie.javdb_score > 0 && (
-            <span className="absolute top-2 right-2 bg-dark-900/80 px-1.5 py-0.5 rounded-md text-xs text-yellow-400 z-10">
-              {movie.javdb_score.toFixed(1)}
-            </span>
-          )}
-          {movie.javdb_likes != null && movie.javdb_likes > 0 && (
-            <span className="absolute top-7 right-2 bg-dark-900/80 px-1.5 py-0.5 rounded-md text-xs text-pink-400 z-10">
-              {movie.javdb_likes >= 1000 ? `${(movie.javdb_likes / 1000).toFixed(1)}k` : movie.javdb_likes}
-            </span>
-          )}
+          <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
+            {movie.javdb_score != null && movie.javdb_score > 0 && (
+              <span className="rounded-full border border-apple-yellow/30 bg-black/45 px-2 py-0.5 text-xs font-semibold text-apple-yellow shadow-sm backdrop-blur-xl">
+                {movie.javdb_score.toFixed(1)}
+              </span>
+            )}
+            {movie.javdb_likes != null && movie.javdb_likes > 0 && (
+              <span className="rounded-full border border-apple-pink/30 bg-black/45 px-2 py-0.5 text-xs font-semibold text-apple-pink shadow-sm backdrop-blur-xl">
+                {movie.javdb_likes >= 1000 ? `${(movie.javdb_likes / 1000).toFixed(1)}k` : movie.javdb_likes}
+              </span>
+            )}
+          </div>
 
           {isEpisode && (
-            <span className="absolute top-2 left-2 bg-blue-600/85 px-1.5 py-0.5 rounded-md text-[10px] text-white z-10 font-medium">
+            <span className="absolute left-2 top-2 z-10 rounded-full border border-apple-blue/35 bg-apple-blue/70 px-2 py-0.5 text-[10px] font-semibold text-white shadow-glow backdrop-blur-xl">
               S{movie.tmdb_season}·E{movie.tmdb_episode}
             </span>
           )}
 
-          <div className="absolute inset-0 bg-gradient-to-t from-dark-900 via-dark-900/30 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-transparent opacity-95" />
           {showProgress && (
-            <div className="absolute bottom-0 left-0 right-0 z-20 h-1.5 bg-black/50">
-              <div className="h-full bg-blue-500" style={{ width: `${progressPercent}%` }} />
+            <div className="absolute bottom-0 left-0 right-0 z-20 h-1 bg-white/15 backdrop-blur">
+              <div className="h-full rounded-r-full bg-apple-blue shadow-glow" style={{ width: `${progressPercent}%` }} />
             </div>
           )}
-          <div className="absolute bottom-0 left-0 right-0 p-3 min-w-0">
-            <p className="text-sm font-semibold text-white leading-snug break-words line-clamp-2">{displayTitle}</p>
-            <p className="text-xs text-gray-400 mt-0.5 truncate">{movie.code}</p>
+          <div className="absolute bottom-0 left-0 right-0 min-w-0 p-3">
+            <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-white drop-shadow">{displayTitle}</p>
+            <p className="mt-0.5 truncate text-xs text-gray-400">{movie.code}</p>
           </div>
         </div>
       </div>
@@ -230,20 +232,20 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
       )}
 
       {showManualSearch && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-dark-800 border border-dark-600 rounded-lg p-4 sm:p-5 w-full max-w-lg mx-4 shadow-2xl max-h-[80vh] overflow-y-auto">
-            <h2 className="text-lg font-bold mb-3">手动刮削</h2>
-            <p className="text-xs text-gray-500 mb-3">输入搜索关键词，选择刮削器</p>
-            <div className="flex flex-col sm:flex-row gap-2 mb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-xl">
+          <div className="glass-modal w-full max-w-lg p-4 sm:p-5 max-h-[80vh] overflow-y-auto">
+            <h2 className="mb-1 text-lg font-bold text-white">手动刮削</h2>
+            <p className="mb-4 text-xs text-gray-500">输入搜索关键词，选择刮削器</p>
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row">
               <input
                 type="text" value={manualQuery} onChange={e => { setManualQuery(e.target.value); setSearchResults([]) }}
                 onKeyDown={e => { if (e.key === 'Enter') handleSearch() }}
                 placeholder="搜索关键词" autoFocus
-                className="flex-1 px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
+                className="glass-input flex-1 px-3 py-2 text-sm"
               />
               <select
                 value={manualScraper} onChange={e => setManualScraper(e.target.value)}
-                className="px-3 py-2 bg-dark-700 border border-dark-600 rounded-lg text-sm text-gray-300 focus:outline-none focus:border-blue-500"
+                className="glass-input px-3 py-2 text-sm text-gray-300"
               >
                 <option value="">自动</option>
                 <option value="tmdb_movie">TMDB 电影</option>
@@ -252,37 +254,37 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
                 <option value="javdatabase">Javdatabase</option>
               </select>
               <button onClick={handleSearch} disabled={searching}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg text-sm">
+                className="glass-button-primary px-4 py-2 text-sm">
                 {searching ? '搜索中...' : '搜索'}
               </button>
             </div>
 
             {searchResults.length > 0 && (
-              <div className="grid grid-cols-3 gap-3 max-h-[50vh] overflow-y-auto">
+              <div className="grid max-h-[50vh] grid-cols-3 gap-3 overflow-y-auto">
                 {searchResults.map((r, i) => (
                   <div key={i}
                     onClick={() => handleSelectSearchResult(r)}
-                    className="bg-dark-700 rounded-lg overflow-hidden border border-dark-600 hover:border-blue-500 cursor-pointer transition-colors"
+                    className="glass-card cursor-pointer overflow-hidden transition-all hover:border-apple-blue/40 hover:shadow-glow"
                   >
-                    <div className="aspect-[2/3] bg-dark-800">
+                    <div className="aspect-[2/3] bg-white/[0.04]">
                       {r.poster_url ? (
-                        <img src={r.poster_url} alt={r.title} className="w-full h-full object-cover" />
+                        <img src={r.poster_url} alt={r.title} className="h-full w-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-xs text-gray-600 p-2 text-center">{r.title}</div>
+                        <div className="flex h-full w-full items-center justify-center p-2 text-center text-xs text-gray-600">{r.title}</div>
                       )}
                     </div>
                     <div className="p-2">
-                      <p className="text-xs font-medium text-white truncate">{r.title}</p>
-                      <p className="text-[10px] text-gray-500 mt-0.5">{r.year}{r.original_title ? ` · ${r.original_title}` : ''}</p>
+                      <p className="truncate text-xs font-medium text-white">{r.title}</p>
+                      <p className="mt-0.5 text-[10px] text-gray-500">{r.year}{r.original_title ? ` · ${r.original_title}` : ''}</p>
                     </div>
                   </div>
                 ))}
               </div>
             )}
 
-            <div className="flex gap-3 mt-4">
+            <div className="mt-4 flex gap-3">
               <button onClick={() => { setShowManualSearch(false); setSearchResults([]) }}
-                className="flex-1 py-2 bg-dark-700 hover:bg-dark-600 rounded-lg text-sm text-gray-400">
+                className="glass-button flex-1 py-2 text-sm text-gray-300">
                 取消
               </button>
             </div>
@@ -291,39 +293,39 @@ export function MovieCard({ movie, onUpdated }: MovieCardProps) {
       )}
 
       {applying && (
-        <div className="fixed left-3 right-3 bottom-3 sm:left-auto sm:right-4 sm:bottom-4 z-[60] sm:w-64 rounded-lg border border-dark-600 bg-dark-800/95 shadow-2xl p-4 backdrop-blur">
+        <div className="fixed bottom-3 left-3 right-3 z-[60] rounded-3xl border border-white/10 bg-black/60 p-4 shadow-glass backdrop-blur-2xl sm:bottom-4 sm:left-auto sm:right-4 sm:w-72">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-white">正在应用刮削结果...</p>
-              <p className="text-xs text-gray-500 mt-1">更新元数据和封面缓存</p>
+              <p className="mt-1 text-xs text-gray-500">更新元数据和封面缓存</p>
             </div>
-            <div className="w-4 h-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-apple-blue border-t-transparent" />
           </div>
         </div>
       )}
 
       {showCoverPicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div className="bg-dark-800 border border-dark-600 rounded-lg p-4 sm:p-5 w-full max-w-lg mx-4 shadow-2xl max-h-[80vh] overflow-y-auto">
-            <h2 className="text-lg font-bold mb-3">更换封面</h2>
-            <p className="text-xs text-gray-500 mb-3">选择封面或上传本地图片</p>
-            <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-xl">
+          <div className="glass-modal w-full max-w-lg p-4 sm:p-5 max-h-[80vh] overflow-y-auto">
+            <h2 className="mb-1 text-lg font-bold text-white">更换封面</h2>
+            <p className="mb-4 text-xs text-gray-500">选择封面或上传本地图片</p>
+            <div className="mb-4 grid grid-cols-3 gap-3">
               {altCovers.map((c, i) => (
                 <div key={i}
                   onClick={() => handleSelectCover(c.url)}
-                  className="aspect-[2/3] bg-dark-700 rounded-lg overflow-hidden border border-dark-600 hover:border-blue-500 cursor-pointer transition-colors"
+                  className="aspect-[2/3] cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition-all hover:border-apple-blue/40 hover:shadow-glow"
                 >
-                  <img src={c.url} alt={c.source} className="w-full h-full object-cover" />
+                  <img src={c.url} alt={c.source} className="h-full w-full object-cover" />
                 </div>
               ))}
             </div>
             <div className="flex gap-3">
               <button onClick={handleUploadCover}
-                className="flex-1 py-2 bg-dark-700 hover:bg-dark-600 rounded-lg text-sm text-gray-400">
+                className="glass-button flex-1 py-2 text-sm text-gray-300">
                 上传本地图片
               </button>
               <button onClick={() => setShowCoverPicker(false)}
-                className="flex-1 py-2 bg-dark-700 hover:bg-dark-600 rounded-lg text-sm text-gray-400">
+                className="glass-button flex-1 py-2 text-sm text-gray-300">
                 取消
               </button>
             </div>

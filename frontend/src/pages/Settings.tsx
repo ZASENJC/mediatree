@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { api, Config, MediaRoot, LibrarySetting, Plugin, clearCache } from '../api'
+import { getUiPrefs, setUiPrefs } from '../store'
 
 const SCRAPER_META: Record<string, { label: string; desc: string; hasKey: boolean }> = {
   tmdb_movie: { label: 'TMDB 电影', desc: '适合电影库；tmdbid 调用 /movie 精确刮削', hasKey: true },
@@ -33,6 +34,7 @@ export default function Settings() {
   const [reqInterval, setReqInterval] = useState(3)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
+  const [hideHomeTitleText, setHideHomeTitleText] = useState(() => getUiPrefs().hideHomeTitleText || false)
 
   const [libraries, setLibraries] = useState<(MediaRoot & { settings?: LibrarySetting })[]>([])
   const [libScraper, setLibScraper] = useState<Record<string, string>>({})
@@ -88,6 +90,7 @@ export default function Settings() {
     setSaving(true)
     setMsg('')
     try {
+      setUiPrefs({ hideHomeTitleText })
       await api.updateConfig({
         javdb_enabled: javdbEnabled,
         javdb_cache_hours: javdbCache,
@@ -200,21 +203,41 @@ export default function Settings() {
     </div>
   )
 
-  const cardClass = "p-4 bg-dark-800 rounded-lg border border-dark-700"
-  const sectionTitle = "text-lg font-semibold mb-4"
-  const labelClass = "block text-xs text-gray-500 mb-1.5"
-  const inputClass = "w-full px-3 py-1.5 bg-dark-700 border border-dark-600 rounded-lg text-xs text-white focus:outline-none focus:border-blue-500 placeholder-gray-600"
-  const btnClass = "px-3 py-1.5 rounded-lg text-xs transition-colors"
-  const btnPrimary = `${btnClass} bg-blue-600 hover:bg-blue-500 text-white`
-  const btnDark = `${btnClass} bg-dark-700 hover:bg-dark-600 text-gray-400 hover:text-white`
+  const cardClass = "glass-panel p-5"
+  const sectionTitle = "mb-4 text-lg font-semibold text-white"
+  const labelClass = "mb-1.5 block text-xs text-gray-500"
+  const inputClass = "glass-input w-full px-3 py-1.5 text-xs"
+  const btnClass = "inline-flex items-center justify-center rounded-full px-3 py-1.5 text-xs transition-all disabled:pointer-events-none disabled:opacity-50"
+  const btnPrimary = `${btnClass} border border-apple-blue/40 bg-apple-blue/80 text-white shadow-glow hover:bg-apple-blue`
+  const btnDark = `${btnClass} border border-white/10 bg-white/[0.08] text-gray-300 hover:bg-white/[0.14] hover:text-white`
 
   return (
-    <div className="max-w-2xl space-y-5">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-2xl font-bold">设置</h1>
+    <div className="mx-auto max-w-3xl space-y-5">
+      <div className="glass-panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">MediaTree</p>
+          <h1 className="text-2xl font-bold tracking-tight text-white">设置</h1>
+        </div>
         <button onClick={saveGlobal} disabled={saving} className={`${btnPrimary} disabled:opacity-50`}>
           {saving ? '保存中...' : '保存全局设置'}
         </button>
+      </div>
+
+      {/* 界面偏好 */}
+      <div className={cardClass}>
+        <h2 className={sectionTitle}>界面偏好</h2>
+        <label className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
+          <div>
+            <p className="text-sm font-medium text-white">隐藏首页标题文字</p>
+            <p className="mt-0.5 text-xs text-gray-500">开启后隐藏首页顶部的 Library、我的媒体库/最近观看 和数量文字。</p>
+          </div>
+          <input
+            type="checkbox"
+            checked={hideHomeTitleText}
+            onChange={e => setHideHomeTitleText(e.target.checked)}
+            className="h-5 w-5 rounded border-white/20 bg-white/10 text-apple-blue focus:ring-apple-blue/40"
+          />
+        </label>
       </div>
 
       {/* 账号安全 */}
@@ -265,7 +288,7 @@ export default function Settings() {
                 <div className="flex items-center gap-1">
                   <input type="number" min={1} max={720} value={k}
                     onChange={e => set(Number(e.target.value))}
-                    className="w-20 sm:w-16 px-2 py-1.5 bg-dark-700 border border-dark-600 rounded-lg text-xs text-white focus:outline-none focus:border-blue-500" />
+                    className="glass-input w-20 px-2 py-1.5 text-xs sm:w-16" />
                   <span className="text-xs text-gray-600">小时</span>
                 </div>
               </div>
@@ -275,9 +298,9 @@ export default function Settings() {
             <label className={labelClass}>请求间隔（秒）</label>
             <input type="number" min={1} max={30} value={reqInterval}
               onChange={e => setReqInterval(Number(e.target.value))}
-              className="w-20 px-2 py-1.5 bg-dark-700 border border-dark-600 rounded-lg text-xs text-white focus:outline-none focus:border-blue-500" />
+              className="glass-input w-20 px-2 py-1.5 text-xs" />
           </div>
-          <div className="border-t border-dark-600 pt-3">
+          <div className="border-t border-white/10 pt-3">
             <label className={labelClass}>TMDB API Key</label>
             <input type="text" value={tmdbKey} onChange={e => setTmdbKey(e.target.value)}
               placeholder="去 themoviedb.org 免费申请" className={inputClass} />
@@ -289,14 +312,14 @@ export default function Settings() {
           </div>
 
           {/* 内置刮削器卡片 */}
-          <div className="border-t border-dark-600 pt-3 mt-3">
-            <h3 className="text-sm font-semibold mb-3 text-gray-400">内置刮削器</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div className="mt-3 border-t border-white/10 pt-3">
+            <h3 className="mb-3 text-sm font-semibold text-gray-400">内置刮削器</h3>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               {Object.entries(SCRAPER_META).filter(([k]) => k !== 'none').map(([key, val]) => (
-                <div key={key} className="p-3 bg-dark-700 rounded-lg border border-dark-600">
+                <div key={key} className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
                   <p className="text-sm font-medium text-white">{val.label}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{val.desc}</p>
-                  <span className="inline-block mt-1.5 text-[10px] px-1.5 py-0.5 rounded-md bg-green-900/30 text-green-400">已内置</span>
+                  <p className="mt-0.5 text-xs text-gray-500">{val.desc}</p>
+                  <span className="mt-2 inline-flex rounded-full border border-apple-mint/30 bg-apple-mint/10 px-2 py-0.5 text-[10px] text-apple-mint">已内置</span>
                 </div>
               ))}
             </div>
@@ -323,13 +346,13 @@ export default function Settings() {
         {plugins.filter(p => !p.builtin).length > 0 && (
           <div className="space-y-1">
             {plugins.filter(p => !p.builtin).map(p => (
-              <div key={p.name} className="flex items-center justify-between gap-3 p-2 bg-dark-700 rounded-lg border border-dark-600">
+              <div key={p.name} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3">
                 <div>
                   <p className="text-sm text-white">{p.label}</p>
                   <p className="text-xs text-gray-500">{p.description}</p>
                 </div>
                 <button onClick={() => handleDeletePlugin(p.name)}
-                  className="px-2 py-1 text-xs text-red-400 hover:bg-red-500/10 rounded-lg">
+                  className="rounded-full border border-red-400/20 bg-red-500/10 px-2.5 py-1 text-xs text-red-300 transition-colors hover:bg-red-500/20">
                   删除
                 </button>
               </div>
@@ -351,8 +374,8 @@ export default function Settings() {
             const isScanning = st && st.status === 'scanning'
             const isClearing = st && st.status === 'clearing'
             return (
-              <div key={lib.path} className="p-3 bg-dark-700 rounded-lg border border-dark-600 space-y-2">
-                <div className="flex items-center gap-3 flex-wrap">
+              <div key={lib.path} className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
+                <div className="flex flex-wrap items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-white truncate">{lib.label}</p>
                     <p className="text-xs text-gray-500">{lib.movie_count} 部</p>
@@ -360,7 +383,7 @@ export default function Settings() {
                   <select
                     value={libScraper[lib.path] || 'auto'}
                     onChange={e => setLibScraper(prev => ({ ...prev, [lib.path]: e.target.value }))}
-                    className="px-2 py-1.5 bg-dark-700 border border-dark-600 rounded-lg text-xs text-gray-300 focus:outline-none focus:border-blue-500"
+                    className="glass-input px-2 py-1.5 text-xs text-gray-300"
                   >
                     {Object.entries(SCRAPER_META).map(([k, v]) => (
                       <option key={k} value={k}>{v.label}</option>
@@ -369,7 +392,7 @@ export default function Settings() {
                   <input type="password" placeholder="密码"
                     value={libPasswords[lib.path] || ''}
                     onChange={e => setLibPasswords(prev => ({ ...prev, [lib.path]: e.target.value }))}
-                    className="w-24 sm:w-16 px-2 py-1.5 bg-dark-700 border border-dark-600 rounded-lg text-xs text-white focus:outline-none focus:border-blue-500 placeholder-gray-600"
+                    className="glass-input w-24 px-2 py-1.5 text-xs sm:w-16"
                   />
                   <button onClick={() => saveLibrary(lib.path)}
                     disabled={libSaving === lib.path}
@@ -386,16 +409,16 @@ export default function Settings() {
                   <div>
                     {isClearing && (
                       <div className="flex items-center gap-2 text-xs text-gray-400">
-                        <div className="flex-1 bg-dark-700 h-2 rounded-full overflow-hidden">
-                          <div className="bg-yellow-600 h-full animate-pulse" style={{ width: '100%' }} />
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+                          <div className="h-full animate-pulse bg-apple-yellow" style={{ width: '100%' }} />
                         </div>
                         清除已有数据...
                       </div>
                     )}
                     {isScanning && (
                       <div className="flex items-center gap-2 text-xs text-gray-400">
-                        <div className="flex-1 bg-dark-700 h-2 rounded-full overflow-hidden">
-                          <div className="bg-blue-600 h-full transition-all duration-500" style={{ width: `${progress}%` }} />
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+                          <div className="h-full bg-apple-blue transition-all duration-500" style={{ width: `${progress}%` }} />
                         </div>
                         <span className="shrink-0">{st.done}/{st.total}</span>
                       </div>
@@ -406,7 +429,7 @@ export default function Settings() {
                   </div>
                 )}
                 {logVisible[lib.path] && scanLogs[lib.path] && scanLogs[lib.path]!.length > 0 && (
-                  <div className="mt-2 max-h-48 overflow-y-auto bg-dark-900 rounded-lg p-2 text-[11px] font-mono text-gray-400 space-y-0.5">
+                  <div className="mt-2 max-h-48 space-y-0.5 overflow-y-auto rounded-2xl border border-white/10 bg-black/35 p-3 font-mono text-[11px] text-gray-400">
                     {scanLogs[lib.path]!.map((l, i) => (
                       <div key={i} className="break-all">{l}</div>
                     ))}
@@ -417,14 +440,14 @@ export default function Settings() {
           })}
         </div>
         {libMsg && (
-          <div className={`mt-3 p-2 rounded text-xs ${libMsg.includes('失败') ? 'bg-red-900/30 text-red-400' : 'bg-green-900/30 text-green-400'}`}>{libMsg}</div>
+          <div className={`mt-3 rounded-2xl border p-3 text-xs ${libMsg.includes('失败') ? 'border-red-400/20 bg-red-500/10 text-red-300' : 'border-apple-mint/20 bg-apple-mint/10 text-apple-mint'}`}>{libMsg}</div>
         )}
       </div>
 
       {/* 数据备份与恢复 */}
       <div className={cardClass}>
         <h2 className={sectionTitle}>数据备份与恢复</h2>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex flex-wrap items-center gap-3">
           <a href={api.backupUrl('core')} className={btnPrimary}>
             下载数据库备份
           </a>
@@ -432,7 +455,7 @@ export default function Settings() {
             下载完整备份 (含封面图)
           </a>
         </div>
-        <p className="text-xs text-gray-500 mt-3">
+        <p className="mt-3 text-xs text-gray-500">
           备份文件可通过下方上传恢复。完整备份包含数据库 + 所有封面图片缓存。
         </p>
         <div className="mt-3">
@@ -468,7 +491,7 @@ export default function Settings() {
       </div>
 
       {msg && (
-        <div className={`p-2 rounded text-xs ${msg.includes('失败') ? 'bg-red-900/30 text-red-400' : msg.includes('成功') ? 'bg-green-900/30 text-green-400' : 'bg-green-900/30 text-green-400'}`}>{msg}</div>
+        <div className={`rounded-2xl border p-3 text-xs ${msg.includes('失败') ? 'border-red-400/20 bg-red-500/10 text-red-300' : msg.includes('成功') ? 'border-apple-mint/20 bg-apple-mint/10 text-apple-mint' : 'border-apple-mint/20 bg-apple-mint/10 text-apple-mint'}`}>{msg}</div>
       )}
     </div>
   )

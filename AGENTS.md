@@ -7,14 +7,15 @@
 
 ## 项目概述
 
-基于 Docker 的本地影片 Web 浏览管理器。支持多媒体库、插件化刮削（TMDB/Bangumi/Javdatabase）、ArtPlayer 播放器（触控手势/键盘快捷键/移动端全屏适配）、ASS/SSA 特效字幕渲染、外挂字幕播放列表、本地播放器调用、进度记忆。
+
+UI 采用玻璃拟态（Glassmorphism）+ Apple 风格设计系统：极光渐变背景、液态玻璃面板与卡片、胶囊圆角按钮、毛玻璃导航顶栏（移动端自适应折叠）。详情页信息内嵌于主内容区，缩略图网格 + 灯箱浏览，Staff 信息可点击跳转。
 
 **页面路由：**
 - 引导页（SetupWizard）：首次部署弹出，逐库配置刮削源和密码
-- 首页 (`/`)：文件夹卡片网格 + 最近观看 tab，右键菜单（重新/手动刮削、换封面/背景、编辑、删除）
+- 首页 (`/`)：文件夹卡片网格 + 最近观看分段切换，右键菜单（重新/手动刮削、换封面/背景、编辑、删除）
 - Folder 页 (`/folder?path=...`)：影片封面网格 + 季度选项卡 + hero 背景 + 右键菜单
 - 浏览页 (`/browse`)：左侧树形筛选 + 右侧纵向影片网格 + 分页
-- 详情页 (`/detail/:id`)：视频播放器 + 元数据面板 + 灯箱
+- 详情页 (`/detail/:id`)：视频播放器 + 内嵌元数据面板（Now Playing 核心信息 + 折叠详情 + Staff 列表）+ 缩略图灯箱
 - 收藏页 (`/favorites`)：收藏影片网格
 - 设置页 (`/settings`)：全局配置 + 媒体库管理 + 备份恢复 + 插件/账号
 - 登录页 (`/login`)
@@ -25,7 +26,7 @@
 |---|---|---|
 | 后端 | Python 3.12 + FastAPI + Uvicorn | 端口 27580 |
 | Jellyfin 兼容层 | jellyfin_compat / _auth / _mappers / _models | 30+ Jellyfin API 端点，VidHub/Infuse 兼容 |
-| 前端 | React 18 + TypeScript 5 + TailwindCSS 3 | Vite 构建，原生 `<video>` 播放 |
+| 前端 | React 18 + TypeScript 5 + TailwindCSS 3 | Vite 构建，原生 `<video>` 播放，玻璃拟态 CSS 组件类（glass-panel/card/button/input/popover/modal/chip） |
 | 播放器 | ArtPlayer 5 + React wrapper | 自定义手势、键盘快捷键、外部播放器入口、转码入口 |
 | 字幕渲染 | ArtPlayer subtitle + @jellyfin/libass-wasm | ASS/SSA 走 libass canvas（延迟初始化，支持 switch/clear/destroy），转码 VTT 客户端时间戳偏移，VTT/SRT 走 ArtPlayer 原生字幕 |
 | 数据库 | SQLite (aiosqlite) | WAL + busy_timeout 5s |
@@ -56,9 +57,10 @@ mediatree/
 │   └── plugins/             # 插件系统
 └── frontend/src/
     ├── api.ts               # API 封装
+    ├── store.ts             # localStorage 状态（排除目录、界面偏好）
     ├── pages/ (Home, Folder, Browse, Detail, Favorites, Settings, Login, SetupWizard)
     ├── components/ (VideoPlayer, artplayerPluginAss, MovieCard, ContextMenu,
-    │                EditModal, SortDropdown, WatchedBadge, Lightbox)
+    │                EditModal, SortDropdown, WatchedBadge, Lightbox, VRVideoLayer)
     └── utils/ (vttParser.ts)
 ```
 
@@ -250,7 +252,7 @@ watchfiles.awatch(enabled_media_roots, debounce=15s)
 
 | 需求 | 文件 |
 |---|---|
-| 改样式 | `pages/*.tsx` + `index.css` |
+| 改样式 | `index.css`（`@layer components` 定义 glass-* / apple-focus 全局类）+ `tailwind.config.js`（apple/glass/dark 色板、shadow、aurora 背景）+ `pages/*.tsx` / `components/*.tsx`（使用预定义 class） |
 | 加 API | `main.py` + `database.py` + `api.ts` |
 | 加刮削器 | 新建 `backend/app/scrapers/xxx_scraper.py` + `registry.py` 注册；必要时补 `scanner.py` fallback |
 | 改扫描 | `scanner.py` scan_media / scrape_for_library |
