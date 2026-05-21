@@ -2,32 +2,88 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .glass-panel {
+    @apply rounded-3xl border border-white/10 bg-white/[0.07] shadow-glass backdrop-blur-2xl;
+  }
+
+  .glass-card {
+    @apply rounded-2xl border border-white/10 bg-white/[0.06] shadow-card backdrop-blur-md;
+  }
+
+  .glass-button {
+    @apply inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.08] px-4 py-2 text-sm font-medium text-gray-100 shadow-sm backdrop-blur-xl transition-all duration-200 hover:border-white/20 hover:bg-white/[0.14] focus:outline-none focus:ring-2 focus:ring-apple-blue/50 disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .glass-button-primary {
+    @apply inline-flex items-center justify-center rounded-full border border-apple-blue/40 bg-apple-blue/80 px-4 py-2 text-sm font-semibold text-white shadow-glow backdrop-blur-xl transition-all duration-200 hover:bg-apple-blue hover:shadow-glow focus:outline-none focus:ring-2 focus:ring-apple-blue/60 disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .glass-input {
+    @apply rounded-2xl border border-white/10 bg-white/[0.07] text-white placeholder-gray-500 shadow-inner backdrop-blur-xl transition-all duration-200 focus:border-apple-blue/60 focus:bg-white/[0.1] focus:outline-none focus:ring-2 focus:ring-apple-blue/20;
+  }
+
+  .glass-popover {
+    @apply rounded-2xl border border-white/10 bg-black/55 shadow-glass backdrop-blur-2xl;
+  }
+
+  .glass-modal {
+    @apply rounded-3xl border border-white/10 bg-black/60 shadow-glass backdrop-blur-2xl;
+  }
+
+  .glass-chip {
+    @apply inline-flex items-center rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs font-medium text-gray-200 backdrop-blur-xl;
+  }
+
+  .apple-focus {
+    @apply transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-white/25 hover:shadow-glow focus:outline-none focus:ring-2 focus:ring-apple-blue/50;
+  }
+}
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
+html {
+  min-height: 100%;
+  background: #03040a;
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #0a0a0a;
-  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(10, 132, 255, 0.24), transparent 34rem),
+    linear-gradient(135deg, #03040a 0%, #070911 48%, #0c0f17 100%);
+  background-attachment: fixed;
+  color: #f5f5f7;
   min-height: 100vh;
   overflow-x: hidden;
 }
 
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(255,255,255,0.045), transparent 24%, rgba(0,0,0,0.42));
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  background: rgba(255, 255, 255, 0.04);
 }
 ::-webkit-scrollbar-thumb {
-  background: #404040;
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #606060;
+  background: rgba(255, 255, 255, 0.28);
 }
 
 .JASSUB {
@@ -41,12 +97,27 @@ canvas[data-mediatree-subtitle="ass"] {
 }
 
 .mediatree-artplayer {
-  height: min(80vh, 720px);
-  min-height: 320px;
+  width: 100%;
+  aspect-ratio: var(--mediatree-video-aspect, 16 / 9);
+  min-height: 220px;
+  max-height: calc(100dvh - 11rem);
+}
+
+.mediatree-artplayer video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
 }
 
 .mediatree-artplayer .art-video-player {
-  border-radius: 0.5rem;
+  border-radius: 1.25rem;
+  overflow: hidden;
+  background: #000;
+}
+
+.mediatree-artplayer .art-control {
+  background: linear-gradient(0deg, rgba(0,0,0,0.72), transparent);
 }
 
 .mediatree-artplayer .art-subtitle {
@@ -100,11 +171,13 @@ canvas[data-mediatree-subtitle="ass"] {
   top: 12px;
   transform: translateX(-50%);
   z-index: 1;
-  padding: 4px 8px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.55);
-  color: rgba(255, 255, 255, 0.82);
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.48);
+  color: rgba(255, 255, 255, 0.86);
   font-size: 11px;
+  backdrop-filter: blur(18px) saturate(160%);
   pointer-events: none;
 }
 
@@ -134,8 +207,8 @@ textarea {
 
 @media (max-width: 640px) {
   .mediatree-artplayer {
-    height: 56vh;
-    min-height: 220px;
+    min-height: 190px;
+    max-height: 58dvh;
   }
 
   .mediatree-artplayer .art-video-player {

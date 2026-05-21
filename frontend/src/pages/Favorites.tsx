@@ -46,11 +46,12 @@ export default function Favorites() {
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+    <div className="space-y-5">
+      <div className="glass-panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold">我的收藏</h1>
-          <p className="text-sm text-gray-500">共 {total} 部</p>
+          <p className="text-xs uppercase tracking-[0.24em] text-apple-pink/80">Library</p>
+          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">我的收藏</h1>
+          <p className="mt-1 text-sm text-gray-500">共 {total} 部</p>
         </div>
         <div className="flex items-center gap-1">
           <SortDropdown options={sortOptions} current={sort} onChange={handleSort} />
@@ -58,44 +59,46 @@ export default function Favorites() {
       </div>
 
       {movies.length === 0 ? (
-        <div className="text-center py-20 text-gray-500">
-          <p className="text-2xl font-light mb-2">--</p>
+        <div className="glass-panel py-20 text-center text-gray-500">
+          <p className="mb-2 text-3xl font-light text-white/60">--</p>
           <p>还没有收藏影片</p>
-          <p className="text-sm mt-2 text-gray-600">在影片详情页点击收藏按钮即可添加</p>
+          <p className="mt-2 text-sm text-gray-600">在影片详情页点击收藏按钮即可添加</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
           {movies.map((movie) => (
             <div
               key={movie.id}
               onClick={() => { saveScrollPos(); navigate(`/detail/${movie.id}`) }}
-              className="group cursor-pointer bg-dark-800 rounded-lg overflow-hidden border border-dark-700 hover:border-blue-500/40 transition-all hover:bg-dark-700/50"
+              className="glass-card apple-focus group cursor-pointer overflow-hidden"
             >
-              <div className="aspect-[2/3] bg-dark-700 relative">
+              <div className="relative aspect-[2/3] bg-white/[0.04]">
                 <img
                   src={api.coverUrl(movie.id)}
                   alt={movie.code}
-                  className="w-full h-full object-cover"
+                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                   loading="lazy"
                   onError={(e) => {
                     (e.target as HTMLImageElement).style.display = 'none'
                   }}
                 />
                 <WatchedBadge watched={!!(movie.tags || []).includes('watched')} />
-                {movie.javdb_score != null && movie.javdb_score > 0 && (
-                  <span className="absolute top-2 right-2 bg-dark-900/80 px-1.5 py-0.5 rounded-md text-xs text-yellow-400">
-                    {movie.javdb_score.toFixed(1)}
-                  </span>
-                )}
-                {movie.javdb_likes != null && movie.javdb_likes > 0 && (
-                  <span className="absolute top-7 right-2 bg-dark-900/80 px-1.5 py-0.5 rounded-md text-xs text-pink-400">
-                    {movie.javdb_likes >= 1000 ? `${(movie.javdb_likes / 1000).toFixed(1)}k` : movie.javdb_likes}
-                  </span>
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-dark-900 via-dark-900/30 to-transparent" />
+                <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
+                  {movie.javdb_score != null && movie.javdb_score > 0 && (
+                    <span className="rounded-full border border-apple-yellow/30 bg-black/45 px-2 py-0.5 text-xs font-semibold text-apple-yellow backdrop-blur-xl">
+                      {movie.javdb_score.toFixed(1)}
+                    </span>
+                  )}
+                  {movie.javdb_likes != null && movie.javdb_likes > 0 && (
+                    <span className="rounded-full border border-apple-pink/30 bg-black/45 px-2 py-0.5 text-xs font-semibold text-apple-pink backdrop-blur-xl">
+                      {movie.javdb_likes >= 1000 ? `${(movie.javdb_likes / 1000).toFixed(1)}k` : movie.javdb_likes}
+                    </span>
+                  )}
+                </div>
+                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-transparent opacity-95" />
                 <div className="absolute bottom-0 left-0 right-0 p-3">
-                  <p className="text-sm font-semibold text-white truncate">{movie.title || movie.code}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{movie.code}</p>
+                  <p className="truncate text-sm font-semibold text-white drop-shadow">{movie.title || movie.code}</p>
+                  <p className="mt-0.5 text-xs text-gray-400">{movie.code}</p>
                 </div>
                 <button
                   onClick={async (e) => {
@@ -104,7 +107,7 @@ export default function Favorites() {
                     setMovies(prev => prev.filter(m => m.id !== movie.id))
                     setTotal(t => t - 1)
                   }}
-                  className="absolute top-2 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity px-2 py-1 text-[10px] bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30"
+                  className="absolute left-1/2 top-2 z-20 -translate-x-1/2 rounded-full border border-red-400/20 bg-red-500/15 px-2.5 py-1 text-[10px] text-red-200 opacity-0 backdrop-blur-xl transition-opacity hover:bg-red-500/25 group-hover:opacity-100"
                 >
                   取消收藏
                 </button>

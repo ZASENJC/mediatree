@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { api, Movie, FolderNode } from '../api'
 import { getExcluded } from '../store'
-import { getCached, setCache, clearCache } from '../cache'
+import { getCached, setCache } from '../cache'
 import { saveScrollPos, restoreScrollPos } from '../scroll'
 import { MovieCard } from '../components/MovieCard'
 import SortDropdown from '../components/SortDropdown'
@@ -169,52 +169,53 @@ export default function FolderPage() {
   }
 
   return (
-    <div>
-      {folderBackdrop && (
-        <div className="relative -mx-3 sm:-mx-4 -mt-4 sm:-mt-6 mb-6 h-[38vh] sm:h-[42vh] min-h-[220px] max-h-[550px] overflow-hidden bg-dark-950">
-          <img
-            src={folderBackdrop}
-            alt=""
-            className="w-full h-full object-cover brightness-[0.45]"
-          />
-          <div className="absolute bottom-0 left-0 right-0 h-2/3 bg-gradient-to-t from-dark-900 via-dark-900/60 to-transparent pointer-events-none" />
-          <div className="absolute bottom-4 left-4 right-4 min-w-0">
+    <div className="relative space-y-6">
+      {folderBackdrop ? (
+        <div className="relative -mt-5 min-h-[56vh] sm:-mt-7 sm:min-h-[62vh]">
+          <div className="pointer-events-none absolute inset-x-[calc(50%-50vw)] -top-20 h-[calc(100%+7rem)] overflow-hidden">
+            <img
+              src={folderBackdrop}
+              alt=""
+              className="h-full w-full scale-[1.04] object-cover opacity-80 saturate-115 [mask-image:radial-gradient(ellipse_at_center,black_40%,rgba(0,0,0,0.9)_58%,rgba(0,0,0,0.42)_78%,transparent_100%)] [-webkit-mask-image:radial-gradient(ellipse_at_center,black_40%,rgba(0,0,0,0.9)_58%,rgba(0,0,0,0.42)_78%,transparent_100%)]"
+            />
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_36%,rgba(3,4,10,0.18)_72%,transparent_100%),linear-gradient(180deg,transparent_0%,rgba(3,4,10,0.12)_58%,rgba(3,4,10,0.22)_100%)]" />
+          </div>
+          <div className="absolute inset-x-0 bottom-0 p-4 sm:p-7">
             <button onClick={() => { saveScrollPos(); navigate('/') }}
-              className="text-sm text-gray-400 hover:text-white transition-colors mb-1 block">
+              className="mb-4 text-sm text-gray-300 drop-shadow transition-colors hover:text-white">
               返回首页
             </button>
-            <h1 className="text-xl sm:text-2xl font-bold break-words text-white drop-shadow-lg max-w-full">{showTitle}</h1>
-            <p className="text-sm text-gray-400 mt-1">{movies.length} 部影片</p>
+            <p className="text-xs uppercase tracking-[0.28em] text-apple-blue/90 drop-shadow">Folder</p>
+            <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+              <div className="min-w-0">
+                <h1 className="max-w-4xl break-words text-3xl font-bold tracking-tight text-white drop-shadow-2xl sm:text-5xl">{showTitle}</h1>
+                <p className="mt-3 text-sm text-gray-300 drop-shadow">{movies.length} 部影片</p>
+              </div>
+              <SortDropdown options={sortOptions} current={sort} onChange={handleSort} />
+            </div>
           </div>
         </div>
-      )}
-
-      {!folderBackdrop && (
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+      ) : (
+        <div className="glass-panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <div className="min-w-0">
             <button onClick={() => { saveScrollPos(); navigate('/') }}
-              className="text-sm text-gray-400 hover:text-white transition-colors mb-1 block">
+              className="mb-2 text-sm text-gray-400 transition-colors hover:text-white">
               返回首页
             </button>
-            <h1 className="text-xl sm:text-2xl font-bold break-words max-w-full">{showTitle}</h1>
-            <p className="text-sm text-gray-500 mt-1">{movies.length} 部影片</p>
+            <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">Folder</p>
+            <h1 className="break-words text-2xl font-bold tracking-tight text-white sm:text-3xl">{showTitle}</h1>
+            <p className="mt-1 text-sm text-gray-500">{movies.length} 部影片</p>
           </div>
-          <SortDropdown options={sortOptions} current={sort} onChange={handleSort} />
-        </div>
-      )}
-
-      {folderBackdrop && (
-        <div className="flex items-center justify-end mb-4">
           <SortDropdown options={sortOptions} current={sort} onChange={handleSort} />
         </div>
       )}
 
       {seasonTabs.length > 0 && (
-        <div className="flex items-center gap-1 mb-4 flex-wrap">
+        <div className="inline-flex flex-wrap items-center gap-2 rounded-3xl border border-white/15 bg-white/[0.08] p-2 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150">
           <button
             onClick={() => selectSeason(null)}
-            className={`px-3 py-1.5 rounded text-xs transition-colors ${
-              !seasonFilter ? 'bg-blue-600 text-white' : 'bg-dark-700 text-gray-400 hover:text-white hover:bg-dark-600'
+            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+              !seasonFilter ? 'bg-apple-blue/80 text-white shadow-glow' : 'text-gray-400 hover:bg-white/[0.08] hover:text-white'
             }`}
           >
             全部 ({allMovies.length})
@@ -222,8 +223,8 @@ export default function FolderPage() {
           {seasonTabs.map(tab => (
             <button key={tab.path}
               onClick={() => selectSeason(tab.path)}
-              className={`px-3 py-1.5 rounded text-xs transition-colors ${
-                seasonFilter === tab.path ? 'bg-blue-600 text-white' : 'bg-dark-700 text-gray-400 hover:text-white hover:bg-dark-600'
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
+                seasonFilter === tab.path ? 'bg-apple-blue/80 text-white shadow-glow' : 'text-gray-400 hover:bg-white/[0.08] hover:text-white'
               }`}
             >
               {tab.name} ({tab.count})
@@ -233,12 +234,12 @@ export default function FolderPage() {
       )}
 
       {movies.length === 0 ? (
-        <div className="text-center py-20 text-gray-500">
-          <p className="text-2xl font-light mb-2">--</p>
+        <div className="glass-panel py-20 text-center text-gray-500">
+          <p className="mb-2 text-3xl font-light text-white/60">--</p>
           <p>此文件夹下没有影片</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
           {movies.map((movie) => (
             <MovieCard key={movie.id} movie={movie} onUpdated={load} />
           ))}

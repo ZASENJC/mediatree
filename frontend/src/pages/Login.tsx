@@ -46,8 +46,8 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
 
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-dark-900">
-        <div className="animate-pulse text-gray-400 text-lg">检查中...</div>
+      <div className="flex min-h-screen items-center justify-center bg-aurora">
+        <div className="animate-pulse text-lg text-gray-400">检查中...</div>
       </div>
     )
   }
@@ -55,42 +55,43 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
   if (!needAuth) return null
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-dark-900 px-4">
-      <div className="w-full max-w-sm mx-4">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white">MediaTree</h1>
-          <p className="text-gray-500 mt-2 text-sm">登录以访问媒体库</p>
+    <div className="flex min-h-screen items-center justify-center bg-aurora px-4 py-10">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 text-center">
+          <div className="mx-auto mb-4 h-14 w-14 rounded-3xl border border-white/10 bg-white/[0.08] shadow-glass backdrop-blur-2xl" />
+          <h1 className="text-4xl font-bold tracking-tight text-white">MediaTree</h1>
+          <p className="mt-2 text-sm text-gray-500">登录以访问媒体库</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-dark-800 rounded-lg p-6 border border-dark-700 space-y-4">
+        <form onSubmit={handleSubmit} className="glass-modal space-y-4 p-6">
           <div>
-            <label className="block text-sm text-gray-400 mb-1.5">账号</label>
+            <label className="mb-1.5 block text-sm text-gray-400">账号</label>
             <input
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
               placeholder="输入账号"
               autoFocus
-              className="w-full px-3 py-2.5 bg-dark-700 border border-dark-600 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500 placeholder-gray-600"
+              className="glass-input w-full px-3 py-2.5 text-sm"
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-1.5">密码</label>
+            <label className="mb-1.5 block text-sm text-gray-400">密码</label>
             <input
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               placeholder="输入密码"
-              className="w-full px-3 py-2.5 bg-dark-700 border border-dark-600 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500 placeholder-gray-600"
+              className="glass-input w-full px-3 py-2.5 text-sm"
             />
           </div>
           {error && (
-            <p className="text-red-400 text-sm">{error}</p>
+            <p className="text-sm text-red-400">{error}</p>
           )}
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            className="glass-button-primary w-full py-2.5 text-sm"
           >
             {loading ? '登录中...' : '登录'}
           </button>

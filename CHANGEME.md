@@ -2,6 +2,42 @@
 
 ---
 
+## v3.1.0 (2026-05-21) - 前端 UI 重设计：玻璃拟态 + Apple 风格
+
+### 设计系统 — 玻璃拟态（Glassmorphism）
+- 全局视觉从暗色主题 (`dark-*`) 全面切换为玻璃拟态 + Apple 风格设计系统。
+- `tailwind.config.js` 新增自定义色板：`apple-*`（blue/purple/pink/mint/yellow）、`glass-*`（surface/elevated/border/muted）、扩展 `dark-*`（50-950）、新增自定义阴影 `glass`/`glow`/`card` 和极光渐变背景 `aurora`。
+- `index.css` 新增 `@layer components` 全局 CSS 工具类：`glass-panel`、`glass-card`、`glass-button`、`glass-button-primary`、`glass-input`、`glass-popover`、`glass-modal`、`glass-chip`、`apple-focus`。
+
+### 导航栏（App.tsx）
+- Header 重构为两个独立 glass capsule：左侧品牌+导航，右侧操作区（库切换+搜索+登出）。
+- 品牌标识响应式：`min-[380px]` 以上显示 "MediaTree" 全称，以下缩写 "MT"。
+- 移动端导航：收藏/设置折叠至 `···` 下拉菜单（glass-popover）。
+- 搜索分拆：桌面端内联搜索框 + 移动端独立搜索栏（自动聚焦），共用 `renderSearchPanel()`。
+- 新增 `closeSearch()`、`clearSearch()`、`openMovieFromSearch()` 辅助函数。
+- 库切换/密码弹窗统一 `glass-modal` + `bg-black/65 backdrop-blur-xl` 遮罩。
+
+### 组件级重设计
+- **ContextMenu.tsx** — 玻璃拟态：暗半透明背景 + backdrop-blur(24px) + saturate(160%)，rounded-18，菜单项 rounded-12。
+- **EditModal.tsx** — `glass-modal` 样式，新增 "Edit" section label（uppercase、apple-blue、宽字距）。
+- **SortDropdown.tsx** — `glass-input` 样式（appearance-none、text-center）。
+- **WatchedBadge.tsx** — `apple-mint` 玻璃胶囊（rounded-full、backdrop-blur-xl、shadow-glow）。
+- **MovieInfoPanel.tsx** — `rounded-2xl border border-white/10 bg-white/[0.04]` 玻璃样式。
+- **Lightbox.tsx** — 遮罩改为 `bg-black/75 backdrop-blur-xl`。
+
+### 页面级重设计
+- 所有页面（Home、Detail、Folder、Browse、Favorites、Settings、Login、SetupWizard）卡片、表单、弹窗全面迁移到玻璃拟态 CSS 组件类。
+- VideoPlayer 容器圆角适配（桌面 rounded-2xl，移动端 rounded-none），控制栏 glass-popover 风格。
+
+### 设置与界面偏好
+- 设置页新增「隐藏首页标题文字」切换项，使用 `localStorage` 持久化；开启后隐藏首页顶部的 `Library`、`我的媒体库/最近观看` 和数量文字。
+
+### 文档
+- CLAUDE.md 新增「UI Design System」章节。
+- AGENTS.md 同步技术栈、组件列表、样式修改指引。
+
+---
+
 ## v3.0.1 (2026-05-21) - 刮削顺序搜索、标题清洗增强、JAV 展示改进
 
 ### 顺序搜索 Fallback（替代并行）

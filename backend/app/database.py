@@ -537,7 +537,7 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
         params.append(media_root)
     cur = await db.execute(
         f"""SELECT folder_levels, MAX(cover_local) as cover_local, MAX(cover_remote) as cover_remote,
-                   MAX(created_at) as created_max, media_root, MAX(fanart_local) as fanart_local,
+                   MAX(created_at) as created_max, MAX(release_date) as release_date_max, media_root, MAX(fanart_local) as fanart_local,
                    COUNT(*) as movie_count,
                    SUM(CASE WHEN EXISTS (SELECT 1 FROM tags t WHERE t.movie_id=movies.id AND t.tag='watched')
                          OR EXISTS (SELECT 1 FROM user_data ud WHERE ud.item_id=CAST(movies.id AS TEXT) AND ud.played=1)
@@ -569,12 +569,15 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                     "_path": current_path,
                     "_media_root": r["media_root"] or "",
                     "_created_max": "",
+                    "_release_date_max": "",
                     "_watched_count": 0,
                 }
             node[part]["_total_count"] += r["movie_count"]
             node[part]["_watched_count"] += r["watched_count"] or 0
             if r["created_max"] and (not node[part]["_created_max"] or r["created_max"] > node[part]["_created_max"]):
                 node[part]["_created_max"] = r["created_max"]
+            if r["release_date_max"] and (not node[part]["_release_date_max"] or r["release_date_max"] > node[part]["_release_date_max"]):
+                node[part]["_release_date_max"] = r["release_date_max"]
             if i == len(parts) - 1:
                 node[part]["_leaf_count"] += r["movie_count"]
                 cover = r["cover_local"]
@@ -606,6 +609,7 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                 "is_leaf": len(children) == 0,
                 "media_root": info["_media_root"],
                 "created_max": info["_created_max"],
+                "release_date_max": info["_release_date_max"],
                 "watched_count": info["_watched_count"],
                 "folder_watched": bool(info["_total_count"] and info["_watched_count"] >= info["_total_count"]),
                 "progress_percent": round((info["_watched_count"] / info["_total_count"]) * 100) if info["_total_count"] else 0,
@@ -617,6 +621,8 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                 for c in children:
                     if c.get("created_max") and (not node_data.get("created_max") or c["created_max"] > node_data["created_max"]):
                         node_data["created_max"] = c["created_max"]
+                    if c.get("release_date_max") and (not node_data.get("release_date_max") or c["release_date_max"] > node_data["release_date_max"]):
+                        node_data["release_date_max"] = c["release_date_max"]
                     if c.get("backdrop") and not node_data.get("backdrop"):
                         node_data["backdrop"] = c["backdrop"]
             result.append(node_data)

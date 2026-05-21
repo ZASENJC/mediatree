@@ -18,22 +18,22 @@ let activeOnClose: (() => void) | null = null
 const containerStyle: React.CSSProperties = {
   position: 'fixed',
   zIndex: 100,
-  background: '#181818',
-  border: '1px solid #303030',
-  borderRadius: 8,
-  boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
-  padding: '4px 0',
-  minWidth: 100,
+  background: 'rgba(8, 10, 18, 0.72)',
+  border: '1px solid rgba(255, 255, 255, 0.14)',
+  borderRadius: 18,
+  boxShadow: '0 24px 80px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.10)',
+  backdropFilter: 'blur(24px) saturate(160%)',
+  padding: '6px',
+  minWidth: 132,
 }
 
 const itemBase: React.CSSProperties = {
   display: 'block',
-  width: 'calc(100% - 8px)',
+  width: '100%',
   textAlign: 'left',
-  padding: '4px 12px',
+  padding: '7px 12px',
   fontSize: 14,
-  margin: '0 4px',
-  borderRadius: 4,
+  borderRadius: 12,
   background: 'transparent',
   border: 'none',
   cursor: 'pointer',
@@ -42,18 +42,18 @@ const itemBase: React.CSSProperties = {
 }
 
 const itemHover: React.CSSProperties = {
-  background: '#303030',
+  background: 'rgba(255,255,255,0.12)',
   color: '#fff',
 }
 
 const itemDanger: React.CSSProperties = {
   ...itemBase,
-  color: '#f87171',
+  color: '#fb7185',
 }
 
 const itemDangerHover: React.CSSProperties = {
-  background: 'rgba(239,68,68,0.15)',
-  color: '#fca5a5',
+  background: 'rgba(255,55,95,0.16)',
+  color: '#fecdd3',
 }
 
 export default function ContextMenu({ x, y, items, onClose }: Props) {

@@ -1,7 +1,9 @@
 import { useEffect, useCallback } from 'react'
 
+type LightboxImage = string | { src: string; fallback?: string; alt?: string }
+
 interface Props {
-  images: string[]
+  images: LightboxImage[]
   index: number
   onClose: () => void
   onPrev: () => void
@@ -22,19 +24,22 @@ export default function Lightbox({ images, index, onClose, onPrev, onNext }: Pro
 
   if (index < 0 || index >= images.length) return null
 
+  const current = images[index]
+  const image = typeof current === 'string' ? { src: current, alt: `thumbnail ${index + 1}` } : current
+
   return (
     <div
-      className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-2xl"
       onClick={onClose}
     >
       <button
         onClick={(e) => { e.stopPropagation(); onClose() }}
-        className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center text-white/60 hover:text-white text-2xl transition-colors z-10"
+        className="glass-button absolute right-4 top-4 z-10 h-10 w-10 p-0 text-xl text-white/70 hover:text-white"
       >
         &times;
       </button>
 
-      <span className="absolute top-4 left-4 text-white/40 text-sm z-10">
+      <span className="glass-chip absolute left-4 top-4 z-10 text-gray-300">
         {index + 1} / {images.length}
       </span>
 
@@ -42,13 +47,13 @@ export default function Lightbox({ images, index, onClose, onPrev, onNext }: Pro
         <>
           <button
             onClick={(e) => { e.stopPropagation(); onPrev() }}
-            className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center text-white/60 hover:text-white text-3xl transition-colors z-10"
+            className="glass-button absolute left-4 top-1/2 z-10 h-12 w-12 -translate-y-1/2 p-0 text-3xl text-white/70 hover:text-white"
           >
             &#8249;
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onNext() }}
-            className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center text-white/60 hover:text-white text-3xl transition-colors z-10"
+            className="glass-button absolute right-4 top-1/2 z-10 h-12 w-12 -translate-y-1/2 p-0 text-3xl text-white/70 hover:text-white"
           >
             &#8250;
           </button>
@@ -56,10 +61,15 @@ export default function Lightbox({ images, index, onClose, onPrev, onNext }: Pro
       )}
 
       <img
-        src={images[index]}
-        alt={`thumbnail ${index + 1}`}
-        className="max-w-[90vw] max-h-[90vh] object-contain rounded"
+        src={image.src}
+        alt={image.alt || `thumbnail ${index + 1}`}
+        className="max-h-[90vh] max-w-[90vw] rounded-3xl border border-white/10 object-contain shadow-glass"
         onClick={(e) => e.stopPropagation()}
+        onError={(e) => {
+          if (image.fallback && (e.currentTarget as HTMLImageElement).src !== image.fallback) {
+            ;(e.currentTarget as HTMLImageElement).src = image.fallback
+          }
+        }}
       />
     </div>
   )
