@@ -402,7 +402,10 @@ export const api = {
     const headers: Record<string, string> = {}
     const token = getToken()
     if (token) headers['Authorization'] = `Bearer ${token}`
-    return fetch(`${BASE}/movies/${movieId}/cover`, { method: 'POST', headers, body: formData }).then(r => r.json())
+    return fetch(`${BASE}/movies/${movieId}/cover`, { method: 'POST', headers, body: formData }).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      return r.json()
+    })
   },
 
   editMovie: (movieId: number, data: Partial<Pick<Movie, 'title' | 'code' | 'actress' | 'release_date' | 'duration'>>) =>

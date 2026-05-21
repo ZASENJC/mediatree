@@ -94,7 +94,7 @@ class Settings(BaseSettings):
                         elif key not in ("auth_user", "auth_pass"):
                             setattr(self, key, val)
         except Exception:
-            pass
+            logger.exception("Failed to load persisted config")
 
     def save_config(self):
         try:
@@ -117,9 +117,7 @@ class Settings(BaseSettings):
             with open(self.config_path, "w") as f:
                 json.dump(data, f, indent=2)
         except Exception:
-            pass
-
-    class Config:
+            logger.exception("Failed to save config")
         env_file = ".env"
         env_file_encoding = "utf-8"
 

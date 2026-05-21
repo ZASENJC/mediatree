@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, FolderNode, Movie } from '../api'
 import { getExcluded, getUiPrefs } from '../store'
 import { saveScrollPos, restoreScrollPos } from '../scroll'
+import { showToast } from '../toast'
 import { getCached, setCache, clearCache } from '../cache'
 import SortDropdown from '../components/SortDropdown'
 import { MovieCard } from '../components/MovieCard'
@@ -152,11 +153,11 @@ export default function Home() {
     clearCache()
     try {
       await api.rescrapeFolder(activeFolderPath, activeMediaRoot)
-      alert('刮削任务已触发')
+      showToast('刮削任务已触发')
       setFolderMenu(null)
       load()
     } catch (err) {
-      alert(`刮削失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
+      showToast(`刮削失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
     }
   }, [activeFolderPath, activeMediaRoot, load])
 
@@ -176,7 +177,7 @@ export default function Home() {
       const results = data.results || []
       setFolderScrapeResults(results)
       if (results.length === 0) {
-        alert('没有找到匹配结果')
+        showToast('没有找到匹配结果')
       } else {
         api.fetchSearchBackdrops(results).then(bd => {
           setFolderScrapeBackdrops(bd.backdrops || [])
@@ -195,16 +196,16 @@ export default function Home() {
       clearCache()
       const res = await api.applyFolderScrape(activeFolderPath, activeMediaRoot, result.source_id, result.source, result.media_type)
       if (res.ok) {
-        alert(`已应用: ${res.title}`)
+        showToast(`已应用: ${res.title}`)
         setShowFolderScrape(false)
         setFolderScrapeResults([])
         setFolderScrapeQuery('')
         await load()
       } else {
-        alert('应用失败')
+        showToast('应用失败')
       }
     } catch (err) {
-      alert(`替换失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
+      showToast(`替换失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
     } finally {
       setFolderScrapeApplying(false)
     }
@@ -214,7 +215,7 @@ export default function Home() {
     setFolderMenu(null)
     try {
       const movies = await api.movies({ folder: activeFolderPath, media_root: activeMediaRoot, limit: 1 })
-      if (!movies.movies || movies.movies.length === 0) { alert('目录下无影片'); return }
+      if (!movies.movies || movies.movies.length === 0) { showToast('目录下无影片'); return }
       const movieId = movies.movies[0].id
       const data = await api.getAlternativeCovers(movieId)
       const covers = data.covers || []
@@ -234,7 +235,7 @@ export default function Home() {
     try {
       clearCache()
       await api.changeFolderCover(activeFolderPath, activeMediaRoot, url)
-      alert('封面已更新')
+      showToast('封面已更新')
       load()
     } catch {
       console.error('Change folder cover failed')
@@ -245,7 +246,7 @@ export default function Home() {
     setFolderMenu(null)
     try {
       const data = await api.movies({ folder: activeFolderPath, media_root: activeMediaRoot, limit: 1 })
-      if (!data.movies || data.movies.length === 0) { alert('目录下无影片'); return }
+      if (!data.movies || data.movies.length === 0) { showToast('目录下无影片'); return }
       setEditFolderMovie(data.movies[0])
       setShowFolderEdit(true)
     } catch {
@@ -267,10 +268,10 @@ export default function Home() {
     try {
       clearCache()
       await api.deleteFolder(activeFolderPath, activeMediaRoot)
-      alert('已删除')
+      showToast('已删除')
       load()
     } catch {
-      alert('删除失败')
+      showToast('删除失败')
     }
   }, [activeFolderName, activeFolderPath, activeMediaRoot, load])
 
@@ -452,7 +453,7 @@ export default function Home() {
                               className="flex-1 rounded-full border border-apple-blue/20 bg-apple-blue/10 px-1 py-0.5 text-center text-[10px] text-apple-blue hover:bg-apple-blue/20">应用</a>
                             {bd?.backdrop_url && (
                               <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation();
-                                api.changeFolderBackdrop(activeFolderPath, activeMediaRoot, bd.backdrop_url!).then(() => { alert('背景图已更新'); load() }).catch(() => alert('失败'))
+                                api.changeFolderBackdrop(activeFolderPath, activeMediaRoot, bd.backdrop_url!).then(() => { showToast('背景图已更新'); load() }).catch(() => showToast('失败'))
                               }}
                                 className="rounded-full border border-white/10 bg-white/[0.08] px-1.5 py-0.5 text-[10px] text-gray-400 hover:text-white">选背景</a>
                             )}
@@ -511,7 +512,7 @@ export default function Home() {
                 <div className="mb-4 grid grid-cols-2 gap-3">
                   {folderAltBackdrops.map((b, i) => (
                     <div key={i} onClick={() => {
-                      api.changeFolderBackdrop(activeFolderPath, activeMediaRoot, b.url).then(() => { alert('背景图已更新'); load() }).catch(() => alert('失败'))
+                      api.changeFolderBackdrop(activeFolderPath, activeMediaRoot, b.url).then(() => { showToast('背景图已更新'); load() }).catch(() => showToast('失败'))
                     }}
                       className="aspect-video cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition-all hover:border-apple-blue/40 hover:shadow-glow">
                       <img src={b.url} alt={b.source} className="h-full w-full object-cover" />

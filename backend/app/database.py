@@ -289,15 +289,17 @@ async def get_movies(folder: str = "", tag: str = "", code: str = "",
         params.append(folder)
         params.append(f"{folder}/%")
     if code:
-        where += " AND code LIKE ?"
-        params.append(f"%{code}%")
+        safe_code = code.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        where += " AND code LIKE ? ESCAPE '\\'"
+        params.append(f"%{safe_code}%")
     if actress:
-        where += " AND (actress LIKE ? OR code IN (SELECT code FROM javdb_cache WHERE data LIKE ?))"
-        params.append(f"%{actress}%")
-        params.append(f"%{actress}%")
+        safe_actress = actress.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        where += " AND actress LIKE ? ESCAPE '\\'"
+        params.append(f"%{safe_actress}%")
     if staff:
-        where += " AND (actress LIKE ? OR \"cast\" LIKE ? OR crew LIKE ?)"
-        params.extend([f"%{staff}%", f"%{staff}%", f"%{staff}%"])
+        safe_staff = staff.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        where += " AND (actress LIKE ? ESCAPE '\\' OR \"cast\" LIKE ? ESCAPE '\\' OR crew LIKE ? ESCAPE '\\')"
+        params.extend([f"%{safe_staff}%", f"%{safe_staff}%", f"%{safe_staff}%"])
     if media_root:
         where += " AND media_root = ?"
         params.append(media_root)
@@ -478,12 +480,13 @@ async def get_recent_watched(media_root: str = "", limit: int = 200, offset: int
 
 async def search_movies(q: str, media_root: str = "", limit: int = 100, offset: int = 0, field: str = ""):
     db = await get_db()
-    like = f"%{q}%"
+    safe_q = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    like = f"%{safe_q}%"
     if field == "staff":
-        where = " WHERE (actress LIKE ? OR \"cast\" LIKE ? OR crew LIKE ?)"
+        where = " WHERE (actress LIKE ? ESCAPE '\\' OR \"cast\" LIKE ? ESCAPE '\\' OR crew LIKE ? ESCAPE '\\')"
         params = [like, like, like]
     else:
-        where = " WHERE (code LIKE ? OR title LIKE ? OR clean_title LIKE ? OR display_title LIKE ? OR actress LIKE ?)"
+        where = " WHERE (code LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' OR clean_title LIKE ? ESCAPE '\\' OR display_title LIKE ? ESCAPE '\\' OR actress LIKE ? ESCAPE '\\')"
         params = [like, like, like, like, like]
     if media_root:
         where += " AND media_root = ?"

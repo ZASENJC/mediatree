@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import { getActiveLibrary, setActiveLibrary, api, clearCache, MediaRoot } from './api'
+import { useToastController } from './toast'
 import Home from './pages/Home'
 import Browse from './pages/Browse'
 import FolderPage from './pages/Folder'
@@ -34,6 +35,7 @@ export default function App() {
   const [scanToast, setScanToast] = useState<{ visible: boolean; status: string; done: number; total: number }>({ visible: false, status: '', done: 0, total: 0 })
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
+  const toasts = useToastController()
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const moreBtnRef = useRef<HTMLButtonElement | null>(null)
 
@@ -420,6 +422,16 @@ export default function App() {
       )}
 
       {scanToast.visible && <ScanToast {...scanToast} />}
+
+      {toasts.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] flex flex-col gap-2">
+          {toasts.map(t => (
+            <div key={t.id} className="glass-popover px-4 py-2 text-sm text-white/90 animate-fade-in">
+              {t.message}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
