@@ -24,11 +24,11 @@
   }
 
   .glass-popover {
-    @apply rounded-2xl border border-white/10 bg-black/55 shadow-glass backdrop-blur-2xl;
+    @apply rounded-2xl border border-white/10 bg-white/[0.06] shadow-glass backdrop-blur-2xl;
   }
 
   .glass-modal {
-    @apply rounded-3xl border border-white/10 bg-black/60 shadow-glass backdrop-blur-2xl;
+    @apply rounded-3xl border border-white/10 bg-white/[0.07] shadow-glass backdrop-blur-2xl;
   }
 
   .glass-chip {
@@ -56,19 +56,43 @@ body {
   background:
     radial-gradient(circle at 12% 0%, rgba(10, 132, 255, 0.24), transparent 34rem),
     linear-gradient(135deg, #03040a 0%, #070911 48%, #0c0f17 100%);
-  background-attachment: fixed;
   color: #f5f5f7;
   min-height: 100vh;
   overflow-x: hidden;
+  position: relative;
+}
+
+@supports (color: color(display-p3 0 0 0)) {
+  body {
+    background:
+      radial-gradient(circle at 12% 0%, color(display-p3 0.04 0.518 1 / 0.24), transparent 34rem),
+      linear-gradient(135deg, color(display-p3 0.012 0.016 0.039 / 1) 0%, color(display-p3 0.027 0.035 0.067 / 1) 48%, color(display-p3 0.047 0.059 0.09 / 1) 100%);
+  }
+  .bg-aurora {
+    background-image: radial-gradient(circle at 18% 8%, color(display-p3 0.04 0.518 1 / 0.22), transparent 32%), linear-gradient(135deg, color(display-p3 0.012 0.016 0.039 / 1) 0%, color(display-p3 0.027 0.035 0.067 / 1) 42%, color(display-p3 0.047 0.059 0.09 / 1) 100%);
+  }
 }
 
 body::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -2;
+  background: linear-gradient(180deg, rgba(255,255,255,0.045), transparent 24%, rgba(0,0,0,0.42));
+  height: 100vh;
+}
+
+body::after {
   content: '';
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: -1;
-  background: linear-gradient(180deg, rgba(255,255,255,0.045), transparent 24%, rgba(0,0,0,0.42));
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
 }
 
 ::-webkit-scrollbar {

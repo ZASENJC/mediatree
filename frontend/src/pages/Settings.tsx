@@ -212,7 +212,7 @@ export default function Settings() {
   const btnDark = `${btnClass} border border-white/10 bg-white/[0.08] text-gray-300 hover:bg-white/[0.14] hover:text-white`
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="space-y-5 max-w-7xl mx-auto">
       <div className="glass-panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
         <div>
           <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">MediaTree</p>
@@ -223,145 +223,210 @@ export default function Settings() {
         </button>
       </div>
 
-      {/* 界面偏好 */}
-      <div className={cardClass}>
-        <h2 className={sectionTitle}>界面偏好</h2>
-        <label className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
-          <div>
-            <p className="text-sm font-medium text-white">隐藏首页标题文字</p>
-            <p className="mt-0.5 text-xs text-gray-500">开启后隐藏首页顶部的 Library、我的媒体库/最近观看 和数量文字。</p>
-          </div>
-          <input
-            type="checkbox"
-            checked={hideHomeTitleText}
-            onChange={e => setHideHomeTitleText(e.target.checked)}
-            className="h-5 w-5 rounded border-white/20 bg-white/10 text-apple-blue focus:ring-apple-blue/40"
-          />
-        </label>
-      </div>
+      {msg && (
+        <div className={`rounded-2xl border p-3 text-xs ${msg.includes('失败') ? 'border-red-400/20 bg-red-500/10 text-red-300' : msg.includes('成功') ? 'border-apple-mint/20 bg-apple-mint/10 text-apple-mint' : 'border-apple-mint/20 bg-apple-mint/10 text-apple-mint'}`}>{msg}</div>
+      )}
 
-      {/* 账号安全 */}
-      <div className={cardClass}>
-        <h2 className={sectionTitle}>账号安全</h2>
-        <form onSubmit={handleChangeAuth} className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className={labelClass}>当前用户名</label>
-              <input type="text" value={oldUser} onChange={e => setOldUser(e.target.value)} className={inputClass} />
-            </div>
-            <div>
-              <label className={labelClass}>当前密码</label>
-              <input type="password" value={oldPass} onChange={e => setOldPass(e.target.value)} className={inputClass} />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className={labelClass}>新用户名</label>
-              <input type="text" value={newUser} onChange={e => setNewUser(e.target.value)} className={inputClass} />
-            </div>
-            <div>
-              <label className={labelClass}>新密码</label>
-              <input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} className={inputClass} />
-            </div>
-          </div>
-          {authMsg && (
-            <p className={`text-xs ${authMsg.includes('失败') ? 'text-red-400' : 'text-green-400'}`}>{authMsg}</p>
-          )}
-          <button type="submit" disabled={authSaving} className={`${btnPrimary} disabled:opacity-50`}>
-            {authSaving ? '更新中...' : '修改用户名/密码'}
-          </button>
-        </form>
-      </div>
-
-      {/* 刮削器设置 */}
-      <div className={cardClass}>
-        <h2 className={sectionTitle}>刮削器</h2>
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {[
-              { k: javdbCache, set: setJavdbCache, label: 'Javdatabase 缓存' },
-              { k: tmdbCache, set: setTmdbCache, label: 'TMDB 缓存' },
-              { k: bangumiCache, set: setBangumiCache, label: 'Bangumi 缓存' },
-            ].map(({ k, set, label }) => (
-              <div key={label}>
-                <label className={labelClass}>{label}</label>
-                <div className="flex items-center gap-1">
-                  <input type="number" min={1} max={720} value={k}
-                    onChange={e => set(Number(e.target.value))}
-                    className="glass-input w-20 px-2 py-1.5 text-xs sm:w-16" />
-                  <span className="text-xs text-gray-600">小时</span>
-                </div>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        {/* 左列 */}
+        <div className="space-y-5">
+          {/* 界面偏好 */}
+          <div className={cardClass}>
+            <h2 className={sectionTitle}>界面偏好</h2>
+            <label className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl cursor-pointer">
+              <div>
+                <p className="text-sm font-medium text-white">无字模式</p>
+                <p className="mt-0.5 text-xs text-gray-500">开启后首页仅展示影片封面图，隐藏卡片上的标题文字和目录数量。</p>
               </div>
-            ))}
-          </div>
-          <div>
-            <label className={labelClass}>请求间隔（秒）</label>
-            <input type="number" min={1} max={30} value={reqInterval}
-              onChange={e => setReqInterval(Number(e.target.value))}
-              className="glass-input w-20 px-2 py-1.5 text-xs" />
-          </div>
-          <div className="border-t border-white/10 pt-3">
-            <label className={labelClass}>TMDB API Key</label>
-            <input type="text" value={tmdbKey} onChange={e => setTmdbKey(e.target.value)}
-              placeholder="去 themoviedb.org 免费申请" className={inputClass} />
-          </div>
-          <div>
-            <label className={labelClass}>TMDB 读访问令牌（推荐，优先使用）</label>
-            <input type="password" value={tmdbToken} onChange={e => setTmdbToken(e.target.value)}
-              placeholder="Bearer Token" className={inputClass} />
+              <button
+                role="switch"
+                aria-checked={hideHomeTitleText}
+                onClick={() => { const v = !hideHomeTitleText; setHideHomeTitleText(v); setUiPrefs({ hideHomeTitleText: v }) }}
+                className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none ${
+                  hideHomeTitleText ? 'bg-apple-blue' : 'bg-white/15'
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-200 ${
+                    hideHomeTitleText ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </label>
           </div>
 
-          {/* 内置刮削器卡片 */}
-          <div className="mt-3 border-t border-white/10 pt-3">
-            <h3 className="mb-3 text-sm font-semibold text-gray-400">内置刮削器</h3>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {Object.entries(SCRAPER_META).filter(([k]) => k !== 'none').map(([key, val]) => (
-                <div key={key} className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
-                  <p className="text-sm font-medium text-white">{val.label}</p>
-                  <p className="mt-0.5 text-xs text-gray-500">{val.desc}</p>
-                  <span className="mt-2 inline-flex rounded-full border border-apple-mint/30 bg-apple-mint/10 px-2 py-0.5 text-[10px] text-apple-mint">已内置</span>
-                </div>
-              ))}
-            </div>
-            <p className="mt-3 text-xs text-gray-500 leading-relaxed">
-              自动会尝试判断刮削源，但可能效果不好；更推荐按媒体库类型选择 TMDB 电影、TMDB 剧集/番剧、Bangumi 或 Javdatabase。
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* 插件管理 */}
-      <div className={cardClass}>
-        <h2 className={sectionTitle}>插件管理</h2>
-        <p className="text-xs text-gray-500 mb-3">上传自定义刮削器插件（.py 文件）</p>
-        <div className="flex items-center gap-3 mb-4">
-          <label className={`${btnPrimary} cursor-pointer`}>
-            上传插件
-            <input type="file" accept=".py" onChange={handleUploadPlugin} className="hidden" />
-          </label>
-          {pluginMsg && (
-            <span className={`text-xs ${pluginMsg.includes('失败') ? 'text-red-400' : 'text-green-400'}`}>{pluginMsg}</span>
-          )}
-        </div>
-        {plugins.filter(p => !p.builtin).length > 0 && (
-          <div className="space-y-1">
-            {plugins.filter(p => !p.builtin).map(p => (
-              <div key={p.name} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3">
+          {/* 账号安全 */}
+          <div className={cardClass}>
+            <h2 className={sectionTitle}>账号安全</h2>
+            <form onSubmit={handleChangeAuth} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <p className="text-sm text-white">{p.label}</p>
-                  <p className="text-xs text-gray-500">{p.description}</p>
+                  <label className={labelClass}>当前用户名</label>
+                  <input type="text" value={oldUser} onChange={e => setOldUser(e.target.value)} className={inputClass} />
                 </div>
-                <button onClick={() => handleDeletePlugin(p.name)}
-                  className="rounded-full border border-red-400/20 bg-red-500/10 px-2.5 py-1 text-xs text-red-300 transition-colors hover:bg-red-500/20">
-                  删除
-                </button>
+                <div>
+                  <label className={labelClass}>当前密码</label>
+                  <input type="password" value={oldPass} onChange={e => setOldPass(e.target.value)} className={inputClass} />
+                </div>
               </div>
-            ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className={labelClass}>新用户名</label>
+                  <input type="text" value={newUser} onChange={e => setNewUser(e.target.value)} className={inputClass} />
+                </div>
+                <div>
+                  <label className={labelClass}>新密码</label>
+                  <input type="password" value={newPass} onChange={e => setNewPass(e.target.value)} className={inputClass} />
+                </div>
+              </div>
+              {authMsg && (
+                <p className={`text-xs ${authMsg.includes('失败') ? 'text-red-400' : 'text-green-400'}`}>{authMsg}</p>
+              )}
+              <button type="submit" disabled={authSaving} className={`${btnPrimary} disabled:opacity-50`}>
+                {authSaving ? '更新中...' : '修改用户名/密码'}
+              </button>
+            </form>
           </div>
-        )}
-        {plugins.filter(p => !p.builtin).length === 0 && (
-          <p className="text-xs text-gray-600">暂无自定义插件</p>
-        )}
+
+          {/* 插件管理 */}
+          <div className={cardClass}>
+            <h2 className={sectionTitle}>插件管理</h2>
+            <p className="text-xs text-gray-500 mb-3">上传自定义刮削器插件（.py 文件）</p>
+            <div className="flex items-center gap-3 mb-4">
+              <label className={`${btnPrimary} cursor-pointer`}>
+                上传插件
+                <input type="file" accept=".py" onChange={handleUploadPlugin} className="hidden" />
+              </label>
+              {pluginMsg && (
+                <span className={`text-xs ${pluginMsg.includes('失败') ? 'text-red-400' : 'text-green-400'}`}>{pluginMsg}</span>
+              )}
+            </div>
+            {plugins.filter(p => !p.builtin).length > 0 && (
+              <div className="space-y-1">
+                {plugins.filter(p => !p.builtin).map(p => (
+                  <div key={p.name} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3">
+                    <div>
+                      <p className="text-sm text-white">{p.label}</p>
+                      <p className="text-xs text-gray-500">{p.description}</p>
+                    </div>
+                    <button onClick={() => handleDeletePlugin(p.name)}
+                      className="rounded-full border border-red-400/20 bg-red-500/10 px-2.5 py-1 text-xs text-red-300 transition-colors hover:bg-red-500/20">
+                      删除
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {plugins.filter(p => !p.builtin).length === 0 && (
+              <p className="text-xs text-gray-600">暂无自定义插件</p>
+            )}
+          </div>
+        </div>
+
+        {/* 右列 */}
+        <div className="space-y-5">
+          {/* 刮削器设置 */}
+          <div className={cardClass}>
+            <h2 className={sectionTitle}>刮削器</h2>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  { k: javdbCache, set: setJavdbCache, label: 'Javdatabase 缓存' },
+                  { k: tmdbCache, set: setTmdbCache, label: 'TMDB 缓存' },
+                  { k: bangumiCache, set: setBangumiCache, label: 'Bangumi 缓存' },
+                ].map(({ k, set, label }) => (
+                  <div key={label}>
+                    <label className={labelClass}>{label}</label>
+                    <div className="flex items-center gap-1">
+                      <input type="number" min={1} max={720} value={k}
+                        onChange={e => set(Number(e.target.value))}
+                        className="glass-input w-20 px-2 py-1.5 text-xs sm:w-16" />
+                      <span className="text-xs text-gray-600">小时</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <label className={labelClass}>请求间隔（秒）</label>
+                <input type="number" min={1} max={30} value={reqInterval}
+                  onChange={e => setReqInterval(Number(e.target.value))}
+                  className="glass-input w-20 px-2 py-1.5 text-xs" />
+              </div>
+              <div className="border-t border-white/10 pt-3">
+                <label className={labelClass}>TMDB API Key</label>
+                <input type="text" value={tmdbKey} onChange={e => setTmdbKey(e.target.value)}
+                  placeholder="去 themoviedb.org 免费申请" className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>TMDB 读访问令牌（推荐，优先使用）</label>
+                <input type="password" value={tmdbToken} onChange={e => setTmdbToken(e.target.value)}
+                  placeholder="Bearer Token" className={inputClass} />
+              </div>
+
+              <div className="mt-3 border-t border-white/10 pt-3">
+                <h3 className="mb-3 text-sm font-semibold text-gray-400">内置刮削器</h3>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {Object.entries(SCRAPER_META).filter(([k]) => k !== 'none').map(([key, val]) => (
+                    <div key={key} className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
+                      <p className="text-sm font-medium text-white">{val.label}</p>
+                      <p className="mt-0.5 text-xs text-gray-500">{val.desc}</p>
+                      <span className="mt-2 inline-flex rounded-full border border-apple-mint/30 bg-apple-mint/10 px-2 py-0.5 text-[10px] text-apple-mint">已内置</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-gray-500 leading-relaxed">
+                  自动会尝试判断刮削源，但可能效果不好；更推荐按媒体库类型选择 TMDB 电影、TMDB 剧集/番剧、Bangumi 或 Javdatabase。
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 数据备份与恢复 */}
+          <div className={cardClass}>
+            <h2 className={sectionTitle}>数据备份与恢复</h2>
+            <div className="flex flex-wrap items-center gap-3">
+              <a href={api.backupUrl('core')} className={btnPrimary}>
+                下载数据库备份
+              </a>
+              <a href={api.backupUrl('full')} className={btnPrimary}>
+                下载完整备份 (含封面图)
+              </a>
+            </div>
+            <p className="mt-3 text-xs text-gray-500">
+              备份文件可通过下方上传恢复。完整备份包含数据库 + 所有封面图片缓存。
+            </p>
+            <div className="mt-3">
+              <label className={labelClass}>上传备份恢复</label>
+              <div className="flex items-center gap-2">
+                <input type="file" accept=".db,.tar.gz,.gz"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    if (!confirm(`确定要恢复备份 "${file.name}"？当前数据将被覆盖。`)) return
+                    setMsg('')
+                    try {
+                      setSaving(true)
+                      const formData = new FormData()
+                      formData.append('file', file)
+                      const token = localStorage.getItem('mediatree_token') || ''
+                      const res = await fetch('/api/restore/upload', {
+                        method: 'POST',
+                        headers: token ? { Authorization: `Bearer ${token}` } : {},
+                        body: formData,
+                      })
+                      if (res.ok) {
+                        setMsg('恢复成功，即将刷新页面...')
+                        clearCache()
+                        setTimeout(() => window.location.reload(), 800)
+                      } else setMsg('恢复失败')
+                    } catch { setMsg('恢复失败') }
+                    setSaving(false)
+                  }}
+                  className={inputClass} />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* 媒体库配置 */}
@@ -443,56 +508,6 @@ export default function Settings() {
           <div className={`mt-3 rounded-2xl border p-3 text-xs ${libMsg.includes('失败') ? 'border-red-400/20 bg-red-500/10 text-red-300' : 'border-apple-mint/20 bg-apple-mint/10 text-apple-mint'}`}>{libMsg}</div>
         )}
       </div>
-
-      {/* 数据备份与恢复 */}
-      <div className={cardClass}>
-        <h2 className={sectionTitle}>数据备份与恢复</h2>
-        <div className="flex flex-wrap items-center gap-3">
-          <a href={api.backupUrl('core')} className={btnPrimary}>
-            下载数据库备份
-          </a>
-          <a href={api.backupUrl('full')} className={btnPrimary}>
-            下载完整备份 (含封面图)
-          </a>
-        </div>
-        <p className="mt-3 text-xs text-gray-500">
-          备份文件可通过下方上传恢复。完整备份包含数据库 + 所有封面图片缓存。
-        </p>
-        <div className="mt-3">
-          <label className={labelClass}>上传备份恢复</label>
-          <div className="flex items-center gap-2">
-            <input type="file" accept=".db,.tar.gz,.gz"
-              onChange={async (e) => {
-                const file = e.target.files?.[0]
-                if (!file) return
-                if (!confirm(`确定要恢复备份 "${file.name}"？当前数据将被覆盖。`)) return
-                setMsg('')
-                try {
-                  setSaving(true)
-                  const formData = new FormData()
-                  formData.append('file', file)
-                  const token = localStorage.getItem('mediatree_token') || ''
-                  const res = await fetch('/api/restore/upload', {
-                    method: 'POST',
-                    headers: token ? { Authorization: `Bearer ${token}` } : {},
-                    body: formData,
-                  })
-                  if (res.ok) {
-                    setMsg('恢复成功，即将刷新页面...')
-                    clearCache()
-                    setTimeout(() => window.location.reload(), 800)
-                  } else setMsg('恢复失败')
-                } catch { setMsg('恢复失败') }
-                setSaving(false)
-              }}
-              className={inputClass} />
-          </div>
-        </div>
-      </div>
-
-      {msg && (
-        <div className={`rounded-2xl border p-3 text-xs ${msg.includes('失败') ? 'border-red-400/20 bg-red-500/10 text-red-300' : msg.includes('成功') ? 'border-apple-mint/20 bg-apple-mint/10 text-apple-mint' : 'border-apple-mint/20 bg-apple-mint/10 text-apple-mint'}`}>{msg}</div>
-      )}
     </div>
   )
 }

@@ -785,6 +785,42 @@ async def remove_tag(movie_id: int, tag: str):
     await db.commit()
 
 
+async def set_folder_tag(folder_levels: str, tag: str, add: bool, media_root: str = ""):
+    """Add or remove tag for all movies in a folder (including subfolders)."""
+    db = await get_db()
+    if media_root:
+        if add:
+            await db.execute(
+                "INSERT OR IGNORE INTO tags (movie_id, tag, created_at) "
+                "SELECT id, ?, datetime('now') FROM movies "
+                "WHERE (folder_levels = ? OR folder_levels LIKE ?) AND media_root = ?",
+                (tag, folder_levels, f"{folder_levels}/%", media_root)
+            )
+        else:
+            await db.execute(
+                "DELETE FROM tags WHERE tag = ? AND movie_id IN ("
+                "SELECT id FROM movies WHERE (folder_levels = ? OR folder_levels LIKE ?) AND media_root = ?"
+                ")",
+                (tag, folder_levels, f"{folder_levels}/%", media_root)
+            )
+    else:
+        if add:
+            await db.execute(
+                "INSERT OR IGNORE INTO tags (movie_id, tag, created_at) "
+                "SELECT id, ?, datetime('now') FROM movies "
+                "WHERE folder_levels = ? OR folder_levels LIKE ?",
+                (tag, folder_levels, f"{folder_levels}/%")
+            )
+        else:
+            await db.execute(
+                "DELETE FROM tags WHERE tag = ? AND movie_id IN ("
+                "SELECT id FROM movies WHERE folder_levels = ? OR folder_levels LIKE ?"
+                ")",
+                (tag, folder_levels, f"{folder_levels}/%")
+            )
+    await db.commit()
+
+
 async def delete_movie(movie_id: int):
     db = await get_db()
     await db.execute("DELETE FROM movies WHERE id=?", (movie_id,))

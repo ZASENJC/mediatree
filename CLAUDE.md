@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Push 工作流
 
-- 每次 push 前，先同步更新 `AGENTS.md` 和 `CLAUDE.md`，确保文档反映当前代码状态。
+- 每次 push 前，先同步更新 `CLAUDE.md`、`CHANGELOG.md`、`README.md`，确保文档反映当前代码状态。
 - 将文档更新纳入同一个 commit，不要单独提交。
-- 版本号规则：`v3.1` 起使用 `v3.1.0`、`v3.1.1`、`v3.1.2` 三级格式，不再跳主次版本号。
+- 版本号规则：使用 `Vx.x.xx` 三级格式（如 `V3.1.0`、`V3.1.1`），按序递增，不再跳主次版本号。
 
 ## 交互语言规则
 
@@ -91,7 +91,7 @@ In production, the backend serves the built frontend at `/`. In development, run
 
 ### Auth system
 - `AuthMiddleware` guards `/api/*` routes using Basic/Bearer auth
-- Whitelisted paths (see AGENTS.md) bypass auth entirely — covers streaming, subtitles, covers, fonts, Jellyfin compat routes
+- Whitelisted paths bypass auth entirely — covers streaming, subtitles, covers, fonts, Jellyfin compat routes
 - Jellyfin clients use separate `jellyfin_auth.py` token system (tokens stored in `jellyfin_tokens` table)
 - Library-level passwords stored in `library_settings` table, verified via `/api/library-verify`
 
@@ -134,7 +134,7 @@ scan_media(root)
 - `store.ts`: excluded folders and UI preferences (e.g. `hideHomeTitleText`) persisted in localStorage
 - `scroll.ts`: scroll position save/restore in sessionStorage
 - All pages are in `src/pages/`, components in `src/components/`, utilities in `src/utils/`
-- `App.tsx`: root component with glassmorphism nav bar, route definitions (`/`, `/folder`, `/browse`, `/detail/:id`, `/favorites`, `/settings`, `/login`, `/setup`), search overlay (desktop dropdown + mobile standalone bar), library modal
+- `App.tsx`: root component with glassmorphism nav bar, route definitions (`/`, `/folder`, `/browse`, `/detail/:id`, `/favorites`, `/settings`, `/login`, `/setup`), search overlay (desktop dropdown + mobile standalone bar), library modal. All modal/overlay backdrops use `bg-black/40 backdrop-blur-2xl z-[60]` to sit above sticky header (`z-50`).
 - `ContextMenu.tsx`: singleton right-click menu with glassmorphism inline styles (backdrop blur, rounded-2xl, semi-transparent background)
 
 ### UI Design System (Glassmorphism + Apple style)
@@ -144,8 +144,8 @@ scan_media(root)
   - `glass-card` — card element (rounded-2xl, medium blur, shadow-card)
   - `glass-button` / `glass-button-primary` — pill buttons (rounded-full, glass or apple-blue tinted)
   - `glass-input` — form input (rounded-2xl, glass surface, apple-blue focus ring)
-  - `glass-popover` — dropdown/popover (rounded-2xl, dark glass with heavy blur)
-  - `glass-modal` — modal dialog (rounded-3xl, dark glass, heavy blur)
+  - `glass-popover` — dropdown/popover (rounded-2xl, white-based translucent glass, heavy blur)
+  - `glass-modal` — modal dialog (rounded-3xl, white-based translucent glass, heavy blur)
   - `glass-chip` — inline tag/pill (rounded-full, translucent)
   - `apple-focus` — card hover animation (translate-y -1, scale 1.02, glow shadow)
 - Navigation header: two separate glass capsules (brand+nav left, actions right). On mobile (<380px), "MediaTree" abbreviates to "MT". Favorites/Settings hidden in "..." dropdown on mobile.
@@ -161,5 +161,3 @@ scan_media(root)
 - Player/subtitles: `VideoPlayer.tsx` + `artplayerPluginAss.ts`
 - Jellyfin compat: `jellyfin_compat.py` (routes) + `jellyfin_mappers.py` (data mapping)
 - File watching: `watcher.py`
-
-Refer to `AGENTS.md` for the complete API route table, database schema, environment variables, and detailed data flow diagrams.

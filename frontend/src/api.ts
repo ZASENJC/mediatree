@@ -191,6 +191,13 @@ export const api = {
       method: 'DELETE',
     }),
 
+  setFolderWatched: (folder: string, mediaRoot: string, watched: boolean) =>
+    request('/folder/watched', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder, media_root: mediaRoot, watched }),
+    }),
+
   deleteMovie: (movieId: number) =>
     request(`/movies/${movieId}`, { method: 'DELETE' }),
 

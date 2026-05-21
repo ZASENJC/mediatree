@@ -168,7 +168,7 @@ export default function Browse() {
 
       {mobileTreeOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/65 backdrop-blur-xl" onClick={() => setMobileTreeOpen(false)} />
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-2xl" onClick={() => setMobileTreeOpen(false)} />
           <aside className="glass-modal absolute left-3 top-3 h-[calc(100%-1.5rem)] w-[82vw] max-w-xs overflow-hidden p-4">
             <div className="mb-3 flex items-center justify-between">
               <div>
