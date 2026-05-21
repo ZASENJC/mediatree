@@ -98,11 +98,6 @@ def parse_library_id(library_id: str) -> str | None:
 def make_collection_folder(media_root: str) -> dict:
     lib_id = make_library_id(media_root)
     label = Path(media_root).name or media_root
-    people = _people_from_movie(movie)
-    studios = [
-        p["Name"] for p in people
-        if p.get("Role") and "studio" in str(p["Role"]).lower()
-    ]
 
     return {
         "Name": label,
@@ -166,6 +161,12 @@ def map_movie_to_jellyfin_item(
     }
 
     media_streams = _build_media_streams(media_info, path, host_base, item_id)
+
+    people = _people_from_movie(movie)
+    studios = [
+        p["Name"] for p in people
+        if p.get("Role") and "studio" in str(p["Role"]).lower()
+    ]
 
     return {
         "Name": name,

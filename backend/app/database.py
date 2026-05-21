@@ -757,9 +757,9 @@ async def save_category(data: dict):
         await db.execute("UPDATE categories SET name=?, movie_ids=? WHERE id=?",
                          (data["name"], movie_ids, data["id"]))
     else:
-        await db.execute("INSERT INTO categories (name, movie_ids) VALUES (?,?)",
-                         (data["name"], movie_ids))
-        data["id"] = db.total_changes
+        cur = await db.execute("INSERT INTO categories (name, movie_ids) VALUES (?,?)",
+                       (data["name"], movie_ids))
+        data["id"] = cur.lastrowid
     await db.commit()
     return data
 
