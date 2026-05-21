@@ -51,6 +51,5 @@ docker compose up -d
 
 ## 文档
 
-- [AGENTS.md](AGENTS.md) — 项目开发指南
-- [CHANGEME.md](CHANGEME.md) — 版本更新记录
+- [CHANGELOG.md](CHANGELOG.md) — 版本更新记录
 - [CLAUDE.md](CLAUDE.md) — AI 辅助开发配置
