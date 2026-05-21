@@ -168,13 +168,6 @@ def remove_tmdb_id_token(name: str) -> str:
     clean = re.sub(r"\s+", " ", clean).strip(" -_[](){}")
     return clean.strip()
 
-def find_media_files(folder: Path) -> list[Path]:
-    files = []
-    for ext in VIDEO_EXTS:
-        files.extend(folder.glob(f"*{ext}"))
-        files.extend(folder.glob(f"*{ext.upper()}"))
-    return sorted(set(files))
-
 def find_cover(folder: Path) -> str | None:
     for name in COVER_NAMES:
         p = folder / name
@@ -601,7 +594,7 @@ def scan_media(root: str = None) -> list[dict]:
         _set_scan_progress(media_root, status="scanning", done=0, total=0, trigger=trigger)
         for dirpath, dirnames, filenames in os.walk(base):
             folder = Path(dirpath)
-            media_files = find_media_files(folder)
+            media_files = sorted({folder / f for f in filenames if Path(f).suffix.lower() in VIDEO_EXTS})
             if not media_files: continue
             detected_code = extract_code(folder.name)
             code = detected_code

@@ -68,16 +68,21 @@ _external_audio_cache: dict[str, tuple[float, list[dict]]] = {}
 def _detect_encoding(file_path: str) -> str:
     # Deterministic CJK fallbacks are more reliable for short subtitle files than
     # charset-normalizer, which can misread GBK/GB18030 as Big5.
+    # Read the file once into memory to avoid repeated I/O for each encoding try.
+    try:
+        with open(file_path, "rb") as f:
+            raw = f.read(8192)
+    except OSError:
+        return "utf-8"
     for enc in ENCODING_GUESS:
         try:
-            with open(file_path, "r", encoding=enc, errors="strict") as f:
-                f.read(8192)
+            raw.decode(enc)
             return enc
         except (UnicodeError, LookupError):
             continue
     try:
-        from charset_normalizer import from_path
-        best = from_path(file_path).best()
+        from charset_normalizer import from_bytes
+        best = from_bytes(raw).best()
         if best and best.encoding:
             return best.encoding
     except Exception:

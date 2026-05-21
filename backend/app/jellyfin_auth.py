@@ -129,12 +129,22 @@ async def validate_jellyfin_token(token: str) -> dict | None:
         return None
     db = await get_db()
     cur = await db.execute(
-        "SELECT token, user_name, user_id, is_admin, client, device, device_id, version FROM jellyfin_tokens WHERE token=?",
+        "SELECT token, user_name, user_id, is_admin, client, device, device_id, version, created_at FROM jellyfin_tokens WHERE token=?",
         (token,),
     )
     row = await cur.fetchone()
     if not row:
         return None
+    created_at = row["created_at"]
+    if created_at:
+        try:
+            created = datetime.fromisoformat(created_at)
+            if datetime.now() - created > timedelta(hours=TOKEN_EXPIRY_HOURS):
+                await db.execute("DELETE FROM jellyfin_tokens WHERE token=?", (token,))
+                await db.commit()
+                return None
+        except (ValueError, TypeError):
+            pass
     await db.execute(
         "UPDATE jellyfin_tokens SET last_seen_at=datetime('now') WHERE token=?",
         (token,),
