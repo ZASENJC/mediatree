@@ -10,8 +10,8 @@ services:
       - /Volumes/o1/media/Movie:/media/movie:ro                                              
       - /Volumes/o1/media/Bangumi:/media/bgm:ro                                              
       - /Volumes/STU/Code/mediatree/data:/app/data 
+    env_file:
+      - .env
     environment:
       - PORT=27580
-      - AUTH_USER=admin
-      - AUTH_PASS=changeme
     restart: unless-stopped

@@ -127,7 +127,7 @@ app.add_middleware(AuthMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -655,6 +655,14 @@ async def api_serve_font(name: str):
 
 # ─── Config ───
 
+def _mask_sensitive(value: str) -> str:
+    if not value:
+        return ""
+    if len(value) <= 8:
+        return value[:2] + "***"
+    return value[:4] + "***" + value[-4:]
+
+
 @app.get("/api/config")
 async def api_get_config():
     return {
@@ -664,8 +672,8 @@ async def api_get_config():
         "javdb_request_interval": settings.javdb_request_interval,
         "tmdb_cache_hours": getattr(settings, 'tmdb_cache_hours', 168),
         "bangumi_cache_hours": getattr(settings, 'bangumi_cache_hours', 168),
-        "tmdb_api_key": settings.tmdb_api_key,
-        "tmdb_access_token": settings.tmdb_access_token,
+        "tmdb_api_key": _mask_sensitive(settings.tmdb_api_key),
+        "tmdb_access_token": _mask_sensitive(settings.tmdb_access_token),
         "scrape_concurrency_per_library": settings.scrape_concurrency_per_library,
         "scrape_global_concurrency": settings.scrape_global_concurrency,
         "scraper_api_concurrency": settings.scraper_api_concurrency,
@@ -689,9 +697,13 @@ async def api_update_config(data: dict):
     if "bangumi_cache_hours" in data:
         settings.bangumi_cache_hours = data["bangumi_cache_hours"]
     if "tmdb_api_key" in data:
-        settings.tmdb_api_key = data["tmdb_api_key"]
+        val = data["tmdb_api_key"]
+        if val and "***" not in val:
+            settings.tmdb_api_key = val
     if "tmdb_access_token" in data:
-        settings.tmdb_access_token = data["tmdb_access_token"]
+        val = data["tmdb_access_token"]
+        if val and "***" not in val:
+            settings.tmdb_access_token = val
     if "scrape_concurrency_per_library" in data:
         settings.scrape_concurrency_per_library = int(data["scrape_concurrency_per_library"])
     if "scrape_global_concurrency" in data:
@@ -1176,11 +1188,22 @@ async def api_plugins_list():
 @app.post("/api/plugins/upload")
 async def api_plugins_upload(file: UploadFile = File(...)):
     import tempfile
+    import re
     if not file.filename or not file.filename.endswith(".py"):
         raise HTTPException(status_code=400, detail="Only .py files allowed")
 
+    content = await file.read()
+    if len(content) > 100 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 100KB)")
+
+    text = content.decode("utf-8", errors="replace")
+    blocked = ("os.system", "subprocess.", "shutil.rmtree", "shutil.move", "__import__(",
+               "exec(", "eval(", "compile(", "ctypes.", "multiprocessing.")
+    for pattern in blocked:
+        if pattern in text:
+            raise HTTPException(status_code=400, detail=f"Blocked pattern: {pattern}")
+
     with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as tmp:
-        content = await file.read()
         tmp.write(content)
         tmp_path = tmp.name
 

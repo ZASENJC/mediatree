@@ -235,7 +235,7 @@ def install_font(file_path: str) -> dict:
 
 def remove_font(name: str) -> bool:
     fonts_dir = get_fonts_dir()
-    target = fonts_dir / name
+    target = fonts_dir / Path(name).name
     if target.exists():
         target.unlink()
         return True

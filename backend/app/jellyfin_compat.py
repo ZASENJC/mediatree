@@ -1099,9 +1099,15 @@ async def _handle_playing_progress(request: Request, body: PlayingRequest, event
 
 # ─── UserData ───
 
+def _verify_user_ownership(user: dict, url_user_id: str):
+    token_user_id = str(user.get("user_id", ""))
+    if url_user_id != token_user_id:
+        raise HTTPException(status_code=403, detail="Cannot modify another user's data")
+
 @router.post("/Users/{user_id}/PlayedItems/{item_id}")
 async def jf_mark_played(user_id: str, item_id: str, request: Request):
     user = await get_jellyfin_user(request)
+    _verify_user_ownership(user, user_id)
     await _set_user_data_state(user_id, item_id, "played", True)
     return await _get_user_item_data(user_id, item_id)
 
@@ -1109,6 +1115,7 @@ async def jf_mark_played(user_id: str, item_id: str, request: Request):
 @router.delete("/Users/{user_id}/PlayedItems/{item_id}")
 async def jf_unmark_played(user_id: str, item_id: str, request: Request):
     user = await get_jellyfin_user(request)
+    _verify_user_ownership(user, user_id)
     await _set_user_data_state(user_id, item_id, "played", False)
     return await _get_user_item_data(user_id, item_id)
 
@@ -1116,6 +1123,7 @@ async def jf_unmark_played(user_id: str, item_id: str, request: Request):
 @router.post("/Users/{user_id}/FavoriteItems/{item_id}")
 async def jf_mark_favorite(user_id: str, item_id: str, request: Request):
     user = await get_jellyfin_user(request)
+    _verify_user_ownership(user, user_id)
     await _set_user_data_state(user_id, item_id, "favorite", True)
     _log(f"Users/{user_id}/FavoriteItems/{item_id}", user_id, item_id, "mark")
     return await _get_user_item_data(user_id, item_id)
@@ -1124,6 +1132,7 @@ async def jf_mark_favorite(user_id: str, item_id: str, request: Request):
 @router.delete("/Users/{user_id}/FavoriteItems/{item_id}")
 async def jf_unmark_favorite(user_id: str, item_id: str, request: Request):
     user = await get_jellyfin_user(request)
+    _verify_user_ownership(user, user_id)
     await _set_user_data_state(user_id, item_id, "favorite", False)
     _log(f"Users/{user_id}/FavoriteItems/{item_id}", user_id, item_id, "unmark")
     return await _get_user_item_data(user_id, item_id)
