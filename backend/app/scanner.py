@@ -239,8 +239,15 @@ def scan_media(root: str = None) -> list[dict]:
                 }
                 if anime_info.episode is not None:
                     item["tmdb_type"] = "tv"
-                    item["tmdb_season"] = 1
                     item["tmdb_episode"] = anime_info.episode
+                    # Auto-detect season from folder path instead of hardcoding 1
+                    season_num = 1
+                    fname = folder.name if folder else ""
+                    if is_season_folder(fname):
+                        match = re.search(r"\d+", fname)
+                        if match:
+                            season_num = int(match.group())
+                    item["tmdb_season"] = season_num
                 if local_still:
                     item["episode_still"] = local_still
                     item["episode_still_local"] = local_still
@@ -655,7 +662,7 @@ async def scrape_for_library(media_root: str):
                                 )
 
                                 if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
-                                    season_num = infer_season_number(folder_name, data)
+                                    season_num = infer_season_number(folder_name, data, existing_season=r.get("tmdb_season"), folder_path=folder_levels)
                                     if season_num:
                                         try:
                                             from .tmdb import match_episodes_in_folder
@@ -943,7 +950,7 @@ async def rescrape_movie(movie_id: int) -> dict:
                 async with _sqlite_write_semaphore:
                     affected = await _apply_scraped_data(folder_levels, data, media_root)
                 if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
-                    season_num = infer_season_number(folder_name, data)
+                    season_num = infer_season_number(folder_name, data, existing_season=movie.get("tmdb_season"), folder_path=folder_levels)
                     if season_num:
                         try:
                             from .tmdb import match_episodes_in_folder
@@ -1039,7 +1046,7 @@ async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: st
                 await _apply_scraped_data(folder_levels, data, media_root, replace=True)
             if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
                 folder_name = Path(folder_levels).name if folder_levels else ""
-                season_num = infer_season_number(folder_name, data)
+                season_num = infer_season_number(folder_name, data, existing_season=movie.get("tmdb_season"), folder_path=folder_levels)
                 if season_num:
                     try:
                         from .tmdb import match_episodes_in_folder
@@ -1080,7 +1087,7 @@ async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: st
                 await _apply_scraped_data(folder_levels, data, media_root, replace=True)
             if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
                 folder_name = Path(folder_levels).name if folder_levels else ""
-                season_num = infer_season_number(folder_name, data)
+                season_num = infer_season_number(folder_name, data, existing_season=movie.get("tmdb_season"), folder_path=folder_levels)
                 if season_num:
                     try:
                         from .tmdb import match_episodes_in_folder
@@ -1242,7 +1249,7 @@ async def rescrape_folder_manual(folder_levels: str, media_root: str, query: str
             async with _sqlite_write_semaphore:
                 await _apply_scraped_data(folder_levels, data, media_root, replace=True)
             if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
-                season_num = infer_season_number(folder_name, data)
+                season_num = infer_season_number(folder_name, data, folder_path=folder_levels)
                 if season_num:
                     try:
                         from .tmdb import match_episodes_in_folder
@@ -1279,7 +1286,7 @@ async def apply_folder_scrape_result(folder_levels: str, media_root: str, source
         affected = await _apply_scraped_data(folder_levels, data, media_root, replace=True)
 
     if source == "tmdb" and media_type == "tv" and data.get("tmdb_id"):
-        season_num = infer_season_number(folder_name, data)
+        season_num = infer_season_number(folder_name, data, folder_path=folder_levels)
         if season_num:
             try:
                 from .tmdb import match_episodes_in_folder

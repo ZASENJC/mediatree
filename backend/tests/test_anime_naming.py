@@ -50,6 +50,38 @@ class AnimeNamingTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIsNone(parse_anime_filename(name).episode)
 
+    def test_volume_pattern_extracts_episode(self):
+        cases = [
+            ("[Release] Anime Vol.01 [1080p].mkv", 1),
+            ("[Release] Anime Vol01 [1080p].mkv", 1),
+            ("[Release] Anime VOL 03 [HD].mkv", 3),
+            ("[Release] Anime Vol 12 [1080p].mkv", 12),
+        ]
+        for name, expected in cases:
+            with self.subTest(name=name):
+                parsed = parse_anime_filename(name)
+                self.assertEqual(parsed.episode, expected)
+
+    def test_double_episode_extracts_first(self):
+        cases = [
+            ("[Release] Show S01E01-02 [1080p].mkv", 1),
+            ("[Release] Show E05-06 [HD].mkv", 5),
+        ]
+        for name, expected in cases:
+            with self.subTest(name=name):
+                parsed = parse_anime_filename(name)
+                self.assertEqual(parsed.episode, expected)
+
+    def test_large_season_and_episode_numbers(self):
+        cases = [
+            ("[Release] Show S100E1000 [1080p].mkv", 1000),
+            ("[Release] Show 10x100 [HD].mkv", 100),
+        ]
+        for name, expected in cases:
+            with self.subTest(name=name):
+                parsed = parse_anime_filename(name)
+                self.assertEqual(parsed.episode, expected)
+
     def test_scan_records_clean_episode_fields_audio_and_still(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

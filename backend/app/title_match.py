@@ -29,14 +29,16 @@ IMDB_ID_PATTERN = re.compile(
     r"(?i)(?:\[|\(|\b)(?:imdb)?(?:id)?[\s:=._-]*(tt\d{7,10})(?:\]|\)|\b|$)"
 )
 EPISODE_HINT_PATTERN = re.compile(
-    r"(?i)(?:\bS\d{1,2}E\d{1,3}\b|\bS\d{1,2}\s*[-_. ]?\s*E\d{1,3}\b|\b\d{1,2}x\d{1,3}\b|"
-    r"\bEP(?:ISODE)?\s*\.?\s*\d{1,3}\b|\bE\d{1,3}\b|第\s*\d{1,3}\s*[集話话]|"
-    r"\[\s*\d{1,3}\s*\](?=\[[^\]]+\]))"
+    r"(?i)(?:\bS\d{1,3}E\d{1,4}\b|\bS\d{1,3}\s*[-_. ]?\s*E\d{1,4}\b|\b\d{1,3}x\d{1,4}\b|"
+    r"\bEP(?:ISODE)?\s*\.?\s*\d{1,4}\b|\bE\d{1,4}\b|第\s*\d{1,4}\s*[集話话]|"
+    r"\[\s*\d{1,4}\s*\](?=\[[^\]]+\]))"
 )
-SEASON_HINT_PATTERN = re.compile(r"(?i)(?:\bSeason\s*0?\d{1,2}\b|\bS\d{1,2}\b|第\s*\d{1,2}\s*季)")
-DISC_HINT_PATTERN = re.compile(r"(?i)\b(?:CD|DVD|Disc|Disk|Part|Pt)\s*0?\d{1,2}\b")
+SEASON_HINT_PATTERN = re.compile(r"(?i)(?:\bS(?:eason)?\s*\d{1,3}\b|\bSpecials?\b|第\s*\d{1,3}\s*[季期])")
+DISC_HINT_PATTERN = re.compile(r"(?i)\b(?:CD|DVD|Disc|Disk|Part|Pt)\s*0?\d{1,3}\b")
 YEAR_HINT_PATTERN = re.compile(r"[\(\[](?:19|20)\d{2}[\)\]]")
-SEASON_PATTERN = re.compile(r'^(S|Season\s*|第)\s*\d{1,2}$', re.I)
+SEASON_PATTERN = re.compile(
+    r'(?i)^(?:S(?:eason)?[-\s]*\d{1,3}|第\s*\d{1,3}\s*[季期]|Cour\s*\d{1,2}|Specials?)'
+)
 LEADING_BRACKET_GROUP_PATTERN = re.compile(r"^\[[A-Za-z0-9\-_. ]{2,30}\]\s*")
 
 RELEASE_GROUP_TOKENS = {
@@ -386,20 +388,39 @@ def is_season_folder(name: str) -> bool:
     return bool(SEASON_PATTERN.match(name))
 
 
-def infer_season_number(folder_name: str, data: dict) -> int | None:
+def infer_season_number(folder_name: str, data: dict, existing_season: int | None = None, folder_path: str = "") -> int | None:
+    # 1. Explicit season folder name
     if is_season_folder(folder_name):
         match = re.search(r'\d+', folder_name)
         if match:
             return int(match.group())
+        # "Specials" / "Special" → S00
+        if folder_name.strip().lower() in {"specials", "special"}:
+            return 0
+    # 2. Check parent directory for season folder pattern
+    if folder_path:
+        parts = Path(folder_path).parts
+        for part in reversed(parts[:-1]):  # skip last (current folder)
+            if is_season_folder(part):
+                match = re.search(r'\d+', part)
+                if match:
+                    return int(match.group())
+                if part.strip().lower() in {"specials", "special"}:
+                    return 0
     if data.get("tmdb_type") == "tv":
         seasons = data.get("seasons") or []
         numbered = [
             s.get("season_number") for s in seasons
-            if isinstance(s, dict) and isinstance(s.get("season_number"), int) and s.get("season_number") > 0
+            if isinstance(s, dict) and isinstance(s.get("season_number"), int) and s.get("season_number") >= 0
         ]
         if len(numbered) == 1:
             return numbered[0]
-        return 1
+        # 3. Use existing season from scan (auto-detected from path)
+        if existing_season is not None:
+            return existing_season
+        # 4. Fallback: first non-specials season, or 1
+        non_specials = [n for n in numbered if n > 0]
+        return non_specials[0] if non_specials else 1
     return None
 
 
