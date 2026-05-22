@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { api, Movie } from '../api'
 import { saveScrollPos } from '../scroll'
@@ -6,8 +7,6 @@ import { showToast } from '../toast'
 import { WatchedBadge } from './WatchedBadge'
 import ContextMenu, { ContextMenuItem } from './ContextMenu'
 import EditModal from './EditModal'
-import ManualScrapeModal from './ManualScrapeModal'
-import CoverPickerModal from './CoverPickerModal'
 import { clearCache } from '../cache'
 
 interface MovieCardProps {
@@ -22,8 +21,13 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [showEdit, setShowEdit] = useState(false)
   const [showManualSearch, setShowManualSearch] = useState(false)
+  const [manualQuery, setManualQuery] = useState('')
+  const [manualScraper, setManualScraper] = useState('')
   const [showCoverPicker, setShowCoverPicker] = useState(false)
   const [altCovers, setAltCovers] = useState<{ url: string; source: string }[]>([])
+  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [searching, setSearching] = useState(false)
+  const [applying, setApplying] = useState(false)
   const [coverVersion, setCoverVersion] = useState(() => movie.updated_at || '')
   const prevMovieId = useRef(movie.id)
   const [hovered, setHovered] = useState(false)
@@ -87,6 +91,39 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       showToast(`刮削失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
     }
   }, [movie.id, onUpdated])
+
+  const handleSearch = useCallback(async () => {
+    if (!manualQuery.trim()) return
+    setSearching(true)
+    try {
+      const data = await api.searchScrape(manualQuery.trim(), manualScraper || undefined)
+      setSearchResults(data.results || [])
+      if ((data.results || []).length === 0) {
+        showToast('没有找到匹配结果')
+      }
+    } catch {
+      console.error('Search scrape failed')
+    }
+    setSearching(false)
+  }, [manualQuery, manualScraper])
+
+  const handleSelectSearchResult = useCallback(async (result: any) => {
+    if (applying) return
+    setApplying(true)
+    try {
+      await api.manualScrapeMovie(movie.id, result.title, result.source_id, result.media_type, result.source)
+      clearCache()
+      setCoverVersion(String(Date.now()))
+      setShowManualSearch(false)
+      setSearchResults([])
+      setManualQuery('')
+      onUpdated?.()
+    } catch {
+      console.error('Failed to apply scrape result')
+    } finally {
+      setApplying(false)
+    }
+  }, [movie.id, onUpdated, applying])
 
   const handleLoadAltCovers = useCallback(async () => {
     try {
@@ -249,35 +286,108 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
         />
       )}
 
-      {showManualSearch && (
-        <ManualScrapeModal
-          title="手动刮削"
-          initialQuery={movie.title || movie.code || ''}
-          onApply={async (result) => {
-            await api.manualScrapeMovie(movie.id, result.title, result.source_id, result.media_type, result.source)
-            clearCache()
-            setCoverVersion(String(Date.now()))
-            setShowManualSearch(false)
-            onUpdated?.()
-          }}
-          onClose={() => setShowManualSearch(false)}
-        />
+      {showManualSearch && createPortal(
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
+          <div className="glass-modal w-full max-w-lg p-4 sm:p-5 max-h-[80vh] overflow-y-auto">
+            <h2 className="mb-1 text-lg font-bold text-white">手动刮削</h2>
+            <p className="mb-4 text-xs text-gray-500">输入搜索关键词，选择刮削器</p>
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+              <input
+                type="text" value={manualQuery} onChange={e => { setManualQuery(e.target.value); setSearchResults([]) }}
+                onKeyDown={e => { if (e.key === 'Enter') handleSearch() }}
+                placeholder="搜索关键词" autoFocus
+                className="glass-input flex-1 px-3 py-2 text-sm"
+              />
+              <select
+                value={manualScraper} onChange={e => setManualScraper(e.target.value)}
+                className="glass-input px-3 py-2 text-sm text-gray-300"
+              >
+                <option value="">自动</option>
+                <option value="tmdb_movie">TMDB 电影</option>
+                <option value="tmdb_tv">TMDB 剧集/番剧</option>
+                <option value="bangumi">Bangumi</option>
+                <option value="javdatabase">Javdatabase</option>
+              </select>
+              <button onClick={handleSearch} disabled={searching}
+                className="glass-button-primary px-4 py-2 text-sm">
+                {searching ? '搜索中...' : '搜索'}
+              </button>
+            </div>
+
+            {searchResults.length > 0 && (
+              <div className="grid max-h-[50vh] grid-cols-3 gap-3 overflow-y-auto">
+                {searchResults.map((r, i) => (
+                  <div key={i}
+                    onClick={() => handleSelectSearchResult(r)}
+                    className="glass-card cursor-pointer overflow-hidden transition-all hover:border-apple-blue/40 hover:shadow-glow"
+                  >
+                    <div className="aspect-[2/3] bg-white/[0.04]">
+                      {r.poster_url ? (
+                        <img src={r.poster_url} alt={r.title} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center p-2 text-center text-xs text-gray-600">{r.title}</div>
+                      )}
+                    </div>
+                    <div className="p-2">
+                      <p className="truncate text-xs font-medium text-white">{r.title}</p>
+                      <p className="mt-0.5 text-[10px] text-gray-500">{r.year}{r.original_title ? ` · ${r.original_title}` : ''}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-4 flex gap-3">
+              <button onClick={() => { setShowManualSearch(false); setSearchResults([]) }}
+                className="glass-button flex-1 py-2 text-sm text-gray-300">
+                取消
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
 
-      {showCoverPicker && (
-        <CoverPickerModal
-          title="更换封面"
-          covers={altCovers}
-          onSelectCover={async (url) => {
-            await api.changeCover(movie.id, url)
-            clearCache()
-            setCoverVersion(String(Date.now()))
-            setShowCoverPicker(false)
-            onUpdated?.()
-          }}
-          onUpload={handleUploadCover}
-          onClose={() => setShowCoverPicker(false)}
-        />
+      {applying && (
+        <div className="fixed bottom-3 left-3 right-3 z-[60] rounded-3xl border border-white/10 bg-black/60 p-4 shadow-glass backdrop-blur-2xl sm:bottom-4 sm:left-auto sm:right-4 sm:w-72">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-white">正在应用刮削结果...</p>
+              <p className="mt-1 text-xs text-gray-500">更新元数据和封面缓存</p>
+            </div>
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-apple-blue border-t-transparent" />
+          </div>
+        </div>
+      )}
+
+      {showCoverPicker && createPortal(
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
+          <div className="glass-modal w-full max-w-lg p-4 sm:p-5 max-h-[80vh] overflow-y-auto">
+            <h2 className="mb-1 text-lg font-bold text-white">更换封面</h2>
+            <p className="mb-4 text-xs text-gray-500">选择封面或上传本地图片</p>
+            <div className="mb-4 grid grid-cols-3 gap-3">
+              {altCovers.map((c, i) => (
+                <div key={i}
+                  onClick={() => handleSelectCover(c.url)}
+                  className="aspect-[2/3] cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition-all hover:border-apple-blue/40 hover:shadow-glow"
+                >
+                  <img src={c.url} alt={c.source} className="h-full w-full object-cover" />
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button onClick={handleUploadCover}
+                className="glass-button flex-1 py-2 text-sm text-gray-300">
+                上传本地图片
+              </button>
+              <button onClick={() => setShowCoverPicker(false)}
+                className="glass-button flex-1 py-2 text-sm text-gray-300">
+                取消
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
     </>
   )

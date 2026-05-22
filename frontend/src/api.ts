@@ -32,52 +32,39 @@ function setActiveLibrary(lib: string) {
   try { localStorage.setItem('mediatree_library', lib) } catch {}
 }
 
-const inFlight = new Map<string, Promise<unknown>>()
-
-async function request<T>(url: string, options?: RequestInit, cacheKey?: string): Promise<T> {
+async function request<T>(url: string, options?: RequestInit & { signal?: AbortSignal }, cacheKey?: string): Promise<T> {
   if (cacheKey) {
     const cached = getCached<T>(cacheKey)
     if (cached !== null) return cached
-    const pending = inFlight.get(cacheKey)
-    if (pending) return pending as Promise<T>
   }
-
-  const promise = (async () => {
-    const headers: Record<string, string> = {
-      ...(options?.headers as Record<string, string> || {}),
-    }
-    const token = getToken()
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`
-    }
-    const res = await fetch(`${BASE}${url}`, { ...options, headers })
-    if (res.status === 401) {
-      setToken('')
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login'
-      }
-      throw new Error('Unauthorized')
-    }
-    if (!res.ok) {
-      const text = await res.text()
-      let message = text || res.statusText
-      try {
-        const parsed = JSON.parse(text)
-        message = parsed?.detail || parsed?.error || message
-      } catch {}
-      throw new Error(message)
-    }
-    const data = await res.json()
-    if (cacheKey) setCache(cacheKey, data)
-    return data
-  })()
-
-  if (cacheKey) {
-    inFlight.set(cacheKey, promise)
-    promise.finally(() => { inFlight.delete(cacheKey) })
+  const headers: Record<string, string> = {
+    ...(options?.headers as Record<string, string> || {}),
   }
-
-  return promise
+  const token = getToken()
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const { signal, ...fetchOptions } = (options || {}) as RequestInit & { signal?: AbortSignal }
+  const res = await fetch(`${BASE}${url}`, { ...fetchOptions, signal, headers })
+  if (res.status === 401) {
+    setToken('')
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login'
+    }
+    throw new Error('Unauthorized')
+  }
+  if (!res.ok) {
+    const text = await res.text()
+    let message = text || res.statusText
+    try {
+      const parsed = JSON.parse(text)
+      message = parsed?.detail || parsed?.error || message
+    } catch {}
+    throw new Error(message)
+  }
+  const data = await res.json()
+  if (cacheKey) setCache(cacheKey, data)
+  return data
 }
 
 function libParam(): string {
@@ -244,7 +231,7 @@ export const api = {
 
   setupStatus: () => request<{ needs_setup: boolean; roots: string[] }>('/setup/status'),
 
-  setupSave: (libraries: { media_root: string; scraper: string; tmdb_key?: string; bangumi_type?: string; password?: string; label?: string }[], tmdbAccessToken?: string) =>
+  setupSave: (libraries: any[], tmdbAccessToken?: string) =>
     request<{ ok: boolean; scan_started?: boolean }>('/setup/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -260,7 +247,7 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  subtitleTracks: (movieId: number) => request<SubtitleTrack[]>(`/subtitle-tracks/${movieId}`),
+  subtitleTracks: (movieId: number, signal?: AbortSignal) => request<SubtitleTrack[]>(`/subtitle-tracks/${movieId}`, signal ? { signal } : undefined),
 
   subtitleUrl: (movieId: number, trackIndex: number) => `${BASE}/subtitle/${movieId}/${trackIndex}`,
 
@@ -297,12 +284,12 @@ export const api = {
   episodeStillUrl: (movieId: number) => `${BASE}/episode-still/${movieId}`,
 
   scanStatus: (mediaRoot: string) =>
-    request<{ media_root?: string; status: string; done: number; total: number; roots?: Record<string, ScanStatusRoot> }>(
+    request<{ media_root?: string; status: string; done: number; total: number; roots?: Record<string, any> }>(
       `/scan/status?media_root=${encodeURIComponent(mediaRoot)}`
     ),
 
   scanStatusAll: () =>
-    request<{ roots: Record<string, ScanStatusRoot> }>('/scan/status'),
+    request<{ roots: Record<string, { status: string; done: number; total: number }> }>('/scan/status'),
 
   scanLog: (mediaRoot: string, lines: number = 100) =>
     request<{ lines: string[]; total: number }>(
@@ -358,7 +345,7 @@ export const api = {
       body: JSON.stringify({ folder, media_root: mediaRoot, source_id: sourceId, source, media_type: mediaType }),
     }),
 
-  fetchSearchBackdrops: (results: SearchBackdropInput[]) =>
+  fetchSearchBackdrops: (results: any[]) =>
     request<{ backdrops: { source_id: string; source: string; backdrop_url?: string; poster_url?: string }[] }>('/search-backdrops', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -379,7 +366,7 @@ export const api = {
       body: JSON.stringify({ folder, media_root: mediaRoot, url }),
     }),
 
-  editFolder: (folder: string, mediaRoot: string, fields: Record<string, unknown>) =>
+  editFolder: (folder: string, mediaRoot: string, fields: Record<string, any>) =>
     request<{ ok: boolean }>('/folder/edit', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -528,10 +515,6 @@ export interface Movie {
   series?: string
   studio?: string
   genre?: string
-  keywords?: string
-  studios?: string
-  tagline?: string
-  status?: string
   dvd_id?: string
   release_date?: string
   duration?: number
@@ -595,16 +578,4 @@ export interface Plugin {
   builtin: boolean
   enabled: boolean
   file?: string
-}
-
-export interface ScanStatusRoot {
-  status: string
-  done: number
-  total: number
-}
-
-export interface SearchBackdropInput {
-  source_id: string
-  source: string
-  poster_url?: string
 }

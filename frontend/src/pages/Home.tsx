@@ -1,17 +1,16 @@
 import { useEffect, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, FolderNode, Movie } from '../api'
 import { getExcluded, getUiPrefs } from '../store'
 import { saveScrollPos, restoreScrollPos } from '../scroll'
 import { showToast } from '../toast'
-import { clearCache } from '../cache'
+import { getCached, setCache, clearCache } from '../cache'
 import SortDropdown from '../components/SortDropdown'
 import { MovieCard } from '../components/MovieCard'
 import ContextMenu, { ContextMenuItem } from '../components/ContextMenu'
-import EditModal, { type EditFields } from '../components/EditModal'
+import EditModal from '../components/EditModal'
 import { WatchedBadge } from '../components/WatchedBadge'
-import ManualScrapeModal from '../components/ManualScrapeModal'
-import CoverPickerModal from '../components/CoverPickerModal'
 
 function encodeMediaPath(path: string): string {
   return path.split('/').map(encodeURIComponent).join('/')
@@ -24,9 +23,16 @@ function getCoverSrc(cover: string | null | undefined): string | null {
   return `/api/media/${encodeMediaPath(cover)}`
 }
 
-import { LIBRARY_SORT_OPTIONS } from '../constants/sortOptions'
-
 type SortMode = 'name' | 'created_desc' | 'created_asc' | 'release_date_desc' | 'release_date_asc' | 'random'
+
+const sortOptions = [
+  { key: 'created_desc', label: '最近添加' },
+  { key: 'created_asc', label: '最早添加' },
+  { key: 'name', label: '名称' },
+  { key: 'release_date_desc', label: '发行日期新到旧' },
+  { key: 'release_date_asc', label: '发行日期旧到新' },
+  { key: 'random', label: '随机' },
+]
 
 export default function Home() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -61,9 +67,18 @@ export default function Home() {
   }
 
   const [showFolderScrape, setShowFolderScrape] = useState(false)
+  const [folderScrapeQuery, setFolderScrapeQuery] = useState('')
+  const [folderScrapeSrc, setFolderScrapeSrc] = useState('')
+  const [folderScrapeResults, setFolderScrapeResults] = useState<any[]>([])
+  const [folderScrapeBackdrops, setFolderScrapeBackdrops] = useState<any[]>([])
+  const [folderScrapeSearching, setFolderScrapeSearching] = useState(false)
+  const [folderScrapeApplying, setFolderScrapeApplying] = useState(false)
+
   const [showFolderCover, setShowFolderCover] = useState(false)
   const [folderAltCovers, setFolderAltCovers] = useState<{ url: string; source: string }[]>([])
   const [folderAltBackdrops, setFolderAltBackdrops] = useState<{ url: string; source: string }[]>([])
+  const [showFolderBackdrop, setShowFolderBackdrop] = useState(false)
+
   const [showFolderEdit, setShowFolderEdit] = useState(false)
   const [editFolderMovie, setEditFolderMovie] = useState<Movie | null>(null)
 
@@ -148,9 +163,54 @@ export default function Home() {
   }, [activeFolderPath, activeMediaRoot, load])
 
   const handleManualScrapeFolder = useCallback(() => {
+    setFolderScrapeQuery(activeFolderName || '')
+    setFolderScrapeSrc('')
+    setFolderScrapeResults([])
     setShowFolderScrape(true)
     setFolderMenu(null)
-  }, [])
+  }, [activeFolderName])
+
+  const handleFolderScrapeSearch = useCallback(async () => {
+    if (!folderScrapeQuery.trim()) return
+    setFolderScrapeSearching(true)
+    try {
+      const data = await api.searchScrape(folderScrapeQuery.trim(), folderScrapeSrc || undefined)
+      const results = data.results || []
+      setFolderScrapeResults(results)
+      if (results.length === 0) {
+        showToast('没有找到匹配结果')
+      } else {
+        api.fetchSearchBackdrops(results).then(bd => {
+          setFolderScrapeBackdrops(bd.backdrops || [])
+        }).catch(() => {})
+      }
+    } catch {
+      console.error('Search scrape failed')
+    }
+    setFolderScrapeSearching(false)
+  }, [folderScrapeQuery, folderScrapeSrc])
+
+  const handleSelectFolderScrapeResult = useCallback(async (result: any) => {
+    if (folderScrapeApplying) return
+    setFolderScrapeApplying(true)
+    try {
+      clearCache()
+      const res = await api.applyFolderScrape(activeFolderPath, activeMediaRoot, result.source_id, result.source, result.media_type)
+      if (res.ok) {
+        showToast(`已应用: ${res.title}`)
+        setShowFolderScrape(false)
+        setFolderScrapeResults([])
+        setFolderScrapeQuery('')
+        await load()
+      } else {
+        showToast('应用失败')
+      }
+    } catch (err) {
+      showToast(`替换失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
+    } finally {
+      setFolderScrapeApplying(false)
+    }
+  }, [activeFolderPath, activeMediaRoot, load, folderScrapeApplying])
 
   const handleChangeFolderCover = useCallback(async () => {
     setFolderMenu(null)
@@ -167,8 +227,8 @@ export default function Home() {
         setFolderAltBackdrops(backdrops)
       }).catch(() => {})
       setShowFolderCover(true)
-    } catch (err) {
-      console.error('Load covers failed', err)
+    } catch {
+      console.error('Load covers failed')
     }
   }, [activeFolderPath, activeMediaRoot])
 
@@ -178,8 +238,8 @@ export default function Home() {
       await api.changeFolderCover(activeFolderPath, activeMediaRoot, url)
       showToast('封面已更新')
       load()
-    } catch (err) {
-      console.error('Change folder cover failed', err)
+    } catch {
+      console.error('Change folder cover failed')
     }
   }, [activeFolderPath, activeMediaRoot, load])
 
@@ -190,12 +250,12 @@ export default function Home() {
       if (!data.movies || data.movies.length === 0) { showToast('目录下无影片'); return }
       setEditFolderMovie(data.movies[0])
       setShowFolderEdit(true)
-    } catch (err) {
-      console.error('Load movie for edit failed', err)
+    } catch {
+      console.error('Load movie for edit failed')
     }
   }, [activeFolderPath, activeMediaRoot])
 
-  const handleFolderEditSave = useCallback(async (fields: EditFields) => {
+  const handleFolderEditSave = useCallback(async (fields: Record<string, any>) => {
     clearCache()
     try {
       await api.editFolder(activeFolderPath, activeMediaRoot, fields)
@@ -255,7 +315,7 @@ export default function Home() {
               最近观看
             </button>
           </div>
-          <SortDropdown options={LIBRARY_SORT_OPTIONS} current={sort} onChange={handleSort} />
+          <SortDropdown options={sortOptions} current={sort} onChange={handleSort} />
         </div>
       </div>
 
@@ -342,51 +402,140 @@ export default function Home() {
           onClose={() => setFolderMenu(null)} />
       )}
 
-      {showFolderScrape && (
-        <ManualScrapeModal
-          title={`手动刮削目录: ${activeFolderName}`}
-          initialQuery={activeFolderName || ''}
-          showBackdropButton={true}
-          onApply={async (result) => {
-            clearCache()
-            const res = await api.applyFolderScrape(activeFolderPath, activeMediaRoot, result.source_id, result.source, result.media_type)
-            if (res.ok) {
-              showToast(`已应用: ${res.title}`)
-              setShowFolderScrape(false)
-              await load()
-            } else {
-              throw new Error('应用失败')
-            }
-          }}
-          onSelectBackdrop={(backdropUrl) => {
-            api.changeFolderBackdrop(activeFolderPath, activeMediaRoot, backdropUrl).then(() => {
-              showToast('背景图已更新')
-              load()
-            }).catch(() => showToast('失败'))
-          }}
-          onClose={() => setShowFolderScrape(false)}
-        />
+      {showFolderScrape && createPortal(
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
+          <div className="glass-modal max-h-[85vh] w-full max-w-3xl overflow-y-auto p-4 sm:p-5">
+            <h2 className="mb-1 text-lg font-bold text-white">手动刮削目录: {activeFolderName}</h2>
+            <p className="mb-4 text-xs text-gray-500">搜索关键词，选择结果应用到整个目录</p>
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+              <input type="text" value={folderScrapeQuery} onChange={e => { setFolderScrapeQuery(e.target.value); setFolderScrapeResults([]) }}
+                onKeyDown={e => { if (e.key === 'Enter') handleFolderScrapeSearch() }}
+                placeholder="搜索关键词" autoFocus
+                className="glass-input flex-1 px-3 py-2 text-sm" />
+              <select value={folderScrapeSrc} onChange={e => setFolderScrapeSrc(e.target.value)}
+                className="glass-input px-3 py-2 text-sm text-gray-300">
+                <option value="">自动</option>
+                <option value="tmdb_movie">TMDB 电影</option>
+                <option value="tmdb_tv">TMDB 剧集/番剧</option>
+                <option value="bangumi">Bangumi</option>
+                <option value="javdatabase">Javdatabase</option>
+              </select>
+              <button onClick={handleFolderScrapeSearch} disabled={folderScrapeSearching}
+                className="glass-button-primary px-4 py-2 text-sm">
+                {folderScrapeSearching ? '搜索中...' : '搜索'}
+              </button>
+            </div>
+            {folderScrapeResults.length > 0 && (
+              <>
+                <p className="mb-2 text-xs text-gray-500">共 {folderScrapeResults.length} 个结果，点击应用元数据，长按/右键查看封面和背景图可选</p>
+                <div className="grid max-h-[50vh] grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3">
+                  {folderScrapeResults.map((r, i) => {
+                    const bd = folderScrapeBackdrops.find(b => b.source_id === r.source_id && b.source === r.source)
+                    return (
+                      <div key={i} className="glass-card overflow-hidden transition-all hover:border-apple-blue/40 hover:shadow-glow">
+                        <div className="aspect-[2/3] cursor-pointer bg-white/[0.04]"
+                          onClick={() => handleSelectFolderScrapeResult(r)}>
+                          {r.poster_url ? (
+                            <img src={r.poster_url} alt={r.title} className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center p-2 text-center text-xs text-gray-600">{r.title}</div>
+                          )}
+                        </div>
+                        <div className="p-2">
+                          <p className="truncate text-xs font-medium text-white">{r.title}</p>
+                          <p className="mt-0.5 text-[10px] text-gray-500">
+                            <span className={`inline-block rounded-full border px-1.5 py-0.5 text-[9px] ${r.source === 'tmdb' ? 'border-apple-blue/25 bg-apple-blue/15 text-apple-blue' : r.source === 'bangumi' ? 'border-apple-pink/25 bg-apple-pink/15 text-apple-pink' : 'border-apple-mint/25 bg-apple-mint/15 text-apple-mint'}`}>
+                              {r.source}
+                            </span>
+                            {' '}{r.year}{r.original_title ? ` · ${r.original_title}` : ''}
+                          </p>
+                          <div className="mt-1.5 flex gap-1">
+                            <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); handleSelectFolderScrapeResult(r) }}
+                              className="flex-1 rounded-full border border-apple-blue/20 bg-apple-blue/10 px-1 py-0.5 text-center text-[10px] text-apple-blue hover:bg-apple-blue/20">应用</a>
+                            {bd?.backdrop_url && (
+                              <a href="#" onClick={e => { e.preventDefault(); e.stopPropagation();
+                                api.changeFolderBackdrop(activeFolderPath, activeMediaRoot, bd.backdrop_url!).then(() => { showToast('背景图已更新'); load() }).catch(() => showToast('失败'))
+                              }}
+                                className="rounded-full border border-white/10 bg-white/[0.08] px-1.5 py-0.5 text-[10px] text-gray-400 hover:text-white">选背景</a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+            <div className="mt-4 flex gap-3">
+              <button onClick={() => { setShowFolderScrape(false); setFolderScrapeResults([]) }}
+                className="glass-button flex-1 py-2 text-sm text-gray-300">取消</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
 
-      {showFolderCover && (
-        <CoverPickerModal
-          title={`更换封面与背景: ${activeFolderName}`}
-          covers={folderAltCovers}
-          backdrops={folderAltBackdrops}
-          onSelectCover={async (url) => {
-            clearCache()
-            await api.changeFolderCover(activeFolderPath, activeMediaRoot, url)
-            showToast('封面已更新')
-            load()
-          }}
-          onSelectBackdrop={(url) => {
-            api.changeFolderBackdrop(activeFolderPath, activeMediaRoot, url).then(() => {
-              showToast('背景图已更新')
-              load()
-            }).catch(() => showToast('失败'))
-          }}
-          onClose={() => setShowFolderCover(false)}
-        />
+      {folderScrapeApplying && (
+        <div className="fixed bottom-3 left-3 right-3 z-[60] rounded-3xl border border-white/10 bg-black/60 p-4 shadow-glass backdrop-blur-2xl sm:bottom-4 sm:left-auto sm:right-4 sm:w-72">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-white">正在应用刮削结果...</p>
+              <p className="mt-1 text-xs text-gray-500">更新目录元数据和封面</p>
+            </div>
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-apple-blue border-t-transparent" />
+          </div>
+        </div>
+      )}
+
+      {showFolderCover && createPortal(
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
+          <div className="glass-modal max-h-[85vh] w-full max-w-3xl overflow-y-auto p-4 sm:p-5">
+            <h2 className="mb-1 text-lg font-bold text-white">更换封面与背景: {activeFolderName}</h2>
+            <p className="mb-4 text-xs text-gray-500">选择封面图或背景图应用到该目录下所有影片</p>
+
+            {folderAltCovers.length > 0 && (
+              <>
+                <h3 className="mb-2 text-sm font-medium text-gray-400">封面图 (竖屏海报)</h3>
+                <div className="mb-4 grid grid-cols-3 gap-3 sm:grid-cols-4">
+                  {folderAltCovers.map((c, i) => (
+                    <div key={i} onClick={() => handleSelectFolderCover(c.url)}
+                      className="aspect-[2/3] cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition-all hover:border-apple-blue/40 hover:shadow-glow">
+                      <img src={c.url} alt={c.source} className="h-full w-full object-cover" />
+                      <div className="p-1 text-center text-[9px] text-gray-500">{c.source}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {folderAltBackdrops.length > 0 && (
+              <>
+                <h3 className="mb-2 mt-4 text-sm font-medium text-gray-400">背景图 (横屏 Fanart)</h3>
+                <div className="mb-4 grid grid-cols-2 gap-3">
+                  {folderAltBackdrops.map((b, i) => (
+                    <div key={i} onClick={() => {
+                      api.changeFolderBackdrop(activeFolderPath, activeMediaRoot, b.url).then(() => { showToast('背景图已更新'); load() }).catch(() => showToast('失败'))
+                    }}
+                      className="aspect-video cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition-all hover:border-apple-blue/40 hover:shadow-glow">
+                      <img src={b.url} alt={b.source} className="h-full w-full object-cover" />
+                      <div className="p-1 text-center text-[9px] text-gray-500">{b.source}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {folderAltCovers.length === 0 && folderAltBackdrops.length === 0 && (
+              <p className="py-4 text-center text-sm text-gray-500">没有可用的封面或背景图</p>
+            )}
+
+            <div className="flex gap-3">
+              <button onClick={() => setShowFolderCover(false)}
+                className="glass-button flex-1 py-2 text-sm text-gray-300">取消</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
 
       {showFolderEdit && editFolderMovie && (
