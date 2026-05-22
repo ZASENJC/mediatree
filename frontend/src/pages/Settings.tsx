@@ -107,7 +107,7 @@ export default function Settings() {
         javdb_request_interval: reqInterval,
         tmdb_api_key: tmdbKey,
         tmdb_access_token: tmdbToken,
-      } as any)
+      })
       setMsg('已保存')
     } catch {
       setMsg('保存失败')

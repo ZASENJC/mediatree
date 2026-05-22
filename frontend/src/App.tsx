@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react'
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import { getActiveLibrary, setActiveLibrary, api, clearCache, MediaRoot } from './api'
 import { useToastController } from './toast'
@@ -7,14 +7,24 @@ import ScanToast from './components/ScanToast'
 import LibraryModal from './components/LibraryModal'
 import PasswordModal from './components/PasswordModal'
 import ErrorBoundary from './components/ErrorBoundary'
-import Home from './pages/Home'
-import Browse from './pages/Browse'
-import FolderPage from './pages/Folder'
-import Detail from './pages/Detail'
-import Favorites from './pages/Favorites'
-import Settings from './pages/Settings'
-import Login from './pages/Login'
-import SetupWizard from './pages/SetupWizard'
+import { createAdaptiveInterval } from './utils/polling'
+
+const Home = lazy(() => import('./pages/Home'))
+const Browse = lazy(() => import('./pages/Browse'))
+const FolderPage = lazy(() => import('./pages/Folder'))
+const Detail = lazy(() => import('./pages/Detail'))
+const Favorites = lazy(() => import('./pages/Favorites'))
+const Settings = lazy(() => import('./pages/Settings'))
+const Login = lazy(() => import('./pages/Login'))
+const SetupWizard = lazy(() => import('./pages/SetupWizard'))
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="animate-pulse text-gray-400 text-lg">加载中...</div>
+    </div>
+  )
+}
 
 const navItems = [
   { path: '/', label: '首页' },
@@ -87,13 +97,16 @@ export default function App() {
 
   useEffect(() => {
     let hadActive = false
+    const interval = createAdaptiveInterval()
     const poll = async () => {
+      let isActive = false
       try {
         const data = await api.scanStatusAll()
         const roots = Object.values(data.roots || {})
         const active = roots.filter(r => ['scanning', 'scanned', 'scraping'].includes(r.status))
         if (active.length > 0) {
           hadActive = true
+          isActive = true
           const done = active.reduce((sum, r) => sum + (r.done || 0), 0)
           const total = active.reduce((sum, r) => sum + (r.total || 0), 0)
           const scanning = active.some(r => r.status === 'scanning' || r.status === 'scanned')
@@ -105,7 +118,8 @@ export default function App() {
           window.setTimeout(() => setScanToast(t => ({ ...t, visible: false })), 4500)
         }
       } catch {}
-      scanTimerRef.current = window.setTimeout(poll, 2500)
+      const delay = isActive ? interval.active() : interval.idle()
+      scanTimerRef.current = window.setTimeout(poll, delay)
     }
     poll()
     return () => clearTimeout(scanTimerRef.current)
@@ -196,20 +210,23 @@ export default function App() {
   }
 
   if (showSetup) {
-    return <SetupWizard onComplete={() => { setShowSetup(false); loadLibraries() }} />
+    return <Suspense fallback={<PageLoader />}><SetupWizard onComplete={() => { setShowSetup(false); loadLibraries() }} /></Suspense>
   }
 
   if (location.pathname === '/login') {
     return (
-      <Routes>
-        <Route path="/login" element={<Login onLogin={loadLibraries} />} />
-        <Route path="*" element={<Login onLogin={loadLibraries} />} />
-      </Routes>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path="/login" element={<Login onLogin={loadLibraries} />} />
+          <Route path="*" element={<Login onLogin={loadLibraries} />} />
+        </Routes>
+      </Suspense>
     )
   }
 
   return (
     <ErrorBoundary>
+      <Suspense fallback={<PageLoader />}>
       <div className="min-h-screen flex flex-col">
         <header className="sticky top-0 z-50 pt-2 sm:pt-3">
           <div className="mx-auto flex h-12 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6 transform-gpu sm:h-14 sm:gap-3">
@@ -388,6 +405,7 @@ export default function App() {
           </div>
         )}
       </div>
+      </Suspense>
     </ErrorBoundary>
   )
 }

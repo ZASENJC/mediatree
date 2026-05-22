@@ -1,11 +1,20 @@
 import { useState } from 'react'
 import { api, Movie } from '../api'
 
+export interface EditFields {
+  [key: string]: string | number | undefined
+  title?: string
+  code?: string
+  actress?: string
+  release_date?: string
+  duration?: number
+}
+
 interface Props {
   movie: Movie
   onClose: () => void
   onSaved: () => void
-  onSave?: (fields: Record<string, any>) => Promise<void>
+  onSave?: (fields: EditFields) => Promise<void>
 }
 
 export default function EditModal({ movie, onClose, onSaved, onSave }: Props) {

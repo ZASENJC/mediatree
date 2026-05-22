@@ -7,16 +7,9 @@ import { saveScrollPos, restoreScrollPos } from '../scroll'
 import { MovieCard } from '../components/MovieCard'
 import SortDropdown from '../components/SortDropdown'
 
-type SortMode = 'name' | 'created_desc' | 'created_asc' | 'release_date_desc' | 'release_date_asc' | 'random'
+import { LIBRARY_SORT_OPTIONS } from '../constants/sortOptions'
 
-const sortOptions = [
-  { key: 'created_desc', label: '最近添加' },
-  { key: 'created_asc', label: '最早添加' },
-  { key: 'name', label: '名称' },
-  { key: 'release_date_desc', label: '发行日期新到旧' },
-  { key: 'release_date_asc', label: '发行日期旧到新' },
-  { key: 'random', label: '随机' },
-]
+type SortMode = 'name' | 'created_desc' | 'created_asc' | 'release_date_desc' | 'release_date_asc' | 'random'
 
 interface SeasonTab { name: string; path: string; count: number }
 
@@ -231,7 +224,7 @@ export default function FolderPage() {
           ))}
         </div>
         )}
-        <SortDropdown options={sortOptions} current={sort} onChange={handleSort} />
+        <SortDropdown options={LIBRARY_SORT_OPTIONS} current={sort} onChange={handleSort} />
       </div>
 
       {movies.length === 0 ? (
