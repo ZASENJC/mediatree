@@ -599,7 +599,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
     api.subtitleTracks(movieId)
       .then(trackList => {
         if (!mountedRef.current || requestId !== subtitleTrackRequestRef.current) return
-        console.info('VideoPlayer: subtitle tracks loaded', {
+        if (import.meta.env.DEV) console.info('VideoPlayer: subtitle tracks loaded', {
           movieId,
           total: trackList.length,
           external: trackList.filter(track => track.source === 'external' || track.is_external).length,
@@ -613,7 +613,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         const art = artRef.current
         if (art) art.setting.update(buildSubtitleSetting(trackList, selectedIndex))
         if (selectedIndex >= 0) {
-          console.info('VideoPlayer: selected default subtitle', {
+          if (import.meta.env.DEV) console.info('VideoPlayer: selected default subtitle', {
             movieId,
             index: selectedIndex,
             language: selected?.language,
@@ -831,7 +831,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
       && subtitleSwitchRequestRef.current === requestId
       && activeTrackRef.current === track.index
     )
-    console.info('VideoPlayer: switching subtitle', {
+    if (import.meta.env.DEV) console.info('VideoPlayer: switching subtitle', {
       movieId,
       index: track.index,
       format: track.format || track.codec,
@@ -876,10 +876,10 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         art.subtitle.show = false
         art.emit('subtitleOffset', useTranscodeRef.current ? transcodeStartRef.current : 0)
         plugin.setVisible(subtitleVisibleRef.current)
-        console.info('VideoPlayer: ASS subtitle switch complete', { movieId, index: track.index })
+        if (import.meta.env.DEV) console.info('VideoPlayer: ASS subtitle switch complete', { movieId, index: track.index })
         return label
       } catch (assError) {
-        console.warn('VideoPlayer: ASS plugin failed, falling back to native subtitle', {
+        if (import.meta.env.DEV) console.warn('VideoPlayer: ASS plugin failed, falling back to native subtitle', {
           movieId, index: track.index, error: assError,
         })
         // Fall through to native subtitle rendering below
@@ -928,7 +928,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
       return label
     }
     art.subtitle.show = subtitleVisibleRef.current
-    console.info('VideoPlayer: ArtPlayer subtitle switch complete', { movieId, index: track.index, url })
+    if (import.meta.env.DEV) console.info('VideoPlayer: ArtPlayer subtitle switch complete', { movieId, index: track.index, url })
     return label
   }, [availableFonts, assFallbackFont, clearNativeSubtitle, fontUrls, movieId])
 
@@ -1242,7 +1242,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
           console.error('VideoPlayer: final progress save failed', err)
         })
       }
-      console.info('VideoPlayer cleanup: destroying ArtPlayer and subtitle resources')
+      if (import.meta.env.DEV) console.info('VideoPlayer cleanup: destroying ArtPlayer and subtitle resources')
       artReadyRef.current = false
       subtitleSwitchRequestRef.current += 1
       window.clearTimeout(progressSaveTimerRef.current)

@@ -64,7 +64,7 @@ export default function artplayerPluginAss(options: AssPluginOptions): Artplayer
       if (destroyed || !subtitleUrl) return
       let objectWorkerUrl = ''
       try {
-        console.info('ASS plugin init', { subtitleUrl })
+        if (import.meta.env.DEV) console.info('ASS plugin init', { subtitleUrl })
         objectWorkerUrl = await loadWorker()
         if (destroyed || seq !== switchSeq) {
           URL.revokeObjectURL(objectWorkerUrl)
@@ -109,7 +109,7 @@ export default function artplayerPluginAss(options: AssPluginOptions): Artplayer
 
     const clear = () => {
       switchSeq += 1
-      console.info('ASS plugin destroy')
+      if (import.meta.env.DEV) console.info('ASS plugin destroy')
       disposeCurrent()
     }
 
