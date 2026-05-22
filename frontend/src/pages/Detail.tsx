@@ -92,7 +92,7 @@ export default function Detail() {
   const crew = (movie.crew || []).filter(p => p.name)
   const isJavdatabase = movie.scraper_source === 'javdatabase' || Boolean(movie.javdb_id || movie.javdb_url)
   const castNames = cast.map(p => p.name).filter(Boolean)
-  const performerText = movie.actress || castNames.join(', ')
+  const performerText = movie.actress || castNames.slice(0, 5).join(', ')
   const crewByJob = (jobs: string[]) => crew.filter(p => jobs.some(j => (p.job || '').toLowerCase().includes(j.toLowerCase())))
   const directors = crewByJob(['director', '导演'])
   const supervisors = crewByJob(['supervisor', 'animation director', 'series director', '监督'])
@@ -386,7 +386,7 @@ export default function Detail() {
       </section>
 
       {thumbnailImages.length > 0 && (
-        <section className="rounded-3xl bg-white/[0.07] p-4 shadow-glass backdrop-blur-2xl sm:p-6">
+        <section className="rounded-3xl bg-white/[0.04] px-4 py-3 shadow-glass backdrop-blur-2xl sm:px-6 sm:py-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-[0.24em] text-apple-blue/70">Thumbnails</p>

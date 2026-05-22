@@ -674,6 +674,24 @@ async def scrape_for_library(media_root: str):
                                 or title_matches(data.get("original_title", ""), search_name, code)
                             )
                             if passed:
+                                # Fetch episode-specific credits for TV episodes
+                                if (data.get("source") == "tmdb" and data.get("tmdb_type") == "tv"
+                                        and data.get("tmdb_id") and r.get("tmdb_season") is not None
+                                        and r.get("tmdb_episode") is not None):
+                                    try:
+                                        from .tmdb import fetch_tv_episode
+                                        ep_data = await fetch_tv_episode(
+                                            str(data["tmdb_id"]), r["tmdb_season"], r["tmdb_episode"]
+                                        )
+                                        if ep_data and (ep_data.get("cast") or ep_data.get("crew")):
+                                            data["cast"] = ep_data.get("cast") or []
+                                            data["crew"] = ep_data.get("crew") or []
+                                            logger.info(
+                                                f"  {sb}: episode credits for S{r['tmdb_season']}E{r['tmdb_episode']} "
+                                                f"({len(data['cast'])} cast, {len(data['crew'])} crew)"
+                                            )
+                                    except Exception as ep_err:
+                                        logger.warning(f"  {sb}: episode credits fetch failed: {ep_err}")
                                 async with _sqlite_write_semaphore:
                                     await _apply_scraped_data(folder_levels, data, media_root)
                                 logger.info(
