@@ -53,6 +53,7 @@ export default function Home() {
   const [activeMediaRoot, setActiveMediaRoot] = useState('')
   const [activeFolderName, setActiveFolderName] = useState('')
   const hideHomeTitleText = getUiPrefs().hideHomeTitleText
+  const showSourceName = getUiPrefs().showSourceName
 
   const [hoveredFolder, setHoveredFolder] = useState<string | null>(null)
   const [folderWatched, setFolderWatched] = useState<Record<string, boolean>>({})
@@ -416,7 +417,7 @@ export default function Home() {
                       </div>
                     )}
                     <div className="absolute bottom-0 left-0 right-0 min-w-0 p-3">
-                      <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-white drop-shadow">{node.display_title || node.name}</p>
+                      <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-white drop-shadow">{showSourceName ? node.name : (node.display_title || node.name)}</p>
                       <p className="mt-1 text-xs text-gray-400">{node.movie_count} 部</p>
                     </div>
                     </>
