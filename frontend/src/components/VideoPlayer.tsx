@@ -1557,7 +1557,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         />,
         document.getElementById('ambient-root')!,
       )}
-      <div ref={wrapperRef} className="relative mx-auto w-full max-w-[calc((100vh-11rem)*var(--mediatree-video-aspect))] transition-all duration-300" style={playerStyle}>
+      <div ref={wrapperRef} className="relative mx-auto w-full transition-all duration-300" style={playerStyle}>
         <div className="relative z-[1] overflow-hidden rounded-3xl">
         <div ref={artContainerRef} className="mediatree-artplayer w-full" />
         <VRVideoLayer art={artInstance} mode={vrMode} />
@@ -1616,7 +1616,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         )}
       </div>
 
-      <div className="mt-2 flex items-center justify-center gap-2 overflow-x-auto pb-1">
+      <div className="mt-5 flex items-center justify-center gap-2 overflow-x-auto pb-1">
         <a href={`iina://weblink?url=${encodeURIComponent(localPlaybackUrl)}`} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-300 backdrop-blur-xl transition-all hover:bg-white/[0.14] hover:text-white">
           IINA
         </a>
