@@ -207,7 +207,7 @@ export default function Detail() {
         )}
       </section>
 
-      <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-3 shadow-glass backdrop-blur-2xl sm:p-4">
+      <section className="rounded-3xl bg-white/[0.04] px-4 py-3 shadow-glass backdrop-blur-2xl sm:px-6 sm:py-4">
         <button
           onClick={() => setInfoExpanded(v => !v)}
           className="flex w-full items-center justify-between gap-4 text-left"
@@ -382,9 +382,12 @@ export default function Detail() {
       </section>
 
       {thumbnailImages.length > 0 && (
-        <section className="glass-panel p-4 sm:p-5">
+        <section className="rounded-3xl bg-white/[0.07] p-4 shadow-glass backdrop-blur-2xl sm:p-6">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-gray-300">缩略图</h3>
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-apple-blue/70">Thumbnails</p>
+              <h3 className="mt-0.5 text-base font-semibold text-white sm:text-lg">缩略图</h3>
+            </div>
             <span className="glass-chip text-xs text-gray-400">{thumbnailImages.length}</span>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
