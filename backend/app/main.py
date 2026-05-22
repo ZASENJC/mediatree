@@ -1217,55 +1217,6 @@ async def api_edit_movie(movie_id: int, data: dict):
     return {"ok": True}
 
 
-# ─── Plugins ───
-
-@app.get("/api/plugins/list")
-async def api_plugins_list():
-    from .plugins.manager import get_installed_plugins
-    return {"plugins": get_installed_plugins()}
-
-
-@app.post("/api/plugins/upload")
-async def api_plugins_upload(file: UploadFile = File(...)):
-    import tempfile
-    import re
-    if not file.filename or not file.filename.endswith(".py"):
-        raise HTTPException(status_code=400, detail="Only .py files allowed")
-
-    content = await file.read()
-    if len(content) > 100 * 1024:
-        raise HTTPException(status_code=400, detail="File too large (max 100KB)")
-
-    text = content.decode("utf-8", errors="replace")
-    blocked = ("os.system", "subprocess.", "shutil.rmtree", "shutil.move", "__import__(",
-               "exec(", "eval(", "compile(", "ctypes.", "multiprocessing.")
-    for pattern in blocked:
-        if pattern in text:
-            raise HTTPException(status_code=400, detail=f"Blocked pattern: {pattern}")
-
-    with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    try:
-        from .plugins.manager import install_plugin
-        result = install_plugin(tmp_path)
-        if not result.get("ok"):
-            raise HTTPException(status_code=400, detail=result.get("error", "Install failed"))
-        return result
-    finally:
-        try: Path(tmp_path).unlink()
-        except: pass
-
-
-@app.delete("/api/plugins/{name}")
-async def api_plugins_delete(name: str):
-    from .plugins.manager import remove_plugin
-    if remove_plugin(name):
-        return {"ok": True}
-    raise HTTPException(status_code=404, detail="Plugin not found")
-
-
 # ─── Media Roots ───
 
 @app.get("/api/media-roots")

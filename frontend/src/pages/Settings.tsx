@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { api, Config, MediaRoot, LibrarySetting, Plugin, clearCache } from '../api'
+import { api, Config, MediaRoot, LibrarySetting, clearCache } from '../api'
 import { getUiPrefs, setUiPrefs } from '../store'
 
 const SCRAPER_META: Record<string, { label: string; desc: string; hasKey: boolean }> = {
@@ -56,9 +56,6 @@ export default function Settings() {
   const [authMsg, setAuthMsg] = useState('')
   const [authSaving, setAuthSaving] = useState(false)
 
-  // plugins
-  const [plugins, setPlugins] = useState<Plugin[]>([])
-  const [pluginMsg, setPluginMsg] = useState('')
 
   useEffect(() => {
     api.getConfig().then(d => {
@@ -83,8 +80,6 @@ export default function Settings() {
       })
       setLibScraper(sp)
     }).catch(() => {}).finally(() => setLoading(false))
-
-    api.getPlugins().then(d => setPlugins(d.plugins)).catch(() => {})
 
     return () => {
       // Clear all scan polling timers on unmount
@@ -181,29 +176,6 @@ export default function Settings() {
       setAuthMsg('更新失败（旧凭证错误）')
     }
     setAuthSaving(false)
-  }
-
-  const handleUploadPlugin = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setPluginMsg('')
-    try {
-      await api.uploadPlugin(file)
-      setPluginMsg('插件安装成功')
-      const d = await api.getPlugins()
-      setPlugins(d.plugins)
-    } catch {
-      setPluginMsg('插件安装失败')
-    }
-    e.target.value = ''
-  }
-
-  const handleDeletePlugin = async (name: string) => {
-    if (!confirm(`确定要删除插件 "${name}"？`)) return
-    try {
-      await api.deletePlugin(name)
-      setPlugins(prev => prev.filter(p => p.name !== name))
-    } catch {}
   }
 
   if (loading) return (
@@ -317,39 +289,6 @@ export default function Settings() {
             </form>
           </div>
 
-          {/* 插件管理 */}
-          <div className={cardClass}>
-            <h2 className={sectionTitle}>插件管理</h2>
-            <p className="text-xs text-gray-500 mb-3">上传自定义刮削器插件（.py 文件）</p>
-            <div className="flex items-center gap-3 mb-4">
-              <label className={`${btnPrimary} cursor-pointer`}>
-                上传插件
-                <input type="file" accept=".py" onChange={handleUploadPlugin} className="hidden" />
-              </label>
-              {pluginMsg && (
-                <span className={`text-xs ${pluginMsg.includes('失败') ? 'text-red-400' : 'text-green-400'}`}>{pluginMsg}</span>
-              )}
-            </div>
-            {plugins.filter(p => !p.builtin).length > 0 && (
-              <div className="space-y-1">
-                {plugins.filter(p => !p.builtin).map(p => (
-                  <div key={p.name} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3">
-                    <div>
-                      <p className="text-sm text-white">{p.label}</p>
-                      <p className="text-xs text-gray-500">{p.description}</p>
-                    </div>
-                    <button onClick={() => handleDeletePlugin(p.name)}
-                      className="rounded-full border border-red-400/20 bg-red-500/10 px-2.5 py-1 text-xs text-red-300 transition-colors hover:bg-red-500/20">
-                      删除
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {plugins.filter(p => !p.builtin).length === 0 && (
-              <p className="text-xs text-gray-600">暂无自定义插件</p>
-            )}
-          </div>
         </div>
 
         {/* 右列 */}

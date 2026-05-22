@@ -458,21 +458,6 @@ export const api = {
       body: JSON.stringify({ old_username: oldUsername, old_password: oldPassword, new_username: newUsername, new_password: newPassword }),
     }),
 
-  getPlugins: () => request<{ plugins: Plugin[] }>('/plugins/list'),
-
-  uploadPlugin: async (file: File) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    const headers: Record<string, string> = {}
-    const token = getToken()
-    if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await fetch(`${BASE}/plugins/upload`, { method: 'POST', headers, body: formData })
-    if (!res.ok) throw new Error(await res.text())
-    return res.json()
-  },
-
-  deletePlugin: (name: string) => request<{ ok: boolean }>(`/plugins/${encodeURIComponent(name)}`, { method: 'DELETE' }),
-
   logout: () => { setToken(''); setActiveLibrary(''); clearCache(); window.location.href = '/login' },
 }
 
@@ -611,13 +596,4 @@ export interface Config {
   tmdb_api_key: string
   tmdb_access_token: string
   media_root: string
-}
-
-export interface Plugin {
-  name: string
-  label: string
-  description: string
-  builtin: boolean
-  enabled: boolean
-  file?: string
 }
