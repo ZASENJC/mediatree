@@ -128,6 +128,33 @@ class BaseScraper:
             media_type=candidate.media_type or media_type,
         )
 
+    async def full_scrape(
+        self,
+        search_name: str,
+        *,
+        code: str = "",
+        candidate_names: list[str] | None = None,
+        movie: dict | None = None,
+    ) -> dict | None:
+        """Full scrape with context-aware fallback logic.
+
+        Subclasses override this to implement their complete fallback chain.
+        Returns a legacy dict for compatibility with _apply_scraped_data().
+
+        Default: simple search-and-match via scrape(), no cross-source fallback.
+        """
+        from ..title_match import build_search_queries, candidate_title_matches
+        from .utils import scrape_result_to_legacy
+
+        queries = build_search_queries(search_name, candidate_names or [search_name, code])
+        for query in queries:
+            if not query:
+                continue
+            result = await self.scrape(query)
+            if result and result.title:
+                return scrape_result_to_legacy(result)
+        return None
+
     def normalize_result(self, raw: dict) -> ScrapeResult:
         raise NotImplementedError
 
