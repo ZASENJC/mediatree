@@ -263,7 +263,7 @@ export default function App() {
       <header className="sticky top-0 z-50 pt-2 sm:pt-3">
         <div className="mx-auto flex h-12 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6 transform-gpu sm:h-14 sm:gap-3">
           <div className="relative">
-          <div className="flex min-w-0 items-center gap-2 rounded-3xl border border-white/15 bg-white/[0.08] pl-3 pr-3 py-1.5 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150 sm:pl-4 sm:pr-4 sm:py-2">
+          <div className="flex min-w-0 items-center gap-2 rounded-3xl border border-white/15 bg-white/[0.14] pl-3 pr-3 py-1.5 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] sm:pl-4 sm:pr-4 sm:py-2">
             <Link to="/" className="shrink-0 text-base font-semibold tracking-tight text-white transition-colors hover:text-apple-blue sm:text-lg">
               <span className="hidden min-[380px]:inline">MediaTree</span>
               <span className="min-[380px]:hidden">MT</span>
@@ -298,7 +298,7 @@ export default function App() {
           </div>
           {mobileNavOpen && (
             <>
-              <div className="absolute right-0 top-full z-[70] mt-2 w-32 p-1 rounded-3xl border border-white/15 bg-white/[0.08] shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150">
+              <div className="absolute right-0 top-full z-[70] mt-2 w-32 p-1 rounded-3xl border border-white/15 bg-white/[0.14] shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)]">
                 {navItems.filter(item => item.path === '/favorites' || item.path === '/settings').map(item => (
                   <Link
                     key={item.path}
@@ -318,7 +318,7 @@ export default function App() {
           )}
           </div>
           <div className="relative shrink-0">
-            <div className="flex items-center justify-end gap-1 rounded-3xl border border-white/15 bg-white/[0.08] px-2 py-1.5 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150 sm:gap-2 sm:px-3 sm:py-2">
+            <div className="flex items-center justify-end gap-1 rounded-3xl border border-white/15 bg-white/[0.14] px-2 py-1.5 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] sm:gap-2 sm:px-3 sm:py-2">
             {libraries.length > 1 && (
               <button
                 onClick={() => setShowLibraryModal(true)}
