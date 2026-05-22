@@ -57,6 +57,22 @@ class JavdatabaseScraper(BaseScraper):
 
         return await self.cached_task(("detail", str(source_id)), _run)
 
+    async def full_scrape(
+        self,
+        search_name: str,
+        *,
+        code: str = "",
+        candidate_names: list[str] | None = None,
+        movie: dict | None = None,
+    ) -> dict | None:
+        """Javdatabase scraper: code-based exact match, no fuzzy search."""
+        from .utils import scrape_result_to_legacy
+
+        result = await self.get_detail(code or search_name)
+        if not result or not result.title:
+            return None
+        return scrape_result_to_legacy(result, exact=True)
+
     def normalize_result(self, raw: dict) -> ScrapeResult:
         source_id = str(raw.get("dvd_id") or raw.get("source_id") or "")
         cover = raw.get("cover_remote")
