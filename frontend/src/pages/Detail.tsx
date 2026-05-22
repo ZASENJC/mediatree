@@ -89,7 +89,6 @@ export default function Detail() {
   const isJavdatabase = movie.scraper_source === 'javdatabase' || Boolean(movie.javdb_id || movie.javdb_url)
   const castNames = cast.map(p => p.name).filter(Boolean)
   const performerText = movie.actress || castNames.join(', ')
-  const overview = movie.overview || movie.episode_overview || ''
   const crewByJob = (jobs: string[]) => crew.filter(p => jobs.some(j => (p.job || '').toLowerCase().includes(j.toLowerCase())))
   const directors = crewByJob(['director', '导演'])
   const supervisors = crewByJob(['supervisor', 'animation director', 'series director', '监督'])
@@ -226,24 +225,18 @@ export default function Detail() {
 
         {infoExpanded && (
           <div className="mt-4 space-y-4 border-t border-white/10 pt-4">
-            {(overview || movie.episode_title || movie.episode_overview || movie.folder_levels) && (
+            {(movie.episode_overview || movie.folder_levels) && (
               <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                <div className="grid gap-4 lg:grid-cols-3">
-                  {overview && (
-                    <div className="lg:col-span-2">
-                      <p className="mb-1.5 text-xs text-gray-500">简介</p>
-                      <p className="whitespace-pre-line text-sm leading-relaxed text-gray-300">{overview}</p>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {movie.episode_overview && (
+                    <div>
+                      <p className="mb-1.5 text-xs text-gray-500">集概述</p>
+                      <p className="whitespace-pre-line text-sm leading-relaxed text-gray-300">{movie.episode_overview}</p>
                     </div>
                   )}
-                  <div className="space-y-3 text-sm">
+                  <div className="space-y-3 text-sm lg:text-right">
                     {movie.folder_levels && (
                       <InfoLine label="目录" value={movie.folder_levels} />
-                    )}
-                    {movie.episode_title && (
-                      <InfoLine label="集标题" value={movie.episode_title} />
-                    )}
-                    {movie.episode_overview && movie.episode_overview !== overview && (
-                      <InfoLine label="集概述" value={movie.episode_overview} />
                     )}
                   </div>
                 </div>

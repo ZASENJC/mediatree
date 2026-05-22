@@ -68,6 +68,7 @@ async def init_db():
         "ALTER TABLE movies ADD COLUMN studios TEXT",
         "ALTER TABLE movies ADD COLUMN tagline TEXT",
         "ALTER TABLE movies ADD COLUMN status TEXT",
+        "ALTER TABLE movies ADD COLUMN content_rating TEXT",
     ]
     for mig in migrations:
         try:
@@ -130,6 +131,7 @@ async def init_db():
             studios TEXT,
             tagline TEXT,
             status TEXT,
+            content_rating TEXT,
             media_root TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now'))
@@ -348,7 +350,7 @@ async def get_movies(folder: str = "", tag: str = "", code: str = "",
     if folder and sort == "created_desc":
         order = f"ORDER BY {episode_order}, created_at DESC"
 
-    cols = "id, path, code, title, original_title, overview, actress, duration, cover_local, cover_remote, javdb_score, javdb_likes, folder_levels, created_at, updated_at, media_root, tmdb_type, tmdb_season, tmdb_episode, episode_title, episode_overview, episode_still, episode_still_local, clean_title, episode_number, display_title, external_audio_tracks, \"cast\", crew"
+    cols = "id, path, code, title, original_title, overview, actress, release_date, duration, cover_local, cover_remote, javdb_score, javdb_likes, folder_levels, created_at, updated_at, media_root, tmdb_id, tmdb_type, tmdb_season, tmdb_episode, episode_title, episode_overview, episode_still, episode_still_local, clean_title, episode_number, display_title, external_audio_tracks, genre, content_rating, \"cast\", crew"
     query = f"SELECT {cols} FROM movies{where} {order} LIMIT ? OFFSET ?"
     params.extend([limit, offset])
     cur = await db.execute(query, params)
@@ -581,6 +583,7 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
     cur = await db.execute(
         f"""SELECT folder_levels, MAX(cover_local) as cover_local, MAX(cover_remote) as cover_remote,
                    MAX(created_at) as created_max, MAX(release_date) as release_date_max, media_root, MAX(fanart_local) as fanart_local,
+                   MAX(tmdb_id) as tmdb_id, MAX(tmdb_type) as tmdb_type,
                    COUNT(*) as movie_count,
                    SUM(CASE WHEN EXISTS (SELECT 1 FROM tags t WHERE t.movie_id=movies.id AND t.tag='watched')
                          OR EXISTS (SELECT 1 FROM user_data ud WHERE ud.item_id=CAST(movies.id AS TEXT) AND ud.played=1)
@@ -614,6 +617,8 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                     "_created_max": "",
                     "_release_date_max": "",
                     "_watched_count": 0,
+                    "_tmdb_id": None,
+                    "_tmdb_type": None,
                 }
             node[part]["_total_count"] += r["movie_count"]
             node[part]["_watched_count"] += r["watched_count"] or 0
@@ -635,6 +640,9 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                         node[part]["_backdrop"] = fanart
                     elif "/" not in fanart and "\\" not in fanart:
                         node[part]["_backdrop"] = f"/api/cached-cover/{fanart}"
+                if r["tmdb_id"] and not node[part]["_tmdb_id"]:
+                    node[part]["_tmdb_id"] = r["tmdb_id"]
+                    node[part]["_tmdb_type"] = r["tmdb_type"]
             node = node[part]["_children"]
 
     def flatten(node_dict: dict[str, dict]) -> list[dict]:
@@ -656,6 +664,8 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                 "watched_count": info["_watched_count"],
                 "folder_watched": bool(info["_total_count"] and info["_watched_count"] >= info["_total_count"]),
                 "progress_percent": round((info["_watched_count"] / info["_total_count"]) * 100) if info["_total_count"] else 0,
+                "tmdb_id": info.get("_tmdb_id"),
+                "tmdb_type": info.get("_tmdb_type"),
             }
             if children:
                 all_covers = [c.get("random_cover") or c.get("cover") for c in children if c.get("random_cover") or c.get("cover")]

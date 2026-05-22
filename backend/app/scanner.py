@@ -361,6 +361,7 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
         "studios": ", ".join(data.get("studios") or []) if isinstance(data.get("studios"), list) else (data.get("studios") or ""),
         "tagline": data.get("tagline") or "",
         "status": data.get("status") or "",
+        "content_rating": data.get("content_rating") or "",
     }
     if replace:
         set_sql = """
@@ -396,6 +397,7 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
                studios=NULLIF(?, ''),
                tagline=NULLIF(?, ''),
                status=NULLIF(?, ''),
+               content_rating=NULLIF(?, ''),
                updated_at=datetime('now')
         """
     else:
@@ -430,6 +432,7 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
                studios=COALESCE(NULLIF(?, ''), studios),
                tagline=COALESCE(NULLIF(?, ''), tagline),
                status=COALESCE(NULLIF(?, ''), status),
+               content_rating=COALESCE(NULLIF(?, ''), content_rating),
                updated_at=datetime('now')
         """
     values = (
@@ -441,7 +444,7 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
         fields["scraper_source"], fields["source_id"], fields["bangumi_id"], fields["javdb_id"],
         fields["scraper_raw"],
         fields["tmdb_season"], fields["tmdb_episode"], fields["episode_title"], fields["episode_still"],
-        fields["genre"], fields["keywords"], fields["studios"], fields["tagline"], fields["status"],
+        fields["genre"], fields["keywords"], fields["studios"], fields["tagline"], fields["status"], fields["content_rating"],
     )
     if media_root:
         cur = await db.execute(

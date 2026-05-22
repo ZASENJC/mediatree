@@ -411,6 +411,9 @@ export const api = {
 
   // ─── TMDB Extended API ───
 
+  folderBackdrops: (path: string, mediaRoot: string) =>
+    request<{ backdrops: { url: string; width: number; height: number }[] }>(`/folder-backdrops?path=${encodeURIComponent(path)}&media_root=${encodeURIComponent(mediaRoot)}`, undefined, `folder_backdrops_${path}`),
+
   tmdbImages: (tmdbId: number, mediaType: string) =>
     request<{ posters: { url: string; width: number; height: number; language: string; vote_count: number; vote_average: number }[]; backdrops: { url: string; width: number; height: number; language: string }[]; logos: { url: string; width: number; height: number; language: string }[] }>(`/tmdb-images/${tmdbId}?media_type=${encodeURIComponent(mediaType)}`, undefined, `tmdb_images_${tmdbId}_${mediaType}`),
 
@@ -533,6 +536,8 @@ export interface FolderNode {
   watched_count?: number
   folder_watched?: boolean
   progress_percent?: number
+  tmdb_id?: number
+  tmdb_type?: string
 }
 
 export interface Movie {
@@ -558,6 +563,7 @@ export interface Movie {
   studios?: string
   tagline?: string
   status?: string
+  content_rating?: string
   scraper_source?: string
   source_id?: string
   javdb_id?: string
