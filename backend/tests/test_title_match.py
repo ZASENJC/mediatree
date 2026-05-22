@@ -473,12 +473,30 @@ class SeasonInferenceTest(unittest.TestCase):
         self.assertTrue(is_season_folder("Season 1"))
 
     def test_is_season_folder_chinese(self):
-        # SEASON_PATTERN requires $ at end, "第1季" has trailing 季 → no match
-        self.assertFalse(is_season_folder("第1季"))
+        self.assertTrue(is_season_folder("第1季"))
+        self.assertTrue(is_season_folder("第01期"))
+
+    def test_is_season_folder_specials(self):
+        self.assertTrue(is_season_folder("Specials"))
+        self.assertTrue(is_season_folder("Special"))
 
     def test_is_season_folder_no_match(self):
         self.assertFalse(is_season_folder("Movie Folder"))
         self.assertFalse(is_season_folder("Extra"))
+
+    def test_is_season_folder_expanded_formats(self):
+        # S prefix variants
+        self.assertTrue(is_season_folder("S01"))
+        self.assertTrue(is_season_folder("S 01"))
+        self.assertTrue(is_season_folder("S-01"))
+        self.assertTrue(is_season_folder("Season01"))
+        self.assertTrue(is_season_folder("Cour 1"))
+        self.assertTrue(is_season_folder("Cour 02"))
+        # Allow text after season number
+        self.assertTrue(is_season_folder("S01 - Prologue"))
+        self.assertTrue(is_season_folder("Season 1 Rips"))
+        # Large season numbers
+        self.assertTrue(is_season_folder("S100"))
 
     def test_infer_season_number_from_folder(self):
         self.assertEqual(infer_season_number("Season 03", {}), 3)
@@ -498,8 +516,37 @@ class SeasonInferenceTest(unittest.TestCase):
         self.assertIsNone(infer_season_number("Movie", data))
 
     def test_infer_season_number_chinese_format(self):
-        # SEASON_PATTERN requires $ at end, "第02季" isn't recognized as season folder
-        self.assertIsNone(infer_season_number("第02季", {}))
+        self.assertEqual(infer_season_number("第02季", {}), 2)
+
+    def test_infer_season_number_existing_season(self):
+        # Multi-season TV, existing_season from scan should be used
+        data = {"tmdb_type": "tv", "seasons": [
+            {"season_number": 1}, {"season_number": 2}, {"season_number": 3},
+        ]}
+        self.assertEqual(infer_season_number("Show", data, existing_season=2), 2)
+
+    def test_infer_season_number_existing_season_used(self):
+        # existing_season from scan is used even when 1
+        data = {"tmdb_type": "tv", "seasons": [
+            {"season_number": 1}, {"season_number": 2},
+        ]}
+        self.assertEqual(infer_season_number("Show", data, existing_season=1), 1)
+
+    def test_infer_season_number_specials_folder(self):
+        self.assertEqual(infer_season_number("Specials", {}), 0)
+
+    def test_infer_season_number_s00_folder(self):
+        self.assertEqual(infer_season_number("S00", {}), 0)
+
+    def test_infer_season_number_from_parent_folder(self):
+        # When folder_name is not a season but a parent folder is
+        data = {"tmdb_type": "tv", "seasons": [
+            {"season_number": 1}, {"season_number": 2},
+        ]}
+        self.assertEqual(
+            infer_season_number("Extras", data, folder_path="Show/Season 2/Extras"),
+            2
+        )
 
 
 # ── Media Type Inference ──────────────────────────────────────────────────

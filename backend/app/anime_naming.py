@@ -15,12 +15,14 @@ _LANGUAGE_SUFFIX_RE = re.compile(
 )
 _LEADING_GROUP_RE = re.compile(r"^\s*[\[【\(（][^\]】\)）]{1,80}[\]】\)）]\s*")
 _BRACKET_RE = re.compile(r"[\[【\(（]([^\]】\)）]{1,120})[\]】\)）]")
-_SXXEXX_RE = re.compile(r"(?i)\bS\d{1,2}\s*[-_. ]?\s*E(\d{1,3})\b")
-_ONE_X_RE = re.compile(r"(?i)\b\d{1,2}x(\d{1,3})\b")
-_EP_RE = re.compile(r"(?i)\bEP(?:ISODE)?\s*[-_. ]?(\d{1,3})\b")
-_E_RE = re.compile(r"(?i)(?:^|[\s._-])E(\d{1,3})(?:$|[\s._-])")
-_CN_EP_RE = re.compile(r"第\s*(\d{1,3})\s*[集話话]")
-_HASH_EP_RE = re.compile(r"[#＃]\s*(\d{1,3})\b")
+_SXXEXX_RE = re.compile(r"(?i)\bS\d{1,3}\s*[-_. ]?\s*E(\d{1,4})(?:[-_. ]\d{2,4})?\b")
+_ONE_X_RE = re.compile(r"(?i)\b\d{1,3}x(\d{1,4})\b")
+_EP_RE = re.compile(r"(?i)\bEP(?:ISODE)?\s*[-_. ]?(\d{1,4})\b")
+_E_RE = re.compile(r"(?i)(?:^|[\s._-])E(\d{1,4})(?:$|[\s._-])")
+_E_DOUBLE_RE = re.compile(r"(?i)(?:^|[\s._-])E(\d{1,4})[-_.]?(\d{1,4})\b")
+_CN_EP_RE = re.compile(r"第\s*(\d{1,4})\s*[集話话]")
+_HASH_EP_RE = re.compile(r"[#＃]\s*(\d{1,4})\b")
+_VOL_RE = re.compile(r"(?i)\bV[Oo][Ll]\.?\s*(\d{1,3})\b")
 
 
 def _compact_tag(value: str) -> str:
@@ -92,29 +94,30 @@ def _parse_episode_token(token: str) -> int | None:
     value = (token or "").strip()
     if not value or is_technical_tag(value) or is_year_token(value):
         return None
-    if re.fullmatch(r"\d{1,3}", value):
+    if re.fullmatch(r"\d{1,4}", value):
         num = int(value)
-        return num if 0 < num < 1000 else None
+        return num if 0 < num < 10000 else None
     for pattern in (
-        r"(?i)^EP(?:ISODE)?\s*[-_. ]?(\d{1,3})$",
-        r"(?i)^E\s*[-_. ]?(\d{1,3})$",
-        r"^第\s*(\d{1,3})\s*[集話话]$",
+        r"(?i)^EP(?:ISODE)?\s*[-_. ]?(\d{1,4})$",
+        r"(?i)^E\s*[-_. ]?(\d{1,4})$",
+        r"^第\s*(\d{1,4})\s*[集話话]$",
+        r"(?i)^V[Oo][Ll]\.?\s*(\d{1,3})$",
     ):
         match = re.match(pattern, value)
         if match:
             num = int(match.group(1))
-            return num if 0 < num < 1000 else None
+            return num if 0 < num < 10000 else None
     return None
 
 
 def extract_episode_number(name: str) -> int | None:
     stem = strip_language_suffix(strip_known_extension(name))
     text = strip_release_group(stem)
-    for pattern in (_SXXEXX_RE, _ONE_X_RE, _EP_RE, _E_RE, _CN_EP_RE, _HASH_EP_RE):
+    for pattern in (_SXXEXX_RE, _ONE_X_RE, _EP_RE, _E_DOUBLE_RE, _E_RE, _CN_EP_RE, _HASH_EP_RE, _VOL_RE):
         match = pattern.search(text)
         if match:
             num = int(match.group(1))
-            if 0 < num < 1000:
+            if 0 < num < 10000:
                 return num
 
     candidates: list[tuple[int, int]] = []
@@ -158,9 +161,11 @@ def clean_anime_title(name: str) -> str:
     text = _SXXEXX_RE.sub(" ", text)
     text = _ONE_X_RE.sub(" ", text)
     text = _EP_RE.sub(" ", text)
+    text = _E_DOUBLE_RE.sub(" ", text)
     text = _E_RE.sub(" ", text)
     text = _CN_EP_RE.sub(" ", text)
     text = _HASH_EP_RE.sub(" ", text)
+    text = _VOL_RE.sub(" ", text)
     text = re.sub(
         r"(?i)\b(?:720p|1080p|2160p|4320p|4k|8k|bdrip|bluray|web-dl|webdl|webrip|"
         r"hevc|avc|h\.?264|h\.?265|x264|x265|aac|flac|opus|ddp|eac3|ac3|dts|"
