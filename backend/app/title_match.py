@@ -15,8 +15,8 @@ from .scrapers.base import ScrapeCandidate
 
 # ── Regex patterns ──────────────────────────────────────────────────────────
 
-CODE_PATTERN = re.compile(r"(?i)([A-Z]{1,})-?(\d{2,6})")
-CODE_PATTERN_UNDERSCORE = re.compile(r"(?i)([A-Z]{1,})_(\d{2,6})")
+CODE_PATTERN = re.compile(r"(?i)([A-Z]+\d*)-?(\d{2,6})")
+CODE_PATTERN_UNDERSCORE = re.compile(r"(?i)([A-Z]+\d*)_(\d{2,6})")
 TMDB_TYPED_PATTERN = re.compile(
     r"(?i)\btmdb(?:id)?[\s:=._-]*(movie|tv|m|t)[\s:=._-]+(\d{1,10})\b"
 )
