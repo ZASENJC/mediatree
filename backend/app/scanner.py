@@ -1339,9 +1339,9 @@ async def change_folder_backdrop(folder_levels: str, media_root: str, fanart_url
     if not media_root:
         return {"ok": False, "error": "media_root required"}
     db = await get_db()
-    await db.execute("UPDATE movies SET fanart_local=?, updated_at=datetime('now') WHERE folder_levels=? AND media_root=?", (fanart_url, folder_levels, media_root))
+    await db.execute("UPDATE movies SET fanart_local=?, updated_at=datetime('now') WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?", (fanart_url, folder_levels, f"{folder_levels}/%", media_root))
     await db.commit()
-    logger.info(f"Backdrop changed for folder {folder_levels}")
+    logger.info(f"Backdrop changed for folder {folder_levels} (including sub-folders)")
     return {"ok": True}
 
 
@@ -1456,11 +1456,11 @@ async def change_folder_cover(folder_levels: str, media_root: str, cover_url: st
         cache_key = hashlib.md5(cover_url.encode()).hexdigest()[:16]
         await download_and_compress_cover(cover_url, cache_key)
         await db.execute(
-            "UPDATE movies SET cover_remote=?, cover_local=?, updated_at=datetime('now') WHERE folder_levels=? AND media_root=?",
-            (cover_url, cache_key, folder_levels, media_root)
+            "UPDATE movies SET cover_remote=?, cover_local=?, updated_at=datetime('now') WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?",
+            (cover_url, cache_key, folder_levels, f"{folder_levels}/%", media_root)
         )
         await db.commit()
-        logger.info(f"Cover changed for folder {folder_levels}")
+        logger.info(f"Cover changed for folder {folder_levels} (including sub-folders)")
         return {"ok": True}
     except Exception as e:
         logger.warning(f"Change folder cover error: {e}")
@@ -1483,13 +1483,13 @@ async def edit_folder_movies(folder_levels: str, media_root: str, fields: dict) 
     if not sets:
         return {"ok": False, "error": "No fields to update"}
     sets.append("updated_at=datetime('now')")
-    values.extend([folder_levels, media_root])
+    values.extend([folder_levels, f"{folder_levels}/%", media_root])
     await db.execute(
-        f"UPDATE movies SET {', '.join(sets)} WHERE folder_levels=? AND media_root=?",
+        f"UPDATE movies SET {', '.join(sets)} WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?",
         values
     )
     await db.commit()
-    logger.info(f"Edited {len(sets)-1} fields for folder {folder_levels}")
+    logger.info(f"Edited {len(sets)-1} fields for folder {folder_levels} (including sub-folders)")
     return {"ok": True}
 
 
@@ -1500,12 +1500,12 @@ async def delete_folder_movies(folder_levels: str, media_root: str) -> dict:
     if not media_root:
         return {"ok": False, "error": "media_root required"}
     db = await get_db()
-    cur = await db.execute("SELECT id FROM movies WHERE folder_levels=? AND media_root=?", (folder_levels, media_root))
+    cur = await db.execute("SELECT id FROM movies WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?", (folder_levels, f"{folder_levels}/%", media_root))
     rows = await cur.fetchall()
     count = len(rows)
     for r in rows:
         await db.execute("DELETE FROM tags WHERE movie_id=?", (r["id"],))
-    await db.execute("DELETE FROM movies WHERE folder_levels=? AND media_root=?", (folder_levels, media_root))
+    await db.execute("DELETE FROM movies WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?", (folder_levels, f"{folder_levels}/%", media_root))
     await db.commit()
-    logger.info(f"Deleted {count} movies from folder {folder_levels}")
+    logger.info(f"Deleted {count} movies from folder {folder_levels} (including sub-folders)")
     return {"ok": True, "deleted": count}
