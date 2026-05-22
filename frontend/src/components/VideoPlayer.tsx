@@ -16,6 +16,7 @@ const POS_KEY = 'mediatree_pos_'
 const WATCHED_AFTER = 60
 const WATCHED_RATIO = 0.9
 const SEEK_SMALL = 5
+const POS_SAVE_INTERVAL = 5000
 const BROWSER_UNSUPPORTED_AUDIO = new Set(['eac3', 'truehd', 'dts', 'dca', 'mlp'])
 const BUNDLED_CJK_FALLBACK_FONT = '/fonts/SourceHanSansCN-Bold.woff2'
 const CJK_FONT_RE = /source\s*han|noto\s*sans\s*cjk|noto\s*serif\s*cjk|noto.*cjk|wenquanyi|wqy|pingfang|hiragino|yu\s*gothic|meiryo|simhei|simsun|yahei|microsoft\s*yahei|思源|宋体|黑体|微软雅黑|蘋方|苹方|ヒラギノ|游ゴシック|メイリオ/i
@@ -421,6 +422,8 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   const resumeTimerRef = useRef(0)
   const progressSaveTimerRef = useRef(0)
   const lastProgressSaveAtRef = useRef(0)
+  const switchUrlSeqRef = useRef(0)
+  const lastPosSaveAtRef = useRef(0)
 
   const [resumePos, setResumePos] = useState(() => getSavedPos(movieId))
   const [showResume, setShowResume] = useState(() => false)
@@ -515,6 +518,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
     currentAssModeRef.current = false
     subtitleVisibleRef.current = true
     lastProgressSaveAtRef.current = 0
+    lastPosSaveAtRef.current = 0
     setTracks([])
     setActiveTrack(-1)
     setSubtitleVisibleState(true)
@@ -596,7 +600,8 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
 
   useEffect(() => {
     const requestId = ++subtitleTrackRequestRef.current
-    api.subtitleTracks(movieId)
+    const abortController = new AbortController()
+    api.subtitleTracks(movieId, abortController.signal)
       .then(trackList => {
         if (!mountedRef.current || requestId !== subtitleTrackRequestRef.current) return
         if (import.meta.env.DEV) console.info('VideoPlayer: subtitle tracks loaded', {
@@ -625,8 +630,14 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
           clearRenderedSubtitles()
         }
       })
-      .catch(err => console.error('VideoPlayer: track fetch error', err))
-    return () => { subtitleTrackRequestRef.current += 1 }
+      .catch(err => {
+        if (err?.name === 'AbortError') return
+        console.error('VideoPlayer: track fetch error', err)
+      })
+    return () => {
+      subtitleTrackRequestRef.current += 1
+      abortController.abort()
+    }
   }, [movieId])
 
   const notice = useCallback((message: string) => {
@@ -1193,9 +1204,12 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
     art.on('video:timeupdate', () => {
       const virtualTime = useTranscodeRef.current ? transcodeStartRef.current + art.currentTime : art.currentTime
       currentTimeRef.current = virtualTime
-      if (virtualTime > 3) savePos(movieId, virtualTime)
-      hideResumePrompt()
       const now = Date.now()
+      if (virtualTime > 3 && (!lastPosSaveAtRef.current || now - lastPosSaveAtRef.current >= POS_SAVE_INTERVAL)) {
+        lastPosSaveAtRef.current = now
+        savePos(movieId, virtualTime)
+      }
+      hideResumePrompt()
       if (virtualTime > 0 && (!lastProgressSaveAtRef.current || now - lastProgressSaveAtRef.current >= 15000)) {
         lastProgressSaveAtRef.current = now
         api.saveProgress(movieId, virtualTime, displayDurationRef.current || art.duration || undefined).catch(err => {
@@ -1271,12 +1285,14 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   useEffect(() => {
     const art = artRef.current
     if (!art || streamSrcRef.current === streamSrc) return
+    const seq = ++switchUrlSeqRef.current
     const wasPlaying = pendingAutoPlay.current || art.playing
     streamSrcRef.current = streamSrc
     setVideoError(false)
     clearRenderedSubtitles(art)
     art.pause()
     art.switchUrl(streamSrc).then(() => {
+      if (switchUrlSeqRef.current !== seq) return
       try {
         art.emit('subtitleOffset', useTranscodeRef.current ? transcodeStartRef.current : 0)
         applyActiveSubtitle(activeTrackRef.current)
@@ -1285,6 +1301,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
       }
       if (wasPlaying) art.play().catch(() => {})
     }).catch(err => {
+      if (switchUrlSeqRef.current !== seq) return
       console.error('ArtPlayer switchUrl failed', err)
       setVideoError(true)
     })
