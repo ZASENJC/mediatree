@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 
 type LightboxImage = string | { src: string; fallback?: string; alt?: string }
 
@@ -30,7 +31,7 @@ export default function Lightbox({ images, index, onClose, onPrev, onNext }: Pro
   const current = images[index]
   const image = typeof current === 'string' ? { src: current, alt: `thumbnail ${index + 1}` } : current
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
       onClick={onClose}
@@ -88,6 +89,7 @@ export default function Lightbox({ images, index, onClose, onPrev, onNext }: Pro
           }
         }}
       />
-    </div>
+    </div>,
+    document.body,
   )
 }
