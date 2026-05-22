@@ -711,6 +711,16 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                 parent = str(Path(node["path"]).parent) if node["path"] and str(Path(node["path"]).parent) != "." else None
                 if parent and parent in title_map:
                     node["display_title"] = title_map[parent]
+                else:
+                    # check child folders (e.g., folder has /S01 subdirectory with movies)
+                    prefix = node["path"] + "/"
+                    for k, v in title_map.items():
+                        if k.startswith(prefix):
+                            node["display_title"] = v
+                            break
+            # fallback: use source folder name when no scraped title found
+            if not node.get("display_title"):
+                node["display_title"] = node.get("name")
             if node.get("children"):
                 assign_display_titles(node["children"])
 
