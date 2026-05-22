@@ -514,6 +514,10 @@ export interface Movie {
   series?: string
   studio?: string
   genre?: string
+  keywords?: string
+  studios?: string
+  tagline?: string
+  status?: string
   dvd_id?: string
   release_date?: string
   duration?: number
