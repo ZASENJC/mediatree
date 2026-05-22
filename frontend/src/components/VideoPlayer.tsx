@@ -1558,7 +1558,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         document.getElementById('ambient-root')!,
       )}
       <div ref={wrapperRef} className="relative mx-auto w-full max-w-[calc((100vh-11rem)*var(--mediatree-video-aspect))] transition-all duration-300" style={playerStyle}>
-        <div className="relative z-[1] overflow-hidden rounded-3xl border border-white/10 bg-black shadow-glass">
+        <div className="relative z-[1] overflow-hidden rounded-3xl">
         <div ref={artContainerRef} className="mediatree-artplayer w-full" />
         <VRVideoLayer art={artInstance} mode={vrMode} />
 
@@ -1616,8 +1616,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         )}
       </div>
 
-      <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
-        <span className="shrink-0 text-[11px] text-gray-500">本地播放:</span>
+      <div className="mt-2 flex items-center justify-center gap-2 overflow-x-auto pb-1">
         <a href={`iina://weblink?url=${encodeURIComponent(localPlaybackUrl)}`} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-300 backdrop-blur-xl transition-all hover:bg-white/[0.14] hover:text-white">
           IINA
         </a>
@@ -1627,11 +1626,6 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         <button onClick={copyStreamUrl} className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-300 backdrop-blur-xl transition-all hover:bg-white/[0.14] hover:text-white">
           {linkCopied ? '已复制' : '复制链接'}
         </button>
-        {hasExternalSubtitles && (
-          <a href={externalPlaylistUrl} className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-300 backdrop-blur-xl transition-all hover:bg-white/[0.14] hover:text-white">
-            字幕播放列表
-          </a>
-        )}
         <button onClick={toggleAmbient} className={`shrink-0 rounded-full border px-2.5 py-1 text-xs backdrop-blur-xl transition-all ${ambientEnabled ? 'border-apple-blue/30 bg-apple-blue/15 text-apple-blue' : 'border-white/10 bg-white/[0.08] text-gray-300 hover:bg-white/[0.14] hover:text-white'}`} title="剧院光效">
           光效
         </button>
