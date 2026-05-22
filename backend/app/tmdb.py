@@ -1,5 +1,6 @@
 import httpx
 import asyncio
+import json
 from httpx import HTTPStatusError
 from typing import Literal
 from .config import settings, logger
@@ -131,12 +132,14 @@ async def fetch_tmdb_detail(source_id: str, media_type: str, lang: str = "zh-CN"
         backdrop = f"{IMAGE_BASE}/w1280{data['backdrop_path']}" if data.get("backdrop_path") else None
 
         cast = []
-        for c in (data.get("credits", {}) or {}).get("cast", [])[:10]:
+        for c in (data.get("credits", {}) or {}).get("cast", []):
             cast.append({"name": c.get("name", ""), "character": c.get("character", ""),
+                        "id": c.get("id"), "person_id": str(c.get("id", "")),
                         "profile_path": f"{IMAGE_BASE}/w185{c['profile_path']}" if c.get("profile_path") else None})
         crew = []
-        for c in (data.get("credits", {}) or {}).get("crew", [])[:5]:
+        for c in (data.get("credits", {}) or {}).get("crew", []):
             crew.append({"name": c.get("name", ""), "job": c.get("job", ""),
+                        "id": c.get("id"), "person_id": str(c.get("id", "")),
                         "profile_path": f"{IMAGE_BASE}/w185{c['profile_path']}" if c.get("profile_path") else None})
 
         external = data.get("external_ids", {}) or {}
@@ -390,14 +393,26 @@ async def fetch_tv_episode(series_id: str, season_number: int, episode_number: i
 
     try:
         resp = await _tmdb_get(f"/tv/{series_id}/season/{season_number}/episode/{episode_number}",
-                               {"language": lang})
+                               {"language": lang, "append_to_response": "credits"})
         data = resp.json()
 
         still = f"{IMAGE_BASE}/w300{data['still_path']}" if data.get("still_path") else None
 
+        credits = data.get("credits", {}) or {}
         cast = []
-        for c in (data.get("credits", {}) or {}).get("guest_stars", [])[:10]:
-            cast.append({"name": c.get("name", ""), "character": c.get("character", ""),
+        seen_names = set()
+        for section in [credits.get("cast", []), credits.get("guest_stars", [])]:
+            for c in section:
+                name = c.get("name", "")
+                if name and name not in seen_names:
+                    seen_names.add(name)
+                    cast.append({"name": name, "character": c.get("character", ""),
+                                "id": c.get("id"), "person_id": str(c.get("id", "")),
+                                "profile_path": f"{IMAGE_BASE}/w185{c['profile_path']}" if c.get("profile_path") else None})
+        crew = []
+        for c in credits.get("crew", []):
+            crew.append({"name": c.get("name", ""), "job": c.get("job", ""),
+                        "id": c.get("id"), "person_id": str(c.get("id", "")),
                         "profile_path": f"{IMAGE_BASE}/w185{c['profile_path']}" if c.get("profile_path") else None})
 
         result = {
@@ -411,6 +426,8 @@ async def fetch_tv_episode(series_id: str, season_number: int, episode_number: i
             "runtime": data.get("runtime"),
             "season_number": data.get("season_number"),
             "guest_stars": cast,
+            "cast": cast,
+            "crew": crew,
         }
         await set_scraper_cache("tmdb", cache_key, result)
         return result
@@ -498,6 +515,18 @@ async def match_episodes_in_folder(
                      ep.get("still_path", ""), still_local or "",
                      m["id"])
                 )
+                # Update episode-specific credits
+                try:
+                    ep_detail = await fetch_tv_episode(series_id, season_number, ep_num)
+                    if ep_detail and (ep_detail.get("cast") or ep_detail.get("crew")):
+                        await db.execute(
+                            """UPDATE movies SET "cast"=?, crew=? WHERE id=?""",
+                            (json.dumps(ep_detail.get("cast") or [], ensure_ascii=False),
+                             json.dumps(ep_detail.get("crew") or [], ensure_ascii=False),
+                             m["id"])
+                        )
+                except Exception:
+                    pass
                 updated += 1
                 break
     await db.commit()
