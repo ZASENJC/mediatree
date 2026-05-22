@@ -124,6 +124,9 @@ async def fetch_tmdb_detail(source_id: str, media_type: str, lang: str = "zh-CN"
         data = resp.json()
 
         genres = [g["name"] for g in data.get("genres", [])]
+        kw_raw = data.get("keywords", {}) or {}
+        kw_list = kw_raw.get("keywords") or kw_raw.get("results") or []
+        keywords = ", ".join(k["name"] for k in kw_list if k.get("name")) if kw_list else None
         poster = f"{IMAGE_BASE}/w500{data['poster_path']}" if data.get("poster_path") else None
         backdrop = f"{IMAGE_BASE}/w1280{data['backdrop_path']}" if data.get("backdrop_path") else None
 
@@ -169,6 +172,7 @@ async def fetch_tmdb_detail(source_id: str, media_type: str, lang: str = "zh-CN"
             "votes": data.get("vote_count"),
             "runtime": runtime,
             "genre": ", ".join(genres) if genres else None,
+            "keywords": keywords,
             "tagline": data.get("tagline"),
             "status": data.get("status"),
             "cast": cast,
@@ -648,3 +652,361 @@ async def _try_season_merge_auto(
         )
 
     return updated
+
+
+# ─── TMDB Extended API ───
+
+
+async def fetch_tmdb_images(tmdb_id: int, media_type: str, lang: str = "zh,null") -> dict | None:
+    """Fetch posters, backdrops, logos for a movie or TV series."""
+    if not _has_tmdb_auth():
+        return None
+    mt = media_type.lower()
+    if mt not in {"movie", "tv"}:
+        return None
+    cache_key = f"images:{mt}:{tmdb_id}"
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
+    if cache_data is not None:
+        return cache_data
+    try:
+        resp = await _tmdb_get(f"/{mt}/{tmdb_id}/images", {"include_image_language": lang})
+        data = resp.json()
+        result = {
+            "posters": [
+                {"url": f"{IMAGE_BASE}/w500{p['file_path']}", "width": p.get("width"), "height": p.get("height"),
+                 "language": p.get("iso_639_1"), "vote_count": p.get("vote_count"), "vote_average": p.get("vote_average")}
+                for p in data.get("posters", []) if p.get("file_path")
+            ],
+            "backdrops": [
+                {"url": f"{IMAGE_BASE}/w1280{b['file_path']}", "width": b.get("width"), "height": b.get("height"),
+                 "language": b.get("iso_639_1"), "vote_count": b.get("vote_count"), "vote_average": b.get("vote_average")}
+                for b in data.get("backdrops", []) if b.get("file_path")
+            ],
+            "logos": [
+                {"url": f"{IMAGE_BASE}/w500{l['file_path']}", "width": l.get("width"), "height": l.get("height"),
+                 "language": l.get("iso_639_1")}
+                for l in data.get("logos", []) if l.get("file_path")
+            ],
+        }
+        await set_scraper_cache("tmdb", cache_key, result)
+        return result
+    except HTTPStatusError as e:
+        if e.response.status_code != 404:
+            logger.warning(f"TMDB images error for {mt}/{tmdb_id}: status={e.response.status_code}")
+        return None
+    except Exception as e:
+        logger.warning(f"TMDB images error for {mt}/{tmdb_id}: {e}")
+        return None
+
+
+async def fetch_tmdb_videos(tmdb_id: int, media_type: str, lang: str = "zh-CN") -> dict | None:
+    """Fetch videos (trailers, clips, behind-the-scenes) for a movie or TV series."""
+    if not _has_tmdb_auth():
+        return None
+    mt = media_type.lower()
+    if mt not in {"movie", "tv"}:
+        return None
+    cache_key = f"videos:{mt}:{tmdb_id}"
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
+    if cache_data is not None:
+        return cache_data
+    try:
+        resp = await _tmdb_get(f"/{mt}/{tmdb_id}/videos", {"language": lang})
+        data = resp.json()
+        result = {
+            "results": [
+                {"key": v.get("key"), "name": v.get("name"), "site": v.get("site"),
+                 "type": v.get("type"), "size": v.get("size"), "official": v.get("official"),
+                 "published_at": v.get("published_at")}
+                for v in data.get("results", []) if v.get("key")
+            ]
+        }
+        await set_scraper_cache("tmdb", cache_key, result)
+        return result
+    except HTTPStatusError as e:
+        if e.response.status_code != 404:
+            logger.warning(f"TMDB videos error for {mt}/{tmdb_id}: status={e.response.status_code}")
+        return None
+    except Exception as e:
+        logger.warning(f"TMDB videos error for {mt}/{tmdb_id}: {e}")
+        return None
+
+
+async def fetch_person_detail(person_id: int, lang: str = "zh-CN") -> dict | None:
+    """Fetch person details including biography, birthday, external IDs."""
+    if not _has_tmdb_auth():
+        return None
+    cache_key = f"person:{person_id}"
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
+    if cache_data is not None:
+        return cache_data
+    try:
+        resp = await _tmdb_get(f"/person/{person_id}", {
+            "language": lang, "append_to_response": "external_ids"
+        })
+        data = resp.json()
+        external = data.get("external_ids", {}) or {}
+        result = {
+            "id": data.get("id"),
+            "name": data.get("name", ""),
+            "biography": data.get("biography", ""),
+            "birthday": data.get("birthday"),
+            "deathday": data.get("deathday"),
+            "place_of_birth": data.get("place_of_birth"),
+            "homepage": data.get("homepage"),
+            "profile_path": f"{IMAGE_BASE}/w300{data['profile_path']}" if data.get("profile_path") else None,
+            "known_for_department": data.get("known_for_department"),
+            "imdb_id": external.get("imdb_id"),
+            "facebook_id": external.get("facebook_id"),
+            "instagram_id": external.get("instagram_id"),
+            "twitter_id": external.get("twitter_id"),
+        }
+        await set_scraper_cache("tmdb", cache_key, result)
+        return result
+    except HTTPStatusError as e:
+        if e.response.status_code != 404:
+            logger.warning(f"TMDB person detail error for {person_id}: status={e.response.status_code}")
+        return None
+    except Exception as e:
+        logger.warning(f"TMDB person detail error for {person_id}: {e}")
+        return None
+
+
+async def fetch_person_credits(person_id: int, lang: str = "zh-CN") -> dict | None:
+    """Fetch combined credits (movie + tv) for a person."""
+    if not _has_tmdb_auth():
+        return None
+    cache_key = f"person_credits:{person_id}"
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
+    if cache_data is not None:
+        return cache_data
+    try:
+        resp = await _tmdb_get(f"/person/{person_id}/combined_credits", {"language": lang})
+        data = resp.json()
+        def _format_credit(item):
+            poster = f"{IMAGE_BASE}/w300{item['poster_path']}" if item.get("poster_path") else None
+            return {
+                "id": item.get("id"),
+                "title": item.get("title") or item.get("name", ""),
+                "media_type": item.get("media_type"),
+                "character": item.get("character"),
+                "job": item.get("job"),
+                "release_date": item.get("release_date") or item.get("first_air_date"),
+                "poster_url": poster,
+                "vote_average": item.get("vote_average"),
+                "overview": item.get("overview", ""),
+            }
+        result = {
+            "cast": [_format_credit(c) for c in data.get("cast", [])],
+            "crew": [_format_credit(c) for c in data.get("crew", [])],
+        }
+        await set_scraper_cache("tmdb", cache_key, result)
+        return result
+    except HTTPStatusError as e:
+        if e.response.status_code != 404:
+            logger.warning(f"TMDB person credits error for {person_id}: status={e.response.status_code}")
+        return None
+    except Exception as e:
+        logger.warning(f"TMDB person credits error for {person_id}: {e}")
+        return None
+
+
+async def fetch_person_images(person_id: int) -> dict | None:
+    """Fetch profile images for a person."""
+    if not _has_tmdb_auth():
+        return None
+    cache_key = f"person_images:{person_id}"
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
+    if cache_data is not None:
+        return cache_data
+    try:
+        resp = await _tmdb_get(f"/person/{person_id}/images")
+        data = resp.json()
+        result = {
+            "profiles": [
+                {"url": f"{IMAGE_BASE}/w300{p['file_path']}", "width": p.get("width"),
+                 "height": p.get("height"), "vote_count": p.get("vote_count")}
+                for p in data.get("profiles", []) if p.get("file_path")
+            ]
+        }
+        await set_scraper_cache("tmdb", cache_key, result)
+        return result
+    except HTTPStatusError as e:
+        if e.response.status_code != 404:
+            logger.warning(f"TMDB person images error for {person_id}: status={e.response.status_code}")
+        return None
+    except Exception as e:
+        logger.warning(f"TMDB person images error for {person_id}: {e}")
+        return None
+
+
+async def fetch_tmdb_reviews(tmdb_id: int, media_type: str, page: int = 1, lang: str = "en-US") -> dict | None:
+    """Fetch user reviews for a movie or TV series."""
+    if not _has_tmdb_auth():
+        return None
+    mt = media_type.lower()
+    if mt not in {"movie", "tv"}:
+        return None
+    cache_key = f"reviews:{mt}:{tmdb_id}:{page}"
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
+    if cache_data is not None:
+        return cache_data
+    try:
+        resp = await _tmdb_get(f"/{mt}/{tmdb_id}/reviews", {"language": lang, "page": page})
+        data = resp.json()
+        result = {
+            "page": data.get("page"),
+            "total_pages": data.get("total_pages"),
+            "total_results": data.get("total_results"),
+            "results": [
+                {
+                    "id": r.get("id"),
+                    "author": r.get("author"),
+                    "author_details": r.get("author_details"),
+                    "content": r.get("content"),
+                    "created_at": r.get("created_at"),
+                    "url": r.get("url"),
+                }
+                for r in data.get("results", [])
+            ]
+        }
+        await set_scraper_cache("tmdb", cache_key, result)
+        return result
+    except HTTPStatusError as e:
+        if e.response.status_code != 404:
+            logger.warning(f"TMDB reviews error for {mt}/{tmdb_id}: status={e.response.status_code}")
+        return None
+    except Exception as e:
+        logger.warning(f"TMDB reviews error for {mt}/{tmdb_id}: {e}")
+        return None
+
+
+async def fetch_tmdb_keywords(tmdb_id: int, media_type: str) -> dict | None:
+    """Fetch keyword list for a movie or TV series."""
+    if not _has_tmdb_auth():
+        return None
+    mt = media_type.lower()
+    if mt not in {"movie", "tv"}:
+        return None
+    cache_key = f"keywords:{mt}:{tmdb_id}"
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
+    if cache_data is not None:
+        return cache_data
+    try:
+        resp = await _tmdb_get(f"/{mt}/{tmdb_id}/keywords")
+        data = resp.json()
+        kw_list = data.get("keywords") or data.get("results") or []
+        result = {
+            "keywords": [
+                {"id": k.get("id"), "name": k.get("name")}
+                for k in kw_list if k.get("name")
+            ]
+        }
+        await set_scraper_cache("tmdb", cache_key, result)
+        return result
+    except HTTPStatusError as e:
+        if e.response.status_code != 404:
+            logger.warning(f"TMDB keywords error for {mt}/{tmdb_id}: status={e.response.status_code}")
+        return None
+    except Exception as e:
+        logger.warning(f"TMDB keywords error for {mt}/{tmdb_id}: {e}")
+        return None
+
+
+async def fetch_release_dates(tmdb_id: int) -> dict | None:
+    """Fetch release dates and certifications by country for a movie."""
+    if not _has_tmdb_auth():
+        return None
+    cache_key = f"release_dates:{tmdb_id}"
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
+    if cache_data is not None:
+        return cache_data
+    try:
+        resp = await _tmdb_get(f"/movie/{tmdb_id}/release_dates")
+        data = resp.json()
+        result = {
+            "results": [
+                {
+                    "iso_3166_1": r.get("iso_3166_1"),
+                    "release_dates": [
+                        {
+                            "certification": d.get("certification"),
+                            "release_date": d.get("release_date"),
+                            "type": d.get("type"),
+                            "note": d.get("note"),
+                        }
+                        for d in r.get("release_dates", [])
+                    ]
+                }
+                for r in data.get("results", [])
+            ]
+        }
+        await set_scraper_cache("tmdb", cache_key, result)
+        return result
+    except HTTPStatusError as e:
+        if e.response.status_code != 404:
+            logger.warning(f"TMDB release dates error for movie/{tmdb_id}: status={e.response.status_code}")
+        return None
+    except Exception as e:
+        logger.warning(f"TMDB release dates error for movie/{tmdb_id}: {e}")
+        return None
+
+
+async def fetch_season_images(series_id: int, season_num: int, lang: str = "zh,null") -> dict | None:
+    """Fetch poster images for a TV season."""
+    if not _has_tmdb_auth():
+        return None
+    cache_key = f"season_images:{series_id}:{season_num}"
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
+    if cache_data is not None:
+        return cache_data
+    try:
+        resp = await _tmdb_get(f"/tv/{series_id}/season/{season_num}/images", {"include_image_language": lang})
+        data = resp.json()
+        result = {
+            "posters": [
+                {"url": f"{IMAGE_BASE}/w500{p['file_path']}", "width": p.get("width"),
+                 "height": p.get("height"), "language": p.get("iso_639_1"),
+                 "vote_count": p.get("vote_count"), "vote_average": p.get("vote_average")}
+                for p in data.get("posters", []) if p.get("file_path")
+            ]
+        }
+        await set_scraper_cache("tmdb", cache_key, result)
+        return result
+    except HTTPStatusError as e:
+        if e.response.status_code != 404:
+            logger.warning(f"TMDB season images error for tv/{series_id}/season/{season_num}: status={e.response.status_code}")
+        return None
+    except Exception as e:
+        logger.warning(f"TMDB season images error for tv/{series_id}/season/{season_num}: {e}")
+        return None
+
+
+async def fetch_episode_images(series_id: int, season_num: int, ep_num: int, lang: str = "zh,null") -> dict | None:
+    """Fetch still images for a TV episode."""
+    if not _has_tmdb_auth():
+        return None
+    cache_key = f"episode_images:{series_id}:{season_num}:{ep_num}"
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
+    if cache_data is not None:
+        return cache_data
+    try:
+        resp = await _tmdb_get(f"/tv/{series_id}/season/{season_num}/episode/{ep_num}/images", {"include_image_language": lang})
+        data = resp.json()
+        result = {
+            "stills": [
+                {"url": f"{IMAGE_BASE}/w300{s['file_path']}", "width": s.get("width"),
+                 "height": s.get("height"), "vote_count": s.get("vote_count"),
+                 "vote_average": s.get("vote_average")}
+                for s in data.get("stills", []) if s.get("file_path")
+            ]
+        }
+        await set_scraper_cache("tmdb", cache_key, result)
+        return result
+    except HTTPStatusError as e:
+        if e.response.status_code != 404:
+            logger.warning(f"TMDB episode images error for tv/{series_id}/S{season_num}E{ep_num}: status={e.response.status_code}")
+        return None
+    except Exception as e:
+        logger.warning(f"TMDB episode images error for tv/{series_id}/S{season_num}E{ep_num}: {e}")
+        return None

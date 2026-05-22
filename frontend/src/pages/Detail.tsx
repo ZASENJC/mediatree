@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api, Movie } from '../api'
 import VideoPlayer from '../components/VideoPlayer'
-import MovieInfoPanel from '../components/MovieInfoPanel'
 import Lightbox from '../components/Lightbox'
 
 type ThumbnailImage = { src: string; fallback?: string; alt: string }
@@ -14,6 +13,14 @@ export default function Detail() {
   const [loading, setLoading] = useState(true)
   const [lightboxIdx, setLightboxIdx] = useState(-1)
   const [infoExpanded, setInfoExpanded] = useState(false)
+
+  // TMDB extended data
+  const [posters, setPosters] = useState<any[]>([])
+  const [videos, setVideos] = useState<any[]>([])
+  const [reviews, setReviews] = useState<any[]>([])
+  const [showAllReviews, setShowAllReviews] = useState(false)
+  const [trailerKey, setTrailerKey] = useState<string | null>(null)
+  const [tmdbDataLoaded, setTmdbDataLoaded] = useState(false)
   const thumbnailImages: ThumbnailImage[] = movie ? [
     ...(movie.episode_still ? [{ src: api.cachedCoverUrl(`ep_${movie.id}`), fallback: movie.episode_still, alt: '单集封面' }] : []),
     ...((movie.javdb_thumbnails || []).map((_, i) => ({ src: api.thumbnailUrl(movie.id, i), alt: `缩略图 ${i + 1}` }))),
@@ -26,6 +33,29 @@ export default function Detail() {
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [id])
+
+  // Load TMDB extended data when movie has tmdb_id
+  useEffect(() => {
+    if (!movie?.tmdb_id || !movie?.tmdb_type || tmdbDataLoaded) return
+    setTmdbDataLoaded(true)
+    const mt = movie.tmdb_type
+    const mid = movie.tmdb_id
+    Promise.allSettled([
+      api.tmdbImages(mid, mt),
+      api.tmdbVideos(mid, mt),
+      api.tmdbReviews(mid, mt),
+    ]).then(([imgRes, vidRes, revRes]) => {
+      if (imgRes.status === 'fulfilled' && imgRes.value) {
+        setPosters(imgRes.value.posters?.slice(0, 20) || [])
+      }
+      if (vidRes.status === 'fulfilled' && vidRes.value) {
+        setVideos(vidRes.value.results || [])
+      }
+      if (revRes.status === 'fulfilled' && revRes.value) {
+        setReviews(revRes.value.results || [])
+      }
+    }).catch(() => {})
+  }, [movie?.tmdb_id, movie?.tmdb_type, tmdbDataLoaded])
 
   if (loading) {
     return (
@@ -220,7 +250,119 @@ export default function Detail() {
               </div>
             )}
 
-            <MovieInfoPanel movie={movie} compact={false} />
+            {/* Poster Gallery */}
+            {posters.length > 0 && (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <h3 className="mb-3 text-sm font-semibold text-gray-200">海报画廊 <span className="ml-1 text-xs font-normal text-gray-500">{posters.length}</span></h3>
+                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+                  {posters.map((p, i) => (
+                    <div key={i} className="apple-focus group shrink-0 cursor-pointer" onClick={async () => {
+                      try { await api.changeCover(movie.id, p.url); setMovie(prev => prev ? { ...prev, cover_remote: p.url, cover_local: undefined } : null) } catch {}
+                    }}>
+                      <img
+                        src={p.url}
+                        alt={`poster-${i}`}
+                        className="h-56 w-auto rounded-xl border border-white/10 object-cover transition-all group-hover:border-apple-blue/40"
+                        loading="lazy"
+                      />
+                      {p.language && p.language !== 'null' && (
+                        <p className="mt-1 text-center text-[10px] text-gray-500">{p.language.toUpperCase()}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Trailers */}
+            {videos.filter((v: any) => v.type === 'Trailer').length > 0 && (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <h3 className="mb-3 text-sm font-semibold text-gray-200">预告片</h3>
+                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+                  {videos.filter((v: any) => v.type === 'Trailer' || v.type === 'Teaser').map((v: any, i: number) => (
+                    <div
+                      key={i}
+                      className="apple-focus shrink-0 cursor-pointer overflow-hidden rounded-xl border border-white/10 bg-black/15"
+                      onClick={() => setTrailerKey(v.key)}
+                    >
+                      <div className="relative">
+                        <img
+                          src={`https://img.youtube.com/vi/${v.key}/mqdefault.jpg`}
+                          alt={v.name}
+                          className="h-28 w-48 object-cover"
+                          loading="lazy"
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="rounded-full bg-black/60 p-2 backdrop-blur-sm">
+                            <svg className="h-6 w-6 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-2">
+                        <p className="text-xs text-gray-300 line-clamp-2">{v.name}</p>
+                        <p className="mt-0.5 text-[10px] text-gray-500">{v.type}{v.official ? ' · 官方' : ''}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Trailer Modal */}
+            {trailerKey && (
+              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-md" onClick={() => setTrailerKey(null)}>
+                <div className="w-full max-w-4xl p-4" onClick={(e) => e.stopPropagation()}>
+                  <div className="relative overflow-hidden rounded-2xl bg-black" style={{ paddingBottom: '56.25%' }}>
+                    <iframe
+                      src={`https://www.youtube.com/embed/${trailerKey}?autoplay=1`}
+                      className="absolute inset-0 h-full w-full"
+                      allow="autoplay; encrypted-media"
+                      allowFullScreen
+                    />
+                  </div>
+                  <button onClick={() => setTrailerKey(null)} className="glass-button mt-3 px-4 py-2 text-sm">关闭</button>
+                </div>
+              </div>
+            )}
+
+            {/* Reviews */}
+            {reviews.length > 0 && (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <h3 className="mb-3 text-sm font-semibold text-gray-200">用户评论 <span className="ml-1 text-xs font-normal text-gray-500">{reviews.length}</span></h3>
+                <div className="space-y-3">
+                  {(showAllReviews ? reviews : reviews.slice(0, 3)).map((r: any, i: number) => (
+                    <div key={i} className="rounded-2xl border border-white/10 bg-black/15 p-3">
+                      <div className="mb-2 flex items-center gap-2">
+                        {r.author_details?.avatar_path ? (
+                          <img
+                            src={r.author_details.avatar_path.startsWith('/') ? `https://image.tmdb.org/t/p/w45${r.author_details.avatar_path}` : r.author_details.avatar_path}
+                            className="h-6 w-6 rounded-full object-cover"
+                            alt=""
+                          />
+                        ) : (
+                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-apple-blue/20 text-[10px] text-apple-blue">
+                            {(r.author || '?')[0]}
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-xs font-medium text-gray-200">{r.author || '匿名'}</p>
+                          <p className="text-[10px] text-gray-500">{r.author_details?.rating ? `评分 ${r.author_details.rating} / 10` : ''}{r.created_at ? ` · ${r.created_at.slice(0, 10)}` : ''}</p>
+                        </div>
+                      </div>
+                      <p className="text-xs leading-relaxed text-gray-400 line-clamp-5">{r.content?.slice(0, 500)}</p>
+                    </div>
+                  ))}
+                </div>
+                {reviews.length > 3 && (
+                  <button
+                    onClick={() => setShowAllReviews(v => !v)}
+                    className="mt-3 rounded-full border border-white/10 bg-white/[0.08] px-3 py-1 text-xs text-gray-400 transition-all hover:text-apple-blue"
+                  >
+                    {showAllReviews ? '收起' : `查看全部 ${reviews.length} 条`}
+                  </button>
+                )}
+              </div>
+            )}
 
             {(cast.length > 0 || crew.length > 0) && (
               <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">

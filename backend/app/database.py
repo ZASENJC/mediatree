@@ -63,6 +63,11 @@ async def init_db():
         "ALTER TABLE movies ADD COLUMN scraper_raw TEXT",
         "ALTER TABLE movies ADD COLUMN pending_review INTEGER DEFAULT 0",
         "ALTER TABLE movies ADD COLUMN review_candidates TEXT",
+        "ALTER TABLE movies ADD COLUMN genre TEXT",
+        "ALTER TABLE movies ADD COLUMN keywords TEXT",
+        "ALTER TABLE movies ADD COLUMN studios TEXT",
+        "ALTER TABLE movies ADD COLUMN tagline TEXT",
+        "ALTER TABLE movies ADD COLUMN status TEXT",
     ]
     for mig in migrations:
         try:
@@ -120,6 +125,11 @@ async def init_db():
             scraper_raw TEXT,
             pending_review INTEGER DEFAULT 0,
             review_candidates TEXT,
+            genre TEXT,
+            keywords TEXT,
+            studios TEXT,
+            tagline TEXT,
+            status TEXT,
             media_root TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now'))

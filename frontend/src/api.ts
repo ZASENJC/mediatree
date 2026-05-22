@@ -409,6 +409,38 @@ export const api = {
     })
   },
 
+  // ─── TMDB Extended API ───
+
+  tmdbImages: (tmdbId: number, mediaType: string) =>
+    request<{ posters: { url: string; width: number; height: number; language: string; vote_count: number; vote_average: number }[]; backdrops: { url: string; width: number; height: number; language: string }[]; logos: { url: string; width: number; height: number; language: string }[] }>(`/tmdb-images/${tmdbId}?media_type=${encodeURIComponent(mediaType)}`, undefined, `tmdb_images_${tmdbId}_${mediaType}`),
+
+  tmdbVideos: (tmdbId: number, mediaType: string) =>
+    request<{ results: { key: string; name: string; site: string; type: string; size: number; official: boolean; published_at: string }[] }>(`/tmdb-videos/${tmdbId}?media_type=${encodeURIComponent(mediaType)}`, undefined, `tmdb_videos_${tmdbId}_${mediaType}`),
+
+  personDetail: (personId: number) =>
+    request<{ id: number; name: string; biography: string; birthday: string; deathday: string; place_of_birth: string; homepage: string; profile_path: string; known_for_department: string; imdb_id: string; facebook_id: string; instagram_id: string; twitter_id: string }>(`/person/${personId}`, undefined, `person_${personId}`),
+
+  personCredits: (personId: number) =>
+    request<{ cast: { id: number; title: string; media_type: string; character: string; job: string; release_date: string; poster_url: string; vote_average: number; overview: string }[]; crew: { id: number; title: string; media_type: string; character: string; job: string; release_date: string; poster_url: string; vote_average: number; overview: string }[] }>(`/person/${personId}/credits`, undefined, `person_credits_${personId}`),
+
+  personImages: (personId: number) =>
+    request<{ profiles: { url: string; width: number; height: number; vote_count: number }[] }>(`/person-images/${personId}`, undefined, `person_images_${personId}`),
+
+  tmdbReviews: (tmdbId: number, mediaType: string, page: number = 1) =>
+    request<{ results: { id: string; author: string; author_details: any; content: string; created_at: string; url: string }[]; page: number; total_pages: number; total_results: number }>(`/tmdb-reviews/${tmdbId}?media_type=${encodeURIComponent(mediaType)}&page=${page}`, undefined, `tmdb_reviews_${tmdbId}_${mediaType}_${page}`),
+
+  tmdbKeywords: (tmdbId: number, mediaType: string) =>
+    request<{ keywords: { id: number; name: string }[] }>(`/tmdb-keywords/${tmdbId}?media_type=${encodeURIComponent(mediaType)}`, undefined, `tmdb_keywords_${tmdbId}_${mediaType}`),
+
+  releaseDates: (tmdbId: number) =>
+    request<{ results: { iso_3166_1: string; release_dates: { certification: string; release_date: string; type: number; note: string }[] }[] }>(`/release-dates/${tmdbId}`, undefined, `release_dates_${tmdbId}`),
+
+  seasonImages: (seriesId: number, seasonNum: number) =>
+    request<{ posters: { url: string; width: number; height: number; language: string; vote_count: number; vote_average: number }[] }>(`/season-images/${seriesId}/${seasonNum}`, undefined, `season_images_${seriesId}_${seasonNum}`),
+
+  episodeImages: (seriesId: number, seasonNum: number, epNum: number) =>
+    request<{ stills: { url: string; width: number; height: number; vote_count: number; vote_average: number }[] }>(`/episode-images/${seriesId}/${seasonNum}/${epNum}`, undefined, `episode_images_${seriesId}_${seasonNum}_${epNum}`),
+
   editMovie: (movieId: number, data: Partial<Pick<Movie, 'title' | 'code' | 'actress' | 'release_date' | 'duration'>>) =>
     request<{ ok: boolean }>(`/movies/${movieId}`, {
       method: 'PUT',
@@ -522,6 +554,10 @@ export interface Movie {
   cover_remote?: string
   fanart_local?: string
   javdb_url?: string
+  keywords?: string
+  studios?: string
+  tagline?: string
+  status?: string
   scraper_source?: string
   source_id?: string
   javdb_id?: string

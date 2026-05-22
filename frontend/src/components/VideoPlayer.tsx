@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { CSSProperties } from 'react'
 import Artplayer, { Option, Setting, SettingOption } from 'artplayer'
 import { api, SubtitleTrack } from '../api'
+import { getUiPrefs, setUiPrefs } from '../store'
 import artplayerPluginAss from './artplayerPluginAss'
 import VRVideoLayer, { VRMode } from './VRVideoLayer'
 
@@ -392,8 +394,123 @@ function bindGestureLayer(element: HTMLElement, isMobile: () => boolean, onGestu
   }
 }
 
+type AmbientColor = { r: number; g: number; b: number } | null
+
+const AMBIENT_SAMPLE_INTERVAL = 200
+const AMBIENT_COLOR_THRESHOLD = 12
+
+function useAmbientColor(
+  artRef: { current: Artplayer | null },
+  enabled: boolean,
+): AmbientColor {
+  const [color, setColor] = useState<AmbientColor>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const lastSampleAtRef = useRef(0)
+  const lastColorRef = useRef({ r: 10, g: 10, b: 12 })
+  const visibleRef = useRef(true)
+
+  useEffect(() => {
+    if (!enabled) {
+      setColor(null)
+      return
+    }
+
+    const handleVisibility = () => { visibleRef.current = !document.hidden }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [enabled])
+
+  useEffect(() => {
+    if (!enabled) return
+
+    const sample = () => {
+      if (!visibleRef.current) return
+      const art = artRef.current
+      const video = art?.video as HTMLVideoElement | undefined
+      if (!video || video.paused || video.readyState < 2) return
+      if (video.videoWidth === 0 || video.videoHeight === 0) return
+
+      const now = Date.now()
+      if (now - lastSampleAtRef.current < AMBIENT_SAMPLE_INTERVAL) return
+      lastSampleAtRef.current = now
+
+      try {
+        if (!canvasRef.current) {
+          canvasRef.current = document.createElement('canvas')
+          canvasRef.current.width = 1
+          canvasRef.current.height = 1
+        }
+        const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true })
+        if (!ctx) return
+        ctx.drawImage(video, 0, 0, 1, 1)
+        const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
+        const prev = lastColorRef.current
+        if (
+          Math.abs(r - prev.r) > AMBIENT_COLOR_THRESHOLD ||
+          Math.abs(g - prev.g) > AMBIENT_COLOR_THRESHOLD ||
+          Math.abs(b - prev.b) > AMBIENT_COLOR_THRESHOLD
+        ) {
+          const next = { r, g, b }
+          lastColorRef.current = next
+          setColor(next)
+        }
+      } catch {
+        // cross-origin canvas pollution — silently skip
+      }
+    }
+
+    let raf = 0
+    const loop = () => { sample(); raf = requestAnimationFrame(loop) }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [enabled])
+
+  return color
+}
+
+function usePlayerRect(
+  wrapperRef: React.RefObject<HTMLDivElement | null>,
+  enabled: boolean,
+): DOMRect | null {
+  const [rect, setRect] = useState<DOMRect | null>(null)
+
+  useEffect(() => {
+    if (!enabled) {
+      setRect(null)
+      return
+    }
+    const el = wrapperRef.current
+    if (!el) return
+
+    let raf = 0
+    const update = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        setRect(el.getBoundingClientRect())
+      })
+    }
+
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    window.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update, { passive: true })
+
+    return () => {
+      cancelAnimationFrame(raf)
+      ro.disconnect()
+      window.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+    // wrapperRef is stable (from useRef)
+  }, [enabled])
+
+  return rect
+}
+
 export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) {
   const artContainerRef = useRef<HTMLDivElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const artRef = useRef<Artplayer | null>(null)
   const gestureCleanupRef = useRef<GestureCleanup | null>(null)
   const watchedRef = useRef(false)
@@ -445,6 +562,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   const [artInstance, setArtInstance] = useState<Artplayer | null>(null)
   const [vrMode, setVrMode] = useState<VRMode>('off')
   const [videoAspect, setVideoAspect] = useState(16 / 9)
+  const [ambientEnabled, setAmbientEnabled] = useState(() => getUiPrefs().ambientMode !== false)
   const streamUrl = useMemo(() => new URL(api.streamUrl(movieId), localPlayerOrigin()).toString(), [movieId])
   const streamSrc = useMemo(() => {
     if (!useTranscode) return src
@@ -458,6 +576,32 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   const externalPlaylistUrl = new URL(api.externalPlaylistUrl(movieId), localPlayerOrigin()).toString()
   const localPlaybackUrl = hasExternalSubtitles ? externalPlaylistUrl : streamUrl
   const playerStyle = { '--mediatree-video-aspect': videoAspect } as CSSProperties
+
+  const ambientColor = useAmbientColor(artRef, ambientEnabled && !useTranscode)
+  const playerRect = usePlayerRect(wrapperRef, ambientEnabled)
+
+  const toggleAmbient = useCallback(() => {
+    setAmbientEnabled(prev => {
+      const next = !prev
+      const prefs = getUiPrefs()
+      setUiPrefs({ ...prefs, ambientMode: next })
+      return next
+    })
+  }, [])
+
+  useEffect(() => {
+    const el = document.getElementById('ambient-root')
+    if (!el) return
+    if (ambientColor && ambientEnabled) {
+      el.style.setProperty('--ambient-r', String(ambientColor.r))
+      el.style.setProperty('--ambient-g', String(ambientColor.g))
+      el.style.setProperty('--ambient-b', String(ambientColor.b))
+    } else {
+      el.style.removeProperty('--ambient-r')
+      el.style.removeProperty('--ambient-g')
+      el.style.removeProperty('--ambient-b')
+    }
+  }, [ambientColor, ambientEnabled])
 
   const clearNativeSubtitle = useCallback((art: Artplayer) => {
     try { art.subtitle.show = false } catch {}
@@ -1400,9 +1544,22 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   }
 
   return (
-    <div className="mx-auto w-full max-w-[calc((100vh-11rem)*var(--mediatree-video-aspect))] transition-all duration-300" style={playerStyle}>
-      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black shadow-glass">
-        <div ref={artContainerRef} className="mediatree-artplayer w-full bg-black" />
+    <>
+      {ambientEnabled && playerRect && createPortal(
+        <div
+          className="ambient-glow"
+          style={{
+            left: playerRect.left + playerRect.width / 2,
+            top: playerRect.top + playerRect.height / 2,
+            width: playerRect.width * 3,
+            height: playerRect.height * 3,
+          }}
+        />,
+        document.getElementById('ambient-root')!,
+      )}
+      <div ref={wrapperRef} className="relative mx-auto w-full max-w-[calc((100vh-11rem)*var(--mediatree-video-aspect))] transition-all duration-300" style={playerStyle}>
+        <div className="relative z-[1] overflow-hidden rounded-3xl border border-white/10 bg-black shadow-glass">
+        <div ref={artContainerRef} className="mediatree-artplayer w-full" />
         <VRVideoLayer art={artInstance} mode={vrMode} />
 
         {seekOsd && (
@@ -1475,12 +1632,16 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
             字幕播放列表
           </a>
         )}
+        <button onClick={toggleAmbient} className={`shrink-0 rounded-full border px-2.5 py-1 text-xs backdrop-blur-xl transition-all ${ambientEnabled ? 'border-apple-blue/30 bg-apple-blue/15 text-apple-blue' : 'border-white/10 bg-white/[0.08] text-gray-300 hover:bg-white/[0.14] hover:text-white'}`} title="剧院光效">
+          光效
+        </button>
         {useTranscode && (
           <span className="shrink-0 rounded-full border border-amber-400/20 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-200 backdrop-blur-xl">
             {transcodeMode === 'full' ? '完整转码' : '音频转码'} · {fmt(currentTimeRef.current || transcodeStart)}
           </span>
         )}
       </div>
-    </div>
+      </div>
+    </>
   )
 }
