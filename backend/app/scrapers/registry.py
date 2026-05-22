@@ -122,19 +122,19 @@ class AutoScraper(BaseScraper):
             logger.info(f"  Auto scraper failed: no clean title for '{search_name}'")
             return None
 
-        # Step 2: Bangumi
+        # Step 2: TMDB title search (both movie and tv)
+        logger.info(f"  Auto scraper: sequential fallback to TMDB title search for '{clean_title}'")
+        data = await tmdb_title_search(clean_title, search_name, code)
+        if data and data.get("title"):
+            logger.info(f"  Auto scraper: TMDB title search success for '{clean_title}'")
+            return data
+
+        # Step 3: Bangumi
         logger.info(f"  Auto scraper: sequential fallback to Bangumi for '{clean_title}'")
         bangumi = get_scraper("bangumi")
         data = await bangumi.full_scrape(clean_title, code=code)
         if data and data.get("title"):
-            logger.info(f"  Auto scraper: sequential fallback Bangumi success for '{clean_title}'")
-            return data
-
-        # Step 3: TMDB title search (both movie and tv)
-        logger.info(f"  Auto scraper: sequential fallback to TMDB title search for '{clean_title}'")
-        data = await tmdb_title_search(clean_title, search_name, code)
-        if data and data.get("title"):
-            logger.info(f"  Auto scraper: sequential fallback TMDB title search success for '{clean_title}'")
+            logger.info(f"  Auto scraper: Bangumi fallback success for '{clean_title}'")
             return data
 
         logger.info(f"  Auto scraper: all sequential fallbacks failed for '{clean_title}'")
