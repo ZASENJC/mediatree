@@ -8,7 +8,7 @@ import { getCached, setCache, clearCache } from '../cache'
 import SortDropdown from '../components/SortDropdown'
 import { MovieCard } from '../components/MovieCard'
 import ContextMenu, { ContextMenuItem } from '../components/ContextMenu'
-import EditModal from '../components/EditModal'
+import EditModal, { type EditFields } from '../components/EditModal'
 import { WatchedBadge } from '../components/WatchedBadge'
 import ManualScrapeModal from '../components/ManualScrapeModal'
 import CoverPickerModal from '../components/CoverPickerModal'
@@ -24,16 +24,9 @@ function getCoverSrc(cover: string | null | undefined): string | null {
   return `/api/media/${encodeMediaPath(cover)}`
 }
 
-type SortMode = 'name' | 'created_desc' | 'created_asc' | 'release_date_desc' | 'release_date_asc' | 'random'
+import { LIBRARY_SORT_OPTIONS } from '../constants/sortOptions'
 
-const sortOptions = [
-  { key: 'created_desc', label: '最近添加' },
-  { key: 'created_asc', label: '最早添加' },
-  { key: 'name', label: '名称' },
-  { key: 'release_date_desc', label: '发行日期新到旧' },
-  { key: 'release_date_asc', label: '发行日期旧到新' },
-  { key: 'random', label: '随机' },
-]
+type SortMode = 'name' | 'created_desc' | 'created_asc' | 'release_date_desc' | 'release_date_asc' | 'random'
 
 export default function Home() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -202,7 +195,7 @@ export default function Home() {
     }
   }, [activeFolderPath, activeMediaRoot])
 
-  const handleFolderEditSave = useCallback(async (fields: Record<string, any>) => {
+  const handleFolderEditSave = useCallback(async (fields: EditFields) => {
     clearCache()
     try {
       await api.editFolder(activeFolderPath, activeMediaRoot, fields)
@@ -262,7 +255,7 @@ export default function Home() {
               最近观看
             </button>
           </div>
-          <SortDropdown options={sortOptions} current={sort} onChange={handleSort} />
+          <SortDropdown options={LIBRARY_SORT_OPTIONS} current={sort} onChange={handleSort} />
         </div>
       </div>
 

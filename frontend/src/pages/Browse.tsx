@@ -7,14 +7,7 @@ import { saveScrollPos } from '../scroll'
 import { WatchedBadge } from '../components/WatchedBadge'
 import SortDropdown from '../components/SortDropdown'
 
-const sortOptions = [
-  { key: 'created_desc', label: '最近添加' },
-  { key: 'created_asc', label: '最早添加' },
-  { key: 'name', label: '文件夹名称' },
-  { key: 'release_date_desc', label: '发行日期新到旧' },
-  { key: 'release_date_asc', label: '发行日期旧到新' },
-  { key: 'random', label: '随机排列' },
-]
+import { BROWSE_SORT_OPTIONS } from '../constants/sortOptions'
 
 export default function Browse() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -49,7 +42,7 @@ export default function Browse() {
 
   useEffect(() => {
     setLoading(true)
-    const params: any = {
+    const params: Record<string, string | number> = {
       sort,
       limit: pageSize,
       offset: page * pageSize,
@@ -163,7 +156,7 @@ export default function Browse() {
             </div>
           </div>
         </div>
-        <SortDropdown options={sortOptions} current={sort} onChange={handleSortChange} />
+        <SortDropdown options={BROWSE_SORT_OPTIONS} current={sort} onChange={handleSortChange} />
       </div>
 
       {mobileTreeOpen && (
