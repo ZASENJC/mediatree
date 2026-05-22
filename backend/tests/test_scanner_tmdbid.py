@@ -258,7 +258,8 @@ class AutoScraperOrderTest(unittest.IsolatedAsyncioTestCase):
         finally:
             self._restore_auto_steps(*orig)
 
-    async def test_tmdb_id_failure_falls_back_to_bangumi_then_tmdb(self):
+    async def test_tmdb_id_failure_falls_back_to_tmdb_then_bangumi(self):
+        """TMDB ID exact fails → TMDB title search → Bangumi fallback (new order)."""
         calls = []
 
         async def mock_tmdb_id(token, movie, candidate_names):
@@ -267,25 +268,26 @@ class AutoScraperOrderTest(unittest.IsolatedAsyncioTestCase):
 
         async def mock_bangumi(self, search_name, *, code="", candidate_names=None, movie=None):
             calls.append(("bangumi", search_name))
-            return None
+            return {"title": "Bangumi", "source": "bangumi"}
 
         async def mock_tmdb_title(clean_title, folder_name, code, media_type=None):
             calls.append(("tmdb", clean_title))
-            return {"title": "TMDB", "source": "tmdb", "_search_match_passed": True}
+            return None
 
         orig = self._patch_auto_steps(mock_tmdb_id, mock_bangumi, mock_tmdb_title)
         try:
             scraper = get_scraper("auto")
             result = await scraper.full_scrape("Movie [tmdbid=123456]", candidate_names=["Movie [tmdbid=123456]"])
             self.assertIsNotNone(result)
-            self.assertEqual(result["title"], "TMDB")
+            self.assertEqual(result["title"], "Bangumi")
             self.assertEqual(calls[0], ("tmdb_id", 123456))
-            self.assertIn(("bangumi", "Movie"), calls)
-            self.assertIn(("tmdb", "Movie"), calls)
+            self.assertEqual(calls[1], ("tmdb", "Movie"))
+            self.assertEqual(calls[2], ("bangumi", "Movie"))
         finally:
             self._restore_auto_steps(*orig)
 
-    async def test_no_tmdb_id_bangumi_success_skips_tmdb(self):
+    async def test_no_tmdb_id_tmdb_fails_bangumi_success(self):
+        """No TMDB ID → TMDB title search fails → Bangumi succeeds."""
         calls = []
 
         async def mock_tmdb_id(token, movie, candidate_names):
@@ -306,8 +308,8 @@ class AutoScraperOrderTest(unittest.IsolatedAsyncioTestCase):
             result = await scraper.full_scrape("Movie", candidate_names=["Movie"])
             self.assertIsNotNone(result)
             self.assertEqual(result["title"], "Bangumi")
-            self.assertIn(("bangumi", "Movie"), calls)
-            self.assertNotIn(("tmdb", "Movie"), calls)
+            self.assertEqual(calls[0], ("tmdb", "Movie"))
+            self.assertEqual(calls[1], ("bangumi", "Movie"))
         finally:
             self._restore_auto_steps(*orig)
 
@@ -409,8 +411,8 @@ class TypedTmdbScraperTest(unittest.IsolatedAsyncioTestCase):
         finally:
             self._restore_tmdb_steps(*orig)
 
-    async def test_typed_tmdb_id_failure_falls_back_bangumi_then_typed_title(self):
-        """TMDB ID fails → Bangumi fallback → typed TMDB title search."""
+    async def test_typed_tmdb_id_failure_falls_back_tmdb_title_then_bangumi(self):
+        """TMDB ID fails → typed TMDB title search → Bangumi fallback (new order)."""
         async def mock_detail(tmdb_id, media_type, lang="zh-CN"):
             self.calls.append(("id", media_type))
             return None
@@ -433,8 +435,7 @@ class TypedTmdbScraperTest(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(result)
             self.assertEqual(result["title"], "Fallback")
             self.assertEqual(self.calls[0], ("id", "tv"))
-            self.assertIn(("bangumi", "Show"), self.calls)
-            self.assertIn(("title", "tv", "Show"), self.calls)
+            self.assertEqual(self.calls[1], ("title", "tv", "Show"))
         finally:
             self._restore_tmdb_steps(*orig)
 
@@ -446,15 +447,15 @@ class TypedTmdbScraperTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(scanner.build_fallback_chain("javdatabase"), ["javdatabase"])
         self.assertNotIn("javdatabase", scanner.build_fallback_chain("auto"))
 
-    async def test_no_tmdb_id_movie_uses_clean_title_bangumi_then_movie_search(self):
-        """Without tmdbid, TMDB movie: clean title → Bangumi → movie title search."""
+    async def test_no_tmdb_id_movie_title_search_fails_falls_back_bangumi(self):
+        """Without tmdbid, TMDB movie: title search fails → Bangumi fallback."""
         async def mock_bangumi(_inst, search_name, *, code="", candidate_names=None, movie=None):
             self.calls.append(("bangumi", search_name))
-            return None
+            return {"title": "Fallback", "source": "bangumi", "_search_match_passed": True}
 
         async def mock_title(clean_title, folder_name, code, media_type=None):
             self.calls.append(("title", media_type, clean_title))
-            return {"title": "Fallback", "tmdb_type": media_type, "source": "tmdb", "_search_match_passed": True}
+            return None
 
         import app.scrapers.tmdb_scraper as tms
         from app.scrapers.bangumi_scraper import BangumiScraper
@@ -472,21 +473,21 @@ class TypedTmdbScraperTest(unittest.IsolatedAsyncioTestCase):
             )
             self.assertIsNotNone(result)
             self.assertEqual(result["title"], "Fallback")
-            self.assertIn(("bangumi", "Movie Name 2024"), self.calls)
-            self.assertIn(("title", "movie", "Movie Name 2024"), self.calls)
+            self.assertEqual(self.calls[0], ("title", "movie", "Movie Name 2024"))
+            self.assertEqual(self.calls[1], ("bangumi", "Movie Name 2024"))
         finally:
             BangumiScraper.full_scrape = orig_bangumi
             tms.tmdb_title_search = orig_title
 
-    async def test_no_tmdb_id_tv_uses_clean_title_bangumi_then_tv_search(self):
-        """Without tmdbid, TMDB tv: clean title → Bangumi → tv title search."""
+    async def test_no_tmdb_id_tv_title_search_fails_falls_back_bangumi(self):
+        """Without tmdbid, TMDB tv: title search fails → Bangumi fallback."""
         async def mock_bangumi(_inst, search_name, *, code="", candidate_names=None, movie=None):
             self.calls.append(("bangumi", search_name))
-            return None
+            return {"title": "Fallback", "source": "bangumi", "_search_match_passed": True}
 
         async def mock_title(clean_title, folder_name, code, media_type=None):
             self.calls.append(("title", media_type, clean_title))
-            return {"title": "Fallback", "tmdb_type": media_type, "source": "tmdb", "_search_match_passed": True}
+            return None
 
         import app.scrapers.tmdb_scraper as tms
         from app.scrapers.bangumi_scraper import BangumiScraper
@@ -504,8 +505,8 @@ class TypedTmdbScraperTest(unittest.IsolatedAsyncioTestCase):
             )
             self.assertIsNotNone(result)
             self.assertEqual(result["title"], "Fallback")
-            self.assertIn(("bangumi", "Show"), self.calls)
-            self.assertIn(("title", "tv", "Show"), self.calls)
+            self.assertEqual(self.calls[0], ("title", "tv", "Show"))
+            self.assertEqual(self.calls[1], ("bangumi", "Show"))
         finally:
             BangumiScraper.full_scrape = orig_bangumi
             tms.tmdb_title_search = orig_title

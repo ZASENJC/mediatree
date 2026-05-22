@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Literal
 
 from .base import BaseScraper, ScrapeCandidate, ScrapeResult, compact_staff, parse_year
@@ -135,23 +136,25 @@ class TMDBScraper(BaseScraper):
             logger.info(f"  {scraper_name}: no clean title after TMDB ID fallback, cannot run search APIs")
             return None
 
-        # Step 2: Bangumi fallback
+        # Step 2: TMDB title search
+        logger.info(
+            f"  {scraper_name}: sequential fallback to TMDB {media_type} title search for '{clean_title}'"
+        )
+        data = await tmdb_title_search(clean_title, search_name, code, media_type)
+        if data and data.get("title"):
+            logger.info(f"  {scraper_name}: TMDB title search success for '{clean_title}'")
+            return data
+
+        # Step 3: Bangumi fallback
         logger.info(f"  {scraper_name}: sequential fallback to Bangumi for '{clean_title}'")
         try:
             bangumi_scraper = get_scraper("bangumi")
             data = await bangumi_scraper.full_scrape(clean_title, code=code)
             if data and data.get("title"):
-                logger.info(f"  {scraper_name}: sequential fallback Bangumi success for '{clean_title}'")
+                logger.info(f"  {scraper_name}: Bangumi fallback success for '{clean_title}'")
                 return data
         except Exception as e:
             logger.warning(f"  {scraper_name}: Bangumi fallback error: {e}")
-
-        # Step 3: TMDB title search
-        logger.info(f"  {scraper_name}: sequential fallback to TMDB {media_type} title search for '{clean_title}'")
-        data = await tmdb_title_search(clean_title, search_name, code, media_type)
-        if data and data.get("title"):
-            logger.info(f"  {scraper_name}: sequential fallback TMDB title search success for '{clean_title}'")
-            return data
 
         logger.info(f"  {scraper_name}: all sequential fallbacks failed for '{clean_title}'")
         return None
@@ -226,60 +229,80 @@ async def tmdb_title_search(
     primary_query = queries[0] if queries else clean_title
     seen_original_titles: set[str] = set()
 
+    async def _try_tmdb_scraper_type(sname: str, query: str) -> tuple[
+        ScrapeCandidate | None, list[str], set[str]
+    ]:
+        endpoint_type = "tv" if sname == "tmdb_tv" else "movie"
+        api_type = "tmdb_search_tv" if endpoint_type == "tv" else "tmdb_search_movie"
+        logger.info(
+            f"  fallback step={api_type} raw_title='{folder_name}' clean_title='{clean_title}' "
+            f"query='{query}' cache_key='tmdb_search:{endpoint_type}:{query}'"
+        )
+        try:
+            tmdb_scraper = get_scraper(sname)
+            results = await tmdb_scraper.search(query, media_type=media_type, limit=5)
+        except Exception as e:
+            logger.warning(f"  {api_type}: search error for '{query}': {e}")
+            return None, [f"{sname}:{query}: error"], set()
+        logger.info(f"  {api_type}: candidates={len(results)} query='{query}'")
+        if not results:
+            return None, [f"{sname}:{query}: no results"], set()
+        seen: set[str] = set()
+        rejected = []
+        for candidate in results[:3]:
+            if candidate.original_title:
+                seen.add(candidate.original_title)
+            matched = candidate_title_matches(candidate, clean_title, query, code)
+            if (
+                not matched
+                and query == primary_query
+                and len(results) <= 2
+                and _is_specific_search_query(query)
+            ):
+                matched = True
+                logger.info(
+                    f"  {api_type}: title_matches relaxed accept (candidates={len(results)}) "
+                    f"query='{query}' source_id='{candidate.source_id}'"
+                )
+            logger.info(
+                f"  {api_type}: title_matches={matched} source_id='{candidate.source_id}' "
+                f"title='{candidate.title}' original_title='{candidate.original_title or ''}'"
+            )
+            if matched:
+                return candidate, [], seen
+            rejected.append(candidate.title)
+        logger.info(
+            f"  {sname}: title_matches rejected query='{query}' "
+            f"candidates={rejected[:3]}"
+        )
+        return None, [f"{sname}:{query}: title mismatch"], seen
+
     for query in queries:
         if not query:
             continue
-        for sname in scraper_names:
-            endpoint_type = "tv" if sname == "tmdb_tv" else "movie"
-            api_type = "tmdb_search_tv" if endpoint_type == "tv" else "tmdb_search_movie"
-            logger.info(
-                f"  fallback step={api_type} raw_title='{folder_name}' clean_title='{clean_title}' "
-                f"query='{query}' cache_key='tmdb_search:{endpoint_type}:{query}'"
-            )
-            try:
-                tmdb_scraper = get_scraper(sname)
-                results = await tmdb_scraper.search(query, media_type=media_type, limit=5)
-            except Exception as e:
-                logger.warning(f"  {api_type}: search error for '{query}': {e}")
-                failures.append(f"{sname}:{query}: error")
-                continue
-            logger.info(f"  {api_type}: candidates={len(results)} query='{query}'")
-            if not results:
-                failures.append(f"{sname}:{query}: no results")
-                continue
-            rejected = []
-            for candidate in results[:3]:
-                # Collect original titles for alias fallback
-                if candidate.original_title:
-                    seen_original_titles.add(candidate.original_title)
-                matched = candidate_title_matches(candidate, clean_title, query, code)
-                if (
-                    not matched
-                    and query == primary_query
-                    and len(results) <= 2
-                    and _is_specific_search_query(query)
-                ):
-                    matched = True
-                    logger.info(
-                        f"  {api_type}: title_matches relaxed accept (candidates={len(results)}) "
-                        f"query='{query}' source_id='{candidate.source_id}'"
-                    )
-                logger.info(
-                    f"  {api_type}: title_matches={matched} source_id='{candidate.source_id}' "
-                    f"title='{candidate.title}' original_title='{candidate.original_title or ''}'"
-                )
-                if matched:
+        if len(scraper_names) == 2:
+            # Parallel: fire both movie and tv searches simultaneously
+            tasks = [
+                _try_tmdb_scraper_type(s, query) for s in scraper_names
+            ]
+            gathered = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in gathered:
+                if isinstance(result, Exception):
+                    continue
+                candidate, scoped_failures, seen = result
+                failures.extend(scoped_failures)
+                seen_original_titles.update(seen)
+                if candidate and best is None:
+                    best = candidate  # Take first match (respects scraper_names priority order)
+        else:
+            # Single type: serial path
+            for sname in scraper_names:
+                candidate, scoped_failures, seen = await _try_tmdb_scraper_type(sname, query)
+                failures.extend(scoped_failures)
+                seen_original_titles.update(seen)
+                if candidate:
                     best = candidate
                     break
-                rejected.append(candidate.title)
-            if not best:
-                logger.info(
-                    f"  {sname}: title_matches rejected query='{query}' "
-                    f"candidates={rejected[:3]}"
-                )
-                failures.append(f"{sname}:{query}: title mismatch")
-            if best:
-                break
         if best:
             break
 
