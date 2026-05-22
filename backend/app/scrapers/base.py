@@ -80,14 +80,6 @@ _task_cache_lock = asyncio.Lock()
 _MAX_TASK_CACHE_SIZE = 256
 
 
-async def _cleanup_task_cache():
-    async with _task_cache_lock:
-        if len(_task_cache) > _MAX_TASK_CACHE_SIZE:
-            done = [k for k, v in _task_cache.items() if v.done()]
-            for k in done:
-                del _task_cache[k]
-
-
 class BaseScraper:
     name: str = ""
     label: str = ""

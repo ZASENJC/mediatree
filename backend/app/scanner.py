@@ -25,7 +25,7 @@ from .title_match import (
     has_local_data, has_complete_scraped_data,
     infer_tmdb_media_type,
     EPISODE_HINT_PATTERN, SEASON_HINT_PATTERN, DISC_HINT_PATTERN,
-    YEAR_HINT_PATTERN, SEASON_PATTERN,
+    YEAR_HINT_PATTERN,
     VIDEO_EXTS,
 )
 
@@ -452,7 +452,7 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
                     (data.get("cover_remote", ""), parent + "/%")
                 )
 
-    if data.get("cover_remote") or replace:
+    if replace:
         if media_root:
             await db.execute(
                 "UPDATE movies SET cover_local=NULL WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?",
@@ -484,26 +484,6 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
 
     await db.commit()
     return affected
-
-def is_season_folder(name: str) -> bool:
-    return bool(SEASON_PATTERN.match(name))
-
-
-def infer_season_number(folder_name: str, data: dict) -> int | None:
-    if is_season_folder(folder_name):
-        match = re.search(r'\d+', folder_name)
-        if match:
-            return int(match.group())
-    if data.get("tmdb_type") == "tv":
-        seasons = data.get("seasons") or []
-        numbered = [
-            s.get("season_number") for s in seasons
-            if isinstance(s, dict) and isinstance(s.get("season_number"), int) and s.get("season_number") > 0
-        ]
-        if len(numbered) == 1:
-            return numbered[0]
-        return 1
-    return None
 
 async def scrape_for_library(media_root: str):
     from .database import get_library_settings, get_db
@@ -658,17 +638,13 @@ async def scrape_for_library(media_root: str):
                             if not data or not data.get("title"):
                                 logger.info(f"  {sb}: no result for '{search_name}'")
                                 continue
-                            if sb in {"javdatabase", "auto"} and data.get("_exact_match"):
-                                passed = True
-                            elif sb == "javdatabase":
-                                passed = True
-                            else:
-                                passed = (
-                                    bool(data.get("_exact_match"))
-                                    or bool(data.get("_search_match_passed"))
-                                    or title_matches(data.get("title", ""), search_name, code)
-                                    or title_matches(data.get("original_title", ""), search_name, code)
-                                )
+                            passed = (
+                                sb == "javdatabase"
+                                or bool(data.get("_exact_match"))
+                                or bool(data.get("_search_match_passed"))
+                                or title_matches(data.get("title", ""), search_name, code)
+                                or title_matches(data.get("original_title", ""), search_name, code)
+                            )
                             if passed:
                                 async with _sqlite_write_semaphore:
                                     await _apply_scraped_data(folder_levels, data, media_root)
@@ -956,17 +932,13 @@ async def rescrape_movie(movie_id: int) -> dict:
                     f"scraper='{sb}' search='{search_name}'"
                 )
                 continue
-            if sb in {"javdatabase", "auto"} and data.get("_exact_match"):
-                passed = True
-            elif sb == "javdatabase":
-                passed = True
-            else:
-                passed = (
-                    bool(data.get("_exact_match"))
-                    or bool(data.get("_search_match_passed"))
-                    or title_matches(data.get("title", ""), search_name, code)
-                    or title_matches(data.get("original_title", ""), search_name, code)
-                )
+            passed = (
+                sb == "javdatabase"
+                or bool(data.get("_exact_match"))
+                or bool(data.get("_search_match_passed"))
+                or title_matches(data.get("title", ""), search_name, code)
+                or title_matches(data.get("original_title", ""), search_name, code)
+            )
             if passed:
                 async with _sqlite_write_semaphore:
                     affected = await _apply_scraped_data(folder_levels, data, media_root)
