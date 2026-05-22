@@ -948,7 +948,7 @@ async def rescrape_movie(movie_id: int) -> dict:
             )
             if passed:
                 async with _sqlite_write_semaphore:
-                    affected = await _apply_scraped_data(folder_levels, data, media_root)
+                    affected = await _apply_scraped_data(folder_levels, data, media_root, replace=True)
                 if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
                     season_num = infer_season_number(folder_name, data, existing_season=movie.get("tmdb_season"), folder_path=folder_levels)
                     if season_num:
