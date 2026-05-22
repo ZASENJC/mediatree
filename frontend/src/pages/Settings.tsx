@@ -289,6 +289,86 @@ export default function Settings() {
             </form>
           </div>
 
+          {/* 媒体库配置 */}
+          <div className={cardClass}>
+            <h2 className={sectionTitle}>媒体库</h2>
+            <div className="space-y-2">
+            {[...libraries].sort((a, b) => a.label.localeCompare(b.label, 'zh-CN')).map((lib) => {
+            const st = scanStates[lib.path]
+            const progress = st && st.total > 0 ? Math.round((st.done / st.total) * 100) : 0
+            const isScanning = st && st.status === 'scanning'
+            const isClearing = st && st.status === 'clearing'
+            return (
+              <div key={lib.path} className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-white truncate">{lib.label}</p>
+                    <p className="text-xs text-gray-500">{lib.movie_count} 部</p>
+                  </div>
+                  <select
+                    value={libScraper[lib.path] || 'auto'}
+                    onChange={e => setLibScraper(prev => ({ ...prev, [lib.path]: e.target.value }))}
+                    className="glass-input px-2 py-1.5 text-xs text-gray-300"
+                  >
+                    {Object.entries(SCRAPER_META).map(([k, v]) => (
+                      <option key={k} value={k}>{v.label}</option>
+                    ))}
+                  </select>
+                  <input type="password" placeholder="密码"
+                    value={libPasswords[lib.path] || ''}
+                    onChange={e => setLibPasswords(prev => ({ ...prev, [lib.path]: e.target.value }))}
+                    className="glass-input w-24 px-2 py-1.5 text-xs sm:w-16"
+                  />
+                  <button onClick={() => saveLibrary(lib.path)}
+                    disabled={libSaving === lib.path}
+                    className={btnPrimary + ' disabled:opacity-50'}>
+                    {libSaving === lib.path ? '...' : '保存'}
+                  </button>
+                  <button onClick={() => doScan(lib.path)}
+                    disabled={isScanning || isClearing}
+                    className={`${btnDark} disabled:opacity-50`}>
+                    {isClearing ? '清除中...' : isScanning ? '刮削中...' : '重新扫描'}
+                  </button>
+                </div>
+                {(isScanning || isClearing || (st && st.status === 'done')) && (
+                  <div>
+                    {isClearing && (
+                      <div className="flex items-center gap-2 text-xs text-gray-400">
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+                          <div className="h-full animate-pulse bg-apple-yellow" style={{ width: '100%' }} />
+                        </div>
+                        清除已有数据...
+                      </div>
+                    )}
+                    {isScanning && (
+                      <div className="flex items-center gap-2 text-xs text-gray-400">
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+                          <div className="h-full bg-apple-blue transition-all duration-500" style={{ width: `${progress}%` }} />
+                        </div>
+                        <span className="shrink-0">{st.done}/{st.total}</span>
+                      </div>
+                    )}
+                    {st && st.status === 'done' && (
+                      <div className="text-xs text-green-400">刮削完成</div>
+                    )}
+                  </div>
+                )}
+                {logVisible[lib.path] && scanLogs[lib.path] && scanLogs[lib.path]!.length > 0 && (
+                  <div className="mt-2 max-h-48 space-y-0.5 overflow-y-auto rounded-2xl border border-white/10 bg-black/35 p-3 font-mono text-[11px] text-gray-400">
+                    {scanLogs[lib.path]!.map((l, i) => (
+                      <div key={i} className="break-all">{l}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+        {libMsg && (
+          <div className={`mt-3 rounded-2xl border p-3 text-xs ${libMsg.includes('失败') ? 'border-red-400/20 bg-red-500/10 text-red-300' : 'border-apple-mint/20 bg-apple-mint/10 text-apple-mint'}`}>{libMsg}</div>
+        )}
+          </div>
+
         </div>
 
         {/* 右列 */}
@@ -395,86 +475,6 @@ export default function Settings() {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* 媒体库配置 */}
-      <div className={cardClass}>
-        <h2 className={sectionTitle}>媒体库</h2>
-        <div className="space-y-2">
-          {libraries.map((lib) => {
-            const st = scanStates[lib.path]
-            const progress = st && st.total > 0 ? Math.round((st.done / st.total) * 100) : 0
-            const isScanning = st && st.status === 'scanning'
-            const isClearing = st && st.status === 'clearing'
-            return (
-              <div key={lib.path} className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-white truncate">{lib.label}</p>
-                    <p className="text-xs text-gray-500">{lib.movie_count} 部</p>
-                  </div>
-                  <select
-                    value={libScraper[lib.path] || 'auto'}
-                    onChange={e => setLibScraper(prev => ({ ...prev, [lib.path]: e.target.value }))}
-                    className="glass-input px-2 py-1.5 text-xs text-gray-300"
-                  >
-                    {Object.entries(SCRAPER_META).map(([k, v]) => (
-                      <option key={k} value={k}>{v.label}</option>
-                    ))}
-                  </select>
-                  <input type="password" placeholder="密码"
-                    value={libPasswords[lib.path] || ''}
-                    onChange={e => setLibPasswords(prev => ({ ...prev, [lib.path]: e.target.value }))}
-                    className="glass-input w-24 px-2 py-1.5 text-xs sm:w-16"
-                  />
-                  <button onClick={() => saveLibrary(lib.path)}
-                    disabled={libSaving === lib.path}
-                    className={btnPrimary + ' disabled:opacity-50'}>
-                    {libSaving === lib.path ? '...' : '保存'}
-                  </button>
-                  <button onClick={() => doScan(lib.path)}
-                    disabled={isScanning || isClearing}
-                    className={`${btnDark} disabled:opacity-50`}>
-                    {isClearing ? '清除中...' : isScanning ? '刮削中...' : '重新扫描'}
-                  </button>
-                </div>
-                {(isScanning || isClearing || (st && st.status === 'done')) && (
-                  <div>
-                    {isClearing && (
-                      <div className="flex items-center gap-2 text-xs text-gray-400">
-                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
-                          <div className="h-full animate-pulse bg-apple-yellow" style={{ width: '100%' }} />
-                        </div>
-                        清除已有数据...
-                      </div>
-                    )}
-                    {isScanning && (
-                      <div className="flex items-center gap-2 text-xs text-gray-400">
-                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
-                          <div className="h-full bg-apple-blue transition-all duration-500" style={{ width: `${progress}%` }} />
-                        </div>
-                        <span className="shrink-0">{st.done}/{st.total}</span>
-                      </div>
-                    )}
-                    {st && st.status === 'done' && (
-                      <div className="text-xs text-green-400">刮削完成</div>
-                    )}
-                  </div>
-                )}
-                {logVisible[lib.path] && scanLogs[lib.path] && scanLogs[lib.path]!.length > 0 && (
-                  <div className="mt-2 max-h-48 space-y-0.5 overflow-y-auto rounded-2xl border border-white/10 bg-black/35 p-3 font-mono text-[11px] text-gray-400">
-                    {scanLogs[lib.path]!.map((l, i) => (
-                      <div key={i} className="break-all">{l}</div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-        {libMsg && (
-          <div className={`mt-3 rounded-2xl border p-3 text-xs ${libMsg.includes('失败') ? 'border-red-400/20 bg-red-500/10 text-red-300' : 'border-apple-mint/20 bg-apple-mint/10 text-apple-mint'}`}>{libMsg}</div>
-        )}
       </div>
     </div>
   )
