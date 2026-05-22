@@ -270,6 +270,7 @@ textarea {
   canvas[data-mediatree-subtitle="ass"] {
     max-width: 100%;
   }
+}
 
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(8px); }
@@ -277,5 +278,4 @@ textarea {
 }
 .animate-fade-in {
   animation: fade-in 0.25s ease-out;
-}
 }
