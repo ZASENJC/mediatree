@@ -231,6 +231,62 @@ async def fetch_tmdb_tv_by_id(tmdb_id: int, lang: str = "zh-CN") -> dict | None:
     return await fetch_tmdb_by_id(tmdb_id, "tv", lang=lang)
 
 
+async def fetch_tmdb_by_imdb_id(imdb_id: str, lang: str = "zh-CN") -> dict | None:
+    """Look up TMDB entry via /find/ endpoint with IMDB external ID.
+
+    Uses TMDB's /find/{imdb_id}?external_source=imdb_id. Prefers movie results,
+    falls back to TV if no movie found.
+    """
+    global _warned_missing_auth
+    if not _has_tmdb_auth():
+        if not _warned_missing_auth:
+            logger.warning("TMDB credentials not configured, skipping IMDB ID lookup")
+            _warned_missing_auth = True
+        return None
+
+    imdb_id = (imdb_id or "").strip().lower()
+    if not imdb_id.startswith("tt") or not imdb_id[2:].isdigit():
+        return None
+
+    cache_key = f"tmdb_imdb:{imdb_id}"
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
+    if cache_data is not None:
+        logger.info(f"TMDB cache hit: {cache_key}")
+        return cache_data
+
+    try:
+        resp = await _tmdb_get(f"/find/{imdb_id}", {"external_source": "imdb_id", "language": lang})
+        data = resp.json()
+
+        results: list[tuple[str, str]] = []
+        for r in data.get("movie_results", []):
+            results.append(("movie", str(r["id"])))
+        for r in data.get("tv_results", []):
+            results.append(("tv", str(r["id"])))
+
+        if not results:
+            logger.info(f"TMDB /find/{imdb_id}: no results")
+            await set_scraper_cache("tmdb", cache_key, None)
+            return None
+
+        media_type, source_id = results[0]
+        detail = await fetch_tmdb_detail(source_id, media_type, lang)
+        if detail and detail.get("title"):
+            detail["media_type"] = media_type
+            await set_scraper_cache("tmdb", cache_key, detail)
+            return detail
+
+        await set_scraper_cache("tmdb", cache_key, None)
+        return None
+    except HTTPStatusError as e:
+        if e.response.status_code != 404:
+            logger.warning(f"TMDB /find/ HTTP error for imdb_id={imdb_id}: status={e.response.status_code}")
+        return None
+    except Exception as e:
+        logger.warning(f"TMDB /find/ error for imdb_id={imdb_id}: {e}")
+        return None
+
+
 async def _fetch_tmdb_by_id_task(tmdb_id: int, media_type: Literal["movie", "tv"], lang: str) -> dict | None:
     key = (tmdb_id, media_type)
     task = _tmdb_id_tasks.get(key)

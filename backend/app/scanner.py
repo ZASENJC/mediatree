@@ -692,6 +692,32 @@ async def scrape_for_library(media_root: str):
                                         except Exception as e:
                                             logger.warning(f"  TMDB: episode matching error: {e}")
 
+                                # Mark relaxed accept for pending review
+                                if (
+                                    not data.get("_exact_match")
+                                    and data.get("_search_match_passed")
+                                    and not title_matches(data.get("title", ""), search_name, code)
+                                    and not title_matches(data.get("original_title", ""), search_name, code)
+                                ):
+                                    from .database import get_db
+                                    review_info = json.dumps({
+                                        "search_name": search_name,
+                                        "code": code,
+                                        "matched_title": data.get("title", ""),
+                                        "matched_original_title": data.get("original_title", ""),
+                                        "scraper": sb,
+                                        "source_id": str(data.get("source_id") or data.get("tmdb_id") or ""),
+                                        "source": data.get("source") or data.get("scraper_source") or sb,
+                                    }, ensure_ascii=False)
+                                    db = await get_db()
+                                    await db.execute(
+                                        "UPDATE movies SET pending_review=1, review_candidates=? "
+                                        "WHERE folder_levels=? AND media_root=?",
+                                        (review_info, folder_levels, media_root)
+                                    )
+                                    await db.commit()
+                                    logger.info(f"  {sb}: relaxed accept marked for pending review: '{search_name}'")
+
                                 scraped = True
                                 break
                             logger.info(f"  {sb}: title mismatch '{data.get('title', '')}' vs '{search_name}', trying fallback")
@@ -955,6 +981,33 @@ async def rescrape_movie(movie_id: int) -> dict:
                                 )
                         except Exception:
                             pass
+
+                # Mark relaxed accept for pending review
+                if (
+                    not data.get("_exact_match")
+                    and data.get("_search_match_passed")
+                    and not title_matches(data.get("title", ""), search_name, code)
+                    and not title_matches(data.get("original_title", ""), search_name, code)
+                ):
+                    from .database import get_db
+                    review_info = json.dumps({
+                        "search_name": search_name,
+                        "code": code,
+                        "matched_title": data.get("title", ""),
+                        "matched_original_title": data.get("original_title", ""),
+                        "scraper": sb,
+                        "source_id": str(data.get("source_id") or data.get("tmdb_id") or ""),
+                        "source": data.get("source") or data.get("scraper_source") or sb,
+                    }, ensure_ascii=False)
+                    db = await get_db()
+                    await db.execute(
+                        "UPDATE movies SET pending_review=1, review_candidates=? "
+                        "WHERE folder_levels=? AND media_root=?",
+                        (review_info, folder_levels, media_root)
+                    )
+                    await db.commit()
+                    logger.info(f"  rescrape_movie: {sb} relaxed accept marked for pending review: '{search_name}'")
+
                 logger.info(
                     f"rescrape_movie success: media_root='{media_root}' movie_id={movie_id} "
                     f"scraper='{sb}' title='{data.get('title', search_name)}' affected={affected}"

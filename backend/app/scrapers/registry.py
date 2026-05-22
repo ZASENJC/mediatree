@@ -76,10 +76,26 @@ class AutoScraper(BaseScraper):
         from ..title_match import (
             clean_search_title, build_search_queries, candidate_title_matches,
             _first_tmdb_token, _is_specific_search_query, TmdbIdToken,
+            extract_imdb_id_from_name,
         )
 
         logger.info(f"  Auto scraper started for '{search_name}'")
         candidates = candidate_names or [search_name, code]
+
+        # Step 0: IMDB ID exact match
+        for name in candidates:
+            imdb_id = extract_imdb_id_from_name(name)
+            if imdb_id:
+                logger.info(f"  Auto scraper detected IMDB ID {imdb_id} from '{name}'")
+                from ..tmdb import fetch_tmdb_by_imdb_id
+                imdb_detail = await fetch_tmdb_by_imdb_id(imdb_id)
+                if imdb_detail and imdb_detail.get("title"):
+                    media_type = imdb_detail.get("media_type", "movie")
+                    source_id = imdb_detail.get("source_id", "")
+                    logger.info(f"  Auto scraper IMDB ID success: {imdb_id} → TMDB {media_type}/{source_id}")
+                    return _tmdb_scrape_data(imdb_detail, str(source_id), media_type, exact=True)
+                break  # Only try first IMDB ID found
+
         token = None
         for idx, candidate in enumerate(candidates):
             label = ["folder", "parent", "filename", "title", "code", "search"][idx] if idx < 6 else "candidate"

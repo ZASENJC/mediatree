@@ -25,6 +25,9 @@ TMDB_BRACKET_PATTERN = re.compile(
     r"(?i)[\[\(\{]\s*[^]\)\}]*\btmdb(?:id)?[\s:=._-]+(?:movie|tv|m|t)?[\s:=._-]*\d{1,10}\b[^]\)\}]*[\]\)\}]"
 )
 TMDB_MALFORMED_PATTERN = re.compile(r"(?i)\btmdb(?:id)?[\s:=._-]*(?:movie|tv|m|t)?[\s:=._-]*(?=$|[\s\]\)\}\-_])")
+IMDB_ID_PATTERN = re.compile(
+    r"(?i)(?:\[|\(|\b)(?:imdb)?(?:id)?[\s:=._-]*(tt\d{7,10})(?:\]|\)|\b|$)"
+)
 EPISODE_HINT_PATTERN = re.compile(
     r"(?i)(?:\bS\d{1,2}E\d{1,3}\b|\bS\d{1,2}\s*[-_. ]?\s*E\d{1,3}\b|\b\d{1,2}x\d{1,3}\b|"
     r"\bEP(?:ISODE)?\s*\.?\s*\d{1,3}\b|\bE\d{1,3}\b|第\s*\d{1,3}\s*[集話话]|"
@@ -136,6 +139,14 @@ def extract_tmdb_id_from_name(name: str) -> int | None:
     if not token:
         return None
     return token.id
+
+
+def extract_imdb_id_from_name(name: str) -> str | None:
+    """Extract IMDB ID (e.g. tt1234567) from patterns like [imdbid-tt1234567]."""
+    match = IMDB_ID_PATTERN.search(name or "")
+    if match:
+        return match.group(1).lower()
+    return None
 
 
 def _first_tmdb_token(candidate_names: list[str], default_label: str = "candidate") -> TmdbIdToken | None:
@@ -341,9 +352,18 @@ def _dedupe_queries(values: list[str]) -> list[str]:
     return queries
 
 
-def build_search_queries(raw_title: str, fallback_names: list[str] | None = None) -> list[str]:
-    """Return cleaned title-search queries, with the strongest cleaned title first."""
-    values = [raw_title, *(fallback_names or [])]
+def build_search_queries(
+    raw_title: str,
+    fallback_names: list[str] | None = None,
+    extra_aliases: list[str] | None = None,
+) -> list[str]:
+    """Return cleaned title-search queries, with the strongest cleaned title first.
+
+    extra_aliases: additional title variants (e.g. original_title from earlier search
+    candidates) that are appended after fallback_names and go through the same
+    cleaning pipeline.
+    """
+    values = [raw_title, *(fallback_names or []), *(extra_aliases or [])]
     variants: list[str] = []
     for value in values:
         base = remove_tmdb_id_token(str(value or ""))
