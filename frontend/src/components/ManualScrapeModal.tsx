@@ -69,8 +69,8 @@ export default function ManualScrapeModal({
           setBackdrops(bd.backdrops || [])
         }).catch(() => {})
       }
-    } catch {
-      console.error('Search scrape failed')
+    } catch (err) {
+      console.error('Search scrape failed', err)
     }
     setSearching(false)
   }

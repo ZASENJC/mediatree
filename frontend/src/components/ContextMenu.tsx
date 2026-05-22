@@ -100,10 +100,11 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
   }, [onClose])
 
   return (
-    <div ref={ref} style={{ ...containerStyle, left: pos.x, top: pos.y }}>
+    <div ref={ref} role="menu" style={{ ...containerStyle, left: pos.x, top: pos.y }}>
       {items.map((item, i) => (
         <button
           key={i}
+          role="menuitem"
           onClick={(e) => {
             e.stopPropagation()
             item.onClick()

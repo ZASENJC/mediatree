@@ -1,4 +1,6 @@
-export function WatchedBadge({ watched }: { watched: boolean }) {
+import { memo } from 'react'
+
+export const WatchedBadge = memo(function WatchedBadge({ watched }: { watched: boolean }) {
   if (!watched) return null
   return (
     <span className="absolute left-2 top-2 z-20 flex h-7 w-7 items-center justify-center rounded-full border border-apple-mint/40 bg-apple-mint/80 text-white shadow-glow backdrop-blur-xl" title="已看">
@@ -7,4 +9,4 @@ export function WatchedBadge({ watched }: { watched: boolean }) {
       </svg>
     </span>
   )
-}
+})

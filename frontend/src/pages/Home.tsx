@@ -4,7 +4,7 @@ import { api, FolderNode, Movie } from '../api'
 import { getExcluded, getUiPrefs } from '../store'
 import { saveScrollPos, restoreScrollPos } from '../scroll'
 import { showToast } from '../toast'
-import { getCached, setCache, clearCache } from '../cache'
+import { clearCache } from '../cache'
 import SortDropdown from '../components/SortDropdown'
 import { MovieCard } from '../components/MovieCard'
 import ContextMenu, { ContextMenuItem } from '../components/ContextMenu'
@@ -167,8 +167,8 @@ export default function Home() {
         setFolderAltBackdrops(backdrops)
       }).catch(() => {})
       setShowFolderCover(true)
-    } catch {
-      console.error('Load covers failed')
+    } catch (err) {
+      console.error('Load covers failed', err)
     }
   }, [activeFolderPath, activeMediaRoot])
 
@@ -178,8 +178,8 @@ export default function Home() {
       await api.changeFolderCover(activeFolderPath, activeMediaRoot, url)
       showToast('封面已更新')
       load()
-    } catch {
-      console.error('Change folder cover failed')
+    } catch (err) {
+      console.error('Change folder cover failed', err)
     }
   }, [activeFolderPath, activeMediaRoot, load])
 
@@ -190,8 +190,8 @@ export default function Home() {
       if (!data.movies || data.movies.length === 0) { showToast('目录下无影片'); return }
       setEditFolderMovie(data.movies[0])
       setShowFolderEdit(true)
-    } catch {
-      console.error('Load movie for edit failed')
+    } catch (err) {
+      console.error('Load movie for edit failed', err)
     }
   }, [activeFolderPath, activeMediaRoot])
 
