@@ -78,7 +78,11 @@ export default function Detail() {
   }
 
   const isFavorited = movie.tags?.includes('favorite')
-  const goStaff = (name: string) => {
+  const goStaff = (name: string, personId?: string) => {
+    if (personId) {
+      window.open(`https://www.themoviedb.org/person/${personId}`, '_blank')
+      return
+    }
     const p = new URLSearchParams()
     p.set('staff', name)
     if (movie.media_root) p.set('media_root', movie.media_root)
@@ -360,19 +364,19 @@ export default function Detail() {
                 <h3 className="mb-3 text-sm font-semibold text-gray-200">Staff</h3>
                 <div className="space-y-4">
                   {cast.length > 0 && (
-                    <StaffGroup label="演员" items={cast.map(p => ({ name: p.name, sub: p.role || p.character }))} onClick={goStaff} />
+                    <StaffGroup label="演员" items={cast.map(p => ({ name: p.name, sub: p.role || p.character, person_id: p.person_id, profile_path: p.profile_path }))} onClick={goStaff} />
                   )}
                   {directors.length > 0 && (
-                    <StaffGroup label="导演" items={directors.map(p => ({ name: p.name, sub: p.job }))} onClick={goStaff} />
+                    <StaffGroup label="导演" items={directors.map(p => ({ name: p.name, sub: p.job, person_id: p.person_id, profile_path: p.profile_path }))} onClick={goStaff} />
                   )}
                   {supervisors.length > 0 && (
-                    <StaffGroup label="监督" items={supervisors.map(p => ({ name: p.name, sub: p.job }))} onClick={goStaff} />
+                    <StaffGroup label="监督" items={supervisors.map(p => ({ name: p.name, sub: p.job, person_id: p.person_id, profile_path: p.profile_path }))} onClick={goStaff} />
                   )}
                   {writers.length > 0 && (
-                    <StaffGroup label="编剧" items={writers.map(p => ({ name: p.name, sub: p.job }))} onClick={goStaff} />
+                    <StaffGroup label="编剧" items={writers.map(p => ({ name: p.name, sub: p.job, person_id: p.person_id, profile_path: p.profile_path }))} onClick={goStaff} />
                   )}
                   {studios.length > 0 && (
-                    <StaffGroup label="制作" items={studios.map(p => ({ name: p.name, sub: p.job }))} onClick={goStaff} />
+                    <StaffGroup label="制作" items={studios.map(p => ({ name: p.name, sub: p.job, person_id: p.person_id, profile_path: p.profile_path }))} onClick={goStaff} />
                   )}
                 </div>
               </div>
@@ -434,19 +438,26 @@ function InfoLine({ label, value }: { label: string; value: string }) {
   )
 }
 
-function StaffGroup({ label, items, onClick }: { label: string; items: { name: string; sub?: string }[]; onClick: (name: string) => void }) {
+function StaffGroup({ label, items, onClick }: { label: string; items: { name: string; sub?: string; person_id?: string; profile_path?: string }[]; onClick: (name: string, personId?: string) => void }) {
   return (
     <div>
       <div className="mb-2 text-xs text-gray-500">{label}</div>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-2">
         {items.map((item, idx) => (
           <button
             key={`${item.name}-${idx}`}
-            onClick={() => onClick(item.name)}
-            className="rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-left text-xs text-gray-200 transition-all hover:border-apple-blue/40 hover:bg-apple-blue/10 hover:text-apple-blue"
+            onClick={() => onClick(item.name, item.person_id)}
+            className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] py-1 pl-1.5 pr-3 text-left text-xs text-gray-200 transition-all hover:border-apple-blue/40 hover:bg-apple-blue/10 hover:text-apple-blue"
             title={item.sub || item.name}
           >
-            {item.name}
+            {item.profile_path ? (
+              <img src={item.profile_path} alt={item.name} className="h-7 w-7 rounded-full object-cover" loading="lazy" referrerPolicy="no-referrer" crossOrigin="anonymous" />
+            ) : (
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.12] text-[11px] text-gray-400">
+                {item.name.charAt(0)}
+              </span>
+            )}
+            <span>{item.name}</span>
           </button>
         ))}
       </div>

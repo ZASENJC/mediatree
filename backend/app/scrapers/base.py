@@ -27,6 +27,7 @@ class ScrapeStaff:
     job: str | None = None
     department: str | None = None
     person_id: str | None = None
+    profile_path: str | None = None
     source: str | None = None
 
 
@@ -198,6 +199,7 @@ def staff_from_dict(data: dict, *, source: str) -> ScrapeStaff:
         job=data.get("job") or None,
         department=data.get("department") or None,
         person_id=str(data.get("id") or data.get("person_id") or "") or None,
+        profile_path=data.get("profile_path") or None,
         source=data.get("source") or source,
     )
 
