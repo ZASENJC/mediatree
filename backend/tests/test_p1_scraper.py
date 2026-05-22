@@ -207,6 +207,11 @@ class PendingReviewDBTest(unittest.TestCase):
                 scraper_raw TEXT,
                 pending_review INTEGER DEFAULT 0,
                 review_candidates TEXT,
+                genre TEXT,
+                keywords TEXT,
+                studios TEXT,
+                tagline TEXT,
+                status TEXT,
                 media_root TEXT DEFAULT '',
                 created_at TEXT DEFAULT (datetime('now')),
                 updated_at TEXT DEFAULT (datetime('now'))

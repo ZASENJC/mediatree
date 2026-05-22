@@ -100,6 +100,11 @@ def scrape_result_to_legacy(result: ScrapeResult, *, exact: bool = False) -> dic
         "_exact_match": exact,
         "_raw": raw,
         "scraper_raw": json.dumps(raw, ensure_ascii=False) if raw else "",
+        "genre": ", ".join(result.genres) if result.genres else "",
+        "keywords": ", ".join(result.tags) if result.tags else "",
+        "studios": ", ".join(result.studios) if result.studios else "",
+        "tagline": raw.get("tagline") or "",
+        "status": raw.get("status") or "",
     }
     if result.season is not None:
         data["tmdb_season"] = result.season

@@ -184,6 +184,7 @@ class TMDBScraper(BaseScraper):
             crew=compact_staff(raw.get("crew") or [], source="tmdb"),
             studios=[str(s) for s in studios if s],
             genres=genres,
+            tags=raw.get("keywords") if isinstance(raw.get("keywords"), list) else [],
             tmdb_id=source_id,
             raw=raw,
         )
