@@ -1106,6 +1106,71 @@ async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: st
     return {"ok": False, "error": "All scrapers failed"}
 
 
+async def _propagate_to_sibling_subfolders(db, parent_levels: str, media_root: str, first_subfolder: str):
+    """After a successful rescrape of one subfolder, propagate scraped data to sibling subfolders."""
+    from .config import logger
+    from .tmdb import match_episodes_in_folder
+
+    # Get scraped data from the first subfolder's movie
+    cur = await db.execute(
+        "SELECT * FROM movies WHERE folder_levels=? AND media_root=? ORDER BY id LIMIT 1",
+        (first_subfolder, media_root),
+    )
+    row = await cur.fetchone()
+    if not row:
+        return
+    source_data = dict(row)
+
+    # Get other subfolders that need propagation
+    cur = await db.execute(
+        "SELECT DISTINCT folder_levels FROM movies "
+        "WHERE folder_levels LIKE ? || '/%' AND media_root=? AND folder_levels != ? "
+        "ORDER BY folder_levels",
+        (parent_levels, media_root, first_subfolder),
+    )
+    other_folders = [r["folder_levels"] for r in await cur.fetchall()]
+    if not other_folders:
+        return
+
+    # Build scraped data dict for _apply_scraped_data
+    data = {
+        "title": source_data.get("title") or "",
+        "original_title": source_data.get("original_title") or "",
+        "overview": source_data.get("overview") or "",
+        "release_date": source_data.get("release_date") or "",
+        "cover_remote": source_data.get("cover_remote") or "",
+        "fanart_local": source_data.get("fanart_local") or "",
+        "tmdb_id": source_data.get("tmdb_id"),
+        "tmdb_type": source_data.get("tmdb_type") or "",
+        "scraper_source": source_data.get("scraper_source") or "",
+        "source_id": source_data.get("source_id") or "",
+        "bangumi_id": source_data.get("bangumi_id") or "",
+        "cast": source_data.get("cast") or "[]",
+        "crew": source_data.get("crew") or "[]",
+        "source": source_data.get("scraper_source") or source_data.get("source") or "",
+    }
+
+    for subfolder in other_folders:
+        try:
+            async with _sqlite_write_semaphore:
+                await _apply_scraped_data(subfolder, data, media_root, replace=True)
+
+            # Run episode matching for each subfolder
+            if data.get("tmdb_id") and data.get("tmdb_type") == "tv":
+                from .title_match import infer_season_number
+                folder_name = Path(subfolder).name if subfolder else ""
+                season_num = infer_season_number(folder_name, data, folder_path=subfolder)
+                if season_num is not None:
+                    async with _sqlite_write_semaphore:
+                        await match_episodes_in_folder(
+                            str(data["tmdb_id"]), season_num, subfolder, media_root
+                        )
+            logger.info(f"  propagate: applied scraped data to folder='{subfolder}' "
+                        f"parent='{parent_levels}' media_root='{media_root}'")
+        except Exception as e:
+            logger.warning(f"  propagate: failed for folder='{subfolder}': {e}")
+
+
 async def rescrape_folder(folder_levels: str, media_root: str) -> dict:
     from .database import get_db
     from .config import logger
@@ -1114,14 +1179,54 @@ async def rescrape_folder(folder_levels: str, media_root: str) -> dict:
         return {"ok": False, "error": "media_root required"}
 
     db = await get_db()
+    # Try exact match first, then subfolders (parent folder case)
     cur = await db.execute(
         "SELECT COUNT(*) AS total FROM movies WHERE folder_levels=? AND media_root=?",
         (folder_levels, media_root),
     )
     count_row = await cur.fetchone()
     total = int(count_row["total"] or 0) if count_row else 0
+
     if total <= 0:
-        return {"ok": False, "error": "No movies found in folder"}
+        # Check subfolders (e.g. parent folder "ShowName" with movies in "ShowName/S01")
+        cur = await db.execute(
+            "SELECT COUNT(*) AS total FROM movies WHERE folder_levels LIKE ? || '/%' AND media_root=?",
+            (folder_levels, media_root),
+        )
+        count_row = await cur.fetchone()
+        sub_total = int(count_row["total"] or 0) if count_row else 0
+        if sub_total <= 0:
+            return {"ok": False, "error": "No movies found in folder"}
+        # Find representative movie from first subfolder
+        cur = await db.execute(
+            "SELECT id, folder_levels FROM movies WHERE folder_levels LIKE ? || '/%' AND media_root=? ORDER BY folder_levels, id LIMIT 1",
+            (folder_levels, media_root),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return {"ok": False, "error": "No movies found in folder"}
+
+        logger.info(
+            f"Folder rescrape start (recursive): media_root='{media_root}' parent='{folder_levels}' "
+            f"total_subfolder_movies={sub_total} representative_movie_id={row['id']} "
+            f"subfolder='{row['folder_levels']}'"
+        )
+        result = await rescrape_movie(row["id"])
+        if not result.get("ok"):
+            logger.warning(
+                f"Folder rescrape failed (recursive): media_root='{media_root}' parent='{folder_levels}' "
+                f"error='{result.get('error', '')}'"
+            )
+            return result
+
+        # Propagate scraped data to other subfolders
+        await _propagate_to_sibling_subfolders(db, folder_levels, media_root, row["folder_levels"])
+        logger.info(
+            f"Folder rescrape complete (recursive): media_root='{media_root}' parent='{folder_levels}' "
+            f"total_subfolder_movies={sub_total} source='{result.get('source')}'"
+        )
+        return {"ok": True, "rescraped": sub_total, "total": sub_total,
+                "source": result.get("source"), "title": result.get("title")}
 
     cur = await db.execute(
         "SELECT id FROM movies WHERE folder_levels=? AND media_root=? ORDER BY id LIMIT 1",
