@@ -2,6 +2,26 @@
 
 
 ---
+## v3.1.3 (2026-05-22) - 刮削器多项修复与季集偏移推断
+
+### 自动季集偏移推断（TMDB 多季合并兼容）
+- 新增 `_try_season_merge_auto()` 函数：当 TMDB 将多季集数合并到一个 Season 时（如 S01 E01-E24），自动检测本地 S02 文件夹，通过兄弟季的累计偏移量将 S02 E01-E12 映射到 TMDB S01 E13-E24。
+- 触发条件：TMDB 某季返回空集列表 + season_number > 0 + 存在同父目录已匹配兄弟季。
+- Specials (S00) 不触发合并，确保特殊篇不受影响。
+- `backend/tests/test_tmdb_season_merge.py` 新增 4 个测试类，覆盖基础偏移、累计偏移、不合并、Specials 四种场景。
+
+### 刮削流程修复
+- **右键"重新刮削"**：`_apply_scraped_data` 的 `upsert` 模式从 `COALESCE`（保留旧值）改为 `replace=True`（强制覆盖），确保重新刮削能更新已有元数据。
+- **S00/Specials 适配**：`scan_media()` 识别 "Specials"/"Special" 文件夹设置 `tmdb_season=0`；4 处 `if season_num:` 卫语句改为 `if season_num is not None:`，修复 Python `0` 是 falsy 导致 S00 集数匹配被跳过的问题。
+- **右键父文件夹刮削**：`rescrape_folder` 改为支持 LIKE 子文件夹查询 + `_propagate_to_sibling_subfolders` 自动向兄弟子文件夹传播刮削数据并运行集数匹配，解决右键父文件夹"找不到影片"的问题。
+
+### 前端修复
+- MovieCard.tsx 剩余 `alert()` 调用统一替换为 `showToast()` 玻璃拟态通知。
+
+### 测试
+- 全量 191 测试通过，含新增 4 个季集合并测试。
+
+---
 ## v3.1.2 (2026-05-22) - 全量代码审计与安全加固
 
 全量审查 30+ 文件，修复 41 个问题，覆盖严重崩溃、安全漏洞、性能优化和前端健壮性。

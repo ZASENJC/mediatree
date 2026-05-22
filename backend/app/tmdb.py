@@ -407,6 +407,18 @@ async def match_episodes_in_folder(
 
     season_data = await fetch_tv_season(series_id, season_number, lang)
     if not season_data or not season_data.get("episodes"):
+        # Auto season-merge: when TMDB has no episodes for this season,
+        # try offset-mapping into an existing TMDB season via sibling folders
+        if season_number > 0:
+            try:
+                merged = await _try_season_merge_auto(
+                    series_id, season_number, folder_levels, media_root, lang
+                )
+                if merged:
+                    return merged
+            except Exception as e:
+                from .config import logger
+                logger.warning(f"TMDB auto season-merge failed for '{folder_levels}': {e}")
         return 0
 
     db = await get_db()
@@ -466,4 +478,173 @@ async def match_episodes_in_folder(
                 updated += 1
                 break
     await db.commit()
+    return updated
+
+
+async def _try_season_merge_auto(
+    series_id: str, season_number: int, folder_levels: str,
+    media_root: str, lang: str = "zh-CN",
+) -> int:
+    """Auto-merge a local season folder into an existing TMDB season when
+    TMDB has no separate season for the requested season_number.
+
+    Algorithm:
+    1. Parse parent path from folder_levels
+    2. Find direct-child sibling season folders under the same parent
+    3. Calculate cumulative offset from earlier (already matched) siblings
+    4. Determine target TMDB season from a matched sibling
+    5. Offset local episode numbers and match against TMDB season data
+    """
+    import re
+    from pathlib import Path
+
+    from .anime_naming import extract_episode_number
+    from .config import logger
+    from .database import get_db
+
+    # 1. Parse parent path — only merge when folder is nested under a parent
+    parent_levels = str(Path(folder_levels).parent)
+    if parent_levels in (".", "", folder_levels):
+        return 0
+
+    db = await get_db()
+
+    # 2. Find all distinct folder_levels under the same parent
+    cur = await db.execute(
+        "SELECT DISTINCT folder_levels FROM movies "
+        "WHERE folder_levels LIKE ? AND media_root=? "
+        "ORDER BY folder_levels",
+        (f"{parent_levels}/%", media_root),
+    )
+    rows = await cur.fetchall()
+
+    # Filter to direct children only (exclude sub-subfolders like "Show/S01/Extras")
+    expected_depth = parent_levels.count("/") + 1 if parent_levels else 1
+    sibling_folders = [
+        r["folder_levels"] for r in rows
+        if r["folder_levels"].count("/") == expected_depth
+    ]
+
+    if len(sibling_folders) <= 1:
+        # Only the current folder exists, nothing to merge against
+        return 0
+
+    # Sort by extracted numeric season number for reliable ordering
+    def _folder_season_num(fl: str) -> int:
+        name = Path(fl).name
+        m = re.search(r"(\d+)", name)
+        return int(m.group(1)) if m else 9999
+
+    sibling_folders.sort(key=_folder_season_num)
+
+    # 3. Calculate cumulative offset from earlier siblings
+    cumulative_offset = 0
+    target_season = None
+
+    for sib in sibling_folders:
+        sib_num = _folder_season_num(sib)
+        if sib_num >= season_number:
+            continue  # skip current and later siblings
+
+        # Count already-matched episodes in this sibling
+        cnt_cur = await db.execute(
+            "SELECT COUNT(*) AS cnt FROM movies "
+            "WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=? "
+            "AND tmdb_episode IS NOT NULL",
+            (sib, f"{sib}/%", media_root),
+        )
+        cnt_row = await cnt_cur.fetchone()
+        cnt = int(cnt_row["cnt"]) if cnt_row else 0
+
+        if cnt > 0:
+            cumulative_offset += cnt
+
+            # 4. Pick target TMDB season from the first matched sibling
+            if target_season is None:
+                s_cur = await db.execute(
+                    "SELECT tmdb_season FROM movies "
+                    "WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=? "
+                    "AND tmdb_season IS NOT NULL LIMIT 1",
+                    (sib, f"{sib}/%", media_root),
+                )
+                s_row = await s_cur.fetchone()
+                if s_row:
+                    target_season = int(s_row["tmdb_season"])
+
+    if target_season is None or cumulative_offset == 0:
+        return 0
+
+    # 5. Fetch the target season's TMDB episode list
+    season_data = await fetch_tv_season(series_id, target_season, lang)
+    if not season_data or not season_data.get("episodes"):
+        return 0
+
+    # 6. Get local movies in the current (unmatched) folder
+    cur = await db.execute(
+        "SELECT id, path, code FROM movies "
+        "WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?",
+        (folder_levels, f"{folder_levels}/%", media_root),
+    )
+    movies = await cur.fetchall()
+
+    # 7. Match local episodes with offset against TMDB episodes
+    ep_pattern = re.compile(
+        r'\[(\d{1,4})\](?=\[[^\]]+\])'
+        r'|[eE][pP]?\s*(\d{1,4})'
+        r'|[-_. ](\d{1,4})(?:[\.\-_\s]|$)'
+        r'|第\s*(\d{1,4})\s*[集話话]'
+        r'|^(\d{1,4})[\s._-]'
+        r'|[#＃](\d{1,4})'
+        r'|[Nn]o\.?\s*(\d{1,4})'
+    )
+
+    updated = 0
+    for m in movies:
+        filename = Path(m["path"]).stem
+        ep_num = extract_episode_number(filename)
+        match = ep_pattern.search(filename)
+        if ep_num is None and match:
+            ep_num = int(next(g for g in match.groups() if g))
+
+        if ep_num is None:
+            continue
+
+        adjusted_ep = ep_num + cumulative_offset
+
+        for ep in season_data["episodes"]:
+            if ep["episode_number"] == adjusted_ep:
+                still_local = None
+                if ep.get("still_path"):
+                    try:
+                        from .covers import download_and_cache_still
+                        import hashlib
+                        sk = hashlib.md5(ep["still_path"].encode()).hexdigest()[:16]
+                        still_local = await download_and_cache_still(ep["still_path"], sk)
+                    except Exception:
+                        pass
+
+                await db.execute(
+                    """UPDATE movies SET
+                       tmdb_id=?, tmdb_type='tv', tmdb_season=?, tmdb_episode=?,
+                       episode_title=COALESCE(NULLIF(?, ''), episode_title),
+                       episode_overview=COALESCE(NULLIF(?, ''), episode_overview),
+                       episode_still=COALESCE(NULLIF(?, ''), episode_still),
+                       episode_still_local=COALESCE(NULLIF(?, ''), episode_still_local),
+                       updated_at=datetime('now')
+                       WHERE id=?""",
+                    (int(series_id), target_season, adjusted_ep,
+                     ep.get("name", ""), ep.get("overview", ""),
+                     ep.get("still_path", ""), still_local or "",
+                     m["id"]),
+                )
+                updated += 1
+                break
+
+    if updated:
+        await db.commit()
+        logger.info(
+            f"  TMDB: season-merge matched {updated} episodes in '{folder_levels}' "
+            f"→ S{target_season} (offset {cumulative_offset})"
+        )
+
     return updated
