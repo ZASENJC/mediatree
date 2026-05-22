@@ -589,8 +589,8 @@ export interface Movie {
   episode_label?: string
   display_title?: string
   external_audio_tracks?: ExternalAudioTrack[]
-  cast?: { name: string; character?: string; role?: string; profile_path?: string; source?: string }[]
-  crew?: { name: string; job: string; department?: string; profile_path?: string; source?: string }[]
+  cast?: { name: string; character?: string; role?: string; profile_path?: string; person_id?: string; source?: string }[]
+  crew?: { name: string; job: string; department?: string; profile_path?: string; person_id?: string; source?: string }[]
   playback_position?: number
   progress_percent?: number
 }

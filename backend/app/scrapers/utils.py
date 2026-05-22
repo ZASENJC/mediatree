@@ -18,6 +18,7 @@ def _staff_to_dict(staff: ScrapeStaff) -> dict:
         "job": staff.job or "",
         "department": staff.department or "",
         "person_id": staff.person_id or "",
+        "profile_path": staff.profile_path or "",
         "source": staff.source or "",
     }
 
