@@ -224,8 +224,101 @@ canvas[data-mediatree-subtitle="ass"] {
   background: #000;
 }
 
+/* ── YouTube-style: controls hide when mouse leaves ── */
 .mediatree-artplayer .art-control {
-  background: linear-gradient(0deg, rgba(0,0,0,0.72), transparent);
+  background: transparent;
+  transition: opacity 0.3s ease;
+}
+
+.mediatree-artplayer:not(:hover) .art-control {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.mediatree-artplayer:hover .art-control {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+/* Center play/pause state: hide when playing & not hovering */
+.mediatree-artplayer.art-playing:not(:hover) .art-state {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.2s ease;
+}
+
+/* ── YouTube-style thin progress bar ── */
+.mediatree-artplayer .art-progress {
+  padding: 0 12px;
+  --progress-height: 3px;
+}
+
+.mediatree-artplayer .art-progress .art-control-progress {
+  height: var(--progress-height) !important;
+  border-radius: 2px;
+}
+
+.mediatree-artplayer:hover .art-progress {
+  --progress-height: 3px;
+}
+
+.mediatree-artplayer .art-progress .art-control-progress-inner {
+  border-radius: 2px;
+}
+
+/* Progress bar thumb (handle) */
+.mediatree-artplayer .art-progress .art-control-progress-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.mediatree-artplayer:hover .art-progress .art-control-progress-indicator {
+  opacity: 1;
+}
+
+/* ── YouTube-style bottom controls ── */
+.mediatree-artplayer .art-bottom {
+  padding: 0 12px 8px;
+  background: transparent !important;
+}
+
+/* Control buttons — blue icons, no hover background */
+.mediatree-artplayer .art-bottom .art-controls .art-control-left > *,
+.mediatree-artplayer .art-bottom .art-controls .art-control-right > * {
+  color: #00a4dc;
+}
+
+.mediatree-artplayer .art-bottom .art-controls .art-control-left > * > svg,
+.mediatree-artplayer .art-bottom .art-controls .art-control-right > * > svg {
+  fill: currentColor;
+}
+
+/* Volume slider: show on hover */
+.mediatree-artplayer .art-volume {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mediatree-artplayer .art-volume .art-volume-inner {
+  display: none;
+}
+
+.mediatree-artplayer .art-volume:hover .art-volume-inner {
+  display: block;
+}
+
+/* Time display */
+.mediatree-artplayer .art-control-time {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: rgba(255,255,255,0.9);
 }
 
 .mediatree-artplayer .art-subtitle {
