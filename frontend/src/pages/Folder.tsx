@@ -323,7 +323,7 @@ export default function FolderPage() {
                     {folderOverviewText.length > 46 ? folderOverviewText.slice(0, 46) : folderOverviewText}
                     {folderOverviewText.length > 46 && <span>… </span>}
                     <button
-                      className="pointer-events-auto inline-flex items-center rounded-full border border-white/10 bg-white/[0.08] px-1.5 py-0 text-xs text-gray-400 hover:bg-white/[0.14] hover:text-white transition"
+                      className="pointer-events-auto inline-flex items-center rounded-full border border-white/10 bg-white/[0.08] px-1.5 py-0 text-[10px] text-gray-400 hover:bg-white/[0.14] hover:text-white transition"
                       onClick={(e) => { e.stopPropagation(); setOverviewModal(true) }}
                     >更多</button>
                   </p>
@@ -349,7 +349,7 @@ export default function FolderPage() {
                 {folderOverviewText.length > 46 ? folderOverviewText.slice(0, 46) : folderOverviewText}
                 {folderOverviewText.length > 46 && <span>… </span>}
                 <button
-                  className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.08] px-1.5 py-0 text-xs text-gray-400 hover:bg-white/[0.14] hover:text-white transition"
+                  className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.08] px-1.5 py-0 text-[10px] text-gray-400 hover:bg-white/[0.14] hover:text-white transition"
                   onClick={() => setOverviewModal(true)}
                 >更多</button>
               </p>
