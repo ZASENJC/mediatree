@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { api, Movie, FolderNode } from '../api'
 import { getExcluded } from '../store'
@@ -43,6 +43,12 @@ export default function FolderPage() {
   const [folderDisplayTitle, setFolderDisplayTitle] = useState('')
   const [folderBackdrop, setFolderBackdrop] = useState('')
 
+  // ─── TMDB Backdrop Carousel ───
+  const [tmdbBackdrops, setTmdbBackdrops] = useState<{ url: string; width: number; height: number }[]>([])
+  const [backdropIdx, setBackdropIdx] = useState(0)
+  const [backdropLoaded, setBackdropLoaded] = useState(false)
+  const backdropTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+
   const load = useCallback(() => {
     setLoading(true)
     const cacheKey = `movies_folder_${folderPath}_${sort}`
@@ -80,6 +86,50 @@ export default function FolderPage() {
       }
     }).catch(() => {})
   }, [folderPath])
+
+  // Load TMDB backdrops from the first movie with tmdb_id in the folder
+  useEffect(() => {
+    if (backdropLoaded || allMovies.length === 0) return
+    // Try movies with direct tmdb_id first, then parse [tmdbid=NNN] from folder path
+    let tmdbId: number | undefined
+    let mediaType: string | undefined
+    const firstWithTmdb = allMovies.find(m => m.tmdb_id && m.tmdb_type)
+    if (firstWithTmdb) {
+      tmdbId = firstWithTmdb.tmdb_id
+      mediaType = firstWithTmdb.tmdb_type
+    } else {
+      // Parse [tmdbid=NNN] from folder path
+      const m = allMovies.find(m => m.folder_levels?.match(/\[tmdbid=(\d+)\]/i))
+      if (m) {
+        const match = m.folder_levels!.match(/\[tmdbid=(\d+)\]/i)
+        if (match) {
+          tmdbId = parseInt(match[1], 10)
+          mediaType = m.tmdb_type || (m.folder_levels?.includes('[tmdbtype=tv]') ? 'tv' : 'movie')
+        }
+      }
+    }
+    if (!tmdbId || !mediaType) return
+    setBackdropLoaded(true)
+    api.tmdbImages(tmdbId, mediaType)
+      .then(data => {
+        if (data?.backdrops?.length) {
+          setTmdbBackdrops(data.backdrops.slice(0, 10))
+        }
+      }).catch(() => {})
+  }, [allMovies, backdropLoaded])
+
+  // Auto-rotate backdrops every 20s
+  useEffect(() => {
+    if (tmdbBackdrops.length <= 1) return
+    backdropTimer.current = setInterval(() => {
+      setBackdropIdx(prev => (prev + 1) % tmdbBackdrops.length)
+    }, 20000)
+    return () => { if (backdropTimer.current) clearInterval(backdropTimer.current) }
+  }, [tmdbBackdrops.length])
+
+  // Determine which backdrop source to use
+  const activeBackdrop = tmdbBackdrops.length > 0 ? tmdbBackdrops[backdropIdx]?.url : folderBackdrop
+  const prevBackdrop = tmdbBackdrops.length > 1 ? tmdbBackdrops[(backdropIdx - 1 + tmdbBackdrops.length) % tmdbBackdrops.length]?.url : ''
 
   useEffect(() => {
     const ex = getExcluded()
@@ -163,16 +213,27 @@ export default function FolderPage() {
 
   return (
     <div className="relative space-y-6">
-      {folderBackdrop ? (
+      {activeBackdrop ? (
         <div className="relative -mt-5 min-h-[56vh] sm:-mt-7 sm:min-h-[62vh]">
           <div className="pointer-events-none absolute inset-x-[calc(50%-50vw)] -top-20 h-[calc(100%+7rem)] overflow-hidden">
+            {/* Previous backdrop (fade out) */}
+            {prevBackdrop && (
+              <img
+                src={prevBackdrop}
+                alt=""
+                className="absolute inset-0 h-full w-full scale-[1.04] object-cover opacity-0 saturate-115 [mask-image:radial-gradient(ellipse_at_center,black_40%,rgba(0,0,0,0.9)_58%,rgba(0,0,0,0.42)_78%,transparent_100%)] [-webkit-mask-image:radial-gradient(ellipse_at_center,black_40%,rgba(0,0,0,0.9)_58%,rgba(0,0,0,0.42)_78%,transparent_100%)]"
+              />
+            )}
+            {/* Current backdrop (fade in) */}
             <img
-              src={folderBackdrop}
+              src={activeBackdrop}
               alt=""
-              className="h-full w-full scale-[1.04] object-cover opacity-80 saturate-115 [mask-image:radial-gradient(ellipse_at_center,black_40%,rgba(0,0,0,0.9)_58%,rgba(0,0,0,0.42)_78%,transparent_100%)] [-webkit-mask-image:radial-gradient(ellipse_at_center,black_40%,rgba(0,0,0,0.9)_58%,rgba(0,0,0,0.42)_78%,transparent_100%)]"
+              className="absolute inset-0 h-full w-full scale-[1.04] object-cover opacity-80 saturate-115 transition-opacity duration-[1.5s] ease-in-out [mask-image:radial-gradient(ellipse_at_center,black_40%,rgba(0,0,0,0.9)_58%,rgba(0,0,0,0.42)_78%,transparent_100%)] [-webkit-mask-image:radial-gradient(ellipse_at_center,black_40%,rgba(0,0,0,0.9)_58%,rgba(0,0,0,0.42)_78%,transparent_100%)]"
             />
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_36%,rgba(3,4,10,0.18)_72%,transparent_100%),linear-gradient(180deg,transparent_0%,rgba(3,4,10,0.08)_35%,rgba(3,4,10,0.25)_55%,rgba(3,4,10,0.6)_75%,rgba(3,4,10,0.95)_100%)]" />
+            {/* Fade overlay: top edge soft + bottom gradient to page bg */}
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_32%,rgba(3,4,10,0.12)_68%,transparent_100%),linear-gradient(180deg,rgba(3,4,10,0)_0%,rgba(3,4,10,0.06)_35%,rgba(3,4,10,0.2)_50%,rgba(3,4,10,0.55)_65%,rgba(3,4,10,0.85)_80%,rgba(3,4,10,1)_100%)]" />
           </div>
+
           <div className="absolute inset-x-0 bottom-0 p-4 sm:p-7">
             <button onClick={() => { saveScrollPos(); navigate('/') }}
               className="glass-chip mb-4 text-sm text-gray-300 drop-shadow hover:text-white">

@@ -2,6 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
+@property --ambient-r {
+  syntax: '<number>';
+  initial-value: 10;
+  inherits: false;
+}
+@property --ambient-g {
+  syntax: '<number>';
+  initial-value: 10;
+  inherits: false;
+}
+@property --ambient-b {
+  syntax: '<number>';
+  initial-value: 12;
+  inherits: false;
+}
+
+#ambient-root {
+  --ambient-r: 10;
+  --ambient-g: 10;
+  --ambient-b: 12;
+}
+
+.ambient-glow {
+  position: absolute;
+  translate: -50% -50%;
+  background: radial-gradient(ellipse 50% 50% at 50% 50%, rgba(var(--ambient-r), var(--ambient-g), var(--ambient-b), 0.45), transparent 68%);
+  filter: blur(80px) saturate(1.4);
+  transition: --ambient-r 1.5s ease, --ambient-g 1.5s ease, --ambient-b 1.5s ease;
+}
+
 @layer components {
   .glass-panel {
     @apply rounded-3xl border border-white/10 bg-white/[0.07] shadow-glass backdrop-blur-2xl;
@@ -132,6 +162,8 @@ canvas[data-mediatree-subtitle="ass"] {
   min-height: 220px;
   max-height: calc(100dvh - 11rem);
   transition: aspect-ratio 0.3s ease;
+  position: relative;
+  z-index: auto;
 }
 
 .mediatree-artplayer video {

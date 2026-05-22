@@ -356,6 +356,11 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
         "scraper_raw": data.get("scraper_raw") or (json.dumps(data.get("_raw"), ensure_ascii=False) if data.get("_raw") else ""),
         "cast": json.dumps(data.get("cast") or [], ensure_ascii=False),
         "crew": json.dumps(data.get("crew") or [], ensure_ascii=False),
+        "genre": data.get("genre") or "",
+        "keywords": data.get("keywords") or "",
+        "studios": ", ".join(data.get("studios") or []) if isinstance(data.get("studios"), list) else (data.get("studios") or ""),
+        "tagline": data.get("tagline") or "",
+        "status": data.get("status") or "",
     }
     if replace:
         set_sql = """
@@ -386,6 +391,11 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
                episode_overview=NULL,
                episode_still=NULLIF(?, ''),
                episode_still_local=NULL,
+               genre=NULLIF(?, ''),
+               keywords=NULLIF(?, ''),
+               studios=NULLIF(?, ''),
+               tagline=NULLIF(?, ''),
+               status=NULLIF(?, ''),
                updated_at=datetime('now')
         """
     else:
@@ -415,6 +425,11 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
                tmdb_episode=COALESCE(?, tmdb_episode),
                episode_title=COALESCE(NULLIF(?, ''), episode_title),
                episode_still=COALESCE(NULLIF(?, ''), episode_still),
+               genre=COALESCE(NULLIF(?, ''), genre),
+               keywords=COALESCE(NULLIF(?, ''), keywords),
+               studios=COALESCE(NULLIF(?, ''), studios),
+               tagline=COALESCE(NULLIF(?, ''), tagline),
+               status=COALESCE(NULLIF(?, ''), status),
                updated_at=datetime('now')
         """
     values = (
@@ -426,6 +441,7 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
         fields["scraper_source"], fields["source_id"], fields["bangumi_id"], fields["javdb_id"],
         fields["scraper_raw"],
         fields["tmdb_season"], fields["tmdb_episode"], fields["episode_title"], fields["episode_still"],
+        fields["genre"], fields["keywords"], fields["studios"], fields["tagline"], fields["status"],
     )
     if media_root:
         cur = await db.execute(
