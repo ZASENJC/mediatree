@@ -247,6 +247,8 @@ def scan_media(root: str = None) -> list[dict]:
                         match = re.search(r"\d+", fname)
                         if match:
                             season_num = int(match.group())
+                        elif fname.strip().lower() in {"specials", "special"}:
+                            season_num = 0
                     item["tmdb_season"] = season_num
                 if local_still:
                     item["episode_still"] = local_still
@@ -663,7 +665,7 @@ async def scrape_for_library(media_root: str):
 
                                 if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
                                     season_num = infer_season_number(folder_name, data, existing_season=r.get("tmdb_season"), folder_path=folder_levels)
-                                    if season_num:
+                                    if season_num is not None:
                                         try:
                                             from .tmdb import match_episodes_in_folder
                                             async with _sqlite_write_semaphore:
@@ -951,7 +953,7 @@ async def rescrape_movie(movie_id: int) -> dict:
                     affected = await _apply_scraped_data(folder_levels, data, media_root, replace=True)
                 if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
                     season_num = infer_season_number(folder_name, data, existing_season=movie.get("tmdb_season"), folder_path=folder_levels)
-                    if season_num:
+                    if season_num is not None:
                         try:
                             from .tmdb import match_episodes_in_folder
                             async with _sqlite_write_semaphore:
@@ -1047,7 +1049,7 @@ async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: st
             if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
                 folder_name = Path(folder_levels).name if folder_levels else ""
                 season_num = infer_season_number(folder_name, data, existing_season=movie.get("tmdb_season"), folder_path=folder_levels)
-                if season_num:
+                if season_num is not None:
                     try:
                         from .tmdb import match_episodes_in_folder
                         async with _sqlite_write_semaphore:
@@ -1088,7 +1090,7 @@ async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: st
             if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
                 folder_name = Path(folder_levels).name if folder_levels else ""
                 season_num = infer_season_number(folder_name, data, existing_season=movie.get("tmdb_season"), folder_path=folder_levels)
-                if season_num:
+                if season_num is not None:
                     try:
                         from .tmdb import match_episodes_in_folder
                         async with _sqlite_write_semaphore:

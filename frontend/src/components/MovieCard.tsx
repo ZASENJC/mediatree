@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, Movie } from '../api'
 import { saveScrollPos } from '../scroll'
+import { showToast } from '../toast'
 import { WatchedBadge } from './WatchedBadge'
 import ContextMenu, { ContextMenuItem } from './ContextMenu'
 import EditModal from './EditModal'
@@ -86,7 +87,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       onUpdated?.()
     } catch (err) {
       console.error('Rescrape failed for movie', movie.id, err)
-      alert(`刮削失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
+      showToast(`刮削失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
     }
   }, [movie.id, onUpdated])
 
@@ -97,7 +98,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       const data = await api.searchScrape(manualQuery.trim(), manualScraper || undefined)
       setSearchResults(data.results || [])
       if ((data.results || []).length === 0) {
-        alert('没有找到匹配结果')
+        showToast('没有找到匹配结果')
       }
     } catch {
       console.error('Search scrape failed')
@@ -127,7 +128,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
     try {
       const data = await api.getAlternativeCovers(movie.id)
       if (!data.covers || data.covers.length === 0) {
-        alert('没有找到备用封面')
+        showToast('没有找到备用封面')
         return
       }
       setAltCovers(data.covers)
@@ -175,7 +176,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       clearCache()
       onUpdated?.()
     } catch {
-      alert('删除失败，请检查权限')
+      showToast('删除失败，请检查权限')
     }
   }, [movie.id, onUpdated])
 
