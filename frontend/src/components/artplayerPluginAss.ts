@@ -19,19 +19,28 @@ interface AssPluginOptions extends Omit<SubtitlesOctopusOptions, 'video' | 'work
   fallbackFont?: string
 }
 
+let _cachedObjectWorkerUrl: string | null = null
+let _workerLoadPromise: Promise<string> | null = null
+
 function toAbsoluteUrl(url: string): string {
   if (/^(https?:)?\/\//i.test(url) || url.startsWith('blob:') || url.startsWith('data:')) return url
   return new URL(url, document.baseURI).toString()
 }
 
 async function loadWorker(): Promise<string> {
-  const response = await fetch(workerUrl)
-  const workerScript = await response.text()
-  const patched = workerScript.replace(
-    /wasmBinaryFile\s*=\s*"(subtitles-octopus-worker\.wasm)"/g,
-    `wasmBinaryFile = "${toAbsoluteUrl(wasmUrl)}"`,
-  )
-  return URL.createObjectURL(new Blob([patched], { type: 'text/javascript' }))
+  if (_cachedObjectWorkerUrl) return _cachedObjectWorkerUrl
+  if (_workerLoadPromise) return _workerLoadPromise
+  _workerLoadPromise = (async () => {
+    const response = await fetch(workerUrl)
+    const workerScript = await response.text()
+    const patched = workerScript.replace(
+      /wasmBinaryFile\s*=\s*"(subtitles-octopus-worker\.wasm)"/g,
+      `wasmBinaryFile = "${toAbsoluteUrl(wasmUrl)}"`,
+    )
+    _cachedObjectWorkerUrl = URL.createObjectURL(new Blob([patched], { type: 'text/javascript' }))
+    return _cachedObjectWorkerUrl
+  })()
+  return _workerLoadPromise
 }
 
 export default function artplayerPluginAss(options: AssPluginOptions): ArtplayerPlugin {
@@ -55,21 +64,17 @@ export default function artplayerPluginAss(options: AssPluginOptions): Artplayer
       try { runtime.instance.freeTrack() } catch (err) { console.warn('ASS subtitle freeTrack failed', err) }
       try { runtime.instance.dispose() } catch (err) { console.warn('ASS subtitle dispose failed', err) }
       try { runtime.instance.canvasParent?.remove() } catch {}
-      URL.revokeObjectURL(runtime.objectWorkerUrl)
+      // Worker URL is cached globally, do not revoke
     }
 
     const switchTrack = async (subtitleUrl: string, nextOptions: Partial<AssPluginOptions> = {}) => {
       const seq = ++switchSeq
       disposeCurrent()
       if (destroyed || !subtitleUrl) return
-      let objectWorkerUrl = ''
       try {
-        if (import.meta.env.DEV) console.info('ASS plugin init', { subtitleUrl })
-        objectWorkerUrl = await loadWorker()
-        if (destroyed || seq !== switchSeq) {
-          URL.revokeObjectURL(objectWorkerUrl)
-          return
-        }
+        console.info('ASS plugin init', { subtitleUrl })
+        const objectWorkerUrl = await loadWorker()
+        if (destroyed || seq !== switchSeq) return
         const mergedOptions = { ...options, ...nextOptions }
         const instance = new SubtitlesOctopus({
           renderMode: 'wasm-blend',
@@ -96,12 +101,10 @@ export default function artplayerPluginAss(options: AssPluginOptions): Artplayer
         if (destroyed || seq !== switchSeq) {
           try { instance.dispose() } catch {}
           try { instance.canvasParent?.remove() } catch {}
-          URL.revokeObjectURL(objectWorkerUrl)
           return
         }
         current = { instance, objectWorkerUrl }
       } catch (err) {
-        if (objectWorkerUrl) URL.revokeObjectURL(objectWorkerUrl)
         console.error('ASS subtitle switch failed', err)
         throw err
       }
@@ -109,7 +112,7 @@ export default function artplayerPluginAss(options: AssPluginOptions): Artplayer
 
     const clear = () => {
       switchSeq += 1
-      if (import.meta.env.DEV) console.info('ASS plugin destroy')
+      console.info('ASS plugin destroy')
       disposeCurrent()
     }
 
