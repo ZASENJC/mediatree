@@ -68,6 +68,51 @@
   .apple-focus {
     @apply transition-all duration-300 hover:-translate-y-1 hover:scale-[1.02] hover:border-white/25 hover:shadow-glow focus:outline-none focus:ring-2 focus:ring-apple-blue/50;
   }
+
+  .liquid-glass {
+    position: relative;
+    border-radius: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.11);
+    backdrop-filter: blur(22px) saturate(170%) brightness(1.1) contrast(1.04);
+    -webkit-backdrop-filter: blur(22px) saturate(170%) brightness(1.1) contrast(1.04);
+    box-shadow:
+      0 12px 40px rgba(0, 0, 0, 0.34),
+      0 3px 10px rgba(0, 0, 0, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.24),
+      inset 0 0 28px rgba(10, 132, 255, 0.05);
+  }
+
+  /* 折射光晕渐变层 */
+  .liquid-glass::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: -1;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.08) 0%,
+      rgba(255, 255, 255, 0.03) 22%,
+      transparent 42%,
+      rgba(10, 132, 255, 0.045) 66%,
+      rgba(191, 90, 242, 0.035) 100%
+    );
+  }
+
+  /* 边缘色散高光环 */
+  .liquid-glass::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: -1;
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+      inset 0 0 0 2px rgba(10, 132, 255, 0.035);
+  }
 }
 
 * {
