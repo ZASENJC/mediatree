@@ -65,7 +65,7 @@ class JavdatabaseScraper(BaseScraper):
         candidate_names: list[str] | None = None,
         movie: dict | None = None,
     ) -> dict | None:
-        """Javdatabase scraper: code-based exact match, no fuzzy search."""
+        """Javdatabase scraper: code-based exact match with fuzzy fallback."""
         from .utils import scrape_result_to_legacy
 
         result = await self.get_detail(code or search_name)

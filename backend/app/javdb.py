@@ -190,6 +190,30 @@ def _parse_movie_page(html: str, page_url: str) -> dict:
     return result
 
 
+def _jav_code_variants(code: str) -> list[str]:
+    """Generate fuzzy search variants for a JAV code.
+
+    Returns alternative search strings to try when exact match fails.
+    """
+    variants = []
+    normalized = code.upper().strip()
+
+    # Variant 1: without dash (SSNI-888 → SSNI888)
+    if '-' in normalized:
+        no_dash = normalized.replace('-', '')
+        if no_dash != normalized:
+            variants.append(no_dash)
+
+    # Variant 2: prefix/letters only (SSNI-888 → SSNI) for series search
+    match = re.match(r'^([A-Z]+)', normalized)
+    if match:
+        prefix = match.group(1)
+        if len(prefix) >= 2 and prefix != normalized:
+            variants.append(prefix)
+
+    return variants
+
+
 async def search_javdb(code: str) -> dict | None:
     if not settings.javdb_enabled or not code:
         return None
@@ -235,8 +259,64 @@ async def search_javdb(code: str) -> dict | None:
                 html = resp2.text
 
         if not found_url:
-            await _set_cache(code, {})
-            return None
+            # ── Fuzzy search fallback ──────────────────────────
+            for variant in _jav_code_variants(code):
+                logger.info(f"Javdatabase fuzzy search: trying '{variant}' for '{code}'")
+
+                # Check variant cache first
+                variant_cached = await _get_cached(variant)
+                if variant_cached is not None:
+                    await _set_cache(code, variant_cached)
+                    return variant_cached or None
+
+                # Try direct URL with variant
+                fuzzy_direct = f"{settings.javdb_base_url}/movies/{variant.lower()}/"
+                async with _javdb_semaphore:
+                    fuzzy_resp = await client.get(fuzzy_direct)
+                if fuzzy_resp.status_code == 200 and len(fuzzy_resp.text) > 5000:
+                    found_url = fuzzy_direct
+                    html = fuzzy_resp.text
+                    break
+
+                # Try search page with variant
+                await _rate_limit()
+                fuzzy_search = f"{settings.javdb_base_url}/?post_type=movies%2Cuncensored&s={variant}"
+                async with _javdb_semaphore:
+                    fuzzy_resp = await client.get(fuzzy_search)
+                fuzzy_resp.raise_for_status()
+                fuzzy_html = fuzzy_resp.text
+
+                # For series/prefix search, pick result closest to original number
+                orig_num_m = re.search(r'(\d{2,6})', code)
+                orig_num = int(orig_num_m.group(1)) if orig_num_m else 0
+
+                best_url = None
+                best_diff = float('inf')
+
+                fuzzy_card_pat = re.compile(
+                    r"(?is)<div[^>]+class=\"[^\"]*\bcard\b[^\"]*\bborderlesscard\b[^\"]*\"[^>]*>(.*?)</div>"
+                )
+                for fm in fuzzy_card_pat.finditer(fuzzy_html):
+                    block = fm.group(1)
+                    link_m = re.search(r"(?is)<a[^>]+href=\"(/movies/[^\"]+)\"[^>]*>(.*?)</a>", block)
+                    if link_m:
+                        link = link_m.group(1)
+                        link_code = _clean_html_text(link_m.group(2))
+                        code_num_m = re.search(r'(\d{2,6})', link_code)
+                        if code_num_m:
+                            code_num = int(code_num_m.group(1))
+                            diff = abs(code_num - orig_num)
+                            if diff < best_diff:
+                                best_diff = diff
+                                best_url = f"{settings.javdb_base_url}{link}"
+
+                if best_url:
+                    found_url = best_url
+                    break
+
+            if not found_url:
+                await _set_cache(code, {})
+                return None
 
         if not found_url.endswith("/"):
             found_url += "/"
