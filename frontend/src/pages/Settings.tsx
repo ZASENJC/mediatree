@@ -35,6 +35,7 @@ export default function Settings() {
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
   const [hideHomeTitleText, setHideHomeTitleText] = useState(() => getUiPrefs().hideHomeTitleText || false)
+  const [showSourceName, setShowSourceName] = useState(() => getUiPrefs().showSourceName || false)
 
   const [libraries, setLibraries] = useState<(MediaRoot & { settings?: LibrarySetting })[]>([])
   const [libScraper, setLibScraper] = useState<Record<string, string>>({})
@@ -98,7 +99,7 @@ export default function Settings() {
     setSaving(true)
     setMsg('')
     try {
-      setUiPrefs({ hideHomeTitleText })
+      setUiPrefs({ ...getUiPrefs(), hideHomeTitleText })
       await api.updateConfig({
         javdb_enabled: javdbEnabled,
         javdb_cache_hours: javdbCache,
@@ -249,7 +250,7 @@ export default function Settings() {
               <button
                 role="switch"
                 aria-checked={hideHomeTitleText}
-                onClick={() => { const v = !hideHomeTitleText; setHideHomeTitleText(v); setUiPrefs({ hideHomeTitleText: v }) }}
+                onClick={() => { const v = !hideHomeTitleText; setHideHomeTitleText(v); setUiPrefs({ ...getUiPrefs(), hideHomeTitleText: v }) }}
                 className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none ${
                   hideHomeTitleText ? 'bg-apple-blue' : 'bg-white/15'
                 }`}
@@ -257,6 +258,26 @@ export default function Settings() {
                 <span
                   className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-200 ${
                     hideHomeTitleText ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </label>
+            <label className="mt-3 flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl cursor-pointer">
+              <div>
+                <p className="text-sm font-medium text-white">使用源文件名称</p>
+                <p className="mt-0.5 text-xs text-gray-500">开启后首页媒体库卡片显示源文件夹名称；关闭则显示刮削到的标题。</p>
+              </div>
+              <button
+                role="switch"
+                aria-checked={showSourceName}
+                onClick={() => { const v = !showSourceName; setShowSourceName(v); setUiPrefs({ ...getUiPrefs(), showSourceName: v }) }}
+                className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none ${
+                  showSourceName ? 'bg-apple-blue' : 'bg-white/15'
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-200 ${
+                    showSourceName ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
               </button>
