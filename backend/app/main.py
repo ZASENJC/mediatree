@@ -20,6 +20,7 @@ from .database import (
     get_library_passwords, set_library_password, verify_library_password_v2,
     get_all_library_settings, save_library_settings, has_any_library_setting,
     get_library_settings, save_progress, get_progress,
+    get_review_queue, approve_review_item, clear_review_queue,
 )
 from .scanner import scan_media, scrape_for_library, run_scan_for_root, rescrape_movie, rescrape_movie_manual, rescrape_folder, rescrape_folder_manual, search_for_scrape, apply_folder_scrape_result, fetch_search_backdrops, change_folder_cover, change_folder_backdrop, edit_folder_movies, delete_folder_movies
 from .javdb import search_javdb
@@ -1333,6 +1334,28 @@ async def api_remove_tag(movie_id: int, tag: str):
 @app.delete("/api/movies/{movie_id}")
 async def api_delete_movie(movie_id: int):
     await delete_movie(movie_id)
+    return {"ok": True}
+
+
+# ─── Review Queue ───
+
+@app.get("/api/review-queue")
+async def api_review_queue(limit: int = 50, offset: int = 0):
+    """List movies pending review (relaxed accept results)."""
+    return await get_review_queue(limit=limit, offset=offset)
+
+
+@app.post("/api/review-queue/{movie_id}/approve")
+async def api_approve_review(movie_id: int):
+    """Approve a single pending review item (clears the flag)."""
+    await approve_review_item(movie_id)
+    return {"ok": True}
+
+
+@app.post("/api/review-queue/clear")
+async def api_clear_review_queue():
+    """Clear all pending review flags at once."""
+    await clear_review_queue()
     return {"ok": True}
 
 

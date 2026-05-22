@@ -69,13 +69,35 @@ class TMDBScraper(BaseScraper):
         from ..config import settings, logger
         from ..title_match import (
             clean_search_title, build_search_queries, candidate_title_matches,
-            _first_tmdb_token, _is_specific_search_query,
+            _first_tmdb_token, _is_specific_search_query, extract_imdb_id_from_name,
         )
         from .registry import get_scraper
 
         media_type = self.media_type  # "movie" or "tv"
         scraper_name = self.name
         candidates = candidate_names or [search_name, code]
+
+        # Step 0: IMDB ID exact match (before TMDB ID)
+        for name in candidates:
+            imdb_id = extract_imdb_id_from_name(name)
+            if imdb_id:
+                logger.info(f"  {scraper_name}: detected IMDB ID {imdb_id} from '{name}'")
+                from ..tmdb import fetch_tmdb_by_imdb_id
+                imdb_detail = await fetch_tmdb_by_imdb_id(imdb_id)
+                if imdb_detail and imdb_detail.get("title"):
+                    detail_type = imdb_detail.get("media_type", media_type)
+                    if detail_type == media_type:
+                        result = self.normalize_result(imdb_detail)
+                        if result.title:
+                            logger.info(f"  {scraper_name}: IMDB ID exact match success for {imdb_id}")
+                            return scrape_result_to_legacy(result, exact=True)
+                    else:
+                        logger.info(
+                            f"  {scraper_name}: IMDB ID {imdb_id} returned type={detail_type}, "
+                            f"but scraper is {media_type}; skipping"
+                        )
+                break  # Only try first IMDB ID found
+
         token = _first_tmdb_token(candidates)
         clean_title = clean_search_title(search_name, candidates)
         existing_tmdb_id = str((movie or {}).get("tmdb_id") or "").strip()
@@ -202,6 +224,7 @@ async def tmdb_title_search(
     scraper_names = ["tmdb_tv" if media_type == "tv" else "tmdb_movie"] if media_type else ["tmdb_movie", "tmdb_tv"]
     failures: list[str] = []
     primary_query = queries[0] if queries else clean_title
+    seen_original_titles: set[str] = set()
 
     for query in queries:
         if not query:
@@ -226,6 +249,9 @@ async def tmdb_title_search(
                 continue
             rejected = []
             for candidate in results[:3]:
+                # Collect original titles for alias fallback
+                if candidate.original_title:
+                    seen_original_titles.add(candidate.original_title)
                 matched = candidate_title_matches(candidate, clean_title, query, code)
                 if (
                     not matched
@@ -256,6 +282,61 @@ async def tmdb_title_search(
                 break
         if best:
             break
+
+    if not best:
+        # Alias fallback: re-search with original titles from primary candidates
+        existing_queries = set(q.lower() for q in queries)
+        aliases = [
+            t for t in seen_original_titles
+            if t.strip() and t.strip().lower() not in existing_queries
+        ][:5]
+        if aliases:
+            logger.info(
+                f"  TMDB {scope}: primary search failed, trying alias fallback with "
+                f"aliases={aliases[:3]}"
+            )
+            alias_queries = build_search_queries(clean_title, [folder_name, code], extra_aliases=aliases)
+            # Only run alias queries that are new
+            new_alias_queries = [q for q in alias_queries if q.lower() not in existing_queries]
+            for query in new_alias_queries[:3]:
+                if not query:
+                    continue
+                for sname in scraper_names:
+                    endpoint_type = "tv" if sname == "tmdb_tv" else "movie"
+                    api_type = "tmdb_search_tv" if endpoint_type == "tv" else "tmdb_search_movie"
+                    logger.info(
+                        f"  fallback step={api_type}_alias raw_title='{folder_name}' "
+                        f"query='{query}'"
+                    )
+                    try:
+                        tmdb_scraper = get_scraper(sname)
+                        results = await tmdb_scraper.search(query, media_type=media_type, limit=5)
+                    except Exception as e:
+                        logger.warning(f"  {api_type}: alias search error for '{query}': {e}")
+                        continue
+                    logger.info(f"  {api_type} alias: candidates={len(results)} query='{query}'")
+                    if not results:
+                        continue
+                    for candidate in results[:3]:
+                        matched = candidate_title_matches(candidate, clean_title, query, code)
+                        if (
+                            not matched
+                            and query == (alias_queries[0] if alias_queries else "")
+                            and len(results) <= 2
+                            and _is_specific_search_query(query)
+                        ):
+                            matched = True
+                        logger.info(
+                            f"  {api_type} alias: title_matches={matched} "
+                            f"source_id='{candidate.source_id}' title='{candidate.title}'"
+                        )
+                        if matched:
+                            best = candidate
+                            break
+                    if best:
+                        break
+                if best:
+                    break
 
     if not best:
         logger.info(f"  TMDB {scope}: no match for clean_title='{clean_title}', failures={'; '.join(failures)}")

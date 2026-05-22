@@ -76,9 +76,9 @@ def _bangumi_staff_from_infobox(infobox) -> tuple[list[dict], list[dict]]:
     return cast[:30], crew[:30]
 
 
-async def search_bangumi(query: str, lang: str = "") -> list[dict]:
-    bangumi_type = "2"
-    cache_key = f"bangumi_search:anime:{query}"
+async def search_bangumi(query: str, lang: str = "", bangumi_type: str | None = None) -> list[dict]:
+    type_label = bangumi_type if bangumi_type else "all"
+    cache_key = f"bangumi_search:type{type_label}:{query}"
     cache_data = await get_scraper_cache("bangumi", cache_key, settings.bangumi_cache_hours)
     if cache_data is not None:
         logger.info(f"Bangumi cache hit: {cache_key}")
@@ -89,7 +89,9 @@ async def search_bangumi(query: str, lang: str = "") -> list[dict]:
         client = await _get_bangumi_client()
         url = f"{BANGUMI_BASE}/search/subject/{query}"
         params = {"responseGroup": "large"}
-        logger.info(f"Bangumi search endpoint: /search/subject query='{query}' type={bangumi_type}")
+        if bangumi_type is not None:
+            params["type"] = bangumi_type
+        logger.info(f"Bangumi search endpoint: /search/subject query='{query}' type={bangumi_type or 'all'}")
         async with _bangumi_semaphore:
             resp = await client.get(url, params=params)
         resp.raise_for_status()

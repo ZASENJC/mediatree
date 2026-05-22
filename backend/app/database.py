@@ -61,6 +61,8 @@ async def init_db():
         "ALTER TABLE movies ADD COLUMN original_title TEXT",
         "ALTER TABLE movies ADD COLUMN overview TEXT",
         "ALTER TABLE movies ADD COLUMN scraper_raw TEXT",
+        "ALTER TABLE movies ADD COLUMN pending_review INTEGER DEFAULT 0",
+        "ALTER TABLE movies ADD COLUMN review_candidates TEXT",
     ]
     for mig in migrations:
         try:
@@ -116,6 +118,8 @@ async def init_db():
             original_title TEXT,
             overview TEXT,
             scraper_raw TEXT,
+            pending_review INTEGER DEFAULT 0,
+            review_candidates TEXT,
             media_root TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now'))
@@ -1045,3 +1049,53 @@ async def verify_library_password_v2(media_root: str, password: str) -> bool:
     if not pwd_hash:
         return True
     return _verify_password(password, pwd_hash)
+
+
+async def get_review_queue(limit: int = 50, offset: int = 0):
+    """Return movies with pending_review=1, with review_candidates JSON."""
+    db = await get_db()
+    cur = await db.execute(
+        "SELECT COUNT(*) FROM movies WHERE pending_review=1"
+    )
+    total = (await cur.fetchone())[0]
+    cols = (
+        "id, path, code, title, original_title, overview, actress, duration, "
+        "cover_local, cover_remote, javdb_score, javdb_likes, folder_levels, "
+        "created_at, updated_at, media_root, tmdb_type, tmdb_season, tmdb_episode, "
+        "episode_title, episode_overview, episode_still, episode_still_local, "
+        "clean_title, episode_number, display_title, external_audio_tracks, "
+        "\"cast\", crew, pending_review, review_candidates"
+    )
+    cur2 = await db.execute(
+        f"SELECT {cols} FROM movies WHERE pending_review=1 "
+        f"ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+        (limit, offset)
+    )
+    rows = await cur2.fetchall()
+    movies = [dict(r) for r in rows]
+    # Decode review_candidates JSON
+    for m in movies:
+        raw = m.get("review_candidates")
+        if raw:
+            try:
+                m["review_candidates"] = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                pass
+    return {"movies": movies, "total": total}
+
+
+async def approve_review_item(movie_id: int):
+    """Clear pending_review flag for a single movie."""
+    db = await get_db()
+    await db.execute(
+        "UPDATE movies SET pending_review=0, review_candidates=NULL WHERE id=?",
+        (movie_id,)
+    )
+    await db.commit()
+
+
+async def clear_review_queue():
+    """Clear all pending_review flags."""
+    db = await get_db()
+    await db.execute("UPDATE movies SET pending_review=0, review_candidates=NULL")
+    await db.commit()
