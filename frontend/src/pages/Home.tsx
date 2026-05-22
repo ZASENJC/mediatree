@@ -10,17 +10,21 @@ import SortDropdown from '../components/SortDropdown'
 import { MovieCard } from '../components/MovieCard'
 import ContextMenu, { ContextMenuItem } from '../components/ContextMenu'
 import EditModal from '../components/EditModal'
+import CoverPickerModal from '../components/CoverPickerModal'
 import { WatchedBadge } from '../components/WatchedBadge'
 
 function encodeMediaPath(path: string): string {
   return path.split('/').map(encodeURIComponent).join('/')
 }
 
-function getCoverSrc(cover: string | null | undefined): string | null {
+function getCoverSrc(cover: string | null | undefined, version?: number): string | null {
   if (!cover) return null
-  if (cover.startsWith('http://') || cover.startsWith('https://')) return cover
-  if (cover.startsWith('/api/')) return cover
-  return `/api/media/${encodeMediaPath(cover)}`
+  let url: string
+  if (cover.startsWith('http://') || cover.startsWith('https://')) url = cover
+  else if (cover.startsWith('/api/')) url = cover
+  else url = `/api/media/${encodeMediaPath(cover)}`
+  if (version !== undefined) url += `${url.includes('?') ? '&' : '?'}v=${version}`
+  return url
 }
 
 type SortMode = 'name' | 'created_desc' | 'created_asc' | 'release_date_desc' | 'release_date_asc' | 'random'
@@ -77,6 +81,7 @@ export default function Home() {
   const [showFolderCover, setShowFolderCover] = useState(false)
   const [folderAltCovers, setFolderAltCovers] = useState<{ url: string; source: string }[]>([])
   const [folderAltBackdrops, setFolderAltBackdrops] = useState<{ url: string; source: string }[]>([])
+  const [folderCoverVersion, setFolderCoverVersion] = useState(0)
   const [showFolderBackdrop, setShowFolderBackdrop] = useState(false)
 
   const [showFolderEdit, setShowFolderEdit] = useState(false)
@@ -86,7 +91,9 @@ export default function Home() {
     setLoading(true)
     api.folders().then((data) => {
       const ex = getExcluded()
-      let filtered = data.tree.filter(n => n.movie_count > 0 && !ex.has(n.path))
+      const relevant = data.tree.filter(n => n.movie_count > 0 && !ex.has(n.path))
+      console.log('[load] tree covers:', relevant.map(n => ({ path: n.path, cover: n.cover?.slice(0, 60), random_cover: n.random_cover?.slice(0, 60) })))
+      let filtered = relevant
       if (sort === 'name') {
         filtered.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
       } else if (sort === 'created_desc') {
@@ -234,14 +241,39 @@ export default function Home() {
 
   const handleSelectFolderCover = useCallback(async (url: string) => {
     try {
-      clearCache()
       await api.changeFolderCover(activeFolderPath, activeMediaRoot, url)
+      clearCache()
+      // Directly re-fetch folders to bypass all caches
+      const data = await api.folders()
+      const ex = getExcluded()
+      let filtered = data.tree.filter(n => n.movie_count > 0 && !ex.has(n.path))
+      if (sort === 'name') {
+        filtered.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+      } else if (sort === 'created_desc') {
+        filtered.sort((a, b) => (b.created_max || '').localeCompare(a.created_max || ''))
+      } else if (sort === 'created_asc') {
+        filtered.sort((a, b) => (a.created_max || '').localeCompare(b.created_max || ''))
+      } else if (sort === 'release_date_desc') {
+        const toTs = (d?: string) => d ? new Date(d).getTime() : 0
+        filtered.sort((a, b) => toTs(b.release_date_max) - toTs(a.release_date_max))
+      } else if (sort === 'release_date_asc') {
+        const toTs = (d?: string) => d ? new Date(d).getTime() : 0
+        filtered.sort((a, b) => toTs(a.release_date_max) - toTs(b.release_date_max))
+      } else if (sort === 'random') {
+        for (let i = filtered.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [filtered[i], filtered[j]] = [filtered[j], filtered[i]]
+        }
+      }
+      setTree(filtered)
+      setFolderCoverVersion(v => v + 1)
+      setShowFolderCover(false)
       showToast('封面已更新')
-      load()
-    } catch {
-      console.error('Change folder cover failed')
+    } catch (err) {
+      console.error('[cover] change failed:', err)
+      showToast('操作失败')
     }
-  }, [activeFolderPath, activeMediaRoot, load])
+  }, [activeFolderPath, activeMediaRoot, sort])
 
   const handleEditFolder = useCallback(async () => {
     setFolderMenu(null)
@@ -343,7 +375,7 @@ export default function Home() {
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
             {tree.map((node) => {
-              const coverSrc = getCoverSrc(node.random_cover || node.cover)
+              const coverSrc = getCoverSrc(node.random_cover || node.cover, folderCoverVersion)
               return (
                 <div key={node.path}
                   onClick={() => goFolder(node.path, node.media_root)}
@@ -489,51 +521,19 @@ export default function Home() {
 
       {showFolderCover && createPortal(
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
-          <div className="glass-modal max-h-[85vh] w-full max-w-3xl overflow-y-auto p-4 sm:p-5">
-            <h2 className="mb-1 text-lg font-bold text-white">更换封面与背景: {activeFolderName}</h2>
-            <p className="mb-4 text-xs text-gray-500">选择封面图或背景图应用到该目录下所有影片</p>
-
-            {folderAltCovers.length > 0 && (
-              <>
-                <h3 className="mb-2 text-sm font-medium text-gray-400">封面图 (竖屏海报)</h3>
-                <div className="mb-4 grid grid-cols-3 gap-3 sm:grid-cols-4">
-                  {folderAltCovers.map((c, i) => (
-                    <div key={i} onClick={() => handleSelectFolderCover(c.url)}
-                      className="aspect-[2/3] cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition-all hover:border-apple-blue/40 hover:shadow-glow">
-                      <img src={c.url} alt={c.source} className="h-full w-full object-cover" />
-                      <div className="p-1 text-center text-[9px] text-gray-500">{c.source}</div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {folderAltBackdrops.length > 0 && (
-              <>
-                <h3 className="mb-2 mt-4 text-sm font-medium text-gray-400">背景图 (横屏 Fanart)</h3>
-                <div className="mb-4 grid grid-cols-2 gap-3">
-                  {folderAltBackdrops.map((b, i) => (
-                    <div key={i} onClick={() => {
-                      api.changeFolderBackdrop(activeFolderPath, activeMediaRoot, b.url).then(() => { showToast('背景图已更新'); load() }).catch(() => showToast('失败'))
-                    }}
-                      className="aspect-video cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition-all hover:border-apple-blue/40 hover:shadow-glow">
-                      <img src={b.url} alt={b.source} className="h-full w-full object-cover" />
-                      <div className="p-1 text-center text-[9px] text-gray-500">{b.source}</div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {folderAltCovers.length === 0 && folderAltBackdrops.length === 0 && (
-              <p className="py-4 text-center text-sm text-gray-500">没有可用的封面或背景图</p>
-            )}
-
-            <div className="flex gap-3">
-              <button onClick={() => setShowFolderCover(false)}
-                className="glass-button flex-1 py-2 text-sm text-gray-300">取消</button>
-            </div>
-          </div>
+          <CoverPickerModal
+            title={`更换封面与背景: ${activeFolderName}`}
+            subtitle="选择封面图或背景图应用到该目录下所有影片"
+            covers={folderAltCovers}
+            backdrops={folderAltBackdrops}
+            onSelectCover={handleSelectFolderCover}
+            onSelectBackdrop={(url) => {
+              api.changeFolderBackdrop(activeFolderPath, activeMediaRoot, url)
+                .then(() => { showToast('背景图已更新'); setFolderCoverVersion(v => v + 1); setShowFolderCover(false); load() })
+                .catch(() => showToast('失败'))
+            }}
+            onClose={() => setShowFolderCover(false)}
+          />
         </div>,
         document.body,
       )}

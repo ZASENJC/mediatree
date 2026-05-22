@@ -8,6 +8,7 @@ import { WatchedBadge } from './WatchedBadge'
 import ContextMenu, { ContextMenuItem } from './ContextMenu'
 import EditModal from './EditModal'
 import { clearCache } from '../cache'
+import CoverPickerModal from './CoverPickerModal'
 
 interface MovieCardProps {
   movie: Movie
@@ -362,38 +363,12 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
 
       {showCoverPicker && createPortal(
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
-          <div className="glass-modal w-full max-w-2xl p-4 sm:p-5 max-h-[85vh] overflow-y-auto">
-            <h2 className="mb-1 text-lg font-bold text-white">更换封面</h2>
-            <p className="mb-4 text-xs text-gray-500">{altCovers.length} 张可选 · 点击即可应用</p>
-            <div className="mb-4 grid grid-cols-3 gap-3 sm:grid-cols-4">
-              {altCovers.map((c: any, i: number) => (
-                <div key={i}
-                  onClick={() => handleSelectCover(c.url)}
-                  className="group cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition-all hover:border-apple-blue/40 hover:shadow-glow"
-                >
-                  <div className="aspect-[2/3]">
-                    <img src={c.url} alt={c.source} className="h-full w-full object-cover" />
-                  </div>
-                  <div className="p-2">
-                    <p className="truncate text-[10px] text-gray-500">{c.language ? c.language.toUpperCase() : c.source}</p>
-                    {c.width && c.height && (
-                      <p className="text-[9px] text-gray-600">{c.width}x{c.height}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-3">
-              <button onClick={handleUploadCover}
-                className="glass-button flex-1 py-2 text-sm text-gray-300">
-                上传本地图片
-              </button>
-              <button onClick={() => setShowCoverPicker(false)}
-                className="glass-button flex-1 py-2 text-sm text-gray-300">
-                取消
-              </button>
-            </div>
-          </div>
+          <CoverPickerModal
+            covers={altCovers}
+            onSelectCover={handleSelectCover}
+            onUpload={handleUploadCover}
+            onClose={() => setShowCoverPicker(false)}
+          />
         </div>,
         document.body,
       )}

@@ -45,7 +45,7 @@ async function request<T>(url: string, options?: RequestInit & { signal?: AbortS
     headers['Authorization'] = `Bearer ${token}`
   }
   const { signal, ...fetchOptions } = (options || {}) as RequestInit & { signal?: AbortSignal }
-  const res = await fetch(`${BASE}${url}`, { ...fetchOptions, signal, headers })
+  const res = await fetch(`${BASE}${url}`, { ...fetchOptions, signal, headers, cache: 'no-store' })
   if (res.status === 401) {
     setToken('')
     if (window.location.pathname !== '/login') {
