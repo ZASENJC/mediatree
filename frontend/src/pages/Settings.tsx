@@ -5,7 +5,7 @@ import { getUiPrefs, setUiPrefs } from '../store'
 const SCRAPER_META: Record<string, { label: string; desc: string; hasKey: boolean }> = {
   tmdb_movie: { label: 'TMDB 电影', desc: '适合电影库；tmdbid 调用 /movie 精确刮削', hasKey: true },
   tmdb_tv: { label: 'TMDB 剧集/番剧', desc: '适合剧集、番剧、电视剧库；tmdbid 调用 /tv 精确刮削', hasKey: true },
-  bangumi: { label: 'Bangumi', desc: '适合番剧、动画、二次元条目', hasKey: false },
+  bangumi: { label: 'Bangumi', desc: '适合番剧、动画、二次元条目，数据可能不全', hasKey: false },
   javdatabase: { label: 'Javdatabase', desc: '适合 JAV 番号识别和刮削', hasKey: false },
   auto: { label: '自动', desc: '自动判断刮削源，但可能效果不好', hasKey: true },
   none: { label: '不刮削', desc: '只扫描本地文件，不联网刮削元数据', hasKey: false },
@@ -412,19 +412,19 @@ export default function Settings() {
               </div>
 
               <div className="mt-3 border-t border-white/10 pt-3">
-                <h3 className="mb-3 text-sm font-semibold text-gray-400">内置刮削器</h3>
+                <h3 className="mb-3 text-sm font-semibold text-gray-400">刮削器说明</h3>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   {Object.entries(SCRAPER_META).filter(([k]) => k !== 'none').map(([key, val]) => (
                     <div key={key} className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
                       <p className="text-sm font-medium text-white">{val.label}</p>
                       <p className="mt-0.5 text-xs text-gray-500">{val.desc}</p>
                       <span className="mt-2 inline-flex rounded-full border border-apple-mint/30 bg-apple-mint/10 px-2 py-0.5 text-[10px] text-apple-mint">已内置</span>
+                      {key.startsWith('tmdb') && (
+                        <span className="mt-2 ml-1 inline-flex rounded-full border border-apple-yellow/30 bg-apple-yellow/10 px-2 py-0.5 text-[10px] text-apple-yellow">推荐</span>
+                      )}
                     </div>
                   ))}
                 </div>
-                <p className="mt-3 text-xs text-gray-500 leading-relaxed">
-                  自动会尝试判断刮削源，但可能效果不好；更推荐按媒体库类型选择 TMDB 电影、TMDB 剧集/番剧、Bangumi 或 Javdatabase。
-                </p>
               </div>
             </div>
           </div>
