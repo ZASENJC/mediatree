@@ -5,17 +5,17 @@
 @property --ambient-r {
   syntax: '<number>';
   initial-value: 10;
-  inherits: false;
+  inherits: true;
 }
 @property --ambient-g {
   syntax: '<number>';
   initial-value: 10;
-  inherits: false;
+  inherits: true;
 }
 @property --ambient-b {
   syntax: '<number>';
   initial-value: 12;
-  inherits: false;
+  inherits: true;
 }
 
 #ambient-root {
