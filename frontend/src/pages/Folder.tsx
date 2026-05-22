@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { api, Movie, FolderNode } from '../api'
 import { getExcluded } from '../store'
@@ -42,12 +43,19 @@ export default function FolderPage() {
   const [loading, setLoading] = useState(true)
   const [folderDisplayTitle, setFolderDisplayTitle] = useState('')
   const [folderBackdrop, setFolderBackdrop] = useState('')
+  const [overviewModal, setOverviewModal] = useState(false)
 
-  // ─── TMDB Backdrop Carousel ───
-  const [tmdbBackdrops, setTmdbBackdrops] = useState<{ url: string; width: number; height: number }[]>([])
+  // ─── Backdrop Carousel (powered by folder-scraped TMDB data) ───
+  const [backdrops, setBackdrops] = useState<{ url: string; width: number; height: number }[]>([])
   const [backdropIdx, setBackdropIdx] = useState(0)
-  const [backdropLoaded, setBackdropLoaded] = useState(false)
+  const [backdropHover, setBackdropHover] = useState(false)
   const backdropTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lastPath = useRef('')
+  // Crossfade: animate-out the previous image, animate-in the new one
+  const prevIdxRef = useRef(-1)
+  const [fadeKey, setFadeKey] = useState(0)
+  const backdropIdxRef = useRef(0)
+  useEffect(() => { backdropIdxRef.current = backdropIdx }, [backdropIdx])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -87,49 +95,42 @@ export default function FolderPage() {
     }).catch(() => {})
   }, [folderPath])
 
-  // Load TMDB backdrops from the first movie with tmdb_id in the folder
+  // Load backdrops from folder-scraped TMDB data
   useEffect(() => {
-    if (backdropLoaded || allMovies.length === 0) return
-    // Try movies with direct tmdb_id first, then parse [tmdbid=NNN] from folder path
-    let tmdbId: number | undefined
-    let mediaType: string | undefined
-    const firstWithTmdb = allMovies.find(m => m.tmdb_id && m.tmdb_type)
-    if (firstWithTmdb) {
-      tmdbId = firstWithTmdb.tmdb_id
-      mediaType = firstWithTmdb.tmdb_type
-    } else {
-      // Parse [tmdbid=NNN] from folder path
-      const m = allMovies.find(m => m.folder_levels?.match(/\[tmdbid=(\d+)\]/i))
-      if (m) {
-        const match = m.folder_levels!.match(/\[tmdbid=(\d+)\]/i)
-        if (match) {
-          tmdbId = parseInt(match[1], 10)
-          mediaType = m.tmdb_type || (m.folder_levels?.includes('[tmdbtype=tv]') ? 'tv' : 'movie')
-        }
-      }
-    }
-    if (!tmdbId || !mediaType) return
-    setBackdropLoaded(true)
-    api.tmdbImages(tmdbId, mediaType)
+    if (!folderPath) return
+    if (lastPath.current === folderPath + mediaRoot) return
+    lastPath.current = folderPath + mediaRoot
+    setBackdrops([])
+    setBackdropIdx(0)
+    api.folderBackdrops(folderPath, mediaRoot)
       .then(data => {
         if (data?.backdrops?.length) {
-          setTmdbBackdrops(data.backdrops.slice(0, 10))
+          setBackdrops(data.backdrops.slice(0, 10))
+          prevIdxRef.current = -1
+          setFadeKey(k => k + 1)
         }
       }).catch(() => {})
-  }, [allMovies, backdropLoaded])
+  }, [folderPath, mediaRoot])
+
+  const cycleTo = useCallback((nextIdx: number) => {
+    if (!backdrops.length) return
+    prevIdxRef.current = backdropIdxRef.current
+    setFadeKey(k => k + 1)
+    setBackdropIdx(nextIdx)
+  }, [backdrops.length])
 
   // Auto-rotate backdrops every 20s
   useEffect(() => {
-    if (tmdbBackdrops.length <= 1) return
+    if (backdrops.length <= 1) return
     backdropTimer.current = setInterval(() => {
-      setBackdropIdx(prev => (prev + 1) % tmdbBackdrops.length)
+      cycleTo((backdropIdxRef.current + 1) % backdrops.length)
     }, 20000)
     return () => { if (backdropTimer.current) clearInterval(backdropTimer.current) }
-  }, [tmdbBackdrops.length])
+  }, [backdrops.length, cycleTo])
 
   // Determine which backdrop source to use
-  const activeBackdrop = tmdbBackdrops.length > 0 ? tmdbBackdrops[backdropIdx]?.url : folderBackdrop
-  const prevBackdrop = tmdbBackdrops.length > 1 ? tmdbBackdrops[(backdropIdx - 1 + tmdbBackdrops.length) % tmdbBackdrops.length]?.url : ''
+  const activeBackdrop = backdrops.length > 0 ? backdrops[backdropIdx]?.url : folderBackdrop
+  const exitBackdrop = prevIdxRef.current >= 0 && backdrops.length > prevIdxRef.current ? backdrops[prevIdxRef.current]?.url : ''
 
   useEffect(() => {
     const ex = getExcluded()
@@ -183,6 +184,25 @@ export default function FolderPage() {
     })()
   )
 
+  const folderInfoMovie = useMemo(() => {
+    if (allMovies.length === 0) return null
+    const titleMovie = allMovies.find(m => m.title === showTitle && m.overview)
+    if (titleMovie) return titleMovie
+    const m = allMovies.find(m => m.overview)
+    return m || null
+  }, [allMovies, showTitle])
+  const folderOverviewText = folderInfoMovie?.overview || ''
+
+  // Same logic as folder-backdrops backend: find the "representative" movie
+  // Prefer one with tmdb_id + metadata over bare overview-only matches
+  const folderMetaMovie = useMemo(() => {
+    if (allMovies.length === 0) return null
+    const m = allMovies.find(m => m.tmdb_id != null && (m.release_date || m.content_rating))
+    if (m) return m
+    const m2 = allMovies.find(m => m.release_date || m.content_rating)
+    return m2 || null
+  }, [allMovies])
+
   const handleSort = (s: string) => {
     const p = new URLSearchParams(searchParams)
     p.set('path', folderPath)
@@ -212,38 +232,105 @@ export default function FolderPage() {
   }
 
   return (
-    <div className="relative space-y-6">
+    <>
+      {overviewModal && folderInfoMovie && createPortal(
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-2xl" onClick={() => setOverviewModal(false)}>
+          <div className="glass-modal mx-4 max-h-[80vh] max-w-2xl overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-white">影片信息</h3>
+              <button onClick={() => setOverviewModal(false)} className="rounded-full p-1 text-gray-400 transition hover:bg-white/10 hover:text-white">&times;</button>
+            </div>
+            <h4 className="text-lg font-bold text-white mb-3">{folderInfoMovie.title || showTitle}</h4>
+            {(folderInfoMovie.release_date || folderInfoMovie.duration != null || folderInfoMovie.genre || folderInfoMovie.director) && (
+              <div className="flex flex-wrap gap-x-4 gap-y-1 mb-4 text-sm text-gray-400">
+                {folderInfoMovie.release_date && <span>{folderInfoMovie.release_date}</span>}
+                {folderInfoMovie.duration != null && <span>{Math.floor(folderInfoMovie.duration / 60) > 0 ? `${Math.floor(folderInfoMovie.duration / 60)} 小时 ${folderInfoMovie.duration % 60} 分` : `${folderInfoMovie.duration} 分`}</span>}
+                {folderInfoMovie.genre && <span>{folderInfoMovie.genre}</span>}
+                {folderInfoMovie.director && <span>导演：{folderInfoMovie.director}</span>}
+              </div>
+            )}
+            {folderOverviewText && (
+              <>
+                <hr className="mb-4 border-white/10" />
+                <h5 className="text-sm font-medium text-gray-500 mb-2">简介</h5>
+                <p className="whitespace-pre-line text-sm leading-relaxed text-gray-300">{folderOverviewText}</p>
+              </>
+            )}
+          </div>
+        </div>,
+        document.body,
+      )}
+      <div className="relative space-y-6">
       {activeBackdrop ? (
-        <div className="relative -mt-5 min-h-[56vh] sm:-mt-7 sm:min-h-[62vh]">
-          <div className="pointer-events-none absolute inset-x-[calc(50%-50vw)] -top-20 h-[calc(100%+7rem)] overflow-hidden">
-            {/* Previous backdrop (fade out) */}
-            {prevBackdrop && (
+        <div className="relative -mt-5 min-h-[56vh] sm:-mt-7 sm:min-h-[62vh]"
+          onMouseEnter={() => setBackdropHover(true)}
+          onMouseLeave={() => setBackdropHover(false)}
+        >
+          <div className="absolute inset-x-[calc(50%-50vw)] -top-20 h-[calc(100%+10rem)] overflow-hidden">
+            {/* Crossfade: exiting backdrop (animate-out) */}
+            {exitBackdrop && (
               <img
-                src={prevBackdrop}
+                key={`exit-${fadeKey}`}
+                src={exitBackdrop}
                 alt=""
-                className="absolute inset-0 h-full w-full scale-[1.04] object-cover opacity-0 saturate-115 [mask-image:radial-gradient(ellipse_at_center,black_40%,rgba(0,0,0,0.9)_58%,rgba(0,0,0,0.42)_78%,transparent_100%)] [-webkit-mask-image:radial-gradient(ellipse_at_center,black_40%,rgba(0,0,0,0.9)_58%,rgba(0,0,0,0.42)_78%,transparent_100%)]"
+                className="pointer-events-none absolute inset-0 h-full w-full scale-[1.04] object-cover saturate-115 animate-backdrop-out [mask-image:linear-gradient(to_bottom,transparent_5%,black_15%,black_55%,rgba(0,0,0,0.82)_70%,rgba(0,0,0,0.45)_84%,rgba(0,0,0,0.08)_95%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_5%,black_15%,black_55%,rgba(0,0,0,0.82)_70%,rgba(0,0,0,0.45)_84%,rgba(0,0,0,0.08)_95%,transparent_100%)]"
               />
             )}
-            {/* Current backdrop (fade in) */}
+            {/* Crossfade: entering backdrop (animate-in) */}
             <img
+              key={`enter-${fadeKey}`}
               src={activeBackdrop}
               alt=""
-              className="absolute inset-0 h-full w-full scale-[1.04] object-cover opacity-80 saturate-115 transition-opacity duration-[1.5s] ease-in-out [mask-image:radial-gradient(ellipse_at_center,black_40%,rgba(0,0,0,0.9)_58%,rgba(0,0,0,0.42)_78%,transparent_100%)] [-webkit-mask-image:radial-gradient(ellipse_at_center,black_40%,rgba(0,0,0,0.9)_58%,rgba(0,0,0,0.42)_78%,transparent_100%)]"
+              className="pointer-events-none absolute inset-0 h-full w-full scale-[1.04] object-cover saturate-115 animate-backdrop-in [mask-image:linear-gradient(to_bottom,transparent_5%,black_15%,black_55%,rgba(0,0,0,0.82)_70%,rgba(0,0,0,0.45)_84%,rgba(0,0,0,0.08)_95%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_5%,black_15%,black_55%,rgba(0,0,0,0.82)_70%,rgba(0,0,0,0.45)_84%,rgba(0,0,0,0.08)_95%,transparent_100%)]"
             />
             {/* Fade overlay: top edge soft + bottom gradient to page bg */}
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_32%,rgba(3,4,10,0.12)_68%,transparent_100%),linear-gradient(180deg,rgba(3,4,10,0)_0%,rgba(3,4,10,0.06)_35%,rgba(3,4,10,0.2)_50%,rgba(3,4,10,0.55)_65%,rgba(3,4,10,0.85)_80%,rgba(3,4,10,1)_100%)]" />
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_32%,rgba(3,4,10,0.12)_68%,transparent_100%),linear-gradient(180deg,rgba(3,4,10,0)_0%,rgba(3,4,10,0.04)_30%,rgba(3,4,10,0.15)_50%,rgba(3,4,10,0.4)_65%,rgba(3,4,10,0.7)_78%,rgba(3,4,10,0.94)_90%,transparent_100%)]" />
           </div>
 
-          <div className="absolute inset-x-0 bottom-0 p-4 sm:p-7">
+          {/* Arrow controls — visible on hover only when multiple backdrops */}
+          {backdrops.length > 1 && (
+            <>
+              <button
+                onClick={(e) => { e.stopPropagation(); cycleTo((backdropIdxRef.current - 1 + backdrops.length) % backdrops.length) }}
+                className={`absolute left-3 top-1/2 z-20 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white/70 backdrop-blur transition-all hover:bg-black/60 hover:text-white sm:left-5 sm:p-2.5 ${
+                  backdropHover ? 'opacity-100' : 'opacity-0'
+                }`}
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); cycleTo((backdropIdxRef.current + 1) % backdrops.length) }}
+                className={`absolute right-3 top-1/2 z-20 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white/70 backdrop-blur transition-all hover:bg-black/60 hover:text-white sm:right-5 sm:p-2.5 ${
+                  backdropHover ? 'opacity-100' : 'opacity-0'
+                }`}
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+              </button>
+            </>
+          )}
+
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 p-4 pb-14 sm:p-7 sm:pb-24">
             <button onClick={() => { saveScrollPos(); navigate('/') }}
-              className="glass-chip mb-4 text-sm text-gray-300 drop-shadow hover:text-white">
+              className="pointer-events-auto glass-chip mb-4 text-sm text-gray-300 drop-shadow hover:text-white">
               返回首页
             </button>
             <p className="text-xs uppercase tracking-[0.28em] text-apple-blue/90 drop-shadow">Folder</p>
             <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
               <div className="min-w-0">
                 <h1 className="max-w-4xl break-words text-3xl font-bold tracking-tight text-white drop-shadow-2xl sm:text-5xl">{showTitle}</h1>
-                <p className="mt-3 text-sm text-gray-300 drop-shadow">{movies.length} 部影片</p>
+                {folderOverviewText && (
+                  <p className="mt-2 max-w-[320px] text-xs leading-relaxed text-gray-400/70 drop-shadow line-clamp-2">
+                    {folderOverviewText.length > 46 ? folderOverviewText.slice(0, 46) : folderOverviewText}
+                    {folderOverviewText.length > 46 && <span>… </span>}
+                    <button
+                      className="pointer-events-auto inline-flex items-center rounded-full border border-white/10 bg-white/[0.08] px-1.5 py-0 text-xs text-gray-400 hover:bg-white/[0.14] hover:text-white transition"
+                      onClick={(e) => { e.stopPropagation(); setOverviewModal(true) }}
+                    >更多</button>
+                  </p>
+                )}
+                <p className="mt-2 text-xs text-gray-400/70 drop-shadow">
+                  {[folderMetaMovie?.release_date?.slice(0, 4), folderMetaMovie?.content_rating, `${movies.length} 部影片`].filter(Boolean).join(' · ')}
+                </p>
               </div>
             </div>
           </div>
@@ -257,7 +344,19 @@ export default function FolderPage() {
             </button>
             <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">Folder</p>
             <h1 className="break-words text-2xl font-bold tracking-tight text-white sm:text-3xl">{showTitle}</h1>
-            <p className="mt-1 text-sm text-gray-500">{movies.length} 部影片</p>
+            {folderOverviewText && (
+              <p className="mt-1.5 max-w-[320px] text-xs leading-relaxed text-gray-400 line-clamp-2">
+                {folderOverviewText.length > 46 ? folderOverviewText.slice(0, 46) : folderOverviewText}
+                {folderOverviewText.length > 46 && <span>… </span>}
+                <button
+                  className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.08] px-1.5 py-0 text-xs text-gray-400 hover:bg-white/[0.14] hover:text-white transition"
+                  onClick={() => setOverviewModal(true)}
+                >更多</button>
+              </p>
+            )}
+            <p className="mt-1.5 text-xs text-gray-400">
+              {[folderMetaMovie?.release_date?.slice(0, 4), folderMetaMovie?.content_rating, `${movies.length} 部影片`].filter(Boolean).join(' · ')}
+            </p>
           </div>
         </div>
       )}
@@ -301,5 +400,6 @@ export default function FolderPage() {
         </div>
       )}
     </div>
+    </>
   )
 }

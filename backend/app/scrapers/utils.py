@@ -93,6 +93,7 @@ def scrape_result_to_legacy(result: ScrapeResult, *, exact: bool = False) -> dic
         "genre": raw.get("genre") or "",
         "tagline": raw.get("tagline") or "",
         "status": raw.get("status") or "",
+        "content_rating": raw.get("content_rating") or "",
         "studios": raw.get("studios") or [],
         "keywords": raw.get("keywords") or "",
         "_exact_match": exact,

@@ -1441,6 +1441,49 @@ async def api_media_file(file_path: str, request: Request):
 # ─── TMDB API Endpoints ───
 
 
+@app.get("/api/folder-backdrops")
+async def api_folder_backdrops(path: str = Query(""), media_root: str = Query("")):
+    """Return TMDB backdrops for a folder using its scraped tmdb_id."""
+    from .tmdb import fetch_tmdb_images
+    from .database import get_db
+    import re
+    if not settings.tmdb_access_token and not settings.tmdb_api_key:
+        raise HTTPException(status_code=503, detail="TMDB not configured")
+    if not path:
+        return {"backdrops": []}
+    db = await get_db()
+    mr_where = " AND media_root=?" if media_root else ""
+    mr_params = [media_root] if media_root else []
+    # Try exact match first, then prefix match (for child folder movies)
+    cur = await db.execute(
+        f"SELECT tmdb_id, tmdb_type, folder_levels FROM movies WHERE folder_levels=?{mr_where} AND tmdb_id IS NOT NULL LIMIT 1",
+        [path] + mr_params
+    )
+    row = await cur.fetchone()
+    if not row:
+        cur = await db.execute(
+            f"SELECT tmdb_id, tmdb_type, folder_levels FROM movies WHERE folder_levels LIKE ?{mr_where} AND tmdb_id IS NOT NULL LIMIT 1",
+            [path + "/%"] + mr_params
+        )
+        row = await cur.fetchone()
+    # Fallback: parse [tmdbid=NNN] from folder_levels if tmdb_id column is NULL
+    if not row or not row["tmdb_id"]:
+        cur = await db.execute(
+            f"SELECT folder_levels FROM movies WHERE (folder_levels=? OR folder_levels LIKE ?){mr_where} LIMIT 1",
+            [path, path + "/%"] + mr_params
+        )
+        row2 = await cur.fetchone()
+        if row2:
+            m = re.search(r'\[tmdbid=(\d+)\]', row2["folder_levels"] or "", re.IGNORECASE)
+            if m:
+                tmdb_type = "tv" if re.search(r'\[tmdbtype=tv\]', row2["folder_levels"] or "", re.IGNORECASE) else "movie"
+                result = await fetch_tmdb_images(int(m.group(1)), tmdb_type)
+                return {"backdrops": (result or {}).get("backdrops", [])}
+        return {"backdrops": []}
+    result = await fetch_tmdb_images(row["tmdb_id"], row["tmdb_type"] or "movie")
+    return {"backdrops": (result or {}).get("backdrops", [])}
+
+
 @app.get("/api/tmdb-images/{tmdb_id}")
 async def api_tmdb_images(tmdb_id: int, media_type: str = Query("movie")):
     """Return all posters, backdrops, logos for a movie or TV series."""

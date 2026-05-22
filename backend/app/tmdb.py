@@ -119,7 +119,7 @@ async def fetch_tmdb_detail(source_id: str, media_type: str, lang: str = "zh-CN"
         logger.info(f"TMDB detail endpoint: /{media_type}/{source_id}")
         resp = await _tmdb_get(
             f"/{media_type}/{source_id}",
-            {"language": lang, "append_to_response": "credits,external_ids,keywords"}
+            {"language": lang, "append_to_response": "credits,external_ids,keywords,release_dates,content_ratings"}
         )
         data = resp.json()
 
@@ -158,6 +158,24 @@ async def fetch_tmdb_detail(source_id: str, media_type: str, lang: str = "zh-CN"
             else 0
         )
 
+        # Extract content rating / certification
+        content_rating = ""
+        if media_type == "movie":
+            rd = data.get("release_dates", {}) or {}
+            for r in rd.get("results", []):
+                if r.get("iso_3166_1") == "US":
+                    for d in r.get("release_dates", []):
+                        if d.get("certification"):
+                            content_rating = d["certification"]
+                            break
+                    break
+        else:
+            cr = data.get("content_ratings", {}) or {}
+            for r in cr.get("results", []):
+                if r.get("iso_3166_1") == "US":
+                    content_rating = r.get("rating") or ""
+                    break
+
         result = {
             "source": "tmdb",
             "source_id": source_id,
@@ -175,6 +193,7 @@ async def fetch_tmdb_detail(source_id: str, media_type: str, lang: str = "zh-CN"
             "keywords": keywords,
             "tagline": data.get("tagline"),
             "status": data.get("status"),
+            "content_rating": content_rating,
             "cast": cast,
             "crew": crew,
             "studios": studios,

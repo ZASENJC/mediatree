@@ -312,3 +312,18 @@ textarea {
 .animate-fade-in {
   animation: fade-in 0.25s ease-out;
 }
+
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 0.8; }
+}
+@keyframes backdrop-out {
+  from { opacity: 0.8; }
+  to { opacity: 0; }
+}
+.animate-backdrop-in {
+  animation: backdrop-in 1.5s ease-in-out forwards;
+}
+.animate-backdrop-out {
+  animation: backdrop-out 1.5s ease-in-out forwards;
+}
