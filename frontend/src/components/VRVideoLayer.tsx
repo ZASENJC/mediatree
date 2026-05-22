@@ -8,6 +8,23 @@ interface Props {
   mode: VRMode
 }
 
+let _threeCache: typeof import('three') | null = null
+let _threeLoadPromise: Promise<typeof import('three')> | null = null
+
+function loadThree(): Promise<typeof import('three')> {
+  if (_threeCache) return Promise.resolve(_threeCache)
+  if (!_threeLoadPromise) {
+    _threeLoadPromise = import('three').then(m => { _threeCache = m; return m })
+  }
+  return _threeLoadPromise
+}
+
+function stereoConfig(mode: VRMode): { repeat: [number, number]; offset: [number, number] } {
+  if (mode.startsWith('sbs')) return { repeat: [0.5, 1], offset: [0, 0] }
+  if (mode.startsWith('tb')) return { repeat: [1, 0.5], offset: [0, 0] }
+  return { repeat: [1, 1], offset: [0, 0] }
+}
+
 export default function VRVideoLayer({ art, mode }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
 
@@ -32,7 +49,7 @@ export default function VRVideoLayer({ art, mode }: Props) {
 
     const cleanupFns: Array<() => void> = []
 
-    import('three').then((THREE) => {
+    loadThree().then((THREE) => {
       if (disposed || !hostRef.current) return
       scene = new THREE.Scene()
       camera = new THREE.PerspectiveCamera(fov, host.clientWidth / Math.max(1, host.clientHeight), 1, 1100)
@@ -45,6 +62,10 @@ export default function VRVideoLayer({ art, mode }: Props) {
       texture.colorSpace = THREE.SRGBColorSpace
       texture.minFilter = THREE.LinearFilter
       texture.magFilter = THREE.LinearFilter
+
+      const sc = stereoConfig(mode)
+      texture.repeat.set(...sc.repeat)
+      texture.offset.set(...sc.offset)
 
       const is180 = mode.includes('180')
       const geometry = is180
@@ -68,12 +89,11 @@ export default function VRVideoLayer({ art, mode }: Props) {
         lat = Math.max(-85, Math.min(85, lat))
         const phi = THREE.MathUtils.degToRad(90 - lat)
         const theta = THREE.MathUtils.degToRad(lon)
-        camera.target = new THREE.Vector3(
+        camera.lookAt(
           500 * Math.sin(phi) * Math.cos(theta),
           500 * Math.cos(phi),
           500 * Math.sin(phi) * Math.sin(theta),
         )
-        camera.lookAt(camera.target)
         renderer.render(scene, camera)
         raf = requestAnimationFrame(render)
       }
@@ -107,6 +127,10 @@ export default function VRVideoLayer({ art, mode }: Props) {
       host.addEventListener('pointercancel', pointerUp)
       host.addEventListener('wheel', wheel, { passive: false })
       window.addEventListener('resize', resize)
+
+      const ro = new ResizeObserver(resize)
+      ro.observe(host)
+
       cleanupFns.push(() => {
         host.removeEventListener('pointerdown', pointerDown)
         host.removeEventListener('pointermove', pointerMove)
@@ -114,6 +138,7 @@ export default function VRVideoLayer({ art, mode }: Props) {
         host.removeEventListener('pointercancel', pointerUp)
         host.removeEventListener('wheel', wheel)
         window.removeEventListener('resize', resize)
+        ro.disconnect()
       })
       resize()
       render()

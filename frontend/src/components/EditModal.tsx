@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { api, Movie } from '../api'
 
 export interface EditFields {
@@ -56,8 +57,8 @@ export default function EditModal({ movie, onClose, onSaved, onSave }: Props) {
     setSaving(false)
   }
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
       <div className="glass-modal w-full max-w-md p-5 sm:p-6">
         <div className="mb-5">
           <p className="text-xs uppercase tracking-[0.22em] text-apple-blue/70">Edit</p>
@@ -115,6 +116,7 @@ export default function EditModal({ movie, onClose, onSaved, onSave }: Props) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
