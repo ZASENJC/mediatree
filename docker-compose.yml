@@ -5,10 +5,9 @@ services:
     ports:
       - "27580:27580" 
     volumes:
-      - /Volumes/o1/media/ss/01:/media/o1:ro                                                 
-      - /Volumes/o1/media/ss/02:/media/o2:ro                                                 
-      - /Volumes/o1/media/Movie:/media/movie:ro                                              
-      - /Volumes/o1/media/Bangumi:/media/bgm:ro                                              
+      - /Volumes/o2/test/bgm:/media/bgm:ro                                                 
+      - /Volumes/o2/test/movie:/media/movie:ro                                                 
+      - /Volumes/o2/test/jav:/media/jav:ro                                                                                        
       - /Volumes/STU/Code/mediatree/data:/app/data 
     env_file:
       - .env
