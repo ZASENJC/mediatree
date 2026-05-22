@@ -124,10 +124,8 @@ export default function Detail() {
         返回
       </button>
 
-      <div className="glass-panel overflow-hidden p-2">
-        <VideoPlayer src={api.streamUrl(movie.id)} poster={api.coverUrl(movie.id)} movieId={movie.id}
-          onWatched={() => { if (!movie.tags?.includes('watched')) toggleTag('watched') }} />
-      </div>
+      <VideoPlayer src={api.streamUrl(movie.id)} poster={api.coverUrl(movie.id)} movieId={movie.id}
+        onWatched={() => { if (!movie.tags?.includes('watched')) toggleTag('watched') }} />
 
       <section className="glass-panel p-4 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
