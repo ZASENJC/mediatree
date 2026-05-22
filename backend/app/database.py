@@ -462,7 +462,7 @@ async def get_recent_watched(media_root: str = "", limit: int = 200, offset: int
         params.append(media_root)
     count_cur = await db.execute(f"SELECT COUNT(*) FROM movies m{where}", params)
     total = (await count_cur.fetchone())[0]
-    cols = "m.id, m.path, m.code, m.title, m.original_title, m.overview, m.actress, m.duration, m.cover_local, m.cover_remote, m.javdb_score, m.javdb_likes, m.folder_levels, m.created_at, m.updated_at, m.media_root, m.tmdb_type, m.tmdb_season, m.tmdb_episode, m.episode_title, m.episode_overview, m.episode_still, m.episode_still_local, m.clean_title, m.episode_number, m.display_title, m.external_audio_tracks, m.\"cast\", m.crew"
+    cols = "m.id, m.path, m.code, m.title, m.original_title, m.overview, m.actress, m.release_date, m.duration, m.cover_local, m.cover_remote, m.javdb_score, m.javdb_likes, m.folder_levels, m.created_at, m.updated_at, m.media_root, m.tmdb_id, m.tmdb_type, m.tmdb_season, m.tmdb_episode, m.episode_title, m.episode_overview, m.episode_still, m.episode_still_local, m.clean_title, m.episode_number, m.display_title, m.external_audio_tracks, m.genre, m.content_rating, m.\"cast\", m.crew"
     query = f"""SELECT {cols} FROM movies m{where}
         ORDER BY (
             SELECT ud.last_played_date FROM user_data ud
@@ -509,7 +509,7 @@ async def search_movies(q: str, media_root: str = "", limit: int = 100, offset: 
         params.append(media_root)
     count_cur = await db.execute(f"SELECT COUNT(*) FROM movies{where}", params)
     total = (await count_cur.fetchone())[0]
-    cols = "id, path, code, title, original_title, overview, actress, duration, cover_local, cover_remote, javdb_score, javdb_likes, folder_levels, created_at, updated_at, media_root, tmdb_type, tmdb_season, tmdb_episode, episode_title, episode_overview, episode_still, episode_still_local, clean_title, episode_number, display_title, external_audio_tracks, \"cast\", crew"
+    cols = "id, path, code, title, original_title, overview, actress, release_date, duration, cover_local, cover_remote, javdb_score, javdb_likes, folder_levels, created_at, updated_at, media_root, tmdb_id, tmdb_type, tmdb_season, tmdb_episode, episode_title, episode_overview, episode_still, episode_still_local, clean_title, episode_number, display_title, external_audio_tracks, genre, content_rating, \"cast\", crew"
     cur = await db.execute(
         f"SELECT {cols} FROM movies{where} ORDER BY updated_at DESC LIMIT ? OFFSET ?",
         params + [limit, offset]

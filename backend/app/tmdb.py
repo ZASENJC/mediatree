@@ -109,7 +109,7 @@ async def search_tmdb_tv_by_title(query: str, lang: str = "zh-CN") -> list[dict]
 async def fetch_tmdb_detail(source_id: str, media_type: str, lang: str = "zh-CN") -> dict | None:
     if not _has_tmdb_auth():
         return None
-    cache_key = f"tmdb_id:{media_type}:{source_id}"
+    cache_key = f"tmdb_id:v3:{media_type}:{source_id}"
     cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
     if cache_data is not None:
         logger.info(f"TMDB cache hit: {cache_key}")
@@ -227,7 +227,7 @@ async def fetch_tmdb_by_id(tmdb_id: int, media_type: Literal["movie", "tv"], lan
         logger.warning(f"Invalid TMDB media_type for ID lookup: {media_type}")
         return None
 
-    cache_key = f"tmdb_id:{requested_type}:{tmdb_id}"
+    cache_key = f"tmdb_id:v3:{requested_type}:{tmdb_id}"
     cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
     if cache_data is not None:
         return cache_data
