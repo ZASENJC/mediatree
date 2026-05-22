@@ -1400,7 +1400,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   }
 
   return (
-    <div className="mx-auto w-full max-w-[calc((100vh-11rem)*var(--mediatree-video-aspect))]" style={playerStyle}>
+    <div className="mx-auto w-full max-w-[calc((100vh-11rem)*var(--mediatree-video-aspect))] transition-all duration-300" style={playerStyle}>
       <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black shadow-glass">
         <div ref={artContainerRef} className="mediatree-artplayer w-full bg-black" />
         <VRVideoLayer art={artInstance} mode={vrMode} />

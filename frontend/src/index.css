@@ -131,6 +131,7 @@ canvas[data-mediatree-subtitle="ass"] {
   aspect-ratio: var(--mediatree-video-aspect, 16 / 9);
   min-height: 220px;
   max-height: calc(100dvh - 11rem);
+  transition: aspect-ratio 0.3s ease;
 }
 
 .mediatree-artplayer video {
