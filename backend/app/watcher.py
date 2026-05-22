@@ -47,11 +47,26 @@ async def _enabled_media_roots() -> list[str]:
     if not settings_rows:
         return [r for r in configured if Path(r).exists()]
 
+    existing_paths = {str(Path(row["media_root"])) for row in settings_rows}
+
+    # Auto-register library_settings for newly discovered filesystem roots
+    from .database import save_library_settings
+    new_roots = [r for r in configured if r not in existing_paths and Path(r).exists()]
+    if new_roots:
+        for root in new_roots:
+            await save_library_settings({
+                "media_root": root,
+                "scraper": "auto",
+                "enabled": 1,
+            })
+            existing_paths.add(root)
+            logger.info(f"Watcher auto-registered new media root: {root}")
+
     enabled = {
         str(Path(row["media_root"]))
         for row in settings_rows
         if int(row.get("enabled", 1)) == 1
-    }
+    } | {r for r in new_roots}  # include newly registered roots
     return [r for r in configured if r in enabled and Path(r).exists()]
 
 
@@ -80,6 +95,13 @@ async def start_file_watcher(startup_task: asyncio.Task | None = None):
                     latest_roots = await _enabled_media_roots()
                     if latest_roots != roots:
                         logger.info("Watcher media roots changed, refreshing watch targets")
+                        # Trigger initial scan for newly discovered roots
+                        new = [r for r in latest_roots if r not in set(roots)]
+                        for r in sorted(new):
+                            if len(_active_scans) < _MAX_CONCURRENT_SCANS:
+                                logger.info(f"Watcher triggering initial scan for new root {r}")
+                                t = asyncio.create_task(run_scan_for_root(r, trigger="watcher"))
+                                _track_scan_task(t)
                         changes_task.cancel()
                         try:
                             await changes_task
@@ -122,6 +144,12 @@ async def start_file_watcher(startup_task: asyncio.Task | None = None):
                 latest_roots = await _enabled_media_roots()
                 if latest_roots != roots:
                     logger.info("Watcher media roots changed after event, refreshing watch targets")
+                    new = [r for r in latest_roots if r not in set(roots)]
+                    for r in sorted(new):
+                        if len(_active_scans) < _MAX_CONCURRENT_SCANS:
+                            logger.info(f"Watcher triggering initial scan for new root {r}")
+                            t = asyncio.create_task(run_scan_for_root(r, trigger="watcher"))
+                            _track_scan_task(t)
                     break
         except asyncio.CancelledError:
             raise

@@ -108,13 +108,25 @@ async def run_startup_scan():
         if not await has_any_library_setting():
             logger.info("Startup scan skipped: setup has not been completed")
             return
-        from .database import get_db
+        from .database import get_db, get_all_library_settings, save_library_settings
         db = await get_db()
         await db.execute("DELETE FROM movies WHERE media_root = ''")
         await db.commit()
 
         roots = settings.get_all_media_roots()
         if roots:
+            # Auto-register library_settings for newly discovered media roots
+            existing = await get_all_library_settings()
+            existing_paths = {str(Path(s["media_root"])) for s in existing}
+            for root in roots:
+                if root not in existing_paths:
+                    await save_library_settings({
+                        "media_root": root,
+                        "scraper": "auto",
+                        "enabled": 1,
+                    })
+                    logger.info(f"Auto-registered new media root: {root}")
+
             await asyncio.gather(*(run_scan_for_root(root, trigger="startup") for root in roots))
 
         logger.info("Startup scan complete")
