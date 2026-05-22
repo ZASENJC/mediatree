@@ -1,4 +1,5 @@
 import asyncio
+import time
 from pathlib import Path
 
 from watchfiles import awatch
@@ -8,6 +9,7 @@ from .database import get_all_library_settings
 from .scanner import run_scan_for_root
 
 
+_POLL_INTERVAL_SECONDS = 300  # poll all roots every 5 minutes as inotify fallback
 _MAX_CONCURRENT_SCANS = 3
 _active_scans: set[asyncio.Task] = set()
 
@@ -86,6 +88,7 @@ async def start_file_watcher(startup_task: asyncio.Task | None = None):
             continue
 
         logger.info(f"File watcher started on {len(roots)} enabled roots")
+        last_poll = time.monotonic()
         try:
             iterator = awatch(*roots, debounce=15000).__aiter__()
             changes_task = asyncio.create_task(iterator.__anext__())
@@ -108,6 +111,16 @@ async def start_file_watcher(startup_task: asyncio.Task | None = None):
                         except BaseException:
                             pass
                         break
+
+                    # Polling fallback: periodic scan when inotify doesn't fire
+                    # (e.g. Docker bind mounts on macOS)
+                    if time.monotonic() - last_poll >= _POLL_INTERVAL_SECONDS:
+                        last_poll = time.monotonic()
+                        for r in sorted(latest_roots):
+                            if len(_active_scans) < _MAX_CONCURRENT_SCANS:
+                                logger.info(f"Watcher polling scan for {r}")
+                                t = asyncio.create_task(run_scan_for_root(r, trigger="watcher"))
+                                _track_scan_task(t)
                     continue
                 try:
                     changes = changes_task.result()
