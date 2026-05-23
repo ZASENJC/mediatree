@@ -1,0 +1,21 @@
+services:
+  mediatree:
+    image: zasenjc/mediatree:latest
+    build: .
+    container_name: mediatree
+    ports:
+      - "${HOST_PORT:-27580}:27580"
+    volumes:
+      # 挂载你的媒体目录（只读），格式：/你的/本地/路径:/media/别名:ro
+      - /path/to/your/media:/media/movies:ro
+      # 数据目录（持久化数据库、封面缓存、配置）
+      - ${DATA_DIR:-./data}:/app/data
+      # Docker 自更新所需（可选）
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yml:/compose.yml:ro
+    env_file:
+      - .env
+    environment:
+      - PORT=${HOST_PORT:-27580}
+      - COMPOSE_FILE=/compose.yml
+    restart: unless-stopped

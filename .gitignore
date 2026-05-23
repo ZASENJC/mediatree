@@ -6,3 +6,5 @@ __pycache__/
 node_modules/
 frontend/dist/
 *.egg-info/
+docker-compose.yml
+frontend/tsconfig.tsbuildinfo
