@@ -23,7 +23,7 @@ from .database import (
     get_library_settings, save_progress, get_progress,
     get_review_queue, approve_review_item, clear_review_queue,
 )
-from .scanner import scan_media, scrape_for_library, run_scan_for_root, rescrape_movie, rescrape_movie_manual, rescrape_folder, rescrape_folder_manual, search_for_scrape, apply_folder_scrape_result, fetch_search_backdrops, change_folder_cover, change_folder_backdrop, edit_folder_movies, delete_folder_movies
+from .scanner import scan_media, scrape_for_library, run_scan_for_root, rescrape_movie, rescrape_movie_manual, rescrape_folder, rescrape_folder_manual, search_for_scrape, apply_folder_scrape_result, fetch_search_backdrops, change_folder_cover, change_folder_backdrop, edit_folder_movies, delete_folder_movies, request_cancel_scan, clear_library_scraped_data
 from .javdb import search_javdb
 from .stream import get_video_stream, get_media_info
 from .subtitles import get_subtitle_tracks, find_external_subtitles, find_external_audio_tracks, extract_subtitle_stream_raw, load_external_subtitle, list_fonts, install_font, remove_font, get_fonts_dir, resolve_font_path, get_default_subtitle_font_path
@@ -286,6 +286,13 @@ async def api_save_library_setting(data: dict):
     if not data.get("media_root"):
         raise HTTPException(status_code=400, detail="media_root required")
     await save_library_settings(data)
+
+    # 当用户将刮削器切换为 none 时，立即停止正在进行的刮削并清除已刮削内容
+    scraper = (data.get("scraper") or "").strip().lower()
+    if scraper == "none":
+        request_cancel_scan(data["media_root"])
+        await clear_library_scraped_data(data["media_root"])
+
     return {"ok": True}
 
 

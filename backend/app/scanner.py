@@ -32,6 +32,7 @@ from .title_match import (
 _scan_progress: dict[str, dict] = {}
 _scan_locks: dict[str, asyncio.Lock] = {}
 _scan_pending: set[str] = set()
+_cancel_scans: set[str] = set()
 _global_scrape_semaphore: asyncio.Semaphore | None = None
 _global_scrape_limit = 0
 _sqlite_write_semaphore = asyncio.Semaphore(1)
@@ -581,6 +582,14 @@ async def scrape_for_library(media_root: str):
 
     async def process_folder(r: dict):
         nonlocal done_count, success_count, failed_count, skipped_count, active_count
+
+        if media_root in _cancel_scans:
+            async with progress_lock:
+                skipped_count += 1
+                done_count += 1
+                _set_scan_progress(media_root, done=done_count, skipped=skipped_count)
+            return
+
         folder_levels = r.get("folder_levels") or ""
         folder_name = Path(folder_levels).name if folder_levels else ""
         code = r.get("code") or ""
@@ -774,6 +783,20 @@ async def scrape_for_library(media_root: str):
             logger.warning(f"Scrape task failed for {media_root}: {result}")
             failed_count += 1
 
+    if media_root in _cancel_scans:
+        _set_scan_progress(
+            media_root,
+            status="cancelled",
+            done=done_count,
+            total=total_folders,
+            success=success_count,
+            failed=failed_count,
+            skipped=skipped_count,
+            active_concurrency=0,
+            trigger=trigger,
+        )
+        return
+
     _set_scan_progress(
         media_root,
         status="done",
@@ -793,6 +816,11 @@ def _scan_lock_for(media_root: str) -> asyncio.Lock:
         lock = asyncio.Lock()
         _scan_locks[media_root] = lock
     return lock
+
+
+def request_cancel_scan(media_root: str):
+    """请求取消正在进行的刮削（由配置变更触发）"""
+    _cancel_scans.add(media_root)
 
 
 async def cleanup_deleted_files(media_root: str) -> int:
@@ -848,6 +876,13 @@ async def run_scan_for_root(media_root: str, trigger: str = "manual") -> dict:
             total_results += len(results)
             _set_scan_progress(media_root, status="scraping", done=0, total=0, trigger=trigger)
             await scrape_for_library(media_root)
+
+            if media_root in _cancel_scans:
+                _cancel_scans.discard(media_root)
+                _scan_pending.discard(media_root)
+                logger.info(f"Scan cancelled for {media_root} (scraper set to 'none')")
+                break
+
             logger.info(f"Scan and scrape complete for {media_root} trigger={trigger} files={len(results)}")
             if media_root not in _scan_pending:
                 break
@@ -889,6 +924,8 @@ async def clear_library_scraped_data(media_root: str):
     await db.commit()
 
     affected = cur.rowcount if cur.rowcount is not None else 0
+    _cancel_scans.discard(media_root)
+    _scan_progress.pop(media_root, None)
     logger.info(
         f"Cleared scraped fields for media_root='{media_root}', affected={affected}; "
         "scraper_cache/javdb_cache and other media roots preserved"
