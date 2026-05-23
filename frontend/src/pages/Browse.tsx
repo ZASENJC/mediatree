@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { api, Movie, FolderNode } from '../api'
 import { getExcluded, setExcluded } from '../store'
@@ -31,6 +31,24 @@ export default function Browse() {
   const [excluded, setExcludedState] = useState<Set<string>>(getExcluded())
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false)
   const pageSize = 48
+
+  const sortedFolders = useMemo(() => {
+    const sortNodes = (nodes: FolderNode[]): FolderNode[] => {
+      let sorted = [...nodes]
+      if (sort === 'random') {
+        sorted = sorted.sort(() => Math.random() - 0.5)
+      } else if (sort === 'name' || sort === 'created_asc' || sort === 'release_date_asc') {
+        sorted = sorted.sort((a, b) => a.name.localeCompare(b.name))
+      } else {
+        sorted = sorted.sort((a, b) => b.name.localeCompare(a.name))
+      }
+      return sorted.map(node => ({
+        ...node,
+        children: node.children ? sortNodes(node.children) : undefined,
+      }))
+    }
+    return sortNodes(folders)
+  }, [folders, sort])
 
   useEffect(() => {
     api.folders().then(data => setFolders(data.tree))
@@ -82,7 +100,6 @@ export default function Browse() {
   const totalPages = Math.ceil(total / pageSize)
 
   const getDisplayTitle = (movie: Movie) => {
-    if (movie.title && movie.title !== movie.code) return movie.title
     try {
       const parts = movie.path.split('/')
       const filename = parts[parts.length - 1]
@@ -115,10 +132,10 @@ export default function Browse() {
 
   const renderFolderTree = () => (
     <div className="space-y-0.5 max-h-[65vh] overflow-y-auto pr-1">
-      {folders.length === 0 ? (
+      {sortedFolders.length === 0 ? (
         <p className="text-xs text-gray-600 px-2">无文件夹</p>
       ) : (
-        folders.map((node) => (
+        sortedFolders.map((node) => (
           <TreeItem
             key={node.path}
             node={node}
@@ -235,18 +252,6 @@ export default function Browse() {
                         )
                       })()}
                       <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-transparent opacity-95" />
-                      <div className="absolute right-2 top-2 z-10 flex flex-col items-end gap-1.5">
-                        {movie.javdb_score != null && movie.javdb_score > 0 && (
-                          <span className="rounded-full border border-apple-yellow/30 bg-black/45 px-2 py-0.5 text-xs font-semibold text-apple-yellow backdrop-blur-xl">
-                            {movie.javdb_score.toFixed(1)}
-                          </span>
-                        )}
-                        {movie.javdb_likes != null && movie.javdb_likes > 0 && (
-                          <span className="rounded-full border border-apple-pink/30 bg-black/45 px-2 py-0.5 text-xs font-semibold text-apple-pink backdrop-blur-xl">
-                            {movie.javdb_likes >= 1000 ? `${(movie.javdb_likes / 1000).toFixed(1)}k` : movie.javdb_likes}
-                          </span>
-                        )}
-                      </div>
                       <div className="absolute bottom-0 left-0 right-0 min-w-0 p-3">
                         <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-white drop-shadow">
                           {getDisplayTitle(movie)}
