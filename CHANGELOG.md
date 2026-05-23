@@ -122,3 +122,13 @@ All notable changes to MediaTree are documented here.
 - Comprehensive CLAUDE.md for AI-assisted development
 - Startup wizard for first-time configuration
 - ENV-based configuration with `.env.example` template
+
+### Auto-Update System
+
+- Docker-based self-upgrade with DockerHub tag polling
+- One-click update/rollback to any DockerHub tag version
+- CHANGELOG viewer with full-screen darkened modal (fetches GitHub release notes)
+- Update notification red dot on Settings nav (15-minute auto-check interval)
+- `docker pull` + `docker compose up -d` restart flow
+- `/api/version`, `/api/update/check`, `/api/update/perform`, `/api/update/changelog` endpoints
+- Docker socket mount + `COMPOSE_FILE` env for container self-upgrade capability

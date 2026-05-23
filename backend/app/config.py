@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     scraper_api_concurrency: int = 8
     scraper_http_timeout: float = 10.0
 
+    # Update
+    update_check_enabled: bool = True
+    update_check_interval_hours: int = 24
+
     scan_on_startup: bool = True
 
     auth_user: str = ""
@@ -112,6 +116,8 @@ class Settings(BaseSettings):
                 "scrape_global_concurrency": self.scrape_global_concurrency,
                 "scraper_api_concurrency": self.scraper_api_concurrency,
                 "scraper_http_timeout": self.scraper_http_timeout,
+                "update_check_enabled": self.update_check_enabled,
+                "update_check_interval_hours": self.update_check_interval_hours,
                 "auth_user": self.auth_user,
             }
             with open(self.config_path, "w") as f:

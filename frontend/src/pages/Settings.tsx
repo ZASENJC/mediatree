@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { api, Config, MediaRoot, LibrarySetting, clearCache } from '../api'
-import { getUiPrefs, setUiPrefs } from '../store'
+import { getUiPrefs, setUiPrefs, dismissUpdate } from '../store'
 
 const SCRAPER_META: Record<string, { label: string; desc: string; hasKey: boolean }> = {
   tmdb_movie: { label: 'TMDB 电影', desc: '适合电影库；tmdbid 调用 /movie 精确刮削', hasKey: true },
@@ -56,6 +56,32 @@ export default function Settings() {
   const [authMsg, setAuthMsg] = useState('')
   const [authSaving, setAuthSaving] = useState(false)
 
+  // update
+  const [updateChecking, setUpdateChecking] = useState(false)
+  const [updateResult, setUpdateResult] = useState<any>(null)
+  const [updatePerforming, setUpdatePerforming] = useState<string | null>(null)
+  const [updateMsg, setUpdateMsg] = useState('')
+
+  // changelog modal
+  const [changelogModal, setChangelogModal] = useState<any>(null)
+  const [changelogLoading, setChangelogLoading] = useState(false)
+  const [changelogBody, setChangelogBody] = useState('')
+  const [changelogError, setChangelogError] = useState('')
+
+  const openChangelog = async (v: any) => {
+    setChangelogModal(v)
+    setChangelogLoading(true)
+    setChangelogBody('')
+    setChangelogError('')
+    try {
+      const result = await api.getChangelog(v.display_version || v.version)
+      setChangelogBody(result.body || '暂无更新日志')
+    } catch {
+      setChangelogError('无法获取更新日志')
+    }
+    setChangelogLoading(false)
+  }
+
 
   useEffect(() => {
     api.getConfig().then(d => {
@@ -80,6 +106,14 @@ export default function Settings() {
       })
       setLibScraper(sp)
     }).catch(() => {}).finally(() => setLoading(false))
+
+    // 自动检查更新
+    api.checkForUpdates().then(result => {
+      setUpdateResult(result)
+      if (result.has_update) {
+        setUpdateMsg(`发现新版本 ${result.versions[0]?.display_version || ''}`)
+      }
+    }).catch(() => {})
 
     return () => {
       // Clear all scan polling timers on unmount
@@ -474,6 +508,142 @@ export default function Settings() {
               </div>
             </div>
           </div>
+
+          {/* 更新 */}
+          <div className={cardClass}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className={sectionTitle + " mb-0"}>更新</h2>
+              <button
+                onClick={async () => {
+                  setUpdateChecking(true)
+                  setUpdateMsg('')
+                  try {
+                    const result = await api.checkForUpdates()
+                    setUpdateResult(result)
+                    if (result.has_update) {
+                      setUpdateMsg(`发现新版本 ${result.versions[0]?.display_version || ''}`)
+                    } else {
+                      setUpdateMsg('已是最新版本')
+                    }
+                  } catch {
+                    setUpdateMsg('检查更新失败')
+                    setUpdateResult(null)
+                  }
+                  setUpdateChecking(false)
+                }}
+                disabled={updateChecking}
+                className={btnDark}
+              >
+                {updateChecking ? '检查中...' : '检查更新'}
+              </button>
+            </div>
+
+            <p className="mb-3 text-xs text-gray-500">
+              当前版本：
+              <span className="text-white font-medium">
+                {updateResult?.current_version || '...'}
+              </span>
+            </p>
+
+            {updateMsg && (
+              <p className={`mb-3 text-xs ${updateMsg.includes('失败') ? 'text-red-400' : updateMsg.includes('最新') ? 'text-apple-mint' : 'text-apple-yellow'}`}>
+                {updateMsg}
+              </p>
+            )}
+
+            {updateResult?.versions?.length > 0 && (
+              <div className="space-y-2">
+                {updateResult.versions.map((v: any, i: number) => {
+                  const isCurrent = v.version === updateResult.current_version
+                  return (
+                    <div key={v.version}
+                         className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-white truncate">
+                          {v.display_version || v.version}
+                          {isCurrent && (
+                            <span className="ml-2 inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] text-gray-400">
+                              当前
+                            </span>
+                          )}
+                          {!isCurrent && i === 0 && updateResult.has_update && (
+                            <span className="ml-2 inline-flex items-center rounded-full border border-green-400/30 bg-green-500/15 px-2 py-0.5 text-[10px] text-green-400">
+                              最新
+                            </span>
+                          )}
+                        </p>
+                        {v.published_at && (
+                          <p className="mt-0.5 text-xs text-gray-500 truncate">
+                            {new Date(v.published_at).toLocaleDateString('zh-CN')}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => openChangelog(v)}
+                          className="text-xs text-apple-blue hover:text-white transition-colors"
+                        >
+                          更新日志
+                        </button>
+                        {!isCurrent && (
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`确定要更新到 ${v.display_version || v.version} 吗？容器将自动重启。`)) return
+                              setUpdatePerforming(v.version)
+                              setUpdateMsg('')
+                              try {
+                                const res = await api.performUpdate(v.version)
+                                setUpdateMsg(res.message || '更新已触发')
+                                dismissUpdate(v.version)
+                              } catch (e: any) {
+                                setUpdateMsg(`更新失败: ${e.message || '未知错误'}`)
+                              }
+                              setUpdatePerforming(null)
+                            }}
+                            disabled={updatePerforming === v.version}
+                            className={`${btnPrimary} text-xs px-2 py-1`}
+                          >
+                            {updatePerforming === v.version ? '更新中...' : '更新到此版本'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* CHANGELOG Modal */}
+            {changelogModal && (
+              <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+                   onClick={() => setChangelogModal(null)}>
+                <div className="glass-modal max-w-2xl w-full max-h-[80vh] flex flex-col rounded-3xl"
+                     onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between p-5 border-b border-white/10 shrink-0">
+                    <h3 className="text-lg font-semibold text-white">更新日志 — {changelogModal.display_version || changelogModal.version}</h3>
+                    <button
+                      onClick={() => setChangelogModal(null)}
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/10 text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-5">
+                    {changelogLoading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <div className="animate-pulse text-gray-400 text-sm">加载中...</div>
+                      </div>
+                    ) : changelogError ? (
+                      <p className="text-sm text-red-400">{changelogError}</p>
+                    ) : (
+                      <pre className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed font-sans">{changelogBody}</pre>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
         </div>
       </div>
     </div>

@@ -451,6 +451,22 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  getVersion: () =>
+    request<UpdateInfo>('/version'),
+
+  checkForUpdates: () =>
+    request<UpdateCheckResult>('/update/check'),
+
+  performUpdate: (version: string) =>
+    request<{ ok: boolean; message?: string; version?: string; error?: string }>('/update/perform', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ version }),
+    }),
+
+  getChangelog: (version: string) =>
+    request<{ version: string; body: string }>(`/update/changelog?version=${encodeURIComponent(version)}`),
+
   changePassword: (oldUsername: string, oldPassword: string, newUsername: string, newPassword: string) =>
     request<{ ok: boolean }>('/auth/change-password', {
       method: 'POST',
@@ -596,4 +612,26 @@ export interface Config {
   tmdb_api_key: string
   tmdb_access_token: string
   media_root: string
+  update_check_enabled: boolean
+  update_check_interval_hours: number
+}
+
+export interface UpdateInfo {
+  version: string
+}
+
+export interface VersionEntry {
+  version: string
+  display_version: string
+  name: string
+  published_at: string
+  html_url: string
+  body?: string
+  source: string
+}
+
+export interface UpdateCheckResult {
+  current_version: string
+  has_update: boolean
+  versions: VersionEntry[]
 }

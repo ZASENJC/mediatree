@@ -65,6 +65,7 @@ In production, the backend serves the built frontend at `/`. In development, run
 - `scanner.py` — Core scanning and scraping engine (~1800 lines): `scan_media()` walks filesystem, `scrape_for_library()` runs the fallback chain, per-library lock prevents duplicate concurrent scans.
 - `database.py` — All SQLite CRUD (~1000 lines): `init_db()` with schema migrations, movie/folder/tag/category ops, Jellyfin user_data/playback_sessions/tokens tables.
 - `config.py` — `pydantic-settings` + JSON config persistence. `Settings` class reads `.env`, then `load_persisted_config()` overlays `data/config.json`. Runtime changes via `/api/config` POST write back to `config.json`.
+- `updater.py` — Docker self-update system. `get_available_versions()` polls DockerHub tags for version list. `perform_update()` pulls target image (`docker pull zasenjc/mediatree:<tag>`) then restarts via `docker compose up -d`. `fetch_github_release_body()` fetches full GitHub release notes for the CHANGELOG modal.
 
 ### Scraper plugin system (`backend/app/scrapers/`)
 - `base.py` — `BaseScraper` abstract class with `search() -> ScrapeCandidate` and `get_detail() -> ScrapeResult`. Dataclasses defined here.
@@ -100,6 +101,16 @@ In production, the backend serves the built frontend at `/`. In development, run
 - Only processes video/subtitle/NFO/cover file extensions
 - Merges batched changes by media_root, triggers `run_scan_for_root(trigger="watcher")`
 - If a scan is already in progress for a root, marks "queued" and re-scans after current scan completes
+
+### Update / self-upgrade system (`updater.py`)
+- `GET /api/version` — return current version from VERSION file (public, no auth)
+- `GET /api/update/check` — return DockerHub tag list (public, no auth), merged & sorted descending
+- `POST /api/update/perform` — `docker pull zasenjc/mediatree:<tag>` + `docker compose up -d` restart
+- `GET /api/update/changelog?version=Vx.x.x` — fetch full GitHub release body for CHANGELOG modal
+- Frontend auto-checks every 15 minutes in `App.tsx`, shows red dot on Settings nav when update available
+- Settings page update panel: version list with "更新日志" (modal) and "更新到此版本" (docker pull) buttons
+- CHANGELOG modal: full-screen darkened backdrop (`bg-black/60 backdrop-blur-sm`), centered `glass-modal` panel
+- Requires `docker.sock` mount and `COMPOSE_FILE` env for self-upgrade to work
 
 ### Atomic scan flow
 ```
@@ -161,3 +172,4 @@ scan_media(root)
 - Player/subtitles: `VideoPlayer.tsx` + `artplayerPluginAss.ts`
 - Jellyfin compat: `jellyfin_compat.py` (routes) + `jellyfin_mappers.py` (data mapping)
 - File watching: `watcher.py`
+- Update / self-upgrade: `updater.py` + `main.py` (`/api/update/*` routes) + `Settings.tsx` (update panel)

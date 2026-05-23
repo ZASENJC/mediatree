@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .config import settings, logger, setup_file_logging, is_safe_image_url
+from .updater import get_current_version, get_available_versions, perform_update, fetch_github_release_body
 from .database import (
     init_db, close_db_pool, upsert_movie, get_movies, get_movie_detail,
     get_categories, save_category, delete_category, add_tag, remove_tag,
@@ -51,7 +52,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not settings.auth_enabled:
             return await call_next(request)
         if path.startswith("/assets") \
-                or path in ("/api/auth/login", "/api/auth/status", "/api/setup/status", "/api/health") \
+                or path in ("/api/auth/login", "/api/auth/status", "/api/setup/status", "/api/health", "/api/version") \
                 or path.startswith("/api/stream/") \
                 or path.startswith("/api/cover/") \
                 or path.startswith("/api/cached-cover/") \
@@ -65,7 +66,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 or path.startswith("/fonts/") \
                 or (path == "/api/subtitle-fonts" and request.method in ("GET", "HEAD")) \
                 or (path.startswith("/api/subtitle-fonts/") and request.method in ("GET", "HEAD")) \
-                or path.startswith("/api/media/"):
+                or path.startswith("/api/media/") \
+                or path == "/api/update/check":
             return await call_next(request)
         auth = request.headers.get("Authorization", "")
         if auth == f"Bearer {settings.auth_token}":
@@ -692,6 +694,8 @@ async def api_get_config():
         "scraper_api_concurrency": settings.scraper_api_concurrency,
         "scraper_http_timeout": settings.scraper_http_timeout,
         "media_root": settings.media_root,
+        "update_check_enabled": getattr(settings, 'update_check_enabled', True),
+        "update_check_interval_hours": getattr(settings, 'update_check_interval_hours', 24),
     }
 
 
@@ -725,6 +729,10 @@ async def api_update_config(data: dict):
         settings.scraper_api_concurrency = int(data["scraper_api_concurrency"])
     if "scraper_http_timeout" in data:
         settings.scraper_http_timeout = float(data["scraper_http_timeout"])
+    if "update_check_enabled" in data:
+        settings.update_check_enabled = bool(data["update_check_enabled"])
+    if "update_check_interval_hours" in data:
+        settings.update_check_interval_hours = int(data["update_check_interval_hours"])
     settings.save_config()
     return {"ok": True}
 
@@ -872,6 +880,36 @@ async def api_restore_upload(file: UploadFile = None):
         except Exception: pass
 
     return {"ok": True, "message": "Backup restored successfully"}
+
+
+# ─── Update / Version ───
+
+@app.get("/api/version")
+async def api_version():
+    """Get current application version."""
+    return {"version": get_current_version()}
+
+@app.get("/api/update/check")
+async def api_update_check():
+    """Check for available updates from GitHub and DockerHub."""
+    return await get_available_versions()
+
+@app.post("/api/update/perform")
+async def api_update_perform(data: dict):
+    """Trigger a Docker self-update to the specified version."""
+    version = data.get("version", "")
+    if not version:
+        raise HTTPException(status_code=400, detail="version required")
+    result = await perform_update(version)
+    if not result.get("ok"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Update failed"))
+    return result
+
+@app.get("/api/update/changelog")
+async def api_update_changelog(version: str = Query(...)):
+    """Fetch full CHANGELOG (release body) from GitHub for a specific version."""
+    body = await fetch_github_release_body(version)
+    return {"version": version, "body": body}
 
 
 # ─── Recent Watched ───

@@ -24,6 +24,8 @@ COPY --from=frontend-build /build/dist /app/frontend/dist
 
 RUN mkdir -p /app/data
 
+COPY VERSION /app/VERSION
+
 RUN addgroup --system --gid 1000 appgroup && \
     adduser --system --uid 1000 --gid 1000 appuser && \
     chown -R appuser:appgroup /app

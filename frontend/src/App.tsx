@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import { getActiveLibrary, setActiveLibrary, api, clearCache, MediaRoot } from './api'
+import { getUiPrefs, setUiPrefs, getUpdateNotification } from './store'
 import { useToastController } from './toast'
 import Home from './pages/Home'
 import Browse from './pages/Browse'
@@ -36,6 +37,7 @@ export default function App() {
   const [scanToast, setScanToast] = useState<{ visible: boolean; status: string; done: number; total: number }>({ visible: false, status: '', done: 0, total: 0 })
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
+  const [hasUpdate, setHasUpdate] = useState(() => getUpdateNotification().available)
   const toasts = useToastController()
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const moreBtnRef = useRef<HTMLButtonElement | null>(null)
@@ -75,6 +77,26 @@ export default function App() {
   useEffect(() => {
     if (mobileSearchOpen) searchInputRef.current?.focus()
   }, [mobileSearchOpen])
+
+  // 版本更新检查（每 15 分钟轮询）
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const result = await api.checkForUpdates()
+        const { dismissed } = getUpdateNotification()
+        const top = result.versions[0]
+        if (result.has_update && top && top.version !== dismissed) {
+          setHasUpdate(true)
+          setUiPrefs({ ...getUiPrefs(), updateAvailable: true, lastUpdateCheck: Date.now() })
+        } else if (!result.has_update) {
+          setHasUpdate(false)
+        }
+      } catch {}
+    }
+    check()
+    const t = setInterval(check, 15 * 60 * 1000)
+    return () => clearInterval(t)
+  }, [])
 
   // auto-search with debounce when typing
   useEffect(() => {
@@ -281,7 +303,13 @@ export default function App() {
                     : 'text-gray-400 hover:bg-white/10 hover:text-white'
                 }`}
               >
-                <span>{item.label}</span>
+                <span className="relative">
+                  {item.label}
+                  {item.path === '/settings' && hasUpdate && (
+                    <span className="absolute -top-1 -right-2.5 h-2 w-2 rounded-full bg-red-500"
+                          style={{ boxShadow: '0 0 6px rgba(239, 68, 68, 0.7)' }} />
+                  )}
+                </span>
               </Link>
             ))}
             <div className="relative shrink-0 sm:hidden">
@@ -309,7 +337,13 @@ export default function App() {
                         : 'text-gray-300 hover:bg-white/10 hover:text-white'
                     }`}
                   >
-                    {item.label}
+                    <span className="relative">
+                      {item.label}
+                      {item.path === '/settings' && hasUpdate && (
+                        <span className="absolute -top-1 -right-3 h-2 w-2 rounded-full bg-red-500"
+                              style={{ boxShadow: '0 0 6px rgba(239, 68, 68, 0.7)' }} />
+                      )}
+                    </span>
                   </Link>
                 ))}
               </div>

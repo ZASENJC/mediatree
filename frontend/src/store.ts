@@ -5,6 +5,9 @@ export interface UiPrefs {
   hideHomeTitleText?: boolean
   ambientMode?: boolean
   showSourceName?: boolean
+  updateAvailable?: boolean
+  lastUpdateCheck?: number
+  dismissedUpdateVersion?: string
 }
 
 export function getExcluded(): Set<string> {
@@ -34,4 +37,18 @@ export function setUiPrefs(prefs: UiPrefs) {
   try {
     localStorage.setItem(UI_PREFS_KEY, JSON.stringify(prefs))
   } catch {}
+}
+
+export function getUpdateNotification(): { available: boolean; lastCheck: number; dismissed: string } {
+  const prefs = getUiPrefs()
+  return {
+    available: prefs.updateAvailable || false,
+    lastCheck: prefs.lastUpdateCheck || 0,
+    dismissed: prefs.dismissedUpdateVersion || '',
+  }
+}
+
+export function dismissUpdate(version: string) {
+  const prefs = getUiPrefs()
+  setUiPrefs({ ...prefs, updateAvailable: false, dismissedUpdateVersion: version })
 }
