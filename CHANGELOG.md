@@ -10,7 +10,7 @@ All notable changes to MediaTree are documented here.
 
 ### Core Architecture
 
-- **Backend**: Python 3.12 + FastAPI + Uvicorn, 85+ RESTful API endpoints
+- **Backend**: Python 3.12 + FastAPI + Uvicorn, 87 RESTful API endpoints
 - **Frontend**: React 18 + TypeScript 5 + TailwindCSS 3 + Vite
 - **Database**: SQLite via aiosqlite (WAL mode, busy_timeout=5s)
 - **Deployment**: Docker multi-stage build, linux/amd64 + linux/arm64 multi-arch
@@ -29,9 +29,11 @@ All notable changes to MediaTree are documented here.
 - Plugin-based architecture with abstract `BaseScraper` class
 - **TMDB** — Movie & TV metadata (title, cast/crew, cover, backdrop, reviews, keywords)
 - **Bangumi** — Anime metadata for Chinese/Japanese titles
-- **Javdatabase** — JAV code-based metadata
+- **Javdatabase** — JAV code-based metadata with fuzzy search fallback (strip dashes, prefix matching)
 - Auto scraper with TMDB ID extraction from filenames and intelligent fallback chain
 - Season/episode merge for TMDB multi-season compilations
+- TMDB data pipeline fixes — genre, keywords, studios, tagline, status now persisted to DB
+- 10 new API endpoints: person detail/filmography/photos, media images/videos/release dates/reviews, season posters, episode stills
 - Manual scrape with search-and-select UI
 - Right-click context menu for folder-level batch scraping
 - Scraper cache with configurable TTL (24h - 168h)
@@ -109,7 +111,7 @@ All notable changes to MediaTree are documented here.
 ### Security
 
 - PBKDF2-SHA256 password hashing (100,000 iterations) with per-password salt
-- Non-root Docker user (uid 1000)
+- Container runs as root with Docker socket access for self-update capability
 - SSRF prevention — image proxy restricted to allowed CDN domains
 - Config endpoint masks sensitive values (TMDB keys/tokens) in API responses
 - Password not persisted to config.json; sourced from environment variables only
@@ -125,10 +127,11 @@ All notable changes to MediaTree are documented here.
 
 ### Auto-Update System
 
-- Docker-based self-upgrade with DockerHub tag polling
-- One-click update/rollback to any DockerHub tag version
-- CHANGELOG viewer with full-screen darkened modal (fetches GitHub release notes)
-- Update notification red dot on Settings nav (15-minute auto-check interval)
-- `docker pull` + `docker compose up -d` restart flow
-- `/api/version`, `/api/update/check`, `/api/update/perform`, `/api/update/changelog` endpoints
-- Docker socket mount + `COMPOSE_FILE` env for container self-upgrade capability
+- Docker-based self-upgrade polling DockerHub tags for available versions
+- One-click update or rollback to any published DockerHub tag version
+- Helper-container architecture — isolates `docker compose up -d` in a separate `docker:cli` container to survive the main container restart (cgroup isolation)
+- Full-screen darkened CHANGELOG modal fetching GitHub release notes on demand
+- Update notification red dot on Settings navigation (15-minute auto-check interval)
+- 4 dedicated API endpoints: `/api/version`, `/api/update/check`, `/api/update/perform`, `/api/update/changelog`
+- Requires Docker socket mount (`/var/run/docker.sock`) and `COMPOSE_FILE` environment variable
+- Configurable auto-check toggle and interval (`update_check_enabled`, `update_check_interval_hours`)

@@ -10,7 +10,7 @@
 
 ### 核心架构
 
-- **后端**：Python 3.12 + FastAPI + Uvicorn，85+ RESTful API 端点
+- **后端**：Python 3.12 + FastAPI + Uvicorn，87 个 RESTful API 端点
 - **前端**：React 18 + TypeScript 5 + TailwindCSS 3 + Vite
 - **数据库**：SQLite + aiosqlite（WAL 模式，busy_timeout=5s）
 - **部署**：Docker 多阶段构建，linux/amd64 + linux/arm64 多架构
@@ -29,9 +29,11 @@
 - 插件化架构，基于 `BaseScraper` 抽象类
 - **TMDB** — 电影和电视剧元数据（标题、演员/制作人、封面、背景、评论、关键词）
 - **Bangumi** — 针对中文/日文标题的动漫元数据
-- **Javdatabase** — JAV 番号元数据
+- **Javdatabase** — JAV 番号元数据，支持模糊搜索回退（去横线、前缀匹配）
 - 自动刮削器，支持从文件名提取 TMDB ID 和智能回退链
 - TMDB 多季合并的季集整合
+- 修复 TMDB 数据管线断层 — genre、keywords、studios、tagline、status 已完整入库
+- 新增 10 个 REST 端点：人物详情/作品集/照片、媒体图片/视频/上映日期/评论/关键词、季海报、集剧照
 - 手动刮削，支持搜索选择界面
 - 右键上下文菜单支持文件夹批量刮削
 - 刮削器缓存，可配置 TTL（24h - 168h）
@@ -109,13 +111,24 @@
 ### 安全性
 
 - PBKDF2-SHA256 密码哈希（100,000 次迭代）+ 独立盐值
-- Docker 非 root 用户运行（uid 1000）
+- 容器以 root 运行，挂载 Docker socket 以支持自更新
 - SSRF 防护 — 图片代理仅限允许的 CDN 域名
 - 配置端点 API 响应中遮蔽敏感值（TMDB 密钥/令牌）
 - 密码不持久化到 config.json，仅从环境变量读取
 - 字体文件操作的路径穿越防护
 - CORS 正确配置（通配符来源 + 禁用凭据）
 - NFO XML 解析禁用外部实体解析
+
+### 自动更新系统
+
+- Docker 自更新机制，轮询 DockerHub Tags 获取可用版本
+- 一键更新或回退到任意已发布的 DockerHub Tag 版本
+- 辅助容器架构 — `docker compose up -d` 在独立 `docker:cli` 容器中执行，利用 cgroup 隔离确保主容器重启时 compose 进程不受影响
+- 全屏变暗居中更新日志弹窗，按需从 GitHub Releases 获取完整发布说明
+- 设置导航红点提醒（15 分钟自动轮询检查）
+- 4 个专用 API 端点：`/api/version`、`/api/update/check`、`/api/update/perform`、`/api/update/changelog`
+- 依赖 Docker socket 挂载（`/var/run/docker.sock`）和 `COMPOSE_FILE` 环境变量
+- 可配置的自动检查开关和轮询间隔（`update_check_enabled`、`update_check_interval_hours`）
 
 ### 文档
 
