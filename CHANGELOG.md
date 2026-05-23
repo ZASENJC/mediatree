@@ -1,3 +1,5 @@
+[English](CHANGELOG.md) | [简体中文](CHANGELOG_zh-CN.md)
+
 # Changelog
 
 All notable changes to MediaTree are documented here.

@@ -1,3 +1,5 @@
+[English](Jellyfin-Clients) | [简体中文](../wiki_zh-CN/Jellyfin-Clients)
+
 # Jellyfin Clients
 
 MediaTree implements 36 Jellyfin-compatible API endpoints, allowing you to use your favorite media clients directly.

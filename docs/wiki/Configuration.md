@@ -1,3 +1,5 @@
+[English](Configuration) | [简体中文](../wiki_zh-CN/Configuration)
+
 # Configuration
 
 MediaTree is configured through environment variables (`.env` file) and runtime settings (Settings page).

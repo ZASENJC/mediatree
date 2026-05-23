@@ -1,3 +1,5 @@
+[English](Home) | [简体中文](../wiki_zh-CN/Home)
+
 # MediaTree Wiki
 
 Welcome to the MediaTree documentation. MediaTree is a self-hosted media library manager that combines elegant glassmorphism UI with Jellyfin-compatible API and a powerful plugin-based scraper system.
