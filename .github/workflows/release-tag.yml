@@ -54,3 +54,4 @@ jobs:
           tag_name: ${{ steps.version.outputs.version }}
           body_path: /tmp/release_body.md
           make_latest: true
+
