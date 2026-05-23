@@ -229,19 +229,23 @@ export default function Detail() {
           <div className="mt-4 space-y-4 border-t border-white/10 pt-4">
             {(movie.episode_overview || movie.folder_levels) && (
               <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                <div className="grid gap-4 lg:grid-cols-2">
-                  {movie.episode_overview && (
+                {movie.episode_overview ? (
+                  <div className="grid gap-4 lg:grid-cols-2">
                     <div>
                       <p className="mb-1.5 text-xs text-gray-500">集概述</p>
                       <p className="whitespace-pre-line text-sm leading-relaxed text-gray-300">{movie.episode_overview}</p>
                     </div>
-                  )}
-                  <div className="space-y-3 text-sm lg:text-right">
-                    {movie.folder_levels && (
-                      <InfoLine label="目录" value={movie.folder_levels} />
-                    )}
+                    <div className="space-y-3 text-sm lg:text-right">
+                      {movie.folder_levels && (
+                        <InfoLine label="目录" value={movie.folder_levels} />
+                      )}
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  movie.folder_levels && (
+                    <InfoLine label="目录" value={movie.folder_levels} />
+                  )
+                )}
               </div>
             )}
 
