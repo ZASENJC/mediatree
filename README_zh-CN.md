@@ -7,7 +7,7 @@
 <p align="center">
   <a href="README.md">English</a> | <strong>简体中文</strong>
   <br><br>
-  <strong>自托管的媒体库管理器，拥有优雅的玻璃态 UI、<br>Jellyfin 兼容 API 和强大的插件化刮削系统。</strong>
+  <strong>一键部署的个人媒体库。质感 UI，多源元数据刮削，<br>ASS 特效字幕渲染，支持电影、电视剧、动漫与 JAV 管理。</strong>
 </p>
 
 <p align="center">

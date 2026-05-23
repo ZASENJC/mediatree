@@ -7,7 +7,7 @@
 <p align="center">
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
   <br><br>
-  <strong>Self-hosted media library manager with elegant glassmorphism UI,<br>Jellyfin-compatible API, and a powerful plugin-based scraper system.</strong>
+  <strong>Self-hosted media library — one command deploy.<br>Elegant UI, multi-source scraping, ASS subtitle rendering,<br>supporting movies, TV, anime & JAV.</strong>
 </p>
 
 <p align="center">
