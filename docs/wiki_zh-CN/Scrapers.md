@@ -1,4 +1,4 @@
-[English](../wiki/Scrapers) | [简体中文](Scrapers)
+[English](../wiki/Scrapers) | **简体中文**
 
 # 刮削器系统
 

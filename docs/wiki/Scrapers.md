@@ -1,4 +1,4 @@
-[English](Scrapers) | [简体中文](../wiki_zh-CN/Scrapers)
+**English** | [简体中文](../wiki_zh-CN/Scrapers)
 
 # Scrapers
 

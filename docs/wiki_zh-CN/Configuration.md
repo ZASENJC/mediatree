@@ -1,4 +1,4 @@
-[English](../wiki/Configuration) | [简体中文](Configuration)
+[English](../wiki/Configuration) | **简体中文**
 
 # 配置说明
 

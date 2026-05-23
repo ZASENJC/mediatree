@@ -1,4 +1,4 @@
-[English](../wiki/Installation) | [简体中文](Installation)
+[English](../wiki/Installation) | **简体中文**
 
 # 安装指南
 

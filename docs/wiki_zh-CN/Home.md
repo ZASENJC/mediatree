@@ -1,4 +1,4 @@
-[English](../wiki/Home) | [简体中文](Home)
+[English](../wiki/Home) | **简体中文**
 
 # MediaTree Wiki
 

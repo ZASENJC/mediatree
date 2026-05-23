@@ -1,4 +1,4 @@
-[English](../wiki/Jellyfin-Clients) | [简体中文](Jellyfin-Clients)
+[English](../wiki/Jellyfin-Clients) | **简体中文**
 
 # Jellyfin 客户端
 

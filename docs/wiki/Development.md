@@ -1,4 +1,4 @@
-[English](Development) | [简体中文](../wiki_zh-CN/Development)
+**English** | [简体中文](../wiki_zh-CN/Development)
 
 # Development
 

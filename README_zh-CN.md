@@ -5,7 +5,7 @@
 <h1 align="center">MediaTree</h1>
 
 <p align="center">
-  <strong>[English](README.md) | [简体中文](README_zh-CN.md)</strong>
+  <a href="README.md">English</a> | <strong>简体中文</strong>
   <br><br>
   <strong>自托管的媒体库管理器，拥有优雅的玻璃态 UI、<br>Jellyfin 兼容 API 和强大的插件化刮削系统。</strong>
 </p>

@@ -1,4 +1,4 @@
-[English](../wiki/Development) | [简体中文](Development)
+[English](../wiki/Development) | **简体中文**
 
 # 开发指南
 
