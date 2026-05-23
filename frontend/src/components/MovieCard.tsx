@@ -1,11 +1,14 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { api, Movie } from '../api'
 import { saveScrollPos } from '../scroll'
+import { showToast } from '../toast'
 import { WatchedBadge } from './WatchedBadge'
 import ContextMenu, { ContextMenuItem } from './ContextMenu'
 import EditModal from './EditModal'
 import { clearCache } from '../cache'
+import CoverPickerModal from './CoverPickerModal'
 
 interface MovieCardProps {
   movie: Movie
@@ -22,7 +25,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const [manualQuery, setManualQuery] = useState('')
   const [manualScraper, setManualScraper] = useState('')
   const [showCoverPicker, setShowCoverPicker] = useState(false)
-  const [altCovers, setAltCovers] = useState<{ url: string; source: string }[]>([])
+  const [altCovers, setAltCovers] = useState<{ url: string; source: string; width?: number; height?: number; language?: string; vote_count?: number }[]>([])
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [searching, setSearching] = useState(false)
   const [applying, setApplying] = useState(false)
@@ -86,7 +89,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       onUpdated?.()
     } catch (err) {
       console.error('Rescrape failed for movie', movie.id, err)
-      alert(`刮削失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
+      showToast(`刮削失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
     }
   }, [movie.id, onUpdated])
 
@@ -97,7 +100,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       const data = await api.searchScrape(manualQuery.trim(), manualScraper || undefined)
       setSearchResults(data.results || [])
       if ((data.results || []).length === 0) {
-        alert('没有找到匹配结果')
+        showToast('没有找到匹配结果')
       }
     } catch {
       console.error('Search scrape failed')
@@ -127,7 +130,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
     try {
       const data = await api.getAlternativeCovers(movie.id)
       if (!data.covers || data.covers.length === 0) {
-        alert('没有找到备用封面')
+        showToast('没有找到备用封面')
         return
       }
       setAltCovers(data.covers)
@@ -175,7 +178,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       clearCache()
       onUpdated?.()
     } catch {
-      alert('删除失败，请检查权限')
+      showToast('删除失败，请检查权限')
     }
   }, [movie.id, onUpdated])
 
@@ -284,8 +287,8 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
         />
       )}
 
-      {showManualSearch && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
+      {showManualSearch && createPortal(
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
           <div className="glass-modal w-full max-w-lg p-4 sm:p-5 max-h-[80vh] overflow-y-auto">
             <h2 className="mb-1 text-lg font-bold text-white">手动刮削</h2>
             <p className="mb-4 text-xs text-gray-500">输入搜索关键词，选择刮削器</p>
@@ -342,7 +345,8 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {applying && (
@@ -357,33 +361,16 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
         </div>
       )}
 
-      {showCoverPicker && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
-          <div className="glass-modal w-full max-w-lg p-4 sm:p-5 max-h-[80vh] overflow-y-auto">
-            <h2 className="mb-1 text-lg font-bold text-white">更换封面</h2>
-            <p className="mb-4 text-xs text-gray-500">选择封面或上传本地图片</p>
-            <div className="mb-4 grid grid-cols-3 gap-3">
-              {altCovers.map((c, i) => (
-                <div key={i}
-                  onClick={() => handleSelectCover(c.url)}
-                  className="aspect-[2/3] cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition-all hover:border-apple-blue/40 hover:shadow-glow"
-                >
-                  <img src={c.url} alt={c.source} className="h-full w-full object-cover" />
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-3">
-              <button onClick={handleUploadCover}
-                className="glass-button flex-1 py-2 text-sm text-gray-300">
-                上传本地图片
-              </button>
-              <button onClick={() => setShowCoverPicker(false)}
-                className="glass-button flex-1 py-2 text-sm text-gray-300">
-                取消
-              </button>
-            </div>
-          </div>
-        </div>
+      {showCoverPicker && createPortal(
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
+          <CoverPickerModal
+            covers={altCovers}
+            onSelectCover={handleSelectCover}
+            onUpload={handleUploadCover}
+            onClose={() => setShowCoverPicker(false)}
+          />
+        </div>,
+        document.body,
       )}
     </>
   )

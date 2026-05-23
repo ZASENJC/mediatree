@@ -18,6 +18,7 @@ def _staff_to_dict(staff: ScrapeStaff) -> dict:
         "job": staff.job or "",
         "department": staff.department or "",
         "person_id": staff.person_id or "",
+        "profile_path": staff.profile_path or "",
         "source": staff.source or "",
     }
 
@@ -90,6 +91,12 @@ def scrape_result_to_legacy(result: ScrapeResult, *, exact: bool = False) -> dic
         "imdb_id": raw.get("imdb_id"),
         "episode_title": result.episode_title or raw.get("episode_title") or "",
         "episode_still": result.episode_still_url or raw.get("episode_still") or "",
+        "genre": raw.get("genre") or "",
+        "tagline": raw.get("tagline") or "",
+        "status": raw.get("status") or "",
+        "content_rating": raw.get("content_rating") or "",
+        "studios": raw.get("studios") or [],
+        "keywords": raw.get("keywords") or "",
         "_exact_match": exact,
         "_raw": raw,
         "scraper_raw": json.dumps(raw, ensure_ascii=False) if raw else "",

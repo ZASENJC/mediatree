@@ -247,6 +247,8 @@ def scan_media(root: str = None) -> list[dict]:
                         match = re.search(r"\d+", fname)
                         if match:
                             season_num = int(match.group())
+                        elif fname.strip().lower() in {"specials", "special"}:
+                            season_num = 0
                     item["tmdb_season"] = season_num
                 if local_still:
                     item["episode_still"] = local_still
@@ -354,6 +356,12 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
         "scraper_raw": data.get("scraper_raw") or (json.dumps(data.get("_raw"), ensure_ascii=False) if data.get("_raw") else ""),
         "cast": json.dumps(data.get("cast") or [], ensure_ascii=False),
         "crew": json.dumps(data.get("crew") or [], ensure_ascii=False),
+        "genre": data.get("genre") or "",
+        "keywords": data.get("keywords") or "",
+        "studios": ", ".join(data.get("studios") or []) if isinstance(data.get("studios"), list) else (data.get("studios") or ""),
+        "tagline": data.get("tagline") or "",
+        "status": data.get("status") or "",
+        "content_rating": data.get("content_rating") or "",
     }
     if replace:
         set_sql = """
@@ -384,6 +392,12 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
                episode_overview=NULL,
                episode_still=NULLIF(?, ''),
                episode_still_local=NULL,
+               genre=NULLIF(?, ''),
+               keywords=NULLIF(?, ''),
+               studios=NULLIF(?, ''),
+               tagline=NULLIF(?, ''),
+               status=NULLIF(?, ''),
+               content_rating=NULLIF(?, ''),
                updated_at=datetime('now')
         """
     else:
@@ -413,6 +427,12 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
                tmdb_episode=COALESCE(?, tmdb_episode),
                episode_title=COALESCE(NULLIF(?, ''), episode_title),
                episode_still=COALESCE(NULLIF(?, ''), episode_still),
+               genre=COALESCE(NULLIF(?, ''), genre),
+               keywords=COALESCE(NULLIF(?, ''), keywords),
+               studios=COALESCE(NULLIF(?, ''), studios),
+               tagline=COALESCE(NULLIF(?, ''), tagline),
+               status=COALESCE(NULLIF(?, ''), status),
+               content_rating=COALESCE(NULLIF(?, ''), content_rating),
                updated_at=datetime('now')
         """
     values = (
@@ -424,6 +444,7 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
         fields["scraper_source"], fields["source_id"], fields["bangumi_id"], fields["javdb_id"],
         fields["scraper_raw"],
         fields["tmdb_season"], fields["tmdb_episode"], fields["episode_title"], fields["episode_still"],
+        fields["genre"], fields["keywords"], fields["studios"], fields["tagline"], fields["status"], fields["content_rating"],
     )
     if media_root:
         cur = await db.execute(
@@ -653,6 +674,24 @@ async def scrape_for_library(media_root: str):
                                 or title_matches(data.get("original_title", ""), search_name, code)
                             )
                             if passed:
+                                # Fetch episode-specific credits for TV episodes
+                                if (data.get("source") == "tmdb" and data.get("tmdb_type") == "tv"
+                                        and data.get("tmdb_id") and r.get("tmdb_season") is not None
+                                        and r.get("tmdb_episode") is not None):
+                                    try:
+                                        from .tmdb import fetch_tv_episode
+                                        ep_data = await fetch_tv_episode(
+                                            str(data["tmdb_id"]), r["tmdb_season"], r["tmdb_episode"]
+                                        )
+                                        if ep_data and (ep_data.get("cast") or ep_data.get("crew")):
+                                            data["cast"] = ep_data.get("cast") or []
+                                            data["crew"] = ep_data.get("crew") or []
+                                            logger.info(
+                                                f"  {sb}: episode credits for S{r['tmdb_season']}E{r['tmdb_episode']} "
+                                                f"({len(data['cast'])} cast, {len(data['crew'])} crew)"
+                                            )
+                                    except Exception as ep_err:
+                                        logger.warning(f"  {sb}: episode credits fetch failed: {ep_err}")
                                 async with _sqlite_write_semaphore:
                                     await _apply_scraped_data(folder_levels, data, media_root)
                                 logger.info(
@@ -663,7 +702,7 @@ async def scrape_for_library(media_root: str):
 
                                 if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
                                     season_num = infer_season_number(folder_name, data, existing_season=r.get("tmdb_season"), folder_path=folder_levels)
-                                    if season_num:
+                                    if season_num is not None:
                                         try:
                                             from .tmdb import match_episodes_in_folder
                                             async with _sqlite_write_semaphore:
@@ -951,7 +990,7 @@ async def rescrape_movie(movie_id: int) -> dict:
                     affected = await _apply_scraped_data(folder_levels, data, media_root, replace=True)
                 if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
                     season_num = infer_season_number(folder_name, data, existing_season=movie.get("tmdb_season"), folder_path=folder_levels)
-                    if season_num:
+                    if season_num is not None:
                         try:
                             from .tmdb import match_episodes_in_folder
                             async with _sqlite_write_semaphore:
@@ -1047,7 +1086,7 @@ async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: st
             if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
                 folder_name = Path(folder_levels).name if folder_levels else ""
                 season_num = infer_season_number(folder_name, data, existing_season=movie.get("tmdb_season"), folder_path=folder_levels)
-                if season_num:
+                if season_num is not None:
                     try:
                         from .tmdb import match_episodes_in_folder
                         async with _sqlite_write_semaphore:
@@ -1088,7 +1127,7 @@ async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: st
             if data.get("source") == "tmdb" and data.get("tmdb_type") == "tv" and data.get("tmdb_id"):
                 folder_name = Path(folder_levels).name if folder_levels else ""
                 season_num = infer_season_number(folder_name, data, existing_season=movie.get("tmdb_season"), folder_path=folder_levels)
-                if season_num:
+                if season_num is not None:
                     try:
                         from .tmdb import match_episodes_in_folder
                         async with _sqlite_write_semaphore:
@@ -1104,6 +1143,71 @@ async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: st
     return {"ok": False, "error": "All scrapers failed"}
 
 
+async def _propagate_to_sibling_subfolders(db, parent_levels: str, media_root: str, first_subfolder: str):
+    """After a successful rescrape of one subfolder, propagate scraped data to sibling subfolders."""
+    from .config import logger
+    from .tmdb import match_episodes_in_folder
+
+    # Get scraped data from the first subfolder's movie
+    cur = await db.execute(
+        "SELECT * FROM movies WHERE folder_levels=? AND media_root=? ORDER BY id LIMIT 1",
+        (first_subfolder, media_root),
+    )
+    row = await cur.fetchone()
+    if not row:
+        return
+    source_data = dict(row)
+
+    # Get other subfolders that need propagation
+    cur = await db.execute(
+        "SELECT DISTINCT folder_levels FROM movies "
+        "WHERE folder_levels LIKE ? || '/%' AND media_root=? AND folder_levels != ? "
+        "ORDER BY folder_levels",
+        (parent_levels, media_root, first_subfolder),
+    )
+    other_folders = [r["folder_levels"] for r in await cur.fetchall()]
+    if not other_folders:
+        return
+
+    # Build scraped data dict for _apply_scraped_data
+    data = {
+        "title": source_data.get("title") or "",
+        "original_title": source_data.get("original_title") or "",
+        "overview": source_data.get("overview") or "",
+        "release_date": source_data.get("release_date") or "",
+        "cover_remote": source_data.get("cover_remote") or "",
+        "fanart_local": source_data.get("fanart_local") or "",
+        "tmdb_id": source_data.get("tmdb_id"),
+        "tmdb_type": source_data.get("tmdb_type") or "",
+        "scraper_source": source_data.get("scraper_source") or "",
+        "source_id": source_data.get("source_id") or "",
+        "bangumi_id": source_data.get("bangumi_id") or "",
+        "cast": source_data.get("cast") or "[]",
+        "crew": source_data.get("crew") or "[]",
+        "source": source_data.get("scraper_source") or source_data.get("source") or "",
+    }
+
+    for subfolder in other_folders:
+        try:
+            async with _sqlite_write_semaphore:
+                await _apply_scraped_data(subfolder, data, media_root, replace=True)
+
+            # Run episode matching for each subfolder
+            if data.get("tmdb_id") and data.get("tmdb_type") == "tv":
+                from .title_match import infer_season_number
+                folder_name = Path(subfolder).name if subfolder else ""
+                season_num = infer_season_number(folder_name, data, folder_path=subfolder)
+                if season_num is not None:
+                    async with _sqlite_write_semaphore:
+                        await match_episodes_in_folder(
+                            str(data["tmdb_id"]), season_num, subfolder, media_root
+                        )
+            logger.info(f"  propagate: applied scraped data to folder='{subfolder}' "
+                        f"parent='{parent_levels}' media_root='{media_root}'")
+        except Exception as e:
+            logger.warning(f"  propagate: failed for folder='{subfolder}': {e}")
+
+
 async def rescrape_folder(folder_levels: str, media_root: str) -> dict:
     from .database import get_db
     from .config import logger
@@ -1112,14 +1216,54 @@ async def rescrape_folder(folder_levels: str, media_root: str) -> dict:
         return {"ok": False, "error": "media_root required"}
 
     db = await get_db()
+    # Try exact match first, then subfolders (parent folder case)
     cur = await db.execute(
         "SELECT COUNT(*) AS total FROM movies WHERE folder_levels=? AND media_root=?",
         (folder_levels, media_root),
     )
     count_row = await cur.fetchone()
     total = int(count_row["total"] or 0) if count_row else 0
+
     if total <= 0:
-        return {"ok": False, "error": "No movies found in folder"}
+        # Check subfolders (e.g. parent folder "ShowName" with movies in "ShowName/S01")
+        cur = await db.execute(
+            "SELECT COUNT(*) AS total FROM movies WHERE folder_levels LIKE ? || '/%' AND media_root=?",
+            (folder_levels, media_root),
+        )
+        count_row = await cur.fetchone()
+        sub_total = int(count_row["total"] or 0) if count_row else 0
+        if sub_total <= 0:
+            return {"ok": False, "error": "No movies found in folder"}
+        # Find representative movie from first subfolder
+        cur = await db.execute(
+            "SELECT id, folder_levels FROM movies WHERE folder_levels LIKE ? || '/%' AND media_root=? ORDER BY folder_levels, id LIMIT 1",
+            (folder_levels, media_root),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return {"ok": False, "error": "No movies found in folder"}
+
+        logger.info(
+            f"Folder rescrape start (recursive): media_root='{media_root}' parent='{folder_levels}' "
+            f"total_subfolder_movies={sub_total} representative_movie_id={row['id']} "
+            f"subfolder='{row['folder_levels']}'"
+        )
+        result = await rescrape_movie(row["id"])
+        if not result.get("ok"):
+            logger.warning(
+                f"Folder rescrape failed (recursive): media_root='{media_root}' parent='{folder_levels}' "
+                f"error='{result.get('error', '')}'"
+            )
+            return result
+
+        # Propagate scraped data to other subfolders
+        await _propagate_to_sibling_subfolders(db, folder_levels, media_root, row["folder_levels"])
+        logger.info(
+            f"Folder rescrape complete (recursive): media_root='{media_root}' parent='{folder_levels}' "
+            f"total_subfolder_movies={sub_total} source='{result.get('source')}'"
+        )
+        return {"ok": True, "rescraped": sub_total, "total": sub_total,
+                "source": result.get("source"), "title": result.get("title")}
 
     cur = await db.execute(
         "SELECT id FROM movies WHERE folder_levels=? AND media_root=? ORDER BY id LIMIT 1",
@@ -1195,9 +1339,9 @@ async def change_folder_backdrop(folder_levels: str, media_root: str, fanart_url
     if not media_root:
         return {"ok": False, "error": "media_root required"}
     db = await get_db()
-    await db.execute("UPDATE movies SET fanart_local=?, updated_at=datetime('now') WHERE folder_levels=? AND media_root=?", (fanart_url, folder_levels, media_root))
+    await db.execute("UPDATE movies SET fanart_local=?, updated_at=datetime('now') WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?", (fanart_url, folder_levels, f"{folder_levels}/%", media_root))
     await db.commit()
-    logger.info(f"Backdrop changed for folder {folder_levels}")
+    logger.info(f"Backdrop changed for folder {folder_levels} (including sub-folders)")
     return {"ok": True}
 
 
@@ -1312,11 +1456,11 @@ async def change_folder_cover(folder_levels: str, media_root: str, cover_url: st
         cache_key = hashlib.md5(cover_url.encode()).hexdigest()[:16]
         await download_and_compress_cover(cover_url, cache_key)
         await db.execute(
-            "UPDATE movies SET cover_remote=?, cover_local=?, updated_at=datetime('now') WHERE folder_levels=? AND media_root=?",
-            (cover_url, cache_key, folder_levels, media_root)
+            "UPDATE movies SET cover_remote=?, cover_local=?, updated_at=datetime('now') WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?",
+            (cover_url, cache_key, folder_levels, f"{folder_levels}/%", media_root)
         )
         await db.commit()
-        logger.info(f"Cover changed for folder {folder_levels}")
+        logger.info(f"Cover changed for folder {folder_levels} (including sub-folders)")
         return {"ok": True}
     except Exception as e:
         logger.warning(f"Change folder cover error: {e}")
@@ -1339,13 +1483,13 @@ async def edit_folder_movies(folder_levels: str, media_root: str, fields: dict) 
     if not sets:
         return {"ok": False, "error": "No fields to update"}
     sets.append("updated_at=datetime('now')")
-    values.extend([folder_levels, media_root])
+    values.extend([folder_levels, f"{folder_levels}/%", media_root])
     await db.execute(
-        f"UPDATE movies SET {', '.join(sets)} WHERE folder_levels=? AND media_root=?",
+        f"UPDATE movies SET {', '.join(sets)} WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?",
         values
     )
     await db.commit()
-    logger.info(f"Edited {len(sets)-1} fields for folder {folder_levels}")
+    logger.info(f"Edited {len(sets)-1} fields for folder {folder_levels} (including sub-folders)")
     return {"ok": True}
 
 
@@ -1356,12 +1500,12 @@ async def delete_folder_movies(folder_levels: str, media_root: str) -> dict:
     if not media_root:
         return {"ok": False, "error": "media_root required"}
     db = await get_db()
-    cur = await db.execute("SELECT id FROM movies WHERE folder_levels=? AND media_root=?", (folder_levels, media_root))
+    cur = await db.execute("SELECT id FROM movies WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?", (folder_levels, f"{folder_levels}/%", media_root))
     rows = await cur.fetchall()
     count = len(rows)
     for r in rows:
         await db.execute("DELETE FROM tags WHERE movie_id=?", (r["id"],))
-    await db.execute("DELETE FROM movies WHERE folder_levels=? AND media_root=?", (folder_levels, media_root))
+    await db.execute("DELETE FROM movies WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?", (folder_levels, f"{folder_levels}/%", media_root))
     await db.commit()
-    logger.info(f"Deleted {count} movies from folder {folder_levels}")
+    logger.info(f"Deleted {count} movies from folder {folder_levels} (including sub-folders)")
     return {"ok": True, "deleted": count}

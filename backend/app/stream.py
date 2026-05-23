@@ -2,6 +2,8 @@ import subprocess
 import json
 import os
 import signal
+import time
+import threading
 from pathlib import Path
 from fastapi import Request
 from fastapi.responses import StreamingResponse, Response
@@ -17,14 +19,39 @@ MIME_MAP = {
 }
 
 
-def _probe_duration(file_path: str) -> float:
+PROBE_CACHE_TTL = 30.0
+_probe_cache_lock = threading.Lock()
+_probe_cache: dict[str, tuple[float, dict]] = {}
+
+
+def _cached_probe(file_path: str) -> dict:
+    now = time.monotonic()
+    stat_mtime = os.path.getmtime(file_path)
+    cache_key = f"{file_path}:{stat_mtime}"
+    with _probe_cache_lock:
+        cached = _probe_cache.get(cache_key)
+        if cached and now - cached[0] < PROBE_CACHE_TTL:
+            return dict(cached[1])
     try:
         r = subprocess.run(
             ["ffprobe", "-v", "quiet", "-print_format", "json",
-             "-show_format", file_path],
+             "-show_format", "-show_streams", file_path],
             capture_output=True, text=True, timeout=10
         )
         data = json.loads(r.stdout)
+    except Exception:
+        data = {}
+    with _probe_cache_lock:
+        _probe_cache[cache_key] = (now, data)
+        if len(_probe_cache) > 128:
+            oldest = min(_probe_cache.items(), key=lambda item: item[1][0])[0]
+            _probe_cache.pop(oldest, None)
+    return dict(data)
+
+
+def _probe_duration(file_path: str) -> float:
+    try:
+        data = _cached_probe(file_path)
         return float(data.get("format", {}).get("duration", 0))
     except Exception:
         return 0.0
@@ -35,12 +62,7 @@ def get_media_info(path: str) -> dict:
     if not file_path.exists():
         return {"duration": 0, "video_codec": "", "audio_codec": ""}
     try:
-        r = subprocess.run(
-            ["ffprobe", "-v", "quiet", "-print_format", "json",
-             "-show_format", "-show_streams", str(file_path)],
-            capture_output=True, text=True, timeout=10
-        )
-        data = json.loads(r.stdout)
+        data = _cached_probe(str(file_path))
         video = next((s for s in data.get("streams", []) if s.get("codec_type") == "video"), {})
         audio = next((s for s in data.get("streams", []) if s.get("codec_type") == "audio"), {})
         return {
@@ -150,12 +172,46 @@ def _transcode_stream(file_path: Path, start: float = 0.0, mode: str = "audio"):
         "-flush_packets", "1",
         "-f", "mp4", "-"
     ])
-    proc = subprocess.Popen(
-        args,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    proc = None
+    try:
+        proc = subprocess.Popen(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception:
+        if proc is not None:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        raise
+
+    def _kill_proc():
+        nonlocal proc
+        if proc is None:
+            return
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except Exception:
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+        try:
+            proc.wait(timeout=2)
+        except Exception:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
 
     def iter_transcode():
         try:
@@ -167,17 +223,7 @@ def _transcode_stream(file_path: Path, start: float = 0.0, mode: str = "audio"):
                     break
                 yield data
         finally:
-            try:
-                os.killpg(proc.pid, signal.SIGTERM)
-            except Exception:
-                proc.terminate()
-            try:
-                proc.wait(timeout=2)
-            except Exception:
-                try:
-                    os.killpg(proc.pid, signal.SIGKILL)
-                except Exception:
-                    proc.kill()
+            _kill_proc()
 
     headers = {
         "Access-Control-Allow-Origin": "*",

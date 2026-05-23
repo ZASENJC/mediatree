@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import { getActiveLibrary, setActiveLibrary, api, clearCache, MediaRoot } from './api'
 import { useToastController } from './toast'
@@ -262,7 +263,7 @@ export default function App() {
       <header className="sticky top-0 z-50 pt-2 sm:pt-3">
         <div className="mx-auto flex h-12 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6 transform-gpu sm:h-14 sm:gap-3">
           <div className="relative">
-          <div className="flex min-w-0 items-center gap-2 rounded-3xl border border-white/15 bg-white/[0.08] pl-3 pr-3 py-1.5 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150 sm:pl-4 sm:pr-4 sm:py-2">
+          <div className="flex min-w-0 items-center gap-2 liquid-glass pl-3 pr-3 py-1.5 sm:pl-4 sm:pr-4 sm:py-2">
             <Link to="/" className="shrink-0 text-base font-semibold tracking-tight text-white transition-colors hover:text-apple-blue sm:text-lg">
               <span className="hidden min-[380px]:inline">MediaTree</span>
               <span className="min-[380px]:hidden">MT</span>
@@ -297,7 +298,7 @@ export default function App() {
           </div>
           {mobileNavOpen && (
             <>
-              <div className="absolute right-0 top-full z-[70] mt-2 w-32 p-1 rounded-3xl border border-white/15 bg-white/[0.08] shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150">
+              <div className="absolute right-0 top-full z-[70] mt-2 w-32 p-1 liquid-glass">
                 {navItems.filter(item => item.path === '/favorites' || item.path === '/settings').map(item => (
                   <Link
                     key={item.path}
@@ -317,7 +318,7 @@ export default function App() {
           )}
           </div>
           <div className="relative shrink-0">
-            <div className="flex items-center justify-end gap-1 rounded-3xl border border-white/15 bg-white/[0.08] px-2 py-1.5 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150 sm:gap-2 sm:px-3 sm:py-2">
+            <div className="flex items-center justify-end gap-1 liquid-glass px-2 py-1.5 sm:gap-2 sm:px-3 sm:py-2">
             {libraries.length > 1 && (
               <button
                 onClick={() => setShowLibraryModal(true)}
@@ -371,7 +372,7 @@ export default function App() {
               </svg>
             </button>
             </div>
-            {renderSearchPanel('hidden sm:block absolute right-0 top-full z-50 mt-2 max-h-96 w-96 overflow-y-auto p-1 rounded-3xl border border-white/15 bg-white/[0.08] shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150')}
+            {renderSearchPanel('hidden sm:block absolute right-0 top-full z-50 mt-2 max-h-96 w-96 overflow-y-auto p-1 liquid-glass')}
           </div>
         </div>
         {mobileSearchOpen && (
@@ -390,7 +391,7 @@ export default function App() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             </div>
-            {renderSearchPanel('absolute left-0 right-0 top-full z-50 mt-2 max-h-80 overflow-y-auto p-1 rounded-3xl border border-white/15 bg-white/[0.08] shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150')}
+            {renderSearchPanel('absolute left-0 right-0 top-full z-50 mt-2 max-h-80 overflow-y-auto p-1 liquid-glass')}
           </form>
         )}
       </header>
@@ -468,8 +469,8 @@ function LibraryModal({ libraries, activeLib, onSelect, onClose }: {
   onSelect: (lib: MediaRoot) => void
   onClose: () => void
 }) {
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
       <div className="glass-modal w-full max-w-sm p-6">
         <h2 className="mb-1 text-lg font-bold">切换媒体库</h2>
         <p className="mb-4 text-xs text-gray-500">选择要浏览的媒体库</p>
@@ -507,7 +508,8 @@ function LibraryModal({ libraries, activeLib, onSelect, onClose }: {
           取消
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -538,8 +540,8 @@ function PasswordModal({ target, onOk, onCancel }: {
     setChecking(false)
   }
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
       <div className="glass-modal w-full max-w-xs p-6">
         <div className="mb-4 text-center">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-apple-yellow/30 bg-apple-yellow/10">
@@ -572,6 +574,7 @@ function PasswordModal({ target, onOk, onCancel }: {
           </button>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

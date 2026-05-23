@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 
 type LightboxImage = string | { src: string; fallback?: string; alt?: string }
 
@@ -30,9 +31,9 @@ export default function Lightbox({ images, index, onClose, onPrev, onNext }: Pro
   const current = images[index]
   const image = typeof current === 'string' ? { src: current, alt: `thumbnail ${index + 1}` } : current
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4 backdrop-blur-2xl"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
       onClick={onClose}
       onTouchStart={(e) => {
         touchStartX.current = e.touches[0].clientX
@@ -49,6 +50,7 @@ export default function Lightbox({ images, index, onClose, onPrev, onNext }: Pro
       <button
         onClick={(e) => { e.stopPropagation(); onClose() }}
         className="glass-button absolute right-4 top-4 z-10 h-10 w-10 p-0 text-xl text-white/70 hover:text-white"
+        aria-label="关闭灯箱"
       >
         &times;
       </button>
@@ -62,12 +64,14 @@ export default function Lightbox({ images, index, onClose, onPrev, onNext }: Pro
           <button
             onClick={(e) => { e.stopPropagation(); onPrev() }}
             className="glass-button absolute left-4 top-1/2 z-10 h-12 w-12 -translate-y-1/2 p-0 text-3xl text-white/70 hover:text-white"
+            aria-label="上一张"
           >
             &#8249;
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onNext() }}
             className="glass-button absolute right-4 top-1/2 z-10 h-12 w-12 -translate-y-1/2 p-0 text-3xl text-white/70 hover:text-white"
+            aria-label="下一张"
           >
             &#8250;
           </button>
@@ -85,6 +89,7 @@ export default function Lightbox({ images, index, onClose, onPrev, onNext }: Pro
           }
         }}
       />
-    </div>
+    </div>,
+    document.body,
   )
 }

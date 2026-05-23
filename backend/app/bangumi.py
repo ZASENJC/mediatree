@@ -73,7 +73,7 @@ def _bangumi_staff_from_infobox(infobox) -> tuple[list[dict], list[dict]]:
             cast.extend({"name": n, "role": "", "source": "bangumi"} for n in names)
         elif key in crew_map:
             crew.extend({"name": n, "job": crew_map[key], "department": key, "source": "bangumi"} for n in names)
-    return cast[:30], crew[:30]
+    return cast, crew
 
 
 async def search_bangumi(query: str, lang: str = "", bangumi_type: str | None = None) -> list[dict]:

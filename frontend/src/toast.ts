@@ -2,18 +2,18 @@ import { useState, useEffect, useCallback } from 'react'
 
 type ToastItem = { id: number; message: string }
 
-let _id = 0
-let _addToast: ((msg: string) => void) | null = null
+type ToastListener = (message: string) => void
+const listeners = new Set<ToastListener>()
 
 export function showToast(message: string) {
-  if (_addToast) _addToast(message)
+  listeners.forEach(fn => fn(message))
 }
 
 export function useToastController() {
   const [toasts, setToasts] = useState<ToastItem[]>([])
 
   const add = useCallback((message: string) => {
-    const id = ++_id
+    const id = Date.now()
     setToasts(prev => [...prev, { id, message }])
     window.setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id))
@@ -21,8 +21,8 @@ export function useToastController() {
   }, [])
 
   useEffect(() => {
-    _addToast = add
-    return () => { _addToast = null }
+    listeners.add(add)
+    return () => { listeners.delete(add) }
   }, [add])
 
   return toasts

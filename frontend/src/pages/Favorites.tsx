@@ -5,14 +5,9 @@ import { saveScrollPos, restoreScrollPos } from '../scroll'
 import { WatchedBadge } from '../components/WatchedBadge'
 import SortDropdown from '../components/SortDropdown'
 
-type SortMode = 'name' | 'created_desc' | 'created_asc' | 'random'
+import { FAVORITES_SORT_OPTIONS } from '../constants/sortOptions'
 
-const sortOptions = [
-  { key: 'created_desc', label: '最近添加' },
-  { key: 'created_asc', label: '最早添加' },
-  { key: 'name', label: '名称' },
-  { key: 'random', label: '随机' },
-]
+type SortMode = 'name' | 'created_desc' | 'created_asc' | 'random'
 
 export default function Favorites() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -54,7 +49,7 @@ export default function Favorites() {
           <p className="mt-1 text-sm text-gray-500">共 {total} 部</p>
         </div>
         <div className="flex items-center gap-1">
-          <SortDropdown options={sortOptions} current={sort} onChange={handleSort} />
+          <SortDropdown options={FAVORITES_SORT_OPTIONS} current={sort} onChange={handleSort} />
         </div>
       </div>
 

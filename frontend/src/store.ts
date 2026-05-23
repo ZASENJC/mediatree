@@ -3,6 +3,8 @@ const UI_PREFS_KEY = 'mediatree_ui_prefs'
 
 export interface UiPrefs {
   hideHomeTitleText?: boolean
+  ambientMode?: boolean
+  showSourceName?: boolean
 }
 
 export function getExcluded(): Set<string> {

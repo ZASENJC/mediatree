@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { CSSProperties } from 'react'
 import Artplayer, { Option, Setting, SettingOption } from 'artplayer'
 import { api, SubtitleTrack } from '../api'
+import { getUiPrefs, setUiPrefs } from '../store'
 import artplayerPluginAss from './artplayerPluginAss'
 import VRVideoLayer, { VRMode } from './VRVideoLayer'
 
@@ -16,6 +18,7 @@ const POS_KEY = 'mediatree_pos_'
 const WATCHED_AFTER = 60
 const WATCHED_RATIO = 0.9
 const SEEK_SMALL = 5
+const POS_SAVE_INTERVAL = 5000
 const BROWSER_UNSUPPORTED_AUDIO = new Set(['eac3', 'truehd', 'dts', 'dca', 'mlp'])
 const BUNDLED_CJK_FALLBACK_FONT = '/fonts/SourceHanSansCN-Bold.woff2'
 const CJK_FONT_RE = /source\s*han|noto\s*sans\s*cjk|noto\s*serif\s*cjk|noto.*cjk|wenquanyi|wqy|pingfang|hiragino|yu\s*gothic|meiryo|simhei|simsun|yahei|microsoft\s*yahei|思源|宋体|黑体|微软雅黑|蘋方|苹方|ヒラギノ|游ゴシック|メイリオ/i
@@ -391,8 +394,123 @@ function bindGestureLayer(element: HTMLElement, isMobile: () => boolean, onGestu
   }
 }
 
+type AmbientColor = { r: number; g: number; b: number } | null
+
+const AMBIENT_SAMPLE_INTERVAL = 200
+const AMBIENT_COLOR_THRESHOLD = 12
+
+function useAmbientColor(
+  artRef: { current: Artplayer | null },
+  enabled: boolean,
+): AmbientColor {
+  const [color, setColor] = useState<AmbientColor>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const lastSampleAtRef = useRef(0)
+  const lastColorRef = useRef({ r: 10, g: 10, b: 12 })
+  const visibleRef = useRef(true)
+
+  useEffect(() => {
+    if (!enabled) {
+      setColor(null)
+      return
+    }
+
+    const handleVisibility = () => { visibleRef.current = !document.hidden }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [enabled])
+
+  useEffect(() => {
+    if (!enabled) return
+
+    const sample = () => {
+      if (!visibleRef.current) return
+      const art = artRef.current
+      const video = art?.video as HTMLVideoElement | undefined
+      if (!video || video.paused || video.readyState < 2) return
+      if (video.videoWidth === 0 || video.videoHeight === 0) return
+
+      const now = Date.now()
+      if (now - lastSampleAtRef.current < AMBIENT_SAMPLE_INTERVAL) return
+      lastSampleAtRef.current = now
+
+      try {
+        if (!canvasRef.current) {
+          canvasRef.current = document.createElement('canvas')
+          canvasRef.current.width = 1
+          canvasRef.current.height = 1
+        }
+        const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true })
+        if (!ctx) return
+        ctx.drawImage(video, 0, 0, 1, 1)
+        const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
+        const prev = lastColorRef.current
+        if (
+          Math.abs(r - prev.r) > AMBIENT_COLOR_THRESHOLD ||
+          Math.abs(g - prev.g) > AMBIENT_COLOR_THRESHOLD ||
+          Math.abs(b - prev.b) > AMBIENT_COLOR_THRESHOLD
+        ) {
+          const next = { r, g, b }
+          lastColorRef.current = next
+          setColor(next)
+        }
+      } catch {
+        // cross-origin canvas pollution — silently skip
+      }
+    }
+
+    let raf = 0
+    const loop = () => { sample(); raf = requestAnimationFrame(loop) }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [enabled])
+
+  return color
+}
+
+function usePlayerRect(
+  wrapperRef: React.RefObject<HTMLDivElement | null>,
+  enabled: boolean,
+): DOMRect | null {
+  const [rect, setRect] = useState<DOMRect | null>(null)
+
+  useEffect(() => {
+    if (!enabled) {
+      setRect(null)
+      return
+    }
+    const el = wrapperRef.current
+    if (!el) return
+
+    let raf = 0
+    const update = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        setRect(el.getBoundingClientRect())
+      })
+    }
+
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    window.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update, { passive: true })
+
+    return () => {
+      cancelAnimationFrame(raf)
+      ro.disconnect()
+      window.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+    }
+    // wrapperRef is stable (from useRef)
+  }, [enabled])
+
+  return rect
+}
+
 export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) {
   const artContainerRef = useRef<HTMLDivElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const artRef = useRef<Artplayer | null>(null)
   const gestureCleanupRef = useRef<GestureCleanup | null>(null)
   const watchedRef = useRef(false)
@@ -421,6 +539,8 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   const resumeTimerRef = useRef(0)
   const progressSaveTimerRef = useRef(0)
   const lastProgressSaveAtRef = useRef(0)
+  const switchUrlSeqRef = useRef(0)
+  const lastPosSaveAtRef = useRef(0)
 
   const [resumePos, setResumePos] = useState(() => getSavedPos(movieId))
   const [showResume, setShowResume] = useState(() => false)
@@ -442,6 +562,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   const [artInstance, setArtInstance] = useState<Artplayer | null>(null)
   const [vrMode, setVrMode] = useState<VRMode>('off')
   const [videoAspect, setVideoAspect] = useState(16 / 9)
+  const [ambientEnabled, setAmbientEnabled] = useState(() => getUiPrefs().ambientMode !== false)
   const streamUrl = useMemo(() => new URL(api.streamUrl(movieId), localPlayerOrigin()).toString(), [movieId])
   const streamSrc = useMemo(() => {
     if (!useTranscode) return src
@@ -455,6 +576,32 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   const externalPlaylistUrl = new URL(api.externalPlaylistUrl(movieId), localPlayerOrigin()).toString()
   const localPlaybackUrl = hasExternalSubtitles ? externalPlaylistUrl : streamUrl
   const playerStyle = { '--mediatree-video-aspect': videoAspect } as CSSProperties
+
+  const ambientColor = useAmbientColor(artRef, ambientEnabled && !useTranscode)
+  const playerRect = usePlayerRect(wrapperRef, ambientEnabled)
+
+  const toggleAmbient = useCallback(() => {
+    setAmbientEnabled(prev => {
+      const next = !prev
+      const prefs = getUiPrefs()
+      setUiPrefs({ ...prefs, ambientMode: next })
+      return next
+    })
+  }, [])
+
+  useEffect(() => {
+    const el = document.getElementById('ambient-root')
+    if (!el) return
+    if (ambientColor && ambientEnabled) {
+      el.style.setProperty('--ambient-r', String(ambientColor.r))
+      el.style.setProperty('--ambient-g', String(ambientColor.g))
+      el.style.setProperty('--ambient-b', String(ambientColor.b))
+    } else {
+      el.style.removeProperty('--ambient-r')
+      el.style.removeProperty('--ambient-g')
+      el.style.removeProperty('--ambient-b')
+    }
+  }, [ambientColor, ambientEnabled])
 
   const clearNativeSubtitle = useCallback((art: Artplayer) => {
     try { art.subtitle.show = false } catch {}
@@ -515,6 +662,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
     currentAssModeRef.current = false
     subtitleVisibleRef.current = true
     lastProgressSaveAtRef.current = 0
+    lastPosSaveAtRef.current = 0
     setTracks([])
     setActiveTrack(-1)
     setSubtitleVisibleState(true)
@@ -596,10 +744,11 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
 
   useEffect(() => {
     const requestId = ++subtitleTrackRequestRef.current
-    api.subtitleTracks(movieId)
+    const abortController = new AbortController()
+    api.subtitleTracks(movieId, abortController.signal)
       .then(trackList => {
         if (!mountedRef.current || requestId !== subtitleTrackRequestRef.current) return
-        console.info('VideoPlayer: subtitle tracks loaded', {
+        if (import.meta.env.DEV) console.info('VideoPlayer: subtitle tracks loaded', {
           movieId,
           total: trackList.length,
           external: trackList.filter(track => track.source === 'external' || track.is_external).length,
@@ -613,7 +762,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         const art = artRef.current
         if (art) art.setting.update(buildSubtitleSetting(trackList, selectedIndex))
         if (selectedIndex >= 0) {
-          console.info('VideoPlayer: selected default subtitle', {
+          if (import.meta.env.DEV) console.info('VideoPlayer: selected default subtitle', {
             movieId,
             index: selectedIndex,
             language: selected?.language,
@@ -625,8 +774,14 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
           clearRenderedSubtitles()
         }
       })
-      .catch(err => console.error('VideoPlayer: track fetch error', err))
-    return () => { subtitleTrackRequestRef.current += 1 }
+      .catch(err => {
+        if (err?.name === 'AbortError') return
+        console.error('VideoPlayer: track fetch error', err)
+      })
+    return () => {
+      subtitleTrackRequestRef.current += 1
+      abortController.abort()
+    }
   }, [movieId])
 
   const notice = useCallback((message: string) => {
@@ -831,7 +986,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
       && subtitleSwitchRequestRef.current === requestId
       && activeTrackRef.current === track.index
     )
-    console.info('VideoPlayer: switching subtitle', {
+    if (import.meta.env.DEV) console.info('VideoPlayer: switching subtitle', {
       movieId,
       index: track.index,
       format: track.format || track.codec,
@@ -876,10 +1031,10 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         art.subtitle.show = false
         art.emit('subtitleOffset', useTranscodeRef.current ? transcodeStartRef.current : 0)
         plugin.setVisible(subtitleVisibleRef.current)
-        console.info('VideoPlayer: ASS subtitle switch complete', { movieId, index: track.index })
+        if (import.meta.env.DEV) console.info('VideoPlayer: ASS subtitle switch complete', { movieId, index: track.index })
         return label
       } catch (assError) {
-        console.warn('VideoPlayer: ASS plugin failed, falling back to native subtitle', {
+        if (import.meta.env.DEV) console.warn('VideoPlayer: ASS plugin failed, falling back to native subtitle', {
           movieId, index: track.index, error: assError,
         })
         // Fall through to native subtitle rendering below
@@ -928,7 +1083,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
       return label
     }
     art.subtitle.show = subtitleVisibleRef.current
-    console.info('VideoPlayer: ArtPlayer subtitle switch complete', { movieId, index: track.index, url })
+    if (import.meta.env.DEV) console.info('VideoPlayer: ArtPlayer subtitle switch complete', { movieId, index: track.index, url })
     return label
   }, [availableFonts, assFallbackFont, clearNativeSubtitle, fontUrls, movieId])
 
@@ -1193,9 +1348,12 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
     art.on('video:timeupdate', () => {
       const virtualTime = useTranscodeRef.current ? transcodeStartRef.current + art.currentTime : art.currentTime
       currentTimeRef.current = virtualTime
-      if (virtualTime > 3) savePos(movieId, virtualTime)
-      hideResumePrompt()
       const now = Date.now()
+      if (virtualTime > 3 && (!lastPosSaveAtRef.current || now - lastPosSaveAtRef.current >= POS_SAVE_INTERVAL)) {
+        lastPosSaveAtRef.current = now
+        savePos(movieId, virtualTime)
+      }
+      hideResumePrompt()
       if (virtualTime > 0 && (!lastProgressSaveAtRef.current || now - lastProgressSaveAtRef.current >= 15000)) {
         lastProgressSaveAtRef.current = now
         api.saveProgress(movieId, virtualTime, displayDurationRef.current || art.duration || undefined).catch(err => {
@@ -1242,7 +1400,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
           console.error('VideoPlayer: final progress save failed', err)
         })
       }
-      console.info('VideoPlayer cleanup: destroying ArtPlayer and subtitle resources')
+      if (import.meta.env.DEV) console.info('VideoPlayer cleanup: destroying ArtPlayer and subtitle resources')
       artReadyRef.current = false
       subtitleSwitchRequestRef.current += 1
       window.clearTimeout(progressSaveTimerRef.current)
@@ -1271,12 +1429,14 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   useEffect(() => {
     const art = artRef.current
     if (!art || streamSrcRef.current === streamSrc) return
+    const seq = ++switchUrlSeqRef.current
     const wasPlaying = pendingAutoPlay.current || art.playing
     streamSrcRef.current = streamSrc
     setVideoError(false)
     clearRenderedSubtitles(art)
     art.pause()
     art.switchUrl(streamSrc).then(() => {
+      if (switchUrlSeqRef.current !== seq) return
       try {
         art.emit('subtitleOffset', useTranscodeRef.current ? transcodeStartRef.current : 0)
         applyActiveSubtitle(activeTrackRef.current)
@@ -1285,6 +1445,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
       }
       if (wasPlaying) art.play().catch(() => {})
     }).catch(err => {
+      if (switchUrlSeqRef.current !== seq) return
       console.error('ArtPlayer switchUrl failed', err)
       setVideoError(true)
     })
@@ -1383,9 +1544,22 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   }
 
   return (
-    <div className="mx-auto w-full max-w-[calc((100vh-11rem)*var(--mediatree-video-aspect))]" style={playerStyle}>
-      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black shadow-glass">
-        <div ref={artContainerRef} className="mediatree-artplayer w-full bg-black" />
+    <>
+      {ambientEnabled && playerRect && createPortal(
+        <div
+          className="ambient-glow"
+          style={{
+            left: playerRect.left + playerRect.width / 2,
+            top: playerRect.top + playerRect.height / 2,
+            width: playerRect.width * 3,
+            height: playerRect.height * 3,
+          }}
+        />,
+        document.getElementById('ambient-root')!,
+      )}
+      <div ref={wrapperRef} className="relative mx-auto w-full transition-all duration-300" style={playerStyle}>
+        <div className="relative z-[1] overflow-hidden rounded-3xl">
+        <div ref={artContainerRef} className="mediatree-artplayer w-full" />
         <VRVideoLayer art={artInstance} mode={vrMode} />
 
         {seekOsd && (
@@ -1442,8 +1616,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         )}
       </div>
 
-      <div className="mt-2 flex items-center gap-2 overflow-x-auto pb-1">
-        <span className="shrink-0 text-[11px] text-gray-500">本地播放:</span>
+      <div className="mt-5 flex items-center justify-center gap-2 overflow-x-auto pb-1">
         <a href={`iina://weblink?url=${encodeURIComponent(localPlaybackUrl)}`} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-300 backdrop-blur-xl transition-all hover:bg-white/[0.14] hover:text-white">
           IINA
         </a>
@@ -1453,17 +1626,16 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         <button onClick={copyStreamUrl} className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-300 backdrop-blur-xl transition-all hover:bg-white/[0.14] hover:text-white">
           {linkCopied ? '已复制' : '复制链接'}
         </button>
-        {hasExternalSubtitles && (
-          <a href={externalPlaylistUrl} className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-300 backdrop-blur-xl transition-all hover:bg-white/[0.14] hover:text-white">
-            字幕播放列表
-          </a>
-        )}
+        <button onClick={toggleAmbient} className={`shrink-0 rounded-full border px-2.5 py-1 text-xs backdrop-blur-xl transition-all ${ambientEnabled ? 'border-apple-blue/30 bg-apple-blue/15 text-apple-blue' : 'border-white/10 bg-white/[0.08] text-gray-300 hover:bg-white/[0.14] hover:text-white'}`} title="剧院光效">
+          光效
+        </button>
         {useTranscode && (
           <span className="shrink-0 rounded-full border border-amber-400/20 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-200 backdrop-blur-xl">
             {transcodeMode === 'full' ? '完整转码' : '音频转码'} · {fmt(currentTimeRef.current || transcodeStart)}
           </span>
         )}
       </div>
-    </div>
+      </div>
+    </>
   )
 }

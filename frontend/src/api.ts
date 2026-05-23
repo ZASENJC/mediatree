@@ -32,7 +32,7 @@ function setActiveLibrary(lib: string) {
   try { localStorage.setItem('mediatree_library', lib) } catch {}
 }
 
-async function request<T>(url: string, options?: RequestInit, cacheKey?: string): Promise<T> {
+async function request<T>(url: string, options?: RequestInit & { signal?: AbortSignal }, cacheKey?: string): Promise<T> {
   if (cacheKey) {
     const cached = getCached<T>(cacheKey)
     if (cached !== null) return cached
@@ -44,7 +44,8 @@ async function request<T>(url: string, options?: RequestInit, cacheKey?: string)
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }
-  const res = await fetch(`${BASE}${url}`, { ...options, headers })
+  const { signal, ...fetchOptions } = (options || {}) as RequestInit & { signal?: AbortSignal }
+  const res = await fetch(`${BASE}${url}`, { ...fetchOptions, signal, headers, cache: 'no-store' })
   if (res.status === 401) {
     setToken('')
     if (window.location.pathname !== '/login') {
@@ -246,7 +247,7 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  subtitleTracks: (movieId: number) => request<SubtitleTrack[]>(`/subtitle-tracks/${movieId}`),
+  subtitleTracks: (movieId: number, signal?: AbortSignal) => request<SubtitleTrack[]>(`/subtitle-tracks/${movieId}`, signal ? { signal } : undefined),
 
   subtitleUrl: (movieId: number, trackIndex: number) => `${BASE}/subtitle/${movieId}/${trackIndex}`,
 
@@ -408,6 +409,41 @@ export const api = {
     })
   },
 
+  // ─── TMDB Extended API ───
+
+  folderBackdrops: (path: string, mediaRoot: string) =>
+    request<{ backdrops: { url: string; width: number; height: number }[] }>(`/folder-backdrops?path=${encodeURIComponent(path)}&media_root=${encodeURIComponent(mediaRoot)}`, undefined, `folder_backdrops_${path}`),
+
+  tmdbImages: (tmdbId: number, mediaType: string) =>
+    request<{ posters: { url: string; width: number; height: number; language: string; vote_count: number; vote_average: number }[]; backdrops: { url: string; width: number; height: number; language: string }[]; logos: { url: string; width: number; height: number; language: string }[] }>(`/tmdb-images/${tmdbId}?media_type=${encodeURIComponent(mediaType)}`, undefined, `tmdb_images_${tmdbId}_${mediaType}`),
+
+  tmdbVideos: (tmdbId: number, mediaType: string) =>
+    request<{ results: { key: string; name: string; site: string; type: string; size: number; official: boolean; published_at: string }[] }>(`/tmdb-videos/${tmdbId}?media_type=${encodeURIComponent(mediaType)}`, undefined, `tmdb_videos_${tmdbId}_${mediaType}`),
+
+  personDetail: (personId: number) =>
+    request<{ id: number; name: string; biography: string; birthday: string; deathday: string; place_of_birth: string; homepage: string; profile_path: string; known_for_department: string; imdb_id: string; facebook_id: string; instagram_id: string; twitter_id: string }>(`/person/${personId}`, undefined, `person_${personId}`),
+
+  personCredits: (personId: number) =>
+    request<{ cast: { id: number; title: string; media_type: string; character: string; job: string; release_date: string; poster_url: string; vote_average: number; overview: string }[]; crew: { id: number; title: string; media_type: string; character: string; job: string; release_date: string; poster_url: string; vote_average: number; overview: string }[] }>(`/person/${personId}/credits`, undefined, `person_credits_${personId}`),
+
+  personImages: (personId: number) =>
+    request<{ profiles: { url: string; width: number; height: number; vote_count: number }[] }>(`/person-images/${personId}`, undefined, `person_images_${personId}`),
+
+  tmdbReviews: (tmdbId: number, mediaType: string, page: number = 1) =>
+    request<{ results: { id: string; author: string; author_details: any; content: string; created_at: string; url: string }[]; page: number; total_pages: number; total_results: number }>(`/tmdb-reviews/${tmdbId}?media_type=${encodeURIComponent(mediaType)}&page=${page}`, undefined, `tmdb_reviews_${tmdbId}_${mediaType}_${page}`),
+
+  tmdbKeywords: (tmdbId: number, mediaType: string) =>
+    request<{ keywords: { id: number; name: string }[] }>(`/tmdb-keywords/${tmdbId}?media_type=${encodeURIComponent(mediaType)}`, undefined, `tmdb_keywords_${tmdbId}_${mediaType}`),
+
+  releaseDates: (tmdbId: number) =>
+    request<{ results: { iso_3166_1: string; release_dates: { certification: string; release_date: string; type: number; note: string }[] }[] }>(`/release-dates/${tmdbId}`, undefined, `release_dates_${tmdbId}`),
+
+  seasonImages: (seriesId: number, seasonNum: number) =>
+    request<{ posters: { url: string; width: number; height: number; language: string; vote_count: number; vote_average: number }[] }>(`/season-images/${seriesId}/${seasonNum}`, undefined, `season_images_${seriesId}_${seasonNum}`),
+
+  episodeImages: (seriesId: number, seasonNum: number, epNum: number) =>
+    request<{ stills: { url: string; width: number; height: number; vote_count: number; vote_average: number }[] }>(`/episode-images/${seriesId}/${seasonNum}/${epNum}`, undefined, `episode_images_${seriesId}_${seasonNum}_${epNum}`),
+
   editMovie: (movieId: number, data: Partial<Pick<Movie, 'title' | 'code' | 'actress' | 'release_date' | 'duration'>>) =>
     request<{ ok: boolean }>(`/movies/${movieId}`, {
       method: 'PUT',
@@ -421,21 +457,6 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ old_username: oldUsername, old_password: oldPassword, new_username: newUsername, new_password: newPassword }),
     }),
-
-  getPlugins: () => request<{ plugins: Plugin[] }>('/plugins/list'),
-
-  uploadPlugin: async (file: File) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    const headers: Record<string, string> = {}
-    const token = getToken()
-    if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await fetch(`${BASE}/plugins/upload`, { method: 'POST', headers, body: formData })
-    if (!res.ok) throw new Error(await res.text())
-    return res.json()
-  },
-
-  deletePlugin: (name: string) => request<{ ok: boolean }>(`/plugins/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 
   logout: () => { setToken(''); setActiveLibrary(''); clearCache(); window.location.href = '/login' },
 }
@@ -500,6 +521,8 @@ export interface FolderNode {
   watched_count?: number
   folder_watched?: boolean
   progress_percent?: number
+  tmdb_id?: number
+  tmdb_type?: string
 }
 
 export interface Movie {
@@ -521,6 +544,11 @@ export interface Movie {
   cover_remote?: string
   fanart_local?: string
   javdb_url?: string
+  keywords?: string
+  studios?: string
+  tagline?: string
+  status?: string
+  content_rating?: string
   scraper_source?: string
   source_id?: string
   javdb_id?: string
@@ -546,8 +574,8 @@ export interface Movie {
   episode_label?: string
   display_title?: string
   external_audio_tracks?: ExternalAudioTrack[]
-  cast?: { name: string; character?: string; role?: string; profile_path?: string; source?: string }[]
-  crew?: { name: string; job: string; department?: string; profile_path?: string; source?: string }[]
+  cast?: { name: string; character?: string; role?: string; profile_path?: string; person_id?: string; source?: string }[]
+  crew?: { name: string; job: string; department?: string; profile_path?: string; person_id?: string; source?: string }[]
   playback_position?: number
   progress_percent?: number
 }
@@ -568,13 +596,4 @@ export interface Config {
   tmdb_api_key: string
   tmdb_access_token: string
   media_root: string
-}
-
-export interface Plugin {
-  name: string
-  label: string
-  description: string
-  builtin: boolean
-  enabled: boolean
-  file?: string
 }

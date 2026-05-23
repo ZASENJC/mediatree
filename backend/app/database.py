@@ -63,6 +63,12 @@ async def init_db():
         "ALTER TABLE movies ADD COLUMN scraper_raw TEXT",
         "ALTER TABLE movies ADD COLUMN pending_review INTEGER DEFAULT 0",
         "ALTER TABLE movies ADD COLUMN review_candidates TEXT",
+        "ALTER TABLE movies ADD COLUMN genre TEXT",
+        "ALTER TABLE movies ADD COLUMN keywords TEXT",
+        "ALTER TABLE movies ADD COLUMN studios TEXT",
+        "ALTER TABLE movies ADD COLUMN tagline TEXT",
+        "ALTER TABLE movies ADD COLUMN status TEXT",
+        "ALTER TABLE movies ADD COLUMN content_rating TEXT",
     ]
     for mig in migrations:
         try:
@@ -120,6 +126,12 @@ async def init_db():
             scraper_raw TEXT,
             pending_review INTEGER DEFAULT 0,
             review_candidates TEXT,
+            genre TEXT,
+            keywords TEXT,
+            studios TEXT,
+            tagline TEXT,
+            status TEXT,
+            content_rating TEXT,
             media_root TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now'))
@@ -338,7 +350,7 @@ async def get_movies(folder: str = "", tag: str = "", code: str = "",
     if folder and sort == "created_desc":
         order = f"ORDER BY {episode_order}, created_at DESC"
 
-    cols = "id, path, code, title, original_title, overview, actress, duration, cover_local, cover_remote, javdb_score, javdb_likes, folder_levels, created_at, updated_at, media_root, tmdb_type, tmdb_season, tmdb_episode, episode_title, episode_overview, episode_still, episode_still_local, clean_title, episode_number, display_title, external_audio_tracks, \"cast\", crew"
+    cols = "id, path, code, title, original_title, overview, actress, release_date, duration, cover_local, cover_remote, javdb_score, javdb_likes, folder_levels, created_at, updated_at, media_root, tmdb_id, tmdb_type, tmdb_season, tmdb_episode, episode_title, episode_overview, episode_still, episode_still_local, clean_title, episode_number, display_title, external_audio_tracks, genre, content_rating, \"cast\", crew"
     query = f"SELECT {cols} FROM movies{where} {order} LIMIT ? OFFSET ?"
     params.extend([limit, offset])
     cur = await db.execute(query, params)
@@ -450,7 +462,7 @@ async def get_recent_watched(media_root: str = "", limit: int = 200, offset: int
         params.append(media_root)
     count_cur = await db.execute(f"SELECT COUNT(*) FROM movies m{where}", params)
     total = (await count_cur.fetchone())[0]
-    cols = "m.id, m.path, m.code, m.title, m.original_title, m.overview, m.actress, m.duration, m.cover_local, m.cover_remote, m.javdb_score, m.javdb_likes, m.folder_levels, m.created_at, m.updated_at, m.media_root, m.tmdb_type, m.tmdb_season, m.tmdb_episode, m.episode_title, m.episode_overview, m.episode_still, m.episode_still_local, m.clean_title, m.episode_number, m.display_title, m.external_audio_tracks, m.\"cast\", m.crew"
+    cols = "m.id, m.path, m.code, m.title, m.original_title, m.overview, m.actress, m.release_date, m.duration, m.cover_local, m.cover_remote, m.javdb_score, m.javdb_likes, m.folder_levels, m.created_at, m.updated_at, m.media_root, m.tmdb_id, m.tmdb_type, m.tmdb_season, m.tmdb_episode, m.episode_title, m.episode_overview, m.episode_still, m.episode_still_local, m.clean_title, m.episode_number, m.display_title, m.external_audio_tracks, m.genre, m.content_rating, m.\"cast\", m.crew"
     query = f"""SELECT {cols} FROM movies m{where}
         ORDER BY (
             SELECT ud.last_played_date FROM user_data ud
@@ -497,7 +509,7 @@ async def search_movies(q: str, media_root: str = "", limit: int = 100, offset: 
         params.append(media_root)
     count_cur = await db.execute(f"SELECT COUNT(*) FROM movies{where}", params)
     total = (await count_cur.fetchone())[0]
-    cols = "id, path, code, title, original_title, overview, actress, duration, cover_local, cover_remote, javdb_score, javdb_likes, folder_levels, created_at, updated_at, media_root, tmdb_type, tmdb_season, tmdb_episode, episode_title, episode_overview, episode_still, episode_still_local, clean_title, episode_number, display_title, external_audio_tracks, \"cast\", crew"
+    cols = "id, path, code, title, original_title, overview, actress, release_date, duration, cover_local, cover_remote, javdb_score, javdb_likes, folder_levels, created_at, updated_at, media_root, tmdb_id, tmdb_type, tmdb_season, tmdb_episode, episode_title, episode_overview, episode_still, episode_still_local, clean_title, episode_number, display_title, external_audio_tracks, genre, content_rating, \"cast\", crew"
     cur = await db.execute(
         f"SELECT {cols} FROM movies{where} ORDER BY updated_at DESC LIMIT ? OFFSET ?",
         params + [limit, offset]
@@ -571,6 +583,7 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
     cur = await db.execute(
         f"""SELECT folder_levels, MAX(cover_local) as cover_local, MAX(cover_remote) as cover_remote,
                    MAX(created_at) as created_max, MAX(release_date) as release_date_max, media_root, MAX(fanart_local) as fanart_local,
+                   MAX(tmdb_id) as tmdb_id, MAX(tmdb_type) as tmdb_type,
                    COUNT(*) as movie_count,
                    SUM(CASE WHEN EXISTS (SELECT 1 FROM tags t WHERE t.movie_id=movies.id AND t.tag='watched')
                          OR EXISTS (SELECT 1 FROM user_data ud WHERE ud.item_id=CAST(movies.id AS TEXT) AND ud.played=1)
@@ -604,6 +617,8 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                     "_created_max": "",
                     "_release_date_max": "",
                     "_watched_count": 0,
+                    "_tmdb_id": None,
+                    "_tmdb_type": None,
                 }
             node[part]["_total_count"] += r["movie_count"]
             node[part]["_watched_count"] += r["watched_count"] or 0
@@ -625,6 +640,9 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                         node[part]["_backdrop"] = fanart
                     elif "/" not in fanart and "\\" not in fanart:
                         node[part]["_backdrop"] = f"/api/cached-cover/{fanart}"
+                if r["tmdb_id"] and not node[part]["_tmdb_id"]:
+                    node[part]["_tmdb_id"] = r["tmdb_id"]
+                    node[part]["_tmdb_type"] = r["tmdb_type"]
             node = node[part]["_children"]
 
     def flatten(node_dict: dict[str, dict]) -> list[dict]:
@@ -646,6 +664,8 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                 "watched_count": info["_watched_count"],
                 "folder_watched": bool(info["_total_count"] and info["_watched_count"] >= info["_total_count"]),
                 "progress_percent": round((info["_watched_count"] / info["_total_count"]) * 100) if info["_total_count"] else 0,
+                "tmdb_id": info.get("_tmdb_id"),
+                "tmdb_type": info.get("_tmdb_type"),
             }
             if children:
                 all_covers = [c.get("random_cover") or c.get("cover") for c in children if c.get("random_cover") or c.get("cover")]
@@ -691,6 +711,16 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                 parent = str(Path(node["path"]).parent) if node["path"] and str(Path(node["path"]).parent) != "." else None
                 if parent and parent in title_map:
                     node["display_title"] = title_map[parent]
+                else:
+                    # check child folders (e.g., folder has /S01 subdirectory with movies)
+                    prefix = node["path"] + "/"
+                    for k, v in title_map.items():
+                        if k.startswith(prefix):
+                            node["display_title"] = v
+                            break
+            # fallback: use source folder name when no scraped title found
+            if not node.get("display_title"):
+                node["display_title"] = node.get("name")
             if node.get("children"):
                 assign_display_titles(node["children"])
 

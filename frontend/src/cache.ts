@@ -1,4 +1,4 @@
-const apiCache = new Map<string, { data: any; timestamp: number }>()
+const apiCache = new Map<string, { data: unknown; timestamp: number }>()
 const CACHE_TTL = 120000
 
 export function getCached<T>(key: string): T | null {
@@ -11,7 +11,7 @@ export function getCached<T>(key: string): T | null {
   return entry.data as T
 }
 
-export function setCache(key: string, data: any) {
+export function setCache(key: string, data: unknown) {
   apiCache.set(key, { data, timestamp: Date.now() })
 }
 

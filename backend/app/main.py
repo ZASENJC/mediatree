@@ -108,13 +108,25 @@ async def run_startup_scan():
         if not await has_any_library_setting():
             logger.info("Startup scan skipped: setup has not been completed")
             return
-        from .database import get_db
+        from .database import get_db, get_all_library_settings, save_library_settings
         db = await get_db()
         await db.execute("DELETE FROM movies WHERE media_root = ''")
         await db.commit()
 
         roots = settings.get_all_media_roots()
         if roots:
+            # Auto-register library_settings for newly discovered media roots
+            existing = await get_all_library_settings()
+            existing_paths = {str(Path(s["media_root"])) for s in existing}
+            for root in roots:
+                if root not in existing_paths:
+                    await save_library_settings({
+                        "media_root": root,
+                        "scraper": "auto",
+                        "enabled": 1,
+                    })
+                    logger.info(f"Auto-registered new media root: {root}")
+
             await asyncio.gather(*(run_scan_for_root(root, trigger="startup") for root in roots))
 
         logger.info("Startup scan complete")
@@ -1081,7 +1093,7 @@ async def api_folder_watched(data: dict):
 @app.get("/api/movies/{movie_id}/alternative-covers")
 async def api_alternative_covers(movie_id: int):
     from .database import get_db
-    from .tmdb import fetch_tmdb_detail, search_tmdb
+    from .tmdb import fetch_tmdb_detail, fetch_tmdb_images, search_tmdb
 
     movie = await get_movie_detail(movie_id)
     if not movie:
@@ -1092,12 +1104,32 @@ async def api_alternative_covers(movie_id: int):
     tmdb_type = movie.get("tmdb_type")
 
     if tmdb_id and tmdb_type:
-        detail = await fetch_tmdb_detail(str(tmdb_id), tmdb_type)
-        if detail and detail.get("poster_url"):
-            alternatives.append({"url": detail["poster_url"], "source": "tmdb_primary"})
+        # Fetch all TMDB posters
+        images = await fetch_tmdb_images(int(tmdb_id), tmdb_type)
+        if images and images.get("posters"):
+            lang_priority = {"zh": 0, "en": 1, "ja": 2, "ko": 3}
+            def _sort_key(p):
+                lang = p.get("language") or ""
+                return (lang_priority.get(lang, 99), -(p.get("vote_count") or 0))
+            for p in sorted(images["posters"], key=_sort_key):
+                alternatives.append({
+                    "url": p["url"],
+                    "source": "tmdb_poster",
+                    "width": p.get("width"),
+                    "height": p.get("height"),
+                    "language": p.get("language"),
+                    "vote_count": p.get("vote_count"),
+                })
 
-        if detail and detail.get("backdrop_url"):
-            alternatives.append({"url": detail["backdrop_url"], "source": "tmdb_backdrop"})
+        # Backdrops
+        if images and images.get("backdrops"):
+            for b in images["backdrops"][:5]:
+                alternatives.append({
+                    "url": b["url"],
+                    "source": "tmdb_backdrop",
+                    "width": b.get("width"),
+                    "height": b.get("height"),
+                })
 
     if movie.get("cover_remote"):
         alternatives.append({"url": movie["cover_remote"], "source": "current"})
@@ -1183,55 +1215,6 @@ async def api_edit_movie(movie_id: int, data: dict):
     )
     await db.commit()
     return {"ok": True}
-
-
-# ─── Plugins ───
-
-@app.get("/api/plugins/list")
-async def api_plugins_list():
-    from .plugins.manager import get_installed_plugins
-    return {"plugins": get_installed_plugins()}
-
-
-@app.post("/api/plugins/upload")
-async def api_plugins_upload(file: UploadFile = File(...)):
-    import tempfile
-    import re
-    if not file.filename or not file.filename.endswith(".py"):
-        raise HTTPException(status_code=400, detail="Only .py files allowed")
-
-    content = await file.read()
-    if len(content) > 100 * 1024:
-        raise HTTPException(status_code=400, detail="File too large (max 100KB)")
-
-    text = content.decode("utf-8", errors="replace")
-    blocked = ("os.system", "subprocess.", "shutil.rmtree", "shutil.move", "__import__(",
-               "exec(", "eval(", "compile(", "ctypes.", "multiprocessing.")
-    for pattern in blocked:
-        if pattern in text:
-            raise HTTPException(status_code=400, detail=f"Blocked pattern: {pattern}")
-
-    with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as tmp:
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    try:
-        from .plugins.manager import install_plugin
-        result = install_plugin(tmp_path)
-        if not result.get("ok"):
-            raise HTTPException(status_code=400, detail=result.get("error", "Install failed"))
-        return result
-    finally:
-        try: Path(tmp_path).unlink()
-        except: pass
-
-
-@app.delete("/api/plugins/{name}")
-async def api_plugins_delete(name: str):
-    from .plugins.manager import remove_plugin
-    if remove_plugin(name):
-        return {"ok": True}
-    raise HTTPException(status_code=404, detail="Plugin not found")
 
 
 # ─── Media Roots ───
@@ -1402,6 +1385,156 @@ async def api_media_file(file_path: str, request: Request):
         except (ValueError, AttributeError):
             pass
     return FileResponse(real)
+
+
+
+
+# ─── TMDB API Endpoints ───
+
+
+@app.get("/api/folder-backdrops")
+async def api_folder_backdrops(path: str = Query(""), media_root: str = Query("")):
+    """Return TMDB backdrops for a folder using its scraped tmdb_id."""
+    from .tmdb import fetch_tmdb_images
+    from .database import get_db
+    import re
+    if not settings.tmdb_access_token and not settings.tmdb_api_key:
+        raise HTTPException(status_code=503, detail="TMDB not configured")
+    if not path:
+        return {"backdrops": []}
+    db = await get_db()
+    mr_where = " AND media_root=?" if media_root else ""
+    mr_params = [media_root] if media_root else []
+    # Try exact match first, then prefix match (for child folder movies)
+    cur = await db.execute(
+        f"SELECT tmdb_id, tmdb_type, folder_levels FROM movies WHERE folder_levels=?{mr_where} AND tmdb_id IS NOT NULL LIMIT 1",
+        [path] + mr_params
+    )
+    row = await cur.fetchone()
+    if not row:
+        cur = await db.execute(
+            f"SELECT tmdb_id, tmdb_type, folder_levels FROM movies WHERE folder_levels LIKE ?{mr_where} AND tmdb_id IS NOT NULL LIMIT 1",
+            [path + "/%"] + mr_params
+        )
+        row = await cur.fetchone()
+    # Fallback: parse [tmdbid=NNN] from folder_levels if tmdb_id column is NULL
+    if not row or not row["tmdb_id"]:
+        cur = await db.execute(
+            f"SELECT folder_levels FROM movies WHERE (folder_levels=? OR folder_levels LIKE ?){mr_where} LIMIT 1",
+            [path, path + "/%"] + mr_params
+        )
+        row2 = await cur.fetchone()
+        if row2:
+            m = re.search(r'\[tmdbid=(\d+)\]', row2["folder_levels"] or "", re.IGNORECASE)
+            if m:
+                tmdb_type = "tv" if re.search(r'\[tmdbtype=tv\]', row2["folder_levels"] or "", re.IGNORECASE) else "movie"
+                result = await fetch_tmdb_images(int(m.group(1)), tmdb_type)
+                return {"backdrops": (result or {}).get("backdrops", [])}
+        return {"backdrops": []}
+    result = await fetch_tmdb_images(row["tmdb_id"], row["tmdb_type"] or "movie")
+    return {"backdrops": (result or {}).get("backdrops", [])}
+
+
+@app.get("/api/tmdb-images/{tmdb_id}")
+async def api_tmdb_images(tmdb_id: int, media_type: str = Query("movie")):
+    """Return all posters, backdrops, logos for a movie or TV series."""
+    from .tmdb import fetch_tmdb_images
+    if not settings.tmdb_access_token and not settings.tmdb_api_key:
+        raise HTTPException(status_code=503, detail="TMDB not configured")
+    result = await fetch_tmdb_images(tmdb_id, media_type)
+    return result or {"posters": [], "backdrops": [], "logos": []}
+
+
+@app.get("/api/tmdb-videos/{tmdb_id}")
+async def api_tmdb_videos(tmdb_id: int, media_type: str = Query("movie")):
+    """Return trailers, clips, behind-the-scenes videos."""
+    from .tmdb import fetch_tmdb_videos
+    if not settings.tmdb_access_token and not settings.tmdb_api_key:
+        raise HTTPException(status_code=503, detail="TMDB not configured")
+    result = await fetch_tmdb_videos(tmdb_id, media_type)
+    return result or {"results": []}
+
+
+@app.get("/api/person/{person_id}")
+async def api_person_detail(person_id: int):
+    """Return person biography, birthday, external IDs."""
+    from .tmdb import fetch_person_detail
+    if not settings.tmdb_access_token and not settings.tmdb_api_key:
+        raise HTTPException(status_code=503, detail="TMDB not configured")
+    result = await fetch_person_detail(person_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return result
+
+
+@app.get("/api/person/{person_id}/credits")
+async def api_person_credits(person_id: int):
+    """Return combined movie + TV credits for a person."""
+    from .tmdb import fetch_person_credits
+    if not settings.tmdb_access_token and not settings.tmdb_api_key:
+        raise HTTPException(status_code=503, detail="TMDB not configured")
+    result = await fetch_person_credits(person_id)
+    return result or {"cast": [], "crew": []}
+
+
+@app.get("/api/person-images/{person_id}")
+async def api_person_images(person_id: int):
+    """Return profile photos for a person."""
+    from .tmdb import fetch_person_images
+    if not settings.tmdb_access_token and not settings.tmdb_api_key:
+        raise HTTPException(status_code=503, detail="TMDB not configured")
+    result = await fetch_person_images(person_id)
+    return result or {"profiles": []}
+
+
+@app.get("/api/tmdb-reviews/{tmdb_id}")
+async def api_tmdb_reviews(tmdb_id: int, media_type: str = Query("movie"), page: int = Query(1)):
+    """Return user reviews for a movie or TV series."""
+    from .tmdb import fetch_tmdb_reviews
+    if not settings.tmdb_access_token and not settings.tmdb_api_key:
+        raise HTTPException(status_code=503, detail="TMDB not configured")
+    result = await fetch_tmdb_reviews(tmdb_id, media_type, page=page)
+    return result or {"results": [], "page": 1, "total_pages": 0, "total_results": 0}
+
+
+@app.get("/api/tmdb-keywords/{tmdb_id}")
+async def api_tmdb_keywords(tmdb_id: int, media_type: str = Query("movie")):
+    """Return keyword list for a movie or TV series."""
+    from .tmdb import fetch_tmdb_keywords
+    if not settings.tmdb_access_token and not settings.tmdb_api_key:
+        raise HTTPException(status_code=503, detail="TMDB not configured")
+    result = await fetch_tmdb_keywords(tmdb_id, media_type)
+    return result or {"keywords": []}
+
+
+@app.get("/api/release-dates/{tmdb_id}")
+async def api_release_dates(tmdb_id: int):
+    """Return release dates and certifications by country for a movie."""
+    from .tmdb import fetch_release_dates
+    if not settings.tmdb_access_token and not settings.tmdb_api_key:
+        raise HTTPException(status_code=503, detail="TMDB not configured")
+    result = await fetch_release_dates(tmdb_id)
+    return result or {"results": []}
+
+
+@app.get("/api/season-images/{series_id}/{season_num}")
+async def api_season_images(series_id: int, season_num: int):
+    """Return poster images for a TV season."""
+    from .tmdb import fetch_season_images
+    if not settings.tmdb_access_token and not settings.tmdb_api_key:
+        raise HTTPException(status_code=503, detail="TMDB not configured")
+    result = await fetch_season_images(series_id, season_num)
+    return result or {"posters": []}
+
+
+@app.get("/api/episode-images/{series_id}/{season_num}/{ep_num}")
+async def api_episode_images(series_id: int, season_num: int, ep_num: int):
+    """Return still images for a TV episode."""
+    from .tmdb import fetch_episode_images
+    if not settings.tmdb_access_token and not settings.tmdb_api_key:
+        raise HTTPException(status_code=503, detail="TMDB not configured")
+    result = await fetch_episode_images(series_id, season_num, ep_num)
+    return result or {"stills": []}
 
 
 # ─── SPA ───

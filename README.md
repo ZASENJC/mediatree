@@ -1,55 +1,153 @@
-# MediaTree
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ZASENJC/mediatree/main/frontend/public/icon.svg" alt="MediaTree" width="80" />
+</p>
 
-基于 Docker 的本地影片 Web 浏览管理器。支持多媒体库、插件化刮削、ArtPlayer 播放器、ASS/SSA 特效字幕渲染。
+<h1 align="center">MediaTree</h1>
 
-## 功能
+<p align="center">
+  <strong>Self-hosted media library manager with elegant glassmorphism UI,<br>Jellyfin-compatible API, and a powerful plugin-based scraper system.</strong>
+</p>
 
-- **多媒体库管理**：多目录分类，每库独立刮削配置和访问密码
-- **插件化刮削**：TMDB（电影/电视剧）、Bangumi（动画）、Javdatabase（JAV 番号）
-- **ArtPlayer 播放器**：触控手势、键盘快捷键、移动端全屏适配、画中画
-- **ASS/SSA 特效字幕**：libass-wasm 渲染，CJK 字体回退，外挂字幕自动匹配
-- **Jellyfin 兼容**：30+ Jellyfin API 端点，VidHub/Infuse/Kodi 直接连接
-- **文件监控**：watchfiles 自动增量扫描新增/删除文件
-- **右键菜单**：文件夹批量操作、手动刮削、封面/背景更换
+<p align="center">
+  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.0.0-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/ZASENJC/mediatree/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
+  <img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square&logo=python" alt="Python">
+  <img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react" alt="React">
+  <img src="https://img.shields.io/badge/docker-amd64|arm64-2496ED?style=flat-square&logo=docker" alt="Docker">
+</p>
 
-## 快速开始
+---
+
+## Features
+
+<table>
+<tr>
+<td width="50%">
+
+### Media Library
+- Multi-library with per-root scraper & password
+- Recursive scanning with file watcher auto-update
+- Folder tree browser with seasonal tab switching
+- Source filename / scraped title display toggle
+- Favorites, categories, and excluded folders
+
+### Scrapers
+- **TMDB** — Movie & TV with cast/crew/stills/reviews
+- **Bangumi** — Anime metadata for CJK titles
+- **Javdatabase** — Code-based JAV metadata
+- Plugin architecture with intelligent fallback chain
+- Manual scrape with search-and-select UI
+
+</td>
+<td width="50%">
+
+### Video Player
+- ArtPlayer 5 with custom YouTube-style UI
+- Direct streaming + Range support (byte seeking)
+- On-demand ffmpeg H.264 transcoding
+- Touch gestures & keyboard shortcuts
+- VR/360° video via Three.js
+- Picture-in-picture & external player (IINA/mpv)
+
+### Subtitles
+- ASS/SSA rendering via libass-wasm (full effects)
+- External subtitle auto-matching (basename + lang)
+- CJK fallback font (Source Han Sans CN)
+- SRT → WebVTT native conversion
+- User font upload & management
+
+</td>
+</tr>
+</table>
+
+### Jellyfin Compatible
+
+36 Jellyfin API endpoints — connect **VidHub**, **Infuse**, **Kodi**, **VLC**, **IINA**, and **mpv** directly. Series/Season/Episode hierarchy from folder structure, multi-client auth (MediaBrowser Token, X-Emby-Token, Bearer), Emby path compatibility, and playback progress tracking.
+
+### UI Design
+
+Glassmorphism + Apple-style design with custom TailwindCSS palette. Liquid glass header, aurora gradient backgrounds, theater mode ambient lighting, image lightbox, and responsive mobile-first layout.
+
+---
+
+## Quick Start
 
 ```bash
-# 克隆项目
-git clone https://github.com/ZASENJC/mediatree.git
-cd mediatree
+# Clone
+git clone https://github.com/ZASENJC/mediatree.git && cd mediatree
 
-# 配置环境变量（可选）
+# Configure
 cp .env.example .env
-# 编辑 .env 设置 MEDIA_ROOT=/your/media/path
+# Edit .env — set AUTH_USER, AUTH_PASS, and MEDIA_VOLUMES
 
-# 启动
+# Run
 docker compose up -d
 
-# 访问 http://localhost:27580
+# Open
+open http://localhost:27580
 ```
 
-## 环境变量
+> **Docker Hub**: `docker pull zasenjc/mediatree:latest`
 
-| 变量 | 默认 | 说明 |
-|---|---|---|
-| `MEDIA_ROOT` | `/media` | 媒体根目录 |
-| `SCAN_ON_STARTUP` | `true` | 启动时自动扫描 |
-| `AUTH_USER` | — | 登录账号 |
-| `AUTH_PASS` | — | 登录密码 |
+---
 
-## 技术栈
+## Configuration
 
-| 层 | 技术 |
-|---|---|
-| 后端 | Python 3.12 + FastAPI + Uvicorn |
-| 前端 | React 18 + TypeScript 5 + TailwindCSS 3 + Vite |
-| 播放器 | ArtPlayer 5 + @jellyfin/libass-wasm |
-| 数据库 | SQLite (aiosqlite, WAL mode) |
-| 部署 | Docker multi-stage (amd64/arm64) |
-| 刮削源 | TMDB / Bangumi / Javdatabase |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AUTH_USER` | — | Admin username (auth enabled when set) |
+| `AUTH_PASS` | — | Admin password |
+| `MEDIA_VOLUMES` | — | Media directories: `/path:/media/alias:ro` |
+| `DATA_DIR` | `./data` | Persistent data (DB, covers, fonts) |
+| `HOST_PORT` | `27580` | Host port mapping |
+| `SCAN_ON_STARTUP` | `true` | Auto-scan on container start |
+| `JAVDB_ENABLED` | `true` | Enable JavDatabase scraper |
+| `TMDB_API_KEY` | — | TMDB v3 API key _(optional)_ |
+| `TMDB_ACCESS_TOKEN` | — | TMDB v4 access token _(optional)_ |
 
-## 文档
+See `.env.example` for all options.
 
-- [CHANGELOG.md](CHANGELOG.md) — 版本更新记录
-- [CLAUDE.md](CLAUDE.md) — AI 辅助开发配置
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Backend** | Python 3.12 · FastAPI · Uvicorn · httpx · aiosqlite · Pydantic v2 · ffmpeg |
+| **Frontend** | React 18 · TypeScript 5 · TailwindCSS 3 · Vite · ArtPlayer 5 · Three.js |
+| **Subtitle** | @jellyfin/libass-wasm · fonttools · charset-normalizer |
+| **Database** | SQLite (WAL mode · aiosqlite) |
+| **Deploy** | Docker multi-stage (node:20-alpine + python:3.12-slim) |
+| **Platform** | linux/amd64 · linux/arm64 |
+
+---
+
+## Development
+
+```bash
+# Backend (port 80)
+cd backend && pip install -r requirements.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 80
+
+# Frontend (port 5173, proxies /api -> localhost:80)
+cd frontend && npm install && npm run dev
+
+# Tests
+cd backend && python -m unittest discover -s tests -p 'test_*.py'
+```
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [CHANGELOG.md](CHANGELOG.md) | Version history & release notes |
+| [CLAUDE.md](CLAUDE.md) | AI-assisted development guide |
+| [Wiki](https://github.com/ZASENJC/mediatree/wiki) | Full documentation & guides |
+
+---
+
+## License
+
+MIT © [ZASENJC](https://github.com/ZASENJC)
