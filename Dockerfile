@@ -9,12 +9,24 @@ FROM python:3.12-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
     ffmpeg \
     fontconfig \
     fonts-noto-cjk \
     fonts-noto-color-emoji \
     fonts-wqy-microhei \
+    gnupg \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Docker CLI for self-update (docker pull + docker compose)
+RUN install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && \
+    chmod a+r /etc/apt/keyrings/docker.asc && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
@@ -25,12 +37,6 @@ COPY --from=frontend-build /build/dist /app/frontend/dist
 RUN mkdir -p /app/data
 
 COPY VERSION /app/VERSION
-
-RUN addgroup --system --gid 1000 appgroup && \
-    adduser --system --uid 1000 --gid 1000 appuser && \
-    chown -R appuser:appgroup /app
-
-USER appuser
 
 ENV MEDIA_ROOT=/media
 ENV DATA_DIR=/app/data
