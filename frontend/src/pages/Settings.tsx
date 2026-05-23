@@ -1,4 +1,6 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
+import { marked } from 'marked'
 import { api, Config, MediaRoot, LibrarySetting, clearCache } from '../api'
 import { getUiPrefs, setUiPrefs, dismissUpdate } from '../store'
 
@@ -614,8 +616,8 @@ export default function Settings() {
             )}
 
             {/* CHANGELOG Modal */}
-            {changelogModal && (
-              <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            {changelogModal && createPortal(
+              <div className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-2xl flex items-center justify-center p-4"
                    onClick={() => setChangelogModal(null)}>
                 <div className="glass-modal max-w-2xl w-full max-h-[80vh] flex flex-col rounded-3xl"
                      onClick={e => e.stopPropagation()}>
@@ -636,11 +638,13 @@ export default function Settings() {
                     ) : changelogError ? (
                       <p className="text-sm text-red-400">{changelogError}</p>
                     ) : (
-                      <pre className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed font-sans">{changelogBody}</pre>
+                      <div className="changelog-md text-sm text-gray-300 leading-relaxed"
+                        dangerouslySetInnerHTML={{ __html: marked.parse(changelogBody) as string }} />
                     )}
                   </div>
                 </div>
-              </div>
+              </div>,
+              document.body
             )}
           </div>
 

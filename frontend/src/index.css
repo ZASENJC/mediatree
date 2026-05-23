@@ -465,3 +465,25 @@ textarea {
 .animate-backdrop-out {
   animation: backdrop-out 1.5s ease-in-out forwards;
 }
+
+/* === Markdown content (changelog) === */
+.changelog-md h1 { font-size: 1.25rem; font-weight: 700; color: #fff; margin: 1.25em 0 0.5em; }
+.changelog-md h1:first-child { margin-top: 0; }
+.changelog-md h2 { font-size: 1.1rem; font-weight: 600; color: #e2e8f0; margin: 1em 0 0.4em; }
+.changelog-md h3 { font-size: 1rem; font-weight: 600; color: #cbd5e1; margin: 0.8em 0 0.3em; }
+.changelog-md p { margin: 0.5em 0; }
+.changelog-md strong { color: #f1f5f9; font-weight: 600; }
+.changelog-md a { color: #60a5fa; text-decoration: underline; text-underline-offset: 2px; }
+.changelog-md a:hover { color: #93bbfd; }
+.changelog-md ul, .changelog-md ol { margin: 0.5em 0; padding-left: 1.5em; }
+.changelog-md li { margin: 0.25em 0; }
+.changelog-md li::marker { color: #94a3b8; }
+.changelog-md code { padding: 0.15em 0.4em; border-radius: 4px; background: rgba(255,255,255,0.08); font-size: 0.85em; color: #f1f5f9; }
+.changelog-md pre { margin: 0.75em 0; padding: 0.75em 1em; border-radius: 0.75rem; background: rgba(0,0,0,0.3); overflow-x: auto; }
+.changelog-md pre code { padding: 0; background: none; font-size: 0.8rem; }
+.changelog-md blockquote { margin: 0.75em 0; padding: 0.5em 1em; border-left: 3px solid rgba(96,165,250,0.3); background: rgba(96,165,250,0.06); border-radius: 0 0.5rem 0.5rem 0; color: #94a3b8; }
+.changelog-md hr { margin: 1em 0; border: none; border-top: 1px solid rgba(255,255,255,0.08); }
+.changelog-md img { max-width: 100%; border-radius: 0.5rem; }
+.changelog-md table { width: 100%; border-collapse: collapse; margin: 0.75em 0; font-size: 0.85rem; }
+.changelog-md th { padding: 0.5em 0.75em; text-align: left; font-weight: 600; color: #e2e8f0; border-bottom: 1px solid rgba(255,255,255,0.12); }
+.changelog-md td { padding: 0.4em 0.75em; border-bottom: 1px solid rgba(255,255,255,0.06); }
