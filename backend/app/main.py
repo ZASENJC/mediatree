@@ -231,7 +231,8 @@ async def api_scan_log(media_root: str = Query(""), lines: int = Query(100)):
             result = [l.rstrip() for l in all_lines[-lines:]]
         return {"lines": result, "total": total}
     except Exception as e:
-        return {"lines": [], "total": 0, "error": str(e)}
+        logger.error("Failed to read scan log: %s", e)
+        return {"lines": [], "total": 0, "error": "Failed to read scan log"}
 
 
 @app.post("/api/library/clear")
@@ -396,10 +397,15 @@ async def api_cover(movie_id: int):
 @app.get("/api/cached-cover/{cache_key}")
 async def api_cached_cover(cache_key: str):
     from .config import settings
-    p = Path(settings.covers_dir) / f"{cache_key}.jpg"
-    if p.exists():
-        return FileResponse(p)
-    raise HTTPException(status_code=404)
+    # Sanitize: strip path separators and parent-dir traversal
+    safe_key = cache_key.replace("\\", "/").split("/")[-1].replace("\x00", "")
+    if not safe_key or safe_key in (".", ".."):
+        raise HTTPException(status_code=404)
+    covers_root = Path(settings.covers_dir).resolve()
+    p = (covers_root / f"{safe_key}.jpg").resolve()
+    if not p.is_relative_to(covers_root) or not p.exists():
+        raise HTTPException(status_code=404)
+    return FileResponse(p)
 
 
 @app.get("/api/episode-still/{movie_id}")
@@ -787,34 +793,59 @@ async def api_backup(backup_type: str = Query("core")):
     )
 
 
+def _validate_backup_path(file_path: str, allowed_suffixes: set | None = None) -> Path:
+    """Validate a backup file path is within the data directory."""
+    if not file_path:
+        raise HTTPException(status_code=400, detail="Backup file path required")
+    p = Path(file_path)
+    if allowed_suffixes and p.suffix.lower() not in allowed_suffixes:
+        raise HTTPException(status_code=400, detail=f"Invalid backup file type: {p.suffix}")
+    try:
+        real = p.resolve()
+        data_root = Path(settings.data_dir).resolve()
+        if not real.is_relative_to(data_root):
+            raise HTTPException(status_code=400, detail="Backup file path is outside data directory")
+        return real
+    except (OSError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid backup file path")
+
+
 @app.post("/api/restore")
 async def api_restore(data: dict):
     import shutil
     from pathlib import Path
 
     file_path = data.get("path", "")
-    if not file_path or not Path(file_path).exists():
+    if not file_path:
+        raise HTTPException(status_code=400, detail="Backup file path required")
+
+    backup_source = _validate_backup_path(file_path, allowed_suffixes={".db", ".gz"})
+    if not backup_source.exists():
         raise HTTPException(status_code=400, detail="Backup file not found")
 
-    backup_source = Path(file_path)
-    suffix = backup_source.suffix
+    suffix = backup_source.suffix.lower()
 
     if suffix == ".gz":
         import tarfile
         await close_db_pool()
+        data_root_resolved = Path(settings.data_dir).resolve()
         try:
             with tarfile.open(str(backup_source), "r:gz") as tar:
                 for member in tar.getmembers():
+                    # Prevent tar-slip: ensure extracted path stays within data_dir
+                    member_path = (data_root_resolved / member.name).resolve()
+                    if not member_path.is_relative_to(data_root_resolved):
+                        continue
                     if member.name == "browser.db":
-                        tar.extract(member, str(Path(settings.data_dir)))
+                        tar.extract(member, str(data_root_resolved))
                     elif member.name.startswith("covers"):
                         covers_dir = Path(settings.covers_dir)
                         covers_dir.mkdir(parents=True, exist_ok=True)
-                        tar.extract(member, str(Path(settings.data_dir)))
+                        tar.extract(member, str(data_root_resolved))
                     elif member.name.startswith("stills"):
                         stills_dir = Path(settings.data_dir) / "stills"
                         stills_dir.mkdir(parents=True, exist_ok=True)
-                        tar.extract(member, str(Path(settings.data_dir)))
+                        tar.extract(member, str(data_root_resolved))
         finally:
             from . import database as db_module
             db_module._db_pool = None
@@ -1382,16 +1413,26 @@ async def api_clear_review_queue():
 
 # ─── Static Media ───
 
-@app.get("/api/media/{file_path:path}")
-async def api_media_file(file_path: str, request: Request):
-    full_path = Path(settings.media_root) / file_path
+def _resolve_media_path(file_path: str) -> Path:
+    """Resolve and validate a media file path stays within media_root."""
+    if not file_path:
+        raise HTTPException(status_code=404)
+    # Strip null bytes and normalize separators
+    clean = file_path.replace("\x00", "").replace("\\", "/")
+    full = (Path(settings.media_root) / clean.lstrip("/"))
     try:
-        real = full_path.resolve()
+        real = full.resolve()
         root = Path(settings.media_root).resolve()
         if not real.is_relative_to(root) or not real.exists():
             raise HTTPException(status_code=404)
+        return real
     except (OSError, ValueError):
         raise HTTPException(status_code=404)
+
+
+@app.get("/api/media/{file_path:path}")
+async def api_media_file(file_path: str, request: Request):
+    real = _resolve_media_path(file_path)
     # Check library password protection for files under media roots
     from .database import get_library_passwords, verify_library_password_v2
     for lib in await get_library_passwords():

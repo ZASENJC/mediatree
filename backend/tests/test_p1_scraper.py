@@ -157,7 +157,9 @@ class PendingReviewDBTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.db_path = tempfile.mktemp(suffix=".db")
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+        tmp.close()
+        cls.db_path = tmp.name
         cls._original_pool = None
         # Capture original pool state
         import app.database as db_module

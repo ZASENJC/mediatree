@@ -544,10 +544,16 @@ def _hash_password(password: str) -> str:
     return 'pbkdf2:' + salt.hex() + ':' + key.hex()
 
 
-def _verify_password(password: str, stored_hash: str) -> bool:
+def _verify_password(password: str, stored_hash: str) -> tuple[bool, str | None]:
+    """
+    Verify a password against a stored hash.
+    Returns (valid, upgraded_hash).
+    upgraded_hash is non-None when verification succeeded against a legacy
+    (non-PBKDF2) hash — the caller should persist the upgraded hash.
+    """
     import hashlib
     if not stored_hash:
-        return True
+        return (True, None)
     if stored_hash.startswith('pbkdf2:'):
         parts = stored_hash.split(':')
         if len(parts) == 3:
@@ -555,11 +561,14 @@ def _verify_password(password: str, stored_hash: str) -> bool:
                 salt = bytes.fromhex(parts[1])
                 key = bytes.fromhex(parts[2])
                 new_key = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
-                return new_key == key
+                return (new_key == key, None)
             except (ValueError, IndexError):
-                return False
+                return (False, None)
+    # Legacy SHA-256 hash — verify and return an upgraded PBKDF2 hash
     legacy = hashlib.sha256(password.encode()).hexdigest()
-    return legacy == stored_hash
+    if legacy == stored_hash:
+        return (True, _hash_password(password))
+    return (False, None)
 
 
 def _normalize_cover_path(cover: str) -> str:
@@ -933,7 +942,14 @@ async def verify_library_password(media_root: str, password: str) -> bool:
     row = await cur.fetchone()
     if not row:
         return True
-    return _verify_password(password, row["password_hash"])
+    valid, upgraded = _verify_password(password, row["password_hash"])
+    if valid and upgraded:
+        await db.execute(
+            "UPDATE library_passwords SET password_hash=? WHERE media_root=?",
+            (upgraded, media_root)
+        )
+        await db.commit()
+    return valid
 
 
 async def get_library_settings(media_root: str = "") -> dict | None:
@@ -1067,18 +1083,28 @@ async def set_scraper_cache(source: str, query: str, data: dict):
 async def verify_library_password_v2(media_root: str, password: str) -> bool:
     db = await get_db()
     pwd_hash = None
+    source_table = None  # track which table provided the hash
     cur = await db.execute("SELECT password_hash FROM library_passwords WHERE media_root=?", (media_root,))
     row = await cur.fetchone()
     if row:
         pwd_hash = row["password_hash"]
+        source_table = "library_passwords"
     if not pwd_hash:
         cur2 = await db.execute("SELECT password_hash FROM library_settings WHERE media_root=?", (media_root,))
         row2 = await cur2.fetchone()
         if row2 and row2["password_hash"]:
             pwd_hash = row2["password_hash"]
+            source_table = "library_settings"
     if not pwd_hash:
         return True
-    return _verify_password(password, pwd_hash)
+    valid, upgraded = _verify_password(password, pwd_hash)
+    if valid and upgraded and source_table:
+        await db.execute(
+            f"UPDATE {source_table} SET password_hash=? WHERE media_root=?",
+            (upgraded, media_root)
+        )
+        await db.commit()
+    return valid
 
 
 async def get_review_queue(limit: int = 50, offset: int = 0):

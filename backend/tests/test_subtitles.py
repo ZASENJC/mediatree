@@ -25,7 +25,7 @@ class ExternalSubtitleDiscoveryTest(unittest.TestCase):
 
         self.assertIn("Show.S01E01.zh.srt", names)
         self.assertIn("Show.S01E01.ja.ass", names)
-        self.assertEqual(langs["Show.S01E01.zh.srt"], "chi")
+        self.assertEqual(langs["Show.S01E01.zh.srt"], "zh")
         self.assertEqual(langs["Show.S01E01.ja.ass"], "jpn")
 
     def test_gbk_subtitle_content_is_decoded(self):
@@ -85,7 +85,7 @@ class ExternalSubtitleDiscoveryTest(unittest.TestCase):
 
         self.assertIn(sub.name, names)
         self.assertNotIn(other.name, names)
-        self.assertEqual(by_name[sub.name]["language"], "chi")
+        self.assertEqual(by_name[sub.name]["language"], "zh")
         self.assertEqual(by_name[sub.name]["format"], "ass")
         self.assertTrue(by_name[sub.name]["is_external"])
 
