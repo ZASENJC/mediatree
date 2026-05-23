@@ -1,0 +1,98 @@
+# Installation
+
+## Prerequisites
+
+- Docker & Docker Compose installed
+- A directory with your media files (videos, subtitles, covers)
+- At least 1GB free disk space for database and cover cache
+
+## Quick Start
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/ZASENJC/mediatree.git
+cd mediatree
+```
+
+### 2. Configure Environment
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your settings:
+
+```env
+# Required — set your own credentials
+AUTH_USER=your_username
+AUTH_PASS=your_secure_password
+
+# Media directories (format: /host/path:/container/mount:ro)
+MEDIA_VOLUMES=/home/user/media/movies:/media/movies:ro \
+             /home/user/media/shows:/media/shows:ro
+
+# Optional — TMDB API for better metadata
+TMDB_ACCESS_TOKEN=your_tmdb_read_access_token
+```
+
+### 3. Start the Container
+
+```bash
+docker compose up -d
+```
+
+### 4. Open in Browser
+
+Visit `http://localhost:27580` and follow the setup wizard.
+
+## Docker Hub
+
+You can also pull the pre-built image directly:
+
+```bash
+docker pull zasenjc/mediatree:latest
+```
+
+See the [docker-compose.yml template](https://github.com/ZASENJC/mediatree/blob/main/docker-compose.yml) for a complete deployment example.
+
+## Volume Mounts
+
+| Mount | Mode | Purpose |
+|-------|------|---------|
+| `/host/path:/media/name` | `:ro` | Media files (read-only) |
+| `./data:/app/data` | `:rw` | Persistent data (database, covers, config, fonts) |
+
+## Supported Platforms
+
+- `linux/amd64` — Intel/AMD x86_64
+- `linux/arm64` — Apple Silicon, Raspberry Pi 4/5, ARM servers
+
+## Upgrading
+
+```bash
+# Pull latest and restart
+docker compose pull
+docker compose up -d --force-recreate
+
+# Or rebuild from source
+docker compose build --no-cache
+docker compose up -d
+```
+
+## Troubleshooting
+
+### Permission Issues
+The container runs as non-root user (uid 1000). Ensure your data directory is writable:
+```bash
+chmod 755 ./data
+```
+
+### Port Conflict
+Change `HOST_PORT` in `.env` if port 27580 is already in use:
+```env
+HOST_PORT=3000
+```
+
+### Subtitle Fonts in Docker
+System CJK fonts (Noto CJK, WenQuanYi Micro Hei) are installed automatically. Upload custom fonts via Settings → Subtitle Fonts.
