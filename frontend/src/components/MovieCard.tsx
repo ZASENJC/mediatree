@@ -197,7 +197,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
         onContextMenu={handleContextMenu}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        className="glass-card apple-focus group cursor-pointer overflow-hidden"
+        className="glass-card apple-focus media-grid-card group cursor-pointer overflow-hidden"
       >
         <div className={`${hasEpisodeStill ? 'aspect-video' : 'aspect-[2/3]'} relative bg-white/[0.04]`}>
           <img

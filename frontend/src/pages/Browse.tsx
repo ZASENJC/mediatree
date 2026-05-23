@@ -208,9 +208,9 @@ export default function Browse() {
 
         <div className="min-w-0 flex-1">
           {loading ? (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid">
               {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="aspect-[2/3] animate-pulse rounded-2xl border border-white/10 bg-white/[0.06]" />
+                <div key={i} className="aspect-[2/3] animate-pulse rounded-2xl border border-white/10 bg-white/[0.06] media-grid-card" />
               ))}
             </div>
           ) : movies.length === 0 ? (
@@ -220,12 +220,12 @@ export default function Browse() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid">
                 {movies.map((movie) => (
                   <div
                     key={movie.id}
                     onClick={() => { saveScrollPos(); navigate(`/detail/${movie.id}`) }}
-                    className="glass-card apple-focus group cursor-pointer overflow-hidden"
+                    className="glass-card apple-focus media-grid-card group cursor-pointer overflow-hidden"
                   >
                     <div className="relative aspect-[2/3] overflow-hidden bg-white/[0.04]">
                       <img

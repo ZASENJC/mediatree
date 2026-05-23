@@ -60,12 +60,12 @@ export default function Favorites() {
           <p className="mt-2 text-sm text-gray-600">在影片详情页点击收藏按钮即可添加</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid">
           {movies.map((movie) => (
             <div
               key={movie.id}
               onClick={() => { saveScrollPos(); navigate(`/detail/${movie.id}`) }}
-              className="glass-card apple-focus group cursor-pointer overflow-hidden"
+              className="glass-card apple-focus media-grid-card group cursor-pointer overflow-hidden"
             >
               <div className="relative aspect-[2/3] bg-white/[0.04]">
                 <img

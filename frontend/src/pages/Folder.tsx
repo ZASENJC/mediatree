@@ -393,7 +393,7 @@ export default function FolderPage() {
           <p>此文件夹下没有影片</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 media-grid">
           {movies.map((movie) => (
             <MovieCard key={movie.id} movie={movie} onUpdated={load} showBadges={false} />
           ))}
