@@ -2,17 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Push 工作流
+## Push Workflow
 
-- 每次 push 前，先同步更新 `CLAUDE.md`、`CHANGELOG.md`、`README.md`，确保文档反映当前代码状态。
-- 将文档更新纳入同一个 commit，不要单独提交。
-- 版本号规则：使用 `Vx.x.xx` 三级格式（如 `V3.1.0`、`V3.1.1`），按序递增，不再跳主次版本号。
+- Before each push, sync `CLAUDE.md`, `CHANGELOG.md`, and `README.md` to reflect the current code state.
+- Include documentation updates in the same commit; do not commit them separately.
+- Version rule: use `v0.0.00` three-level format (e.g., `v1.0.01`, `v1.0.02`), increment sequentially, no more skipping major/minor version numbers.
 
-## 交互语言规则
+## Interaction Language Rules
 
-- 所有面向用户的解释、计划、总结、问题询问、变更报告必须使用中文。
-- 代码标识符（函数名、变量名、类名）、文件名、路径、命令、配置项、错误日志保持英文原文。
-- 不要把英文 API 名称、函数名、类名、模块名翻译成中文。
+- All user-facing explanations, plans, summaries, question inquiries, and change reports must use Chinese.
+- Keep code identifiers (function names, variable names, class names), file names, paths, commands, config keys, and error logs in their original English.
+- Do not translate English API names, function names, class names, or module names into Chinese.
 
 ## Commands
 
@@ -52,7 +52,7 @@ cd frontend && npm run build
 docker compose up -d --build
 
 # Multi-arch build + push
-docker buildx build --platform linux/amd64,linux/arm64 -t zasenjc/mediatree:3.0 --push .
+docker buildx build --platform linux/amd64,linux/arm64 -t zasenjc/mediatree:1.0.00 --push .
 ```
 
 ## Architecture
@@ -106,7 +106,7 @@ In production, the backend serves the built frontend at `/`. In development, run
 - `GET /api/version` — return current version from VERSION file (public, no auth)
 - `GET /api/update/check` — return DockerHub tag list (public, no auth), merged & sorted descending
 - `POST /api/update/perform` — `docker pull zasenjc/mediatree:<tag>` + `docker compose up -d` restart
-- `GET /api/update/changelog?version=Vx.x.x` — fetch full GitHub release body for CHANGELOG modal
+- `GET /api/update/changelog?version=v0.0.00` — fetch full GitHub release body for CHANGELOG modal
 - Frontend auto-checks every 15 minutes in `App.tsx`, shows red dot on Settings nav when update available
 - Settings page update panel: version list with "更新日志" (modal) and "更新到此版本" (docker pull) buttons
 - CHANGELOG modal: full-screen darkened backdrop (`bg-black/60 backdrop-blur-sm`), centered `glass-modal` panel
@@ -163,8 +163,8 @@ scan_media(root)
 - Search: desktop inline search in actions capsule; mobile standalone search bar triggered by magnifying glass icon. Both share same results panel (`glass-popover`).
 
 ### Where to modify for common tasks
-- Style changes: `index.css` (`@layer components` 中定义全局 glass-* / apple-focus 类) + `tailwind.config.js` (color palette、shadow、background) + `pages/*.tsx` / `components/*.tsx` (使用预定义组件 class)
-- Glass component class reference: `glass-panel` (大容器), `glass-card` (卡片), `glass-button` (普通按钮), `glass-button-primary` (主按钮), `glass-input` (输入框), `glass-popover` (浮层), `glass-modal` (弹窗), `glass-chip` (标签), `apple-focus` (悬停动画)
+- Style changes: `index.css` (`@layer components` for global glass-* / apple-focus classes) + `tailwind.config.js` (color palette, shadows, backgrounds) + `pages/*.tsx` / `components/*.tsx` (use predefined component classes)
+- Glass component class reference: `glass-panel` (large container), `glass-card` (card), `glass-button` (default button), `glass-button-primary` (primary button), `glass-input` (input field), `glass-popover` (popover), `glass-modal` (dialog), `glass-chip` (tag), `apple-focus` (hover animation)
 - New API: `main.py` (route) + `database.py` (CRUD) + `api.ts` (frontend client)
 - New scraper: create in `backend/app/scrapers/`, subclass `BaseScraper`, register in `registry.py`
 - Scan logic: `scanner.py` `scan_media()` / `scrape_for_library()`
