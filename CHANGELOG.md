@@ -6,6 +6,27 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## v1.0.01 (2026-05-24)
+
+### Performance
+
+- **Scroll optimization**: `content-visibility: auto` on all media grid cards — browser skips rendering off-screen cards entirely
+- **CSS containment**: `contain: layout style` on grid containers prevents layout thrashing during scroll
+- Reduced `glass-card` backdrop-blur from 12px to 6px — negligible visual difference, 50% less GPU blur computation
+- Narrowed `apple-focus` transition from `transition-all` to only `transform`, `box-shadow`, `border-color`
+- Body noise texture (`feTurbulence` SVG) promoted to GPU compositing layer with `translateZ(0)`
+- All 5 grid pages (Home, Folder, Browse, Favorites, MovieCard) now use `media-grid` and `media-grid-card` classes
+
+### Fixes
+
+- Scraper: switching to "none" immediately stops scraping and clears previously scraped content
+- Browse page: removed JavDB score/likes badges, display filename as title, folder tree now follows sort order
+- Fixed 10 CodeQL security alerts + subtitle test assertions
+- CHANGELOG modal now renders via `createPortal` with proper Markdown rendering
+- Removed `docker-compose.yml` from git tracking, replaced with `.example` template
+
+---
+
 ## v1.0.0 (2026-05-23) — Initial Public Release
 
 ### Core Architecture

@@ -360,7 +360,7 @@ export default function Home() {
             <p className="mt-2 text-sm text-gray-600">点击"已看"标签即可记录观看</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid">
             {recentMovies.map((movie) => (
               <MovieCard key={movie.id} movie={movie} onUpdated={loadRecent} hideTitle={hideHomeTitleText} />
             ))}
@@ -374,7 +374,7 @@ export default function Home() {
             <p className="mt-2 text-sm">请配置 MEDIA_ROOT 或检查浏览页勾选状态</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid">
             {tree.map((node) => {
               const coverSrc = getCoverSrc(node.random_cover || node.cover, folderCoverVersion)
               return (
@@ -383,7 +383,7 @@ export default function Home() {
                   onContextMenu={(e) => handleFolderContextMenu(e, node)}
                   onMouseEnter={() => setHoveredFolder(node.path)}
                   onMouseLeave={() => setHoveredFolder(null)}
-                  className="glass-card apple-focus group cursor-pointer overflow-hidden"
+                  className="glass-card apple-focus media-grid-card group cursor-pointer overflow-hidden"
                 >
                   <div className="relative aspect-[2/3] bg-white/[0.04]">
                     {coverSrc ? (

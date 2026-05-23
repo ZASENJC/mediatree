@@ -6,6 +6,27 @@
 
 ---
 
+## v1.0.01 (2026-05-24)
+
+### 性能
+
+- **滚动优化**：所有媒体网格卡片加入 `content-visibility: auto`，浏览器自动跳过离屏卡片的渲染
+- **CSS 隔离**：网格容器添加 `contain: layout style`，防止滚动时触发整页重排
+- 降低 `glass-card` 高斯模糊半径（12px → 6px），视觉效果不变，GPU 模糊计算量减半
+- 收窄 `apple-focus` 过渡属性（`transition-all` → 仅 `transform/box-shadow/border-color`）
+- 噪点纹理层通过 `translateZ(0)` 提升到 GPU 合成层，避免 CPU 重绘
+- 所有 5 个网格页面（首页、目录、浏览、收藏、MovieCard）统一使用 `media-grid` / `media-grid-card` 类
+
+### 修复
+
+- 刮削器切换为"none"时立即停止刮削并清除已刮削内容
+- Browse 页面：移除 JavDB 评分/点赞徽章，标题显示文件名，文件夹树跟随排序
+- 修复 10 个 CodeQL 安全告警 + 字幕测试断言修正
+- CHANGELOG 弹窗改用 `createPortal` + 正确的 Markdown 渲染
+- 移除 `docker-compose.yml` 的 git 追踪，改用 `.example` 模板
+
+---
+
 ## v1.0.0 (2026-05-23) — 首次公开发布
 
 ### 核心架构
