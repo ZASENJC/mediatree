@@ -5,6 +5,8 @@
 <h1 align="center">MediaTree</h1>
 
 <p align="center">
+  <strong>[English](README.md) | [简体中文](README_zh-CN.md)</strong>
+  <br><br>
   <strong>Self-hosted media library manager with elegant glassmorphism UI,<br>Jellyfin-compatible API, and a powerful plugin-based scraper system.</strong>
 </p>
 

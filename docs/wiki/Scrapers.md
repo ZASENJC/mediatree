@@ -1,3 +1,5 @@
+[English](Scrapers) | [简体中文](../wiki_zh-CN/Scrapers)
+
 # Scrapers
 
 MediaTree uses a plugin-based scraper system to fetch metadata from multiple sources. Each media library can use a different scraper configuration.
