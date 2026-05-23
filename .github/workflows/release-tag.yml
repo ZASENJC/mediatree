@@ -1,0 +1,56 @@
+name: Auto Update Release Tag
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  update-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from VERSION file
+        id: version
+        run: |
+          VERSION=$(cat VERSION | head -1 | tr -d '[:space:]')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Force update tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f ${{ steps.version.outputs.version }} ${{ github.sha }}
+          git push origin ${{ steps.version.outputs.version }} --force
+
+      - name: Extract release notes from CHANGELOG
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # Find the section for this version in CHANGELOG_zh-CN.md
+          CONTENT=$(awk -v ver="$VERSION" '
+            BEGIN { found=0; buf="" }
+            /^## / {
+              if (found) exit
+              if ($0 ~ ver) { found=1; next }
+            }
+            found { buf = buf $0 "\n" }
+            END { print buf }
+          ' CHANGELOG_zh-CN.md | head -n -1)
+          # Write to file to avoid special char issues
+          echo "$CONTENT" > /tmp/release_body.md
+          echo "exists=true" >> $GITHUB_OUTPUT
+
+      - name: Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          body_path: /tmp/release_body.md
+          make_latest: true
