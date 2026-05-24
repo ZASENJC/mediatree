@@ -12,10 +12,8 @@ services:
       - ${DATA_DIR:-./data}:/app/data
       # Docker 自更新所需（可选）
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./docker-compose.yml:/compose.yml:ro
     env_file:
       - .env
     environment:
       - PORT=${HOST_PORT:-27580}
-      - COMPOSE_FILE=/compose.yml
     restart: unless-stopped

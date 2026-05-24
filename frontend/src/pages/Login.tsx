@@ -8,13 +8,20 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
   const [loading, setLoading] = useState(false)
   const [needAuth, setNeedAuth] = useState(true)
   const [checking, setChecking] = useState(true)
+  const [loggedOut, setLoggedOut] = useState(
+    () => new URLSearchParams(window.location.search).has('logout')
+  )
 
   useEffect(() => {
     api.authStatus().then(data => {
       setNeedAuth(data.need_auth)
       if (!data.need_auth) {
-        onLogin?.()
-        window.location.href = '/'
+        if (!loggedOut) {
+          onLogin?.()
+          window.location.href = '/'
+          return
+        }
+        setChecking(false)
         return
       }
       const tok = getToken()
@@ -33,8 +40,8 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     setError('')
     try {
       const data = await api.login(username, password)
-      if (data.ok && data.token) {
-        setToken(data.token)
+      if (data.ok) {
+        setToken(data.token || '')
         onLogin?.()
         window.location.href = '/'
       }
@@ -52,7 +59,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     )
   }
 
-  if (!needAuth) return null
+  if (!needAuth && !loggedOut) return null
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-aurora px-4 py-10">

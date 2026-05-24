@@ -2,14 +2,25 @@
 MediaTree update checker and Docker-based self-upgrade.
 
 Checks DockerHub Tags for newer versions and triggers a Docker
-container self-update.  The update flow uses a helper container
-(docker:cli) to run docker compose up -d, so the compose process
-survives when the main container is stopped (cgroup isolation).
+container self-update.  The update flow uses docker inspect to
+extract the running container's configuration.
+
+For compose-managed containers (detected via labels) it reconstructs
+a minimal compose YAML and uses docker compose up -d so management
+tools like dpanel/Portainer keep tracking the container.  For plain
+docker-run containers it rebuilds via docker run.
+
+The actual restart is executed inside a helper container
+(docker:cli) so the process survives when the main container
+is stopped (cgroup isolation).
 """
 import asyncio
 import httpx
-import os
+import json
+import re
+import shlex
 import shutil
+import socket
 import subprocess
 from pathlib import Path
 from .config import settings, logger
@@ -25,9 +36,7 @@ _VERSION_CONTAINER = Path(__file__).parent.parent / "VERSION"
 _VERSION_DEV = Path(__file__).parent.parent.parent / "VERSION"
 VERSION_FILE = _VERSION_CONTAINER if _VERSION_CONTAINER.exists() else _VERSION_DEV
 
-# Docker socket and compose paths
 DOCKER_SOCKET = Path("/var/run/docker.sock")
-COMPOSE_FILE = os.environ.get("COMPOSE_FILE", "")
 
 # Shell metacharacters to reject in version strings
 _FORBIDDEN_CHARS = set(";&|$`\\\n\r")
@@ -35,8 +44,49 @@ _FORBIDDEN_CHARS = set(";&|$`\\\n\r")
 # ─── Version utilities ───
 
 
+def _get_running_image_tag() -> str | None:
+    """Get Docker image tag of the running container via docker inspect.
+
+    Returns the image tag (without v prefix), or None if detection fails.
+    Falls back to VERSION file path — get_current_version() handles that.
+    """
+    cid: str | None = None
+    try:
+        cgroup_text = Path("/proc/self/cgroup").read_text(encoding="utf-8")
+        for pattern in (r"/docker-([0-9a-f]{64})\.scope", r"/docker/([0-9a-f]{64})"):
+            match = re.search(pattern, cgroup_text)
+            if match:
+                cid = match.group(1)[:12]
+                break
+    except Exception:
+        pass
+
+    if not cid:
+        cid = socket.gethostname()
+
+    if cid:
+        try:
+            result = subprocess.run(
+                ["docker", "inspect", "-f", "{{.Config.Image}}", cid],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                image = result.stdout.strip()
+                if ":" in image:
+                    tag = image.split(":", 1)[-1]
+                    if tag and tag != "latest":
+                        return tag.lstrip("vV")
+        except Exception:
+            pass
+    return None
+
+
 def get_current_version() -> str:
-    """Read current version from VERSION file, with fallback."""
+    """Read current version — Docker image tag preferred, VERSION file fallback."""
+    tag = _get_running_image_tag()
+    if tag:
+        return tag
+
     try:
         if VERSION_FILE.exists():
             return VERSION_FILE.read_text(encoding="utf-8").strip()
@@ -46,8 +96,9 @@ def get_current_version() -> str:
 
 
 def _normalize_version(v: str) -> tuple:
-    """Convert version string like 'v1.2.3' or '1.2.3' to comparable tuple."""
+    """Convert version string like 'v1.2.3' or '1.2.3-test' to comparable tuple."""
     v = (v or "").strip().lstrip("vV")
+    v = v.split("-")[0]  # strip pre-release suffix (-test, -beta, etc.)
     try:
         parts = v.split(".")
         return tuple(int(p) for p in parts[:3])
@@ -189,106 +240,278 @@ def _check_docker_available() -> str | None:
     return None
 
 
-async def _get_compose_project_name() -> str | None:
-    """Get docker compose project name from the running container."""
+def _get_container_ids() -> list[str]:
+    """Get possible container identifiers to try with docker inspect.
+
+    Returns a list of candidates in priority order:
+    1. Container ID from /proc/self/cgroup (most reliable)
+    2. Hostname (Docker sets it to the short container ID by default)
+    3. "mediatree" (the most common container name)
+    """
+    ids: list[str] = []
+
+    # Method 1: Extract container ID from cgroup (works with most Docker setups)
     try:
-        process = await asyncio.create_subprocess_exec(
-            "docker", "inspect", "mediatree",
-            "--format", '{{index .Config.Labels "com.docker.compose.project"}}',
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        cgroup_text = Path("/proc/self/cgroup").read_text(encoding="utf-8")
+        # cgroup v2: 0::/system.slice/docker-<64-char-id>.scope
+        # cgroup v1: <num>:<subsystem>:/docker/<64-char-id>
+        for pattern in (r"/docker-([0-9a-f]{64})\.scope", r"/docker/([0-9a-f]{64})"):
+            match = re.search(pattern, cgroup_text)
+            if match:
+                cid = match.group(1)
+                # Docker inspect can use short ID (first 12 chars)
+                ids.append(cid[:12])
+                ids.append(cid)
+                break
+    except Exception:
+        pass
+
+    # Method 2: HOSTNAME (Docker default = short container ID)
+    hostname = socket.gethostname()
+    if hostname:
+        ids.append(hostname)
+
+    # Method 3: fallback — most common container name
+    ids.append("mediatree")
+
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    result: list[str] = []
+    for cid in ids:
+        if cid not in seen:
+            seen.add(cid)
+            result.append(cid)
+    return result
+
+
+def _inspect_container_config(container_id: str) -> dict | None:
+    """Extract container runtime configuration via docker inspect.
+
+    Returns a dict with keys: name, env, port_bindings, restart_policy,
+    binds, mounts, network_mode, privileged, cap_add, labels,
+    is_compose_managed, compose_project, compose_service.
+    """
+    try:
+        result = subprocess.run(
+            ["docker", "inspect", container_id],
+            capture_output=True, text=True, timeout=10,
         )
-        stdout, _ = await process.communicate()
-        name = stdout.decode().strip()
-        return name if name else None
+        if result.returncode != 0 or not result.stdout.strip():
+            return None
+        data = json.loads(result.stdout)
+        if not data:
+            return None
+        info = data[0]
+        config = info.get("Config", {})
+        host_config = info.get("HostConfig", {})
+        labels = config.get("Labels") or {}
+        compose_project = labels.get("com.docker.compose.project", "")
+
+        return {
+            "name": (info.get("Name") or "").lstrip("/"),
+            "env": config.get("Env") or [],
+            "port_bindings": host_config.get("PortBindings") or {},
+            "restart_policy": host_config.get("RestartPolicy") or {},
+            "binds": host_config.get("Binds") or [],
+            "mounts": info.get("Mounts") or [],
+            "network_mode": host_config.get("NetworkMode") or "",
+            "privileged": host_config.get("Privileged", False),
+            "cap_add": host_config.get("CapAdd") or [],
+            "labels": labels,
+            "is_compose_managed": bool(compose_project),
+            "compose_project": compose_project,
+            "compose_service": labels.get("com.docker.compose.service", ""),
+        }
     except Exception:
         return None
 
 
-def _build_temp_compose(original: str, version_tag: str) -> str:
-    """Generate a clean compose-only-override with the target image tag.
+def _yaml_dq(value: str) -> str:
+    """Escape a string for inclusion inside a YAML double-quoted string."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
 
-    - Replaces image: line with the target version
-    - Strips the compose-file bind mount (avoid relative-path /tmp resolution bug)
-    - Strips container_name (avoid cross-project name conflicts)
-    - Strips env_file (avoid relative path issues from /tmp)
-    - Strips build: section (force using the pulled image)
+
+def _build_compose_yaml(config: dict, version_tag: str) -> str:
+    """Build a minimal docker-compose.yml from container inspect config.
+
+    Skips: compose-file bind mounts (/compose.yml), COMPOSE_FILE env var.
     """
-    import re
+    lines: list[str] = []
+    service = config.get("compose_service") or config.get("name") or "mediatree"
 
-    # 1. Replace image tag
-    updated = re.sub(
-        r"image:\s*\S+",
-        f"image: zasenjc/mediatree:{version_tag}",
-        original,
-        count=1,
-    )
+    lines.append("services:")
+    lines.append(f"  {service}:")
+    lines.append(f"    image: zasenjc/mediatree:{version_tag}")
 
-    lines = updated.split("\n")
-    result = []
-    in_build = False
-    in_envfile = False
+    name = config.get("name", "")
+    if name:
+        lines.append(f'    container_name: "{_yaml_dq(name)}"')
 
-    for line in lines:
-        stripped = line.strip()
+    restart = config.get("restart_policy", {})
+    restart_name = restart.get("Name", "")
+    if restart_name:
+        lines.append(f'    restart: "{_yaml_dq(restart_name)}"')
 
-        # Strip container_name
-        if stripped.startswith("container_name:"):
+    # Ports
+    port_bindings = config.get("port_bindings", {})
+    if port_bindings:
+        lines.append("    ports:")
+        for container_port, host_bindings in port_bindings.items():
+            port_num = container_port.split("/")[0]
+            for binding in host_bindings:
+                host_ip = binding.get("HostIp", "")
+                host_port = binding.get("HostPort", "")
+                if host_ip:
+                    lines.append(f'      - "{host_ip}:{host_port}:{port_num}"')
+                else:
+                    lines.append(f'      - "{host_port}:{port_num}"')
+
+    # Volumes
+    mounts = config.get("mounts", [])
+    vol_lines: list[str] = []
+    for mount in mounts:
+        if mount.get("Type") != "bind":
             continue
-
-        # Strip compose-file bind mount (avoid relative-path /tmp resolution bug)
-        if "docker-compose.yml" in stripped and "/compose.yml" in stripped:
+        src = mount.get("Source", "")
+        dst = mount.get("Destination", "")
+        if not src or not dst:
             continue
-
-        # Strip build: section (both inline "build: ." and multi-line)
-        if stripped.startswith("build:"):
-            if stripped != "build:":
-                # Inline: "build: ." — skip this line
-                continue
-            in_build = True
+        if dst == "/compose.yml":
             continue
-        if in_build:
-            # build: is followed by an indented value (e.g. "build: .")
-            # If this line is less indented or at service level, we're out
-            if line and not line[0].isspace():
-                in_build = False
-                result.append(line)
-            # Otherwise skip (the build value, e.g. just ".")
-            continue
+        mode = mount.get("Mode", "")
+        vol_spec = f"{src}:{dst}"
+        if mode and mode != "rw":
+            vol_spec += f":{mode}"
+        vol_lines.append(f'      - "{_yaml_dq(vol_spec)}"')
 
-        # Strip env_file: section
-        if stripped.startswith("env_file:"):
-            if stripped != "env_file:":
-                # Inline: env_file: path
-                continue
-            in_envfile = True
-            continue
-        if in_envfile:
-            if stripped.startswith("-"):
-                continue
-            in_envfile = False
-            result.append(line)
-            continue
+    if vol_lines:
+        lines.append("    volumes:")
+        lines.extend(vol_lines)
 
-        result.append(line)
+    # Environment
+    env_vars = config.get("env", [])
+    env_lines: list[str] = []
+    for env in env_vars:
+        if env.startswith("COMPOSE_FILE="):
+            continue
+        env_lines.append(f'      - "{_yaml_dq(env)}"')
 
-    return "\n".join(result)
+    if env_lines:
+        lines.append("    environment:")
+        lines.extend(env_lines)
+
+    # Network mode (skip default bridge)
+    network_mode = config.get("network_mode", "")
+    if network_mode and network_mode not in ("", "bridge", "default"):
+        lines.append(f'    network_mode: "{_yaml_dq(network_mode)}"')
+
+    # Privileged
+    if config.get("privileged"):
+        lines.append("    privileged: true")
+
+    # Capabilities
+    cap_add = config.get("cap_add", [])
+    if cap_add:
+        lines.append("    cap_add:")
+        for cap in cap_add:
+            lines.append(f"      - {cap}")
+
+    return "\n".join(lines) + "\n"
+
+
+def _build_docker_run_cmd(config: dict, version_tag: str) -> list[str]:
+    """Build a 'docker run' command from inspect config that replays the
+    current container configuration with a new image tag.
+
+    All container labels are preserved so management tools can still
+    identify the container.  Compose-file bind mounts and COMPOSE_FILE
+    env var are skipped.
+    """
+    cmd = ["docker", "run", "-d"]
+
+    # Container name
+    name = config.get("name", "")
+    if name:
+        cmd.extend(["--name", name])
+
+    # Restart policy
+    restart = config.get("restart_policy", {})
+    restart_name = restart.get("Name", "")
+    if restart_name:
+        cmd.extend(["--restart", restart_name])
+
+    # Ports
+    port_bindings = config.get("port_bindings", {})
+    for container_port, host_bindings in port_bindings.items():
+        port_num = container_port.split("/")[0]
+        for binding in host_bindings:
+            host_ip = binding.get("HostIp", "")
+            host_port = binding.get("HostPort", "")
+            if host_ip:
+                cmd.extend(["-p", f"{host_ip}:{host_port}:{port_num}"])
+            else:
+                cmd.extend(["-p", f"{host_port}:{port_num}"])
+
+    # Volumes
+    mounts = config.get("mounts", [])
+    for mount in mounts:
+        if mount.get("Type") != "bind":
+            continue
+        src = mount.get("Source", "")
+        dst = mount.get("Destination", "")
+        if not src or not dst:
+            continue
+        if dst == "/compose.yml":
+            continue
+        mode = mount.get("Mode", "")
+        vol_spec = f"{src}:{dst}"
+        if mode and mode != "rw":
+            vol_spec += f":{mode}"
+        cmd.extend(["-v", vol_spec])
+
+    # Environment variables
+    for env in config.get("env", []):
+        if env.startswith("COMPOSE_FILE="):
+            continue
+        cmd.extend(["-e", env])
+
+    # Network mode (skip default bridge)
+    network_mode = config.get("network_mode", "")
+    if network_mode and network_mode not in ("", "bridge", "default"):
+        cmd.extend(["--network", network_mode])
+
+    # Privileged mode
+    if config.get("privileged"):
+        cmd.append("--privileged")
+
+    # Capabilities
+    for cap in config.get("cap_add", []):
+        cmd.extend(["--cap-add", cap])
+
+    # Container labels (preserve compose project association for management tools)
+    for key, value in config.get("labels", {}).items():
+        cmd.extend(["-l", f"{key}={value}"])
+
+    # Image
+    cmd.append(f"zasenjc/mediatree:{version_tag}")
+
+    return cmd
 
 
 async def perform_update(version: str) -> dict:
     """
     Pull a Docker image and restart the container with the new version.
 
-    Uses a helper container (docker:cli) to run docker compose up -d.
-    The helper runs in its own cgroup, so it survives when the main
-    container is stopped during the compose operation.
+    For compose-managed containers (detected via labels) it reconstructs a
+    minimal compose YAML and uses docker compose up -d so management tools
+    keep tracking.  For plain docker-run containers it rebuilds via docker run.
 
     Flow:
     1. Validate version + check Docker availability
-    2. docker pull zasenjc/mediatree:<version>
-    3. Generate temp compose YAML in memory
-    4. Ensure docker:cli helper image is available
-    5. Pipe compose YAML to a helper container that runs compose up -d
+    2. docker inspect own container for runtime config
+    3. docker pull zasenjc/mediatree:<version>
+    4. If compose-managed: compose up -d (via helper)
+       Else: stop + rm + run (via helper)
     """
     version_tag = version.lstrip("vV")
 
@@ -299,33 +522,27 @@ async def perform_update(version: str) -> dict:
     if docker_error:
         return {"ok": False, "error": docker_error}
 
-    compose_file = COMPOSE_FILE
-    if compose_file and not Path(compose_file).is_file():
-        compose_file = ""  # ENV points to missing file, fall through to candidates
-    if not compose_file:
-        for candidate in ["/app/docker-compose.yml", "/docker-compose.yml", "/app/data/docker-compose.yml"]:
-            if Path(candidate).is_file():
-                compose_file = candidate
-                break
-    if not compose_file or not Path(compose_file).is_file():
-        return {"ok": False, "error": "docker-compose.yml not found. "
-                "Set COMPOSE_FILE environment variable."}
+    # Try each possible container identifier until one works
+    config = None
+    for cid in _get_container_ids():
+        config = _inspect_container_config(cid)
+        if config:
+            logger.info(f"Inspected container via identifier: {cid}")
+            break
+        logger.debug(f"Inspect failed for {cid}, trying next candidate")
 
-    try:
-        original = Path(compose_file).read_text(encoding="utf-8")
-    except Exception as e:
-        return {"ok": False, "error": f"Cannot read compose file: {e}"}
+    if not config:
+        return {"ok": False, "error": "Cannot inspect running container. "
+                "Ensure docker.sock is mounted and the container is running."}
 
-    # Persist compose content to data volume so the next container can find it
-    # even though the compose-file bind mount is stripped from the temp compose.
-    try:
-        data_compose = Path("/app/data/docker-compose.yml")
-        data_compose.parent.mkdir(parents=True, exist_ok=True)
-        data_compose.write_text(original, encoding="utf-8")
-    except Exception:
-        pass  # Non-critical, fallback to other paths on next update
+    container_name = config.get("name", "mediatree")
+    is_compose = config.get("is_compose_managed", False)
+    compose_project = config.get("compose_project", "")
 
-    logger.info(f"Starting update to version {version_tag}")
+    logger.info(
+        f"Starting update to version {version_tag} "
+        f"(container: {container_name}, compose: {is_compose})"
+    )
 
     try:
         # ── Step 1: Pull new mediatree image ──
@@ -344,17 +561,7 @@ async def perform_update(version: str) -> dict:
 
         logger.info(f"Docker pull succeeded for {version_tag}")
 
-        # ── Step 2: Build temp compose YAML in memory ──
-        # The compose-file bind mount is stripped — it causes a directory to be
-        # created at /compose.yml when the helper runs compose from /tmp.
-        # Compose content is persisted to /app/data/docker-compose.yml instead.
-        temp_yaml = _build_temp_compose(original, version_tag)
-        logger.info("Temp compose YAML generated (compose-file mount stripped)")
-
-        # ── Step 3: Get compose project name ──
-        project_name = await _get_compose_project_name() or "mediatree"
-
-        # ── Step 4: Ensure docker:cli helper image is available ──
+        # ── Step 2: Ensure docker:cli helper image is available ──
         check_cli = await asyncio.create_subprocess_exec(
             "docker", "image", "inspect", "docker:cli",
             stdout=asyncio.subprocess.DEVNULL,
@@ -373,35 +580,63 @@ async def perform_update(version: str) -> dict:
                 error_msg = cli_stderr.decode("utf-8", errors="replace")[:500]
                 return {"ok": False, "error": f"无法拉取 helper 镜像: {error_msg}"}
 
-        # ── Step 5: Run compose up -d inside a helper container ──
-        # The helper container has its own cgroup (not part of our compose
-        # project), so it survives when docker compose stops the main container.
-        # Compose YAML is piped via stdin — no shared filesystem needed.
-        up_cmd = [
-            "docker", "run", "--rm",
-            "-v", "/var/run/docker.sock:/var/run/docker.sock",
-            "-i",
-            "docker:cli",
-            "sh", "-c",
-            f"cat > /tmp/c.yml && docker compose -f /tmp/c.yml --project-name {project_name} up -d"
-        ]
-        logger.info(f"Launching helper container for compose up (project={project_name})")
+        # ── Step 3: Execute update ──
+        if is_compose and compose_project:
+            # ── Compose path: reconstruct compose YAML + compose up -d ──
+            compose_yaml = _build_compose_yaml(config, version_tag)
+            project_q = shlex.quote(compose_project)
+            compose_script = (
+                f"cat > /tmp/c.yml && "
+                f"docker compose -f /tmp/c.yml --project-name {project_q} up -d"
+            )
+            logger.info(f"Compose update — project={compose_project}")
 
-        # Fire-and-forget: write compose to stdin then detach.
-        # Our process may die when compose stops the main container,
-        # but the helper container continues independently.
-        process = subprocess.Popen(
-            up_cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            start_new_session=True,
-        )
-        try:
-            process.stdin.write(temp_yaml.encode("utf-8"))
-            process.stdin.close()
-        except Exception:
-            pass  # Process may already be gone, helper handles it
+            up_cmd = [
+                "docker", "run", "--rm",
+                "-v", "/var/run/docker.sock:/var/run/docker.sock",
+                "-i",
+                "docker:cli", "sh", "-c", compose_script,
+            ]
+            logger.info(f"Launching helper container for compose up")
+
+            # Fire-and-forget with stdin pipe for compose YAML
+            process = subprocess.Popen(
+                up_cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            try:
+                process.stdin.write(compose_yaml.encode("utf-8"))
+                process.stdin.close()
+            except Exception:
+                pass
+        else:
+            # ── Docker run path: stop + rm + run ──
+            run_cmd = _build_docker_run_cmd(config, version_tag)
+            run_cmd_str = ' '.join(shlex.quote(arg) for arg in run_cmd)
+            name_q = shlex.quote(container_name)
+            script = (
+                f"docker stop {name_q} 2>/dev/null; "
+                f"docker rm -f {name_q} 2>/dev/null; "
+                f"{run_cmd_str}"
+            )
+            logger.info(f"Docker run update — cmd: {run_cmd_str[:200]}...")
+
+            up_cmd = [
+                "docker", "run", "--rm",
+                "-v", "/var/run/docker.sock:/var/run/docker.sock",
+                "docker:cli", "sh", "-c", script,
+            ]
+            logger.info("Launching helper container for docker run")
+
+            subprocess.Popen(
+                up_cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
 
         logger.info(f"Update to {version_tag} triggered via helper container")
         return {

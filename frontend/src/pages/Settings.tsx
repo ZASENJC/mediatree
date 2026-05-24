@@ -590,13 +590,29 @@ export default function Settings() {
                         {!isCurrent && (
                           <button
                             onClick={async () => {
-                              if (!confirm(`确定要更新到 ${v.display_version || v.version} 吗？容器将自动重启。`)) return
+                              if (!confirm(`确定要切换到 ${v.display_version || v.version} 吗？容器将自动重启。`)) return
                               setUpdatePerforming(v.version)
                               setUpdateMsg('')
                               try {
                                 const res = await api.performUpdate(v.version)
                                 setUpdateMsg(res.message || '更新已触发')
                                 dismissUpdate(v.version)
+                                // 轮询等待容器重启后刷新版本信息
+                                let attempts = 0
+                                const poll = setInterval(async () => {
+                                  attempts++
+                                  try {
+                                    const result = await api.checkForUpdates()
+                                    setUpdateResult(result)
+                                    setUpdateMsg(`已切换到 ${result.current_version}`)
+                                    clearInterval(poll)
+                                  } catch {
+                                    if (attempts >= 20) {
+                                      setUpdateMsg('容器重启中，请手动刷新页面查看最新版本')
+                                      clearInterval(poll)
+                                    }
+                                  }
+                                }, 3000)
                               } catch (e: any) {
                                 setUpdateMsg(`更新失败: ${e.message || '未知错误'}`)
                               }
@@ -605,7 +621,7 @@ export default function Settings() {
                             disabled={updatePerforming === v.version}
                             className={`${btnPrimary} text-xs px-2 py-1`}
                           >
-                            {updatePerforming === v.version ? '更新中...' : '更新到此版本'}
+                            {updatePerforming === v.version ? '切换中...' : '切换到此版本'}
                           </button>
                         )}
                       </div>
