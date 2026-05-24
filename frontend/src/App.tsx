@@ -5,6 +5,7 @@ import { getActiveLibrary, setActiveLibrary, api, clearCache, MediaRoot } from '
 import { getUiPrefs, setUiPrefs, getUpdateNotification } from './store'
 import { useToastController } from './toast'
 import { useTaskProgressController } from './taskProgress'
+import { useTheater } from './theater'
 import Home from './pages/Home'
 import Browse from './pages/Browse'
 import FolderPage from './pages/Folder'
@@ -39,6 +40,7 @@ export default function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [hasUpdate, setHasUpdate] = useState(() => getUpdateNotification().available)
+  const { theaterMode, setTheaterMode } = useTheater()
   const toasts = useToastController()
   const taskProgress = useTaskProgressController()
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -130,6 +132,13 @@ export default function App() {
       setCheckingSetup(false)
     }).catch(() => setCheckingSetup(false))
   }, [])
+
+  // 离开详情页时自动退出剧院模式
+  useEffect(() => {
+    if (theaterMode && !location.pathname.startsWith('/detail/')) {
+      setTheaterMode(false)
+    }
+  }, [location.pathname, theaterMode, setTheaterMode])
 
   const scanTimerRef = useRef(0)
 
@@ -284,7 +293,20 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="sticky top-0 z-50 pt-2 sm:pt-3">
+      <header className={`sticky top-0 z-50 ${theaterMode ? 'pt-5 theater-header' : 'pt-2 sm:pt-3'}`}>
+        {theaterMode ? (
+          <div className="mx-auto flex h-10 max-w-7xl items-center gap-3 px-4 sm:px-6">
+            <div className="liquid-glass pl-3 pr-3 py-1 sm:pl-4 sm:pr-4 sm:py-1.5 flex items-center gap-2 sm:gap-4">
+              <Link to="/" className="shrink-0 text-base font-semibold tracking-tight text-white transition-colors hover:text-apple-blue sm:text-lg">
+                <span className="hidden min-[380px]:inline">MediaTree</span>
+                <span className="min-[380px]:hidden">MT</span>
+              </Link>
+              <Link to="/" className={`shrink-0 rounded-full px-2 py-1 text-xs transition-all sm:px-3 sm:text-sm ${location.pathname === '/' ? 'bg-white/18 text-white shadow-sm' : 'text-gray-400 hover:bg-white/10 hover:text-white'}`}>
+                首页
+              </Link>
+            </div>
+          </div>
+        ) : (<>
         <div className="mx-auto flex h-12 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6 transform-gpu sm:h-14 sm:gap-3">
           <div className="relative">
           <div className="flex min-w-0 items-center gap-2 liquid-glass pl-3 pr-3 py-1.5 sm:pl-4 sm:pr-4 sm:py-2">
@@ -430,9 +452,11 @@ export default function App() {
             {renderSearchPanel('absolute left-0 right-0 top-full z-50 mt-2 max-h-80 overflow-y-auto p-1 liquid-glass')}
           </form>
         )}
+        </>
+        )}
       </header>
 
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-7">
+      <main className={`flex-1 w-full min-h-0 ${theaterMode ? 'flex flex-col max-w-none mx-0 px-0 py-0' : 'max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-7'}`}>
         <Routes key={activeLib}>
           <Route path="/" element={<Home />} />
           <Route path="/browse" element={<Browse />} />

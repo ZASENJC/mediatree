@@ -6,6 +6,7 @@ import { api, SubtitleTrack } from '../api'
 import { getUiPrefs, setUiPrefs } from '../store'
 import artplayerPluginAss from './artplayerPluginAss'
 import VRVideoLayer, { VRMode } from './VRVideoLayer'
+import { useTheater } from '../theater'
 
 interface Props {
   src: string
@@ -469,7 +470,7 @@ function useAmbientColor(
 }
 
 function usePlayerRect(
-  wrapperRef: React.RefObject<HTMLDivElement | null>,
+  targetRef: React.RefObject<HTMLDivElement | null>,
   enabled: boolean,
 ): DOMRect | null {
   const [rect, setRect] = useState<DOMRect | null>(null)
@@ -479,7 +480,7 @@ function usePlayerRect(
       setRect(null)
       return
     }
-    const el = wrapperRef.current
+    const el = targetRef.current
     if (!el) return
 
     let raf = 0
@@ -502,15 +503,80 @@ function usePlayerRect(
       window.removeEventListener('scroll', update)
       window.removeEventListener('resize', update)
     }
-    // wrapperRef is stable (from useRef)
+    // targetRef is stable (from useRef)
   }, [enabled])
 
   return rect
 }
 
+type TheaterPlayerSize = { width: number; height: number }
+
+function useTheaterPlayerSize(
+  wrapperRef: React.RefObject<HTMLDivElement | null>,
+  enabled: boolean,
+  aspect: number,
+): TheaterPlayerSize | null {
+  const [size, setSize] = useState<TheaterPlayerSize | null>(null)
+
+  useEffect(() => {
+    if (!enabled) {
+      setSize(null)
+      return
+    }
+
+    const el = wrapperRef.current
+    if (!el) return
+
+    const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9
+    let raf = 0
+
+    const update = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        const maxWidth = el.clientWidth
+        const maxHeight = el.clientHeight
+        if (maxWidth <= 0 || maxHeight <= 0) return
+
+        let width = maxWidth
+        let height = width / safeAspect
+        if (height > maxHeight) {
+          height = maxHeight
+          width = height * safeAspect
+        }
+
+        const next = {
+          width: Math.floor(Math.min(width, maxWidth)),
+          height: Math.floor(Math.min(height, maxHeight)),
+        }
+        setSize(prev => (
+          prev && Math.abs(prev.width - next.width) < 1 && Math.abs(prev.height - next.height) < 1
+            ? prev
+            : next
+        ))
+      })
+    }
+
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    window.addEventListener('resize', update, { passive: true })
+    window.visualViewport?.addEventListener('resize', update, { passive: true })
+
+    return () => {
+      cancelAnimationFrame(raf)
+      ro.disconnect()
+      window.removeEventListener('resize', update)
+      window.visualViewport?.removeEventListener('resize', update)
+    }
+  }, [enabled, aspect])
+
+  return size
+}
+
 export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) {
   const artContainerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const playerFrameRef = useRef<HTMLDivElement>(null)
   const artRef = useRef<Artplayer | null>(null)
   const gestureCleanupRef = useRef<GestureCleanup | null>(null)
   const watchedRef = useRef(false)
@@ -563,6 +629,9 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   const [vrMode, setVrMode] = useState<VRMode>('off')
   const [videoAspect, setVideoAspect] = useState(16 / 9)
   const [ambientEnabled, setAmbientEnabled] = useState(() => getUiPrefs().ambientMode !== false)
+  const { theaterMode, setTheaterMode } = useTheater()
+  const theaterModeRef = useRef(theaterMode)
+  theaterModeRef.current = theaterMode
   const streamUrl = useMemo(() => new URL(api.streamUrl(movieId), localPlayerOrigin()).toString(), [movieId])
   const streamSrc = useMemo(() => {
     if (!useTranscode) return src
@@ -576,9 +645,15 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   const externalPlaylistUrl = new URL(api.externalPlaylistUrl(movieId), localPlayerOrigin()).toString()
   const localPlaybackUrl = hasExternalSubtitles ? externalPlaylistUrl : streamUrl
   const playerStyle = { '--mediatree-video-aspect': videoAspect } as CSSProperties
+  const theaterSize = useTheaterPlayerSize(wrapperRef, theaterMode, videoAspect)
+  const theaterFrameStyle = theaterSize ? {
+    width: `${theaterSize.width}px`,
+    height: `${theaterSize.height}px`,
+  } as CSSProperties : undefined
 
-  const ambientColor = useAmbientColor(artRef, ambientEnabled && !useTranscode)
-  const playerRect = usePlayerRect(wrapperRef, ambientEnabled)
+  const effectiveAmbient = ambientEnabled || theaterMode
+  const ambientColor = useAmbientColor(artRef, effectiveAmbient && !useTranscode)
+  const playerRect = usePlayerRect(playerFrameRef, effectiveAmbient)
 
   const toggleAmbient = useCallback(() => {
     setAmbientEnabled(prev => {
@@ -592,7 +667,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   useEffect(() => {
     const el = document.getElementById('ambient-root')
     if (!el) return
-    if (ambientColor && ambientEnabled) {
+    if (ambientColor && effectiveAmbient) {
       el.style.setProperty('--ambient-r', String(ambientColor.r))
       el.style.setProperty('--ambient-g', String(ambientColor.g))
       el.style.setProperty('--ambient-b', String(ambientColor.b))
@@ -601,7 +676,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
       el.style.removeProperty('--ambient-g')
       el.style.removeProperty('--ambient-b')
     }
-  }, [ambientColor, ambientEnabled])
+  }, [ambientColor, effectiveAmbient])
 
   const clearNativeSubtitle = useCallback((art: Artplayer) => {
     try { art.subtitle.show = false } catch {}
@@ -1228,6 +1303,18 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
       fastForward: false,
       autoOrientation: true,
       airplay: true,
+      controls: [
+        {
+          name: 'theater',
+          position: 'right',
+          index: 10,
+          tooltip: '影院模式',
+          html: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M7 21h10"/><path d="M12 17v4"/></svg>`,
+          click: function (_component: unknown, _event: Event) {
+            setTheaterMode(!theaterModeRef.current)
+          },
+        },
+      ],
       theme: '#00a4dc',
       subtitle: {
         url: '',
@@ -1543,22 +1630,50 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
     hideResumePrompt()
   }
 
+  // ESC 键退出剧院模式（仅当不在浏览器原生全屏时）
+  useEffect(() => {
+    if (!theaterMode) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !document.fullscreenElement) {
+        setTheaterMode(false)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [theaterMode, setTheaterMode])
+
+  // 剧院模式尺寸变化后触发 ArtPlayer 重新计算内部画布、字幕和控件布局。
+  useEffect(() => {
+    const art = artRef.current
+    if (!art || art.isDestroy) return
+    const timer = setTimeout(() => {
+      window.dispatchEvent(new Event('resize'))
+    }, 150)
+    return () => clearTimeout(timer)
+  }, [theaterMode, theaterSize?.width, theaterSize?.height])
+
   return (
     <>
-      {ambientEnabled && playerRect && createPortal(
+      {effectiveAmbient && playerRect && createPortal(
         <div
-          className="ambient-glow"
+          className={`ambient-glow ${theaterMode ? 'theater-ambient-glow' : ''}`}
           style={{
             left: playerRect.left + playerRect.width / 2,
             top: playerRect.top + playerRect.height / 2,
-            width: playerRect.width * 3,
-            height: playerRect.height * 3,
+            width: playerRect.width * (theaterMode ? 5 : 3),
+            height: playerRect.height * (theaterMode ? 5 : 3),
           }}
         />,
         document.getElementById('ambient-root')!,
       )}
-      <div ref={wrapperRef} className="relative mx-auto w-full transition-all duration-300" style={playerStyle}>
-        <div className="relative z-[1] overflow-hidden rounded-3xl">
+      <div ref={wrapperRef}
+        className={theaterMode ? 'theater-player-wrapper' : 'relative mx-auto w-full transition-all duration-300'}
+        style={playerStyle}>
+        <div
+          ref={playerFrameRef}
+          className="relative z-[1] overflow-hidden rounded-3xl"
+          style={theaterMode ? theaterFrameStyle : undefined}
+        >
         <div ref={artContainerRef} className="mediatree-artplayer w-full" />
         <VRVideoLayer art={artInstance} mode={vrMode} />
 
@@ -1616,6 +1731,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         )}
       </div>
 
+      {!theaterMode && (
       <div className="mt-5 flex items-center justify-center gap-2 overflow-x-auto pb-1">
         <a href={`iina://weblink?url=${encodeURIComponent(localPlaybackUrl)}`} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-300 backdrop-blur-xl transition-all hover:bg-white/[0.14] hover:text-white">
           IINA
@@ -1635,6 +1751,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
           </span>
         )}
       </div>
+      )}
       </div>
     </>
   )

@@ -517,3 +517,50 @@ textarea {
 .media-grid {
   contain: layout style;
 }
+
+/* ── Theater Mode (影院模式) ── */
+
+/* 剧院模式：30px 左右边距，20px 上距 50px 下距，内部播放器按比例居中 */
+.theater-player-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 20px 30px 50px 30px;
+}
+
+/* 内层尺寸由 VideoPlayer 按可用区域和视频比例计算，避免高度封顶后继续变宽 */
+.theater-player-wrapper > div:first-child {
+  flex: 0 0 auto;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* 播放器只填满已计算好的视频盒子，不再自行拉宽产生额外黑边 */
+.theater-player-wrapper .mediatree-artplayer {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+  min-height: 0 !important;
+}
+
+/* 剧院模式放大圆角 */
+.theater-player-wrapper .mediatree-artplayer .art-video-player {
+  border-radius: 1.5rem;
+}
+
+/* 剧院模式顶栏：降低视觉权重 */
+.theater-header .liquid-glass {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+}
+
+/* 剧院光效增强：更高透明度 + 更大模糊半径 */
+.theater-ambient-glow {
+  opacity: 0.7 !important;
+  filter: blur(120px) saturate(1.6) !important;
+}
