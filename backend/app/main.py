@@ -702,6 +702,7 @@ async def api_get_config():
         "bangumi_cache_hours": getattr(settings, 'bangumi_cache_hours', 168),
         "tmdb_api_key": _mask_sensitive(settings.tmdb_api_key),
         "tmdb_access_token": _mask_sensitive(settings.tmdb_access_token),
+        "tmdb_configured": bool(settings.tmdb_api_key or settings.tmdb_access_token),
         "scrape_concurrency_per_library": settings.scrape_concurrency_per_library,
         "scrape_global_concurrency": settings.scrape_global_concurrency,
         "scraper_api_concurrency": settings.scraper_api_concurrency,

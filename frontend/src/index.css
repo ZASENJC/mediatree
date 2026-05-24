@@ -475,6 +475,14 @@ textarea {
   animation: backdrop-out 1.5s ease-in-out forwards;
 }
 
+@keyframes indeterminate-bar {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+.animate-indeterminate-bar {
+  animation: indeterminate-bar 1.5s ease-in-out infinite;
+}
+
 /* === Markdown content (changelog) === */
 .changelog-md h1 { font-size: 1.25rem; font-weight: 700; color: #fff; margin: 1.25em 0 0.5em; }
 .changelog-md h1:first-child { margin-top: 0; }

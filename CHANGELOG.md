@@ -6,6 +6,20 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## v1.0.02 (2026-05-25)
+
+### UI Improvements
+
+- **Toast z-index fix**: toast notifications and scan progress now render via `createPortal` to `document.body`, fixing an issue where they were hidden behind modal backdrops due to `#root` stacking context
+- **Manual scrape progress toast**: after applying a manual scrape result, a progress indicator appears in the bottom-right with indeterminate animation, then auto-dismisses on completion
+- **TMDB config warning**: toast reminder to configure TMDB API Key in Settings when performing scrape operations without TMDB credentials
+
+### Backend
+
+- `/api/config` now returns `tmdb_configured` field for frontend TMDB config detection
+
+---
+
 ## v1.0.01 (2026-05-24)
 
 ### Performance

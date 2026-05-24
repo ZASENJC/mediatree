@@ -4,6 +4,7 @@ import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import { getActiveLibrary, setActiveLibrary, api, clearCache, MediaRoot } from './api'
 import { getUiPrefs, setUiPrefs, getUpdateNotification } from './store'
 import { useToastController } from './toast'
+import { useTaskProgressController } from './taskProgress'
 import Home from './pages/Home'
 import Browse from './pages/Browse'
 import FolderPage from './pages/Folder'
@@ -39,6 +40,7 @@ export default function App() {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [hasUpdate, setHasUpdate] = useState(() => getUpdateNotification().available)
   const toasts = useToastController()
+  const taskProgress = useTaskProgressController()
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const moreBtnRef = useRef<HTMLButtonElement | null>(null)
 
@@ -461,26 +463,35 @@ export default function App() {
         />
       )}
 
-      {scanToast.visible && <ScanToast {...scanToast} />}
+      {scanToast.visible && createPortal(
+        <ScanToast {...scanToast} />,
+        document.body,
+      )}
+      {taskProgress.visible && createPortal(
+        <ScanToast {...taskProgress} className="z-[80]" />,
+        document.body,
+      )}
 
-      {toasts.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[70] flex flex-col gap-2">
+      {toasts.length > 0 && createPortal(
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[90] flex flex-col gap-2">
           {toasts.map(t => (
             <div key={t.id} className="glass-popover px-4 py-2 text-sm text-white/90 animate-fade-in">
               {t.message}
             </div>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )
 }
 
-function ScanToast({ status, done, total }: { status: string; done: number; total: number }) {
+function ScanToast({ status, done, total, className = '' }: { status: string; done: number; total: number; className?: string }) {
   const pct = total > 0 ? Math.max(4, Math.min(100, (done / total) * 100)) : 100
   const complete = status.includes('完成')
+  const indeterminate = total <= 0 && !complete
   return (
-    <div className="fixed bottom-3 left-3 right-3 z-50 rounded-3xl border border-white/10 bg-black/60 p-4 shadow-glass backdrop-blur-2xl sm:bottom-4 sm:left-auto sm:right-4 sm:w-80">
+    <div className={`fixed bottom-3 left-3 right-3 z-50 rounded-3xl border border-white/10 bg-black/60 p-4 shadow-glass backdrop-blur-2xl sm:bottom-4 sm:left-auto sm:right-4 sm:w-80 ${className}`}>
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className={`text-sm font-medium ${complete ? 'text-green-300' : 'text-white'}`}>{status}</p>
@@ -490,7 +501,11 @@ function ScanToast({ status, done, total }: { status: string; done: number; tota
       </div>
       {!complete && (
         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
-          <div className="h-full rounded-full bg-apple-blue transition-all duration-500" style={{ width: `${pct}%` }} />
+          {indeterminate ? (
+            <div className="h-full w-1/3 rounded-full bg-apple-blue animate-indeterminate-bar" />
+          ) : (
+            <div className="h-full rounded-full bg-apple-blue transition-all duration-500" style={{ width: `${pct}%` }} />
+          )}
         </div>
       )}
     </div>
