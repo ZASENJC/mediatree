@@ -24,19 +24,19 @@
 
 ## Screenshots
 
-![Home](docs/screenshots/home.png)
+![Home](https://img.qunq.de/file/1779640696711_home_no_text.png)
 *Home — media library grid with glassmorphism cards*
 
 ![Detail](docs/screenshots/detail.png)
 *Detail — metadata, cast, keywords & reviews*
 
-![Player](docs/screenshots/player.png)
+![Player](https://img.qunq.de/file/1779640693184_movie.png)
 *Player — streaming with ASS subtitle rendering*
 
-![Browse](docs/screenshots/browse.png)
+![Browse](https://img.qunq.de/file/1779640700855_browser.png)
 *Browse — folder tree navigation with seasonal tabs*
 
-![Settings](docs/screenshots/settings.png)
+![Settings](https://img.qunq.de/file/1779640699625_settings.png)
 *Settings — scraper config, library management, backup & updates*
 
 ---
