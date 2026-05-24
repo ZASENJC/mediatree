@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - Before each push, sync `CLAUDE.md`, `CHANGELOG.md`, and `README.md` to reflect the current code state.
 - Include documentation updates in the same commit; do not commit them separately.
-- Version rule: use `0.0.00` three-level format without `v` prefix (e.g., `1.0.01`, `1.0.02`), increment sequentially, no more skipping major/minor version numbers. DockerHub tags must also use the same format without `v` prefix.
+- Version rule: use `0.0.00` three-level format without `v` prefix (e.g., `1.0.01`, `1.0.02`), increment sequentially, no more skipping major/minor version numbers. DockerHub tags must also use the same format without `v` prefix. When updating the version number, also create a corresponding GitHub Release (`gh release create 1.0.00`) synced with the CHANGELOG entry for that version.
 
 ## Interaction Language Rules
 
