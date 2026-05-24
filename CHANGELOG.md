@@ -17,6 +17,14 @@ All notable changes to MediaTree are documented here.
 - Body noise texture (`feTurbulence` SVG) promoted to GPU compositing layer with `translateZ(0)`
 - All 5 grid pages (Home, Folder, Browse, Favorites, MovieCard) now use `media-grid` and `media-grid-card` classes
 
+### Self-Update Rewrite
+
+- **docker inspect driven**: no longer depends on compose file mounts or `COMPOSE_FILE` env var — extracts container runtime configuration via `docker inspect`
+- **Dual-path support**: compose-managed containers auto-reconstruct compose YAML + `compose up -d`, bare `docker run` containers auto-replay run commands
+- **Version detection**: `get_current_version()` prefers Docker image tag via inspect, VERSION file as fallback; normalization supports `-test` suffix
+- **Removed dependency**: no longer needs `docker-compose-plugin`; Dockerfile and compose template cleaned up
+- **Version format**: `v` prefix removed, unified `1.0.01` format
+
 ### Fixes
 
 - Scraper: switching to "none" immediately stops scraping and clears previously scraped content
@@ -24,6 +32,8 @@ All notable changes to MediaTree are documented here.
 - Fixed 10 CodeQL security alerts + subtitle test assertions
 - CHANGELOG modal now renders via `createPortal` with proper Markdown rendering
 - Removed `docker-compose.yml` from git tracking, replaced with `.example` template
+- Logout fix: no longer clears active library on logout; `?logout=1` query param distinguishes explicit logout from fresh visit
+- Settings page auto-polls version after update; button renamed to "切换到此版本"
 
 ---
 

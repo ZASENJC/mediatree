@@ -474,7 +474,7 @@ export const api = {
       body: JSON.stringify({ old_username: oldUsername, old_password: oldPassword, new_username: newUsername, new_password: newPassword }),
     }),
 
-  logout: () => { setToken(''); setActiveLibrary(''); clearCache(); window.location.href = '/login' },
+  logout: () => { setToken(''); clearCache(); window.location.href = '/login?logout=1' },
 }
 
 export { getToken, setToken, getActiveLibrary, setActiveLibrary, clearCache }

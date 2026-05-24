@@ -17,6 +17,14 @@
 - 噪点纹理层通过 `translateZ(0)` 提升到 GPU 合成层，避免 CPU 重绘
 - 所有 5 个网格页面（首页、目录、浏览、收藏、MovieCard）统一使用 `media-grid` / `media-grid-card` 类
 
+### 自更新重构
+
+- **docker inspect 驱动**：不再依赖 compose 文件挂载或 `COMPOSE_FILE` 环境变量，通过 `docker inspect` 自动提取容器运行时配置
+- **双路径支持**：compose 管理容器自动重建 compose YAML + `compose up -d`，裸 `docker run` 容器自动重放 run 命令
+- **版本检测增强**：`get_current_version()` 优先通过 docker inspect 获取镜像 tag，VERSION 文件作为回退；版本归一化支持 `-test` 等后缀
+- **移除依赖**：不再需要 `docker-compose-plugin`，Dockerfile 和 compose 模板同步清理
+- **版本号格式**：移除 `v` 前缀，统一使用 `1.0.01` 格式
+
 ### 修复
 
 - 刮削器切换为"none"时立即停止刮削并清除已刮削内容
@@ -24,6 +32,8 @@
 - 修复 10 个 CodeQL 安全告警 + 字幕测试断言修正
 - CHANGELOG 弹窗改用 `createPortal` + 正确的 Markdown 渲染
 - 移除 `docker-compose.yml` 的 git 追踪，改用 `.example` 模板
+- 退出登录修复：登出不清空媒体库选择，`?logout=1` 参数区分主动退出与首次访问
+- 版本更新后自动轮询刷新，按钮文字改为"切换到此版本"
 
 ---
 
