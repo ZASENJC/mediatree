@@ -5,6 +5,7 @@ import { api, FolderNode, Movie } from '../api'
 import { getExcluded, getUiPrefs } from '../store'
 import { saveScrollPos, restoreScrollPos } from '../scroll'
 import { showToast } from '../toast'
+import { showTaskProgress, hideTaskProgress } from '../taskProgress'
 import { getCached, setCache, clearCache } from '../cache'
 import SortDropdown from '../components/SortDropdown'
 import { MovieCard } from '../components/MovieCard'
@@ -161,6 +162,10 @@ export default function Home() {
   const handleRescanFolder = useCallback(async () => {
     clearCache()
     try {
+      const cfg = await api.getConfig()
+      if (!cfg.tmdb_configured) {
+        showToast('TMDB API 未配置，刮削可能失败，请在设置中填写 API Key')
+      }
       await api.rescrapeFolder(activeFolderPath, activeMediaRoot)
       showToast('刮削任务已触发')
       setFolderMenu(null)
@@ -180,6 +185,12 @@ export default function Home() {
 
   const handleFolderScrapeSearch = useCallback(async () => {
     if (!folderScrapeQuery.trim()) return
+    try {
+      const cfg = await api.getConfig()
+      if (!cfg.tmdb_configured && (!folderScrapeSrc || folderScrapeSrc.startsWith('tmdb'))) {
+        showToast('TMDB API 未配置，刮削可能失败，请在设置中填写 API Key')
+      }
+    } catch {}
     setFolderScrapeSearching(true)
     try {
       const data = await api.searchScrape(folderScrapeQuery.trim(), folderScrapeSrc || undefined)
@@ -201,6 +212,7 @@ export default function Home() {
   const handleSelectFolderScrapeResult = useCallback(async (result: any) => {
     if (folderScrapeApplying) return
     setFolderScrapeApplying(true)
+    showTaskProgress({ status: '正在刮削媒体信息...' })
     try {
       clearCache()
       const res = await api.applyFolderScrape(activeFolderPath, activeMediaRoot, result.source_id, result.source, result.media_type)
@@ -209,11 +221,15 @@ export default function Home() {
         setShowFolderScrape(false)
         setFolderScrapeResults([])
         setFolderScrapeQuery('')
+        showTaskProgress({ status: '刮削完成', done: 1, total: 1 })
+        window.setTimeout(() => hideTaskProgress(), 3500)
         await load()
       } else {
+        hideTaskProgress()
         showToast('应用失败')
       }
     } catch (err) {
+      hideTaskProgress()
       showToast(`替换失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
     } finally {
       setFolderScrapeApplying(false)

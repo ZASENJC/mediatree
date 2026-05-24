@@ -611,6 +611,7 @@ export interface Config {
   bangumi_cache_hours: number
   tmdb_api_key: string
   tmdb_access_token: string
+  tmdb_configured: boolean
   media_root: string
   update_check_enabled: boolean
   update_check_interval_hours: number

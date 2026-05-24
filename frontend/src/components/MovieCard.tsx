@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { api, Movie } from '../api'
 import { saveScrollPos } from '../scroll'
 import { showToast } from '../toast'
+import { showTaskProgress, hideTaskProgress } from '../taskProgress'
 import { WatchedBadge } from './WatchedBadge'
 import ContextMenu, { ContextMenuItem } from './ContextMenu'
 import EditModal from './EditModal'
@@ -81,8 +82,18 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const progressPercent = Math.max(0, Math.min(100, movie.progress_percent || 0))
   const showProgress = !watched && progressPercent > 0 && progressPercent < 90
 
+  const checkTmdbConfig = useCallback(async () => {
+    try {
+      const cfg = await api.getConfig()
+      if (!cfg.tmdb_configured && (!manualScraper || manualScraper.startsWith('tmdb'))) {
+        showToast('TMDB API 未配置，刮削可能失败，请在设置中填写 API Key')
+      }
+    } catch {}
+  }, [manualScraper])
+
   const handleRescrape = useCallback(async () => {
     try {
+      await checkTmdbConfig()
       await api.rescrapeMovie(movie.id)
       clearCache()
       setCoverVersion(String(Date.now()))
@@ -91,10 +102,11 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       console.error('Rescrape failed for movie', movie.id, err)
       showToast(`刮削失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
     }
-  }, [movie.id, onUpdated])
+  }, [movie.id, onUpdated, checkTmdbConfig])
 
   const handleSearch = useCallback(async () => {
     if (!manualQuery.trim()) return
+    await checkTmdbConfig()
     setSearching(true)
     try {
       const data = await api.searchScrape(manualQuery.trim(), manualScraper || undefined)
@@ -111,6 +123,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const handleSelectSearchResult = useCallback(async (result: any) => {
     if (applying) return
     setApplying(true)
+    showTaskProgress({ status: '正在刮削媒体信息...' })
     try {
       await api.manualScrapeMovie(movie.id, result.title, result.source_id, result.media_type, result.source)
       clearCache()
@@ -118,8 +131,11 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       setShowManualSearch(false)
       setSearchResults([])
       setManualQuery('')
+      showTaskProgress({ status: '刮削完成', done: 1, total: 1 })
+      window.setTimeout(() => hideTaskProgress(), 3500)
       onUpdated?.()
     } catch {
+      hideTaskProgress()
       console.error('Failed to apply scrape result')
     } finally {
       setApplying(false)

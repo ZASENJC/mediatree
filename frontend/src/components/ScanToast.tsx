@@ -1,8 +1,9 @@
-export default function ScanToast({ status, done, total }: { status: string; done: number; total: number }) {
+export default function ScanToast({ status, done, total, className = '' }: { status: string; done: number; total: number; className?: string }) {
   const pct = total > 0 ? Math.max(4, Math.min(100, (done / total) * 100)) : 100
   const complete = status.includes('完成')
+  const indeterminate = total <= 0 && !complete
   return (
-    <div className="fixed bottom-3 left-3 right-3 z-50 rounded-3xl border border-white/10 bg-black/60 p-4 shadow-glass backdrop-blur-2xl sm:bottom-4 sm:left-auto sm:right-4 sm:w-80">
+    <div className={`fixed bottom-3 left-3 right-3 z-50 rounded-3xl border border-white/10 bg-black/60 p-4 shadow-glass backdrop-blur-2xl sm:bottom-4 sm:left-auto sm:right-4 sm:w-80 ${className}`}>
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className={`text-sm font-medium ${complete ? 'text-green-300' : 'text-white'}`}>{status}</p>
@@ -12,7 +13,11 @@ export default function ScanToast({ status, done, total }: { status: string; don
       </div>
       {!complete && (
         <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
-          <div className="h-full rounded-full bg-apple-blue transition-all duration-500" style={{ width: `${pct}%` }} />
+          {indeterminate ? (
+            <div className="h-full w-1/3 rounded-full bg-apple-blue animate-indeterminate-bar" />
+          ) : (
+            <div className="h-full rounded-full bg-apple-blue transition-all duration-500" style={{ width: `${pct}%` }} />
+          )}
         </div>
       )}
     </div>
