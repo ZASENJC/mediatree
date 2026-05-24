@@ -631,7 +631,9 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   const [ambientEnabled, setAmbientEnabled] = useState(() => getUiPrefs().ambientMode !== false)
   const { theaterMode, setTheaterMode } = useTheater()
   const theaterModeRef = useRef(theaterMode)
+  const previousTheaterModeRef = useRef(theaterMode)
   theaterModeRef.current = theaterMode
+  const [theaterTransition, setTheaterTransition] = useState<'enter' | 'exit' | null>(null)
   const streamUrl = useMemo(() => new URL(api.streamUrl(movieId), localPlayerOrigin()).toString(), [movieId])
   const streamSrc = useMemo(() => {
     if (!useTranscode) return src
@@ -1559,7 +1561,13 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
     const onKey = (event: KeyboardEvent) => {
       const art = artRef.current
       if (!art) return
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
+      const target = event.target
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) return
       switch (event.key) {
         case ' ':
         case 'k':
@@ -1598,6 +1606,12 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
           event.preventDefault()
           art.muted = !art.muted
           break
+        case 't':
+        case 'T':
+          if (event.metaKey || event.ctrlKey || event.altKey) return
+          event.preventDefault()
+          setTheaterMode(!theaterModeRef.current)
+          break
         default:
           break
       }
@@ -1615,7 +1629,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
       window.removeEventListener('keyup', onKeyUp)
       clearTimeout(keyHoldTimer.current)
     }
-  }, [skipBack, skipForward, startSpeedHold, stopSpeedHold, togglePlay])
+  }, [setTheaterMode, skipBack, skipForward, startSpeedHold, stopSpeedHold, togglePlay])
 
   function handleResume() {
     const art = artRef.current
@@ -1641,6 +1655,14 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [theaterMode, setTheaterMode])
+
+  useEffect(() => {
+    if (previousTheaterModeRef.current === theaterMode) return
+    previousTheaterModeRef.current = theaterMode
+    setTheaterTransition(theaterMode ? 'enter' : 'exit')
+    const timer = window.setTimeout(() => setTheaterTransition(null), 260)
+    return () => window.clearTimeout(timer)
+  }, [theaterMode])
 
   // 剧院模式尺寸变化后触发 ArtPlayer 重新计算内部画布、字幕和控件布局。
   useEffect(() => {
@@ -1671,7 +1693,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         style={playerStyle}>
         <div
           ref={playerFrameRef}
-          className="relative z-[1] overflow-hidden rounded-3xl"
+          className={`theater-player-frame relative z-[1] overflow-hidden rounded-3xl ${theaterTransition ? `theater-player-frame-${theaterTransition}` : ''}`}
           style={theaterMode ? theaterFrameStyle : undefined}
         >
         <div ref={artContainerRef} className="mediatree-artplayer w-full" />
