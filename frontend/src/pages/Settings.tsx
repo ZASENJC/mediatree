@@ -113,6 +113,8 @@ export default function Settings() {
     }
   }
 
+  const normalizeVersion = (version?: string) => (version || '').replace(/^v/i, '')
+
   const stopUpdatePolling = () => {
     if (updateStatusTimer.current) {
       clearInterval(updateStatusTimer.current)
@@ -134,7 +136,7 @@ export default function Settings() {
           return
         }
         if (status.status === 'success') {
-          if (!targetVersion || status.version?.replace(/^v/i, '') === targetVersion.replace(/^v/i, '')) {
+          if (!targetVersion || normalizeVersion(status.version) === normalizeVersion(targetVersion)) {
             clearCache()
             window.location.reload()
           }
@@ -143,7 +145,7 @@ export default function Settings() {
         if (status.status === 'restarting') {
           try {
             const version = await api.getVersion()
-            if (version.version?.replace(/^v/i, '') === targetVersion.replace(/^v/i, '')) {
+            if (normalizeVersion(version.version) === normalizeVersion(targetVersion)) {
               clearCache()
               window.location.reload()
             }
@@ -203,6 +205,11 @@ export default function Settings() {
       stopUpdatePolling()
     }
   }, [])
+
+  const visibleUpdateVersions = useMemo(
+    () => (updateResult?.versions || []).slice(0, 3),
+    [updateResult]
+  )
 
   const saveGlobal = async () => {
     setSaving(true)
@@ -629,24 +636,6 @@ export default function Settings() {
             <div className="flex items-center justify-between mb-4">
               <h2 className={sectionTitle + " mb-0"}>更新</h2>
               <div className="flex items-center gap-2">
-                {updateProgress?.can_rollback && (
-                  <button
-                    onClick={async () => {
-                      if (!confirm('确定要回滚到上一应用版本吗？服务将自动重启。')) return
-                      setUpdateMsg('')
-                      try {
-                        const res = await api.rollbackUpdate()
-                        setUpdateMsg(res.message || '已触发回滚')
-                        startUpdatePolling(res.version || '')
-                      } catch (e: any) {
-                        setUpdateMsg(`回滚失败: ${e.message || '未知错误'}`)
-                      }
-                    }}
-                    className={btnDark}
-                  >
-                    回滚上一版
-                  </button>
-                )}
                 <button
                   onClick={async () => {
                     setUpdateChecking(true)
@@ -696,110 +685,210 @@ export default function Settings() {
               </p>
             )}
 
-            {updateProgress && updateProgress.status !== 'idle' && (
-              <div className="mb-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-xs text-gray-300">
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <span>{statusLabel(updateProgress.status)}{updateProgress.version ? ` · ${updateProgress.version}` : ''}</span>
-                  <span className="text-gray-500">
-                    {updateProgress.total > 0
-                      ? `${Math.round((updateProgress.downloaded / updateProgress.total) * 100)}%`
-                      : ''}
-                  </span>
-                </div>
-                {updateProgress.total > 0 && (
-                  <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                    <div
-                      className="h-full rounded-full bg-apple-blue transition-all"
-                      style={{ width: `${Math.min(100, Math.round((updateProgress.downloaded / updateProgress.total) * 100))}%` }}
-                    />
-                  </div>
-                )}
-                {updateProgress.message && <p className="mt-2 text-gray-500">{updateProgress.message}</p>}
-              </div>
-            )}
-
-            {updateResult?.versions?.length > 0 && (
+            {visibleUpdateVersions.length > 0 && (
               <div className="space-y-2">
-                {updateResult.versions.map((v: any, i: number) => {
-                  const isCurrent = v.version === updateResult.current_version
+                {visibleUpdateVersions.map((v: any, i: number) => {
+                  const versionKey = normalizeVersion(v.version)
+                  const isCurrent = versionKey === normalizeVersion(updateResult.current_version)
+                  const activeUpdate = updateProgress
+                    && normalizeVersion(updateProgress.version) === versionKey
+                    && updateProgress.status !== 'idle'
+                    && updateProgress.status !== 'success'
+                    ? updateProgress
+                    : null
+                  const isDockerUpdate = Boolean(activeUpdate && (activeUpdate.update_type === 'docker-image' || v.requires_image_update))
+                  const isAppUpdate = Boolean(activeUpdate && !isDockerUpdate)
+                  const progressPercent = activeUpdate?.total
+                    ? Math.min(100, Math.round((activeUpdate.downloaded / activeUpdate.total) * 100))
+                    : 0
+                  const rollbackVersion = normalizeVersion(updateProgress?.rollback_version)
+                  const canRollbackToThis = Boolean(updateProgress?.can_rollback && rollbackVersion && rollbackVersion === versionKey && !isCurrent)
+                  const isBusy = updatePerforming === v.version || Boolean(activeUpdate && activeUpdate.status !== 'error')
                   return (
                     <div key={v.version}
-                         className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-white truncate">
-                          {v.display_version || v.version}
-                          {isCurrent && (
-                            <span className="ml-2 inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] text-gray-400">
-                              当前
-                            </span>
-                          )}
-                          {!isCurrent && i === 0 && updateResult.has_update && (
-                            <span className="ml-2 inline-flex items-center rounded-full border border-green-400/30 bg-green-500/15 px-2 py-0.5 text-[10px] text-green-400">
-                              最新
-                            </span>
-                          )}
-                        </p>
-                        {v.published_at && (
-                          <p className="mt-0.5 text-xs text-gray-500 truncate">
-                            {new Date(v.published_at).toLocaleDateString('zh-CN')}
+                         className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-white truncate">
+                            {v.display_version || v.version}
+                            {isCurrent && (
+                              <span className="ml-2 inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] text-gray-400">
+                                当前
+                              </span>
+                            )}
+                            {!isCurrent && i === 0 && updateResult.has_update && (
+                              <span className="ml-2 inline-flex items-center rounded-full border border-green-400/30 bg-green-500/15 px-2 py-0.5 text-[10px] text-green-400">
+                                最新
+                              </span>
+                            )}
                           </p>
-                        )}
-                        <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
-                          <span className={`inline-flex rounded-full border px-2 py-0.5 ${
-                            v.requires_image_update
-                              ? 'border-apple-yellow/30 bg-apple-yellow/10 text-apple-yellow'
-                              : 'border-apple-mint/30 bg-apple-mint/10 text-apple-mint'
-                          }`}>
-                            {v.requires_image_update ? '需要完整镜像更新' : '应用包更新'}
-                          </span>
-                          {!v.requires_image_update && (
-                            <span>{formatSize(v.size)}</span>
+                          {v.published_at && (
+                            <p className="mt-0.5 text-xs text-gray-500 truncate">
+                              {new Date(v.published_at).toLocaleDateString('zh-CN')}
+                            </p>
                           )}
-                          {v.reason && (
-                            <span className="truncate">{v.reason}</span>
-                          )}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={() => openChangelog(v)}
-                          className="text-xs text-apple-blue hover:text-white transition-colors"
-                        >
-                          更新日志
-                        </button>
-                        {!isCurrent && !v.requires_image_update && (
+                          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
+                            <span className={`inline-flex rounded-full border px-2 py-0.5 ${
+                              v.requires_image_update
+                                ? 'border-apple-yellow/30 bg-apple-yellow/10 text-apple-yellow'
+                                : 'border-apple-mint/30 bg-apple-mint/10 text-apple-mint'
+                            }`}>
+                              {v.requires_image_update ? '需要完整镜像更新' : '应用包更新'}
+                            </span>
+                            {!v.requires_image_update && (
+                              <span>{formatSize(v.size)}</span>
+                            )}
+                            {v.reason && (
+                              <span className="truncate">{v.reason}</span>
+                            )}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
                           <button
-                            onClick={async () => {
-                              if (!confirm(`确定要切换到 ${v.display_version || v.version} 吗？容器将自动重启。`)) return
-                              setUpdatePerforming(v.version)
-                              setUpdateMsg('')
-                              setUpdateProgress(null)
-                              try {
-                                const res = await api.performUpdate(v.version, 'app-package')
-                                setUpdateMsg(res.message || '更新已触发')
-                                dismissUpdate(v.version)
+                            onClick={() => openChangelog(v)}
+                            className="text-xs text-apple-blue hover:text-white transition-colors"
+                          >
+                            更新日志
+                          </button>
+                          {canRollbackToThis ? (
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`确定要回滚到 ${v.display_version || v.version} 吗？服务将自动重启。`)) return
+                                setUpdatePerforming(v.version)
+                                setUpdateMsg('')
+                                setUpdateProgress({
+                                  status: 'restarting',
+                                  version: v.version,
+                                  downloaded: 0,
+                                  total: 0,
+                                  message: '正在切换到上一应用版本...',
+                                  update_type: 'app-package',
+                                })
+                                try {
+                                  const res = await api.rollbackUpdate()
+                                  if (res.ok === false) throw new Error((res as any).error || '回滚失败')
+                                  setUpdateMsg(res.message || '已触发回滚')
+                                  startUpdatePolling(res.version || v.version)
+                                } catch (e: any) {
+                                  setUpdateMsg(`回滚失败: ${e.message || '未知错误'}`)
+                                }
+                                setUpdatePerforming(null)
+                              }}
+                              disabled={isBusy}
+                              className={`${btnDark} text-xs px-2 py-1 disabled:opacity-50`}
+                            >
+                              {updatePerforming === v.version ? '回滚中...' : '回滚到此版本'}
+                            </button>
+                          ) : !isCurrent && !v.requires_image_update ? (
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`确定要切换到 ${v.display_version || v.version} 吗？容器将自动重启。`)) return
+                                setUpdatePerforming(v.version)
+                                setUpdateMsg('')
+                                setUpdateProgress({
+                                  status: 'downloading',
+                                  version: v.version,
+                                  downloaded: 0,
+                                  total: 0,
+                                  message: '正在发起应用包更新...',
+                                  update_type: 'app-package',
+                                })
                                 startUpdatePolling(v.version)
-                              } catch (e: any) {
-                                setUpdateMsg(`更新失败: ${e.message || '未知错误'}`)
-                              }
-                              setUpdatePerforming(null)
-                            }}
-                            disabled={updatePerforming === v.version}
-                            className={`${btnPrimary} text-xs px-2 py-1`}
-                          >
-                            {updatePerforming === v.version ? '更新中...' : '下载并更新'}
-                          </button>
-                        )}
-                        {!isCurrent && v.requires_image_update && (
-                          <button
-                            disabled
-                            title={v.reason || '该版本需要完整镜像更新'}
-                            className={`${btnDark} text-xs px-2 py-1 opacity-60`}
-                          >
-                            完整镜像
-                          </button>
-                        )}
+                                try {
+                                  const res = await api.performUpdate(v.version, 'app-package')
+                                  if (res.ok === false) throw new Error(res.error || '更新失败')
+                                  setUpdateMsg(res.message || '更新已触发')
+                                  dismissUpdate(v.version)
+                                } catch (e: any) {
+                                  setUpdateMsg(`更新失败: ${e.message || '未知错误'}`)
+                                }
+                                setUpdatePerforming(null)
+                              }}
+                              disabled={isBusy}
+                              className={`${btnPrimary} text-xs px-2 py-1 disabled:opacity-50`}
+                            >
+                              {updatePerforming === v.version ? '更新中...' : '下载并更新'}
+                            </button>
+                          ) : !isCurrent && v.requires_image_update ? (
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`确定要执行完整镜像更新到 ${v.display_version || v.version} 吗？该操作需要已挂载 Docker socket。`)) return
+                                setUpdatePerforming(v.version)
+                                setUpdateMsg('')
+                                setUpdateProgress({
+                                  status: 'installing',
+                                  version: v.version,
+                                  downloaded: 0,
+                                  total: 0,
+                                  message: '正在发起完整镜像更新...',
+                                  update_type: 'docker-image',
+                                  logs: [],
+                                })
+                                startUpdatePolling(v.version)
+                                try {
+                                  const res = await api.performUpdate(v.version, 'docker-image')
+                                  if (res.ok === false) throw new Error(res.error || '完整镜像更新失败')
+                                  setUpdateMsg(res.message || '完整镜像更新已触发')
+                                  dismissUpdate(v.version)
+                                } catch (e: any) {
+                                  const message = e.message || '未知错误'
+                                  if (message.includes('Failed to fetch')) {
+                                    setUpdateMsg('完整镜像更新已触发，服务可能正在重启')
+                                  } else {
+                                    setUpdateMsg(`完整镜像更新失败: ${message}`)
+                                  }
+                                }
+                                setUpdatePerforming(null)
+                              }}
+                              disabled={isBusy}
+                              title={v.reason || '该版本需要完整镜像更新'}
+                              className={`${btnDark} text-xs px-2 py-1 disabled:opacity-50`}
+                            >
+                              {updatePerforming === v.version ? '更新中...' : '完整镜像更新'}
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
+
+                      {isAppUpdate && activeUpdate && (
+                        <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-gray-300">
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <span>{statusLabel(activeUpdate.status)}</span>
+                            <span className="text-gray-500">
+                              {activeUpdate.total > 0 ? `${progressPercent}%` : ''}
+                            </span>
+                          </div>
+                          <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                activeUpdate.status === 'error' ? 'bg-red-400' : activeUpdate.total > 0 ? 'bg-apple-blue' : 'animate-pulse bg-apple-blue'
+                              }`}
+                              style={{ width: activeUpdate.total > 0 ? `${progressPercent}%` : '100%' }}
+                            />
+                          </div>
+                          {activeUpdate.message && (
+                            <p className={activeUpdate.status === 'error' ? 'mt-2 text-red-400' : 'mt-2 text-gray-500'}>
+                              {activeUpdate.message}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {isDockerUpdate && activeUpdate && (
+                        <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-2xl border border-white/10 bg-black/35 p-3 font-mono text-[11px] text-gray-400">
+                          <div className={activeUpdate.status === 'error' ? 'mb-1 text-red-400' : 'mb-1 text-gray-300'}>
+                            {statusLabel(activeUpdate.status)}
+                            {activeUpdate.message ? ` · ${activeUpdate.message}` : ''}
+                          </div>
+                          {(activeUpdate.logs || []).length > 0 ? (
+                            activeUpdate.logs!.map((line, logIndex) => (
+                              <div key={logIndex} className="break-all">{line}</div>
+                            ))
+                          ) : (
+                            <div>等待 Docker 输出...</div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )
                 })}

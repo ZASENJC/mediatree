@@ -259,21 +259,45 @@ def can_rollback() -> bool:
     return bool(previous and _is_valid_app_dir(RELEASES_DIR / previous))
 
 
+def _get_rollback_version() -> str:
+    previous = _read_pointer("previous")
+    if previous == "__base__":
+        return _read_version_file(BASE_APP_DIR / "VERSION")
+    if previous and _is_valid_app_dir(RELEASES_DIR / previous):
+        return previous
+    return ""
+
+
+def _read_existing_update_status() -> dict:
+    try:
+        if UPDATE_STATUS_FILE.exists():
+            return json.loads(UPDATE_STATUS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
 def _write_update_status(
     status: str,
     version: str = "",
     downloaded: int = 0,
     total: int = 0,
     message: str = "",
+    update_type: str = "",
+    logs: list[str] | None = None,
 ) -> dict:
     _ensure_update_dirs()
+    existing = _read_existing_update_status()
     payload = {
         "status": status,
         "version": version,
         "downloaded": downloaded,
         "total": total,
         "message": message,
+        "update_type": update_type or existing.get("update_type", ""),
+        "logs": [] if status == "idle" else (logs if logs is not None else existing.get("logs", [])),
         "can_rollback": can_rollback(),
+        "rollback_version": _get_rollback_version(),
         "updated_at": int(time.time()),
     }
     tmp = UPDATE_STATUS_FILE.with_suffix(".json.tmp")
@@ -287,6 +311,7 @@ def get_update_status() -> dict:
         if UPDATE_STATUS_FILE.exists():
             payload = json.loads(UPDATE_STATUS_FILE.read_text(encoding="utf-8"))
             payload["can_rollback"] = can_rollback()
+            payload["rollback_version"] = _get_rollback_version()
             return payload
     except Exception:
         pass
@@ -300,7 +325,13 @@ def mark_update_success_after_restart() -> None:
             return
         payload = json.loads(UPDATE_STATUS_FILE.read_text(encoding="utf-8"))
         if payload.get("status") == "restarting":
-            _write_update_status("success", get_current_version(), message="更新已完成。")
+            _write_update_status(
+                "success",
+                get_current_version(),
+                message="更新已完成。",
+                update_type=payload.get("update_type", ""),
+                logs=payload.get("logs", []),
+            )
     except Exception as e:
         logger.warning(f"Failed to mark update success after restart: {e}")
 
@@ -438,7 +469,7 @@ async def _download_file_with_status(url: str, path: Path, version: str) -> str:
         async with client.stream("GET", url, headers={"User-Agent": "MediaTree-Updater/1.0"}) as resp:
             resp.raise_for_status()
             total = int(resp.headers.get("content-length", 0) or 0)
-            _write_update_status("downloading", version, 0, total, "正在下载应用包...")
+            _write_update_status("downloading", version, 0, total, "正在下载应用包...", update_type="app-package")
             with path.open("wb") as f:
                 async for chunk in resp.aiter_bytes(1024 * 256):
                     if not chunk:
@@ -446,7 +477,7 @@ async def _download_file_with_status(url: str, path: Path, version: str) -> str:
                     f.write(chunk)
                     sha.update(chunk)
                     downloaded += len(chunk)
-                    _write_update_status("downloading", version, downloaded, total, "正在下载应用包...")
+                    _write_update_status("downloading", version, downloaded, total, "正在下载应用包...", update_type="app-package")
     return sha.hexdigest()
 
 
@@ -462,8 +493,13 @@ def _safe_extract_tar(archive: Path, target: Path) -> None:
         tar.extractall(target)
 
 
-def _request_process_restart(version: str, message: str = "更新成功，正在重启服务...") -> None:
-    _write_update_status("restarting", version, message=message)
+def _request_process_restart(
+    version: str,
+    message: str = "更新成功，正在重启服务...",
+    update_type: str = "app-package",
+    logs: list[str] | None = None,
+) -> None:
+    _write_update_status("restarting", version, message=message, update_type=update_type, logs=logs)
 
     def _restart() -> None:
         time.sleep(1.0)
@@ -504,11 +540,11 @@ async def perform_app_package_update(version: str) -> dict:
 
         actual_sha = await _download_file_with_status(entry["archive_url"], archive_path, version_tag)
         expected_sha = entry.get("sha256") or await _read_remote_sha256(entry.get("sha256_url", ""))
-        _write_update_status("verifying", version_tag, archive_path.stat().st_size, archive_path.stat().st_size, "正在校验应用包...")
+        _write_update_status("verifying", version_tag, archive_path.stat().st_size, archive_path.stat().st_size, "正在校验应用包...", update_type="app-package")
         if expected_sha and actual_sha.lower() != expected_sha.lower():
             raise ValueError("应用包 sha256 校验失败。")
 
-        _write_update_status("installing", version_tag, message="正在安装应用包...")
+        _write_update_status("installing", version_tag, message="正在安装应用包...", update_type="app-package")
         _safe_extract_tar(archive_path, staging_dir)
         if not _is_valid_app_dir(staging_dir):
             raise ValueError("应用包结构无效，缺少 app/main.py、frontend/dist/index.html 或 VERSION。")
@@ -528,7 +564,7 @@ async def perform_app_package_update(version: str) -> dict:
         staging_dir.replace(final_dir)
         _write_pointer("current", version_tag)
 
-        _request_process_restart(version_tag)
+        _request_process_restart(version_tag, update_type="app-package")
         return {
             "ok": True,
             "message": f"已安装应用包 {version_tag}，服务正在重启...",
@@ -538,7 +574,7 @@ async def perform_app_package_update(version: str) -> dict:
     except Exception as e:
         if staging_dir.exists():
             shutil.rmtree(staging_dir, ignore_errors=True)
-        _write_update_status("error", version_tag, message=str(e))
+        _write_update_status("error", version_tag, message=str(e), update_type="app-package")
         logger.exception(f"App package update failed: {e}")
         return {"ok": False, "error": str(e)}
 
@@ -554,15 +590,65 @@ async def rollback_app_package() -> dict:
             (RELEASES_DIR / "current").unlink()
         except FileNotFoundError:
             pass
-        _request_process_restart(base_version, "已切换到镜像内置版本，正在重启服务...")
+        _request_process_restart(base_version, "已切换到镜像内置版本，正在重启服务...", update_type="app-package")
         return {"ok": True, "message": "已回滚到镜像内置版本，服务正在重启...", "version": base_version}
     if not previous or not _is_valid_app_dir(RELEASES_DIR / previous):
         return {"ok": False, "error": "没有可回滚的上一版本。"}
     if current:
         _write_pointer("previous", current)
     _write_pointer("current", previous)
-    _request_process_restart(previous, "已切换到上一版本，正在重启服务...")
+    _request_process_restart(previous, "已切换到上一版本，正在重启服务...", update_type="app-package")
     return {"ok": True, "message": f"已回滚到 {previous}，服务正在重启...", "version": previous}
+
+
+def _trim_update_logs(logs: list[str], limit: int = 120) -> list[str]:
+    return logs[-limit:]
+
+
+async def _run_command_with_update_logs(
+    cmd: list[str],
+    version: str,
+    status: str,
+    message: str,
+    timeout: int,
+    logs: list[str],
+) -> tuple[int, list[str]]:
+    logs.append("$ " + " ".join(shlex.quote(part) for part in cmd))
+    _write_update_status(status, version, message=message, update_type="docker-image", logs=_trim_update_logs(logs))
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    async def consume(stream: asyncio.StreamReader | None) -> None:
+        if not stream:
+            return
+        while True:
+            chunk = await stream.read(4096)
+            if not chunk:
+                break
+            text = chunk.decode("utf-8", errors="replace").replace("\r", "\n")
+            for line in text.splitlines():
+                line = line.strip()
+                if line:
+                    logs.append(line)
+            _write_update_status(status, version, message=message, update_type="docker-image", logs=_trim_update_logs(logs))
+
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(consume(process.stdout), consume(process.stderr), process.wait()),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+        logs.append("操作超时。")
+        _write_update_status("error", version, message="操作超时。", update_type="docker-image", logs=_trim_update_logs(logs))
+        raise
+    return process.returncode or 0, _trim_update_logs(logs)
 
 
 # ─── Docker operations ───
@@ -857,8 +943,25 @@ async def perform_docker_update(version: str) -> dict:
     if not version_tag or any(c in version_tag for c in _FORBIDDEN_CHARS):
         raise ValueError(f"Invalid version tag: {version}")
 
+    logs: list[str] = []
+    _write_update_status(
+        "installing",
+        version_tag,
+        message="正在准备完整镜像更新...",
+        update_type="docker-image",
+        logs=logs,
+    )
+
     docker_error = _check_docker_available()
     if docker_error:
+        logs.append(docker_error)
+        _write_update_status(
+            "error",
+            version_tag,
+            message=docker_error,
+            update_type="docker-image",
+            logs=_trim_update_logs(logs),
+        )
         return {"ok": False, "error": docker_error}
 
     # Try each possible container identifier until one works
@@ -871,8 +974,17 @@ async def perform_docker_update(version: str) -> dict:
         logger.debug(f"Inspect failed for {cid}, trying next candidate")
 
     if not config:
-        return {"ok": False, "error": "Cannot inspect running container. "
-                "Ensure docker.sock is mounted and the container is running."}
+        error = ("Cannot inspect running container. "
+                 "Ensure docker.sock is mounted and the container is running.")
+        logs.append(error)
+        _write_update_status(
+            "error",
+            version_tag,
+            message=error,
+            update_type="docker-image",
+            logs=_trim_update_logs(logs),
+        )
+        return {"ok": False, "error": error}
 
     container_name = config.get("name", "mediatree")
     is_compose = config.get("is_compose_managed", False)
@@ -887,18 +999,35 @@ async def perform_docker_update(version: str) -> dict:
         # ── Step 1: Pull new mediatree image ──
         pull_cmd = ["docker", "pull", f"zasenjc/mediatree:{version_tag}"]
         logger.info(f"Running: {' '.join(pull_cmd)}")
-        pull_process = await asyncio.create_subprocess_exec(
-            *pull_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        pull_code, logs = await _run_command_with_update_logs(
+            pull_cmd,
+            version_tag,
+            "downloading",
+            f"正在拉取 Docker 镜像 zasenjc/mediatree:{version_tag}...",
+            300,
+            logs,
         )
-        _, pull_stderr = await asyncio.wait_for(pull_process.communicate(), timeout=300)
-        if pull_process.returncode != 0:
-            error_msg = pull_stderr.decode("utf-8", errors="replace")[:500]
+        if pull_code != 0:
+            error_msg = "\n".join(logs[-8:])[:500]
             logger.error(f"Docker pull failed: {error_msg}")
+            _write_update_status(
+                "error",
+                version_tag,
+                message=f"镜像拉取失败: {error_msg}",
+                update_type="docker-image",
+                logs=_trim_update_logs(logs),
+            )
             return {"ok": False, "error": f"镜像拉取失败: {error_msg}"}
 
         logger.info(f"Docker pull succeeded for {version_tag}")
+        logs.append(f"镜像 zasenjc/mediatree:{version_tag} 拉取完成。")
+        _write_update_status(
+            "installing",
+            version_tag,
+            message="正在准备 Docker helper...",
+            update_type="docker-image",
+            logs=_trim_update_logs(logs),
+        )
 
         # ── Step 2: Ensure docker:cli helper image is available ──
         check_cli = await asyncio.create_subprocess_exec(
@@ -909,15 +1038,26 @@ async def perform_docker_update(version: str) -> dict:
         await check_cli.wait()
         if check_cli.returncode != 0:
             logger.info("Pulling docker:cli helper image...")
-            cli_pull = await asyncio.create_subprocess_exec(
-                "docker", "pull", "docker:cli",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            cli_code, logs = await _run_command_with_update_logs(
+                ["docker", "pull", "docker:cli"],
+                version_tag,
+                "downloading",
+                "正在拉取 Docker helper 镜像...",
+                120,
+                logs,
             )
-            _, cli_stderr = await asyncio.wait_for(cli_pull.communicate(), timeout=120)
-            if cli_pull.returncode != 0:
-                error_msg = cli_stderr.decode("utf-8", errors="replace")[:500]
+            if cli_code != 0:
+                error_msg = "\n".join(logs[-8:])[:500]
+                _write_update_status(
+                    "error",
+                    version_tag,
+                    message=f"无法拉取 helper 镜像: {error_msg}",
+                    update_type="docker-image",
+                    logs=_trim_update_logs(logs),
+                )
                 return {"ok": False, "error": f"无法拉取 helper 镜像: {error_msg}"}
+        else:
+            logs.append("Docker helper 镜像已存在。")
 
         # ── Step 3: Execute update ──
         if is_compose and compose_project:
@@ -937,6 +1077,15 @@ async def perform_docker_update(version: str) -> dict:
                 "docker:cli", "sh", "-c", compose_script,
             ]
             logger.info(f"Launching helper container for compose up")
+            logs.append("正在通过 docker compose 启动新版本容器。")
+            logs.append("$ " + " ".join(shlex.quote(part) for part in up_cmd))
+            _write_update_status(
+                "restarting",
+                version_tag,
+                message="正在执行 Docker Compose 更新，服务将短暂重启...",
+                update_type="docker-image",
+                logs=_trim_update_logs(logs),
+            )
 
             # Fire-and-forget with stdin pipe for compose YAML
             process = subprocess.Popen(
@@ -969,6 +1118,15 @@ async def perform_docker_update(version: str) -> dict:
                 "docker:cli", "sh", "-c", script,
             ]
             logger.info("Launching helper container for docker run")
+            logs.append("正在通过 docker run 启动新版本容器。")
+            logs.append("$ " + " ".join(shlex.quote(part) for part in up_cmd))
+            _write_update_status(
+                "restarting",
+                version_tag,
+                message="正在执行 Docker 容器替换，服务将短暂重启...",
+                update_type="docker-image",
+                logs=_trim_update_logs(logs),
+            )
 
             subprocess.Popen(
                 up_cmd,
@@ -982,13 +1140,29 @@ async def perform_docker_update(version: str) -> dict:
             "ok": True,
             "message": f"已更新到 {version_tag}，容器正在重启...",
             "version": version_tag,
+            "update_type": "docker-image",
         }
 
     except asyncio.TimeoutError:
         logger.error("Docker operation timed out")
+        _write_update_status(
+            "error",
+            version_tag,
+            message="操作超时（5分钟），请检查网络连接",
+            update_type="docker-image",
+            logs=_trim_update_logs(logs),
+        )
         return {"ok": False, "error": "操作超时（5分钟），请检查网络连接"}
     except Exception as e:
         logger.exception(f"Update failed: {e}")
+        logs.append(str(e))
+        _write_update_status(
+            "error",
+            version_tag,
+            message=f"更新失败: {str(e)[:500]}",
+            update_type="docker-image",
+            logs=_trim_update_logs(logs),
+        )
         return {"ok": False, "error": f"更新失败: {str(e)[:500]}"}
 
 

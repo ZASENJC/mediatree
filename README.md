@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.0.02-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.0.03-blue?style=flat-square" alt="Version"></a>
   <a href="https://github.com/ZASENJC/mediatree/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react" alt="React">
@@ -105,6 +105,19 @@ open http://localhost:27580
 ```
 
 > **Docker Hub**: `docker pull zasenjc/mediatree:latest`
+
+---
+
+## Update Strategy
+
+Regular Web updates from Settings download the small app package attached to the GitHub Release and install it into the `./data` volume. They do not require mounting `/var/run/docker.sock`. Releases are marked as requiring a full image update only when the base layer changes, such as the Python runtime, system packages, ffmpeg, or fonts.
+
+For full image updates, run:
+
+```bash
+docker compose pull
+docker compose up -d
+```
 
 ---
 

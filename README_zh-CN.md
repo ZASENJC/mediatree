@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG_zh-CN.md"><img src="https://img.shields.io/badge/版本-1.0.02-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG_zh-CN.md"><img src="https://img.shields.io/badge/版本-1.0.03-blue?style=flat-square" alt="Version"></a>
   <a href="https://github.com/ZASENJC/mediatree/blob/main/LICENSE"><img src="https://img.shields.io/badge/许可证-MIT-green?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react" alt="React">
@@ -102,6 +102,19 @@ open http://localhost:27580
 ```
 
 > **Docker Hub**: `docker pull zasenjc/mediatree:latest`
+
+---
+
+## 更新策略
+
+设置页的普通 Web 更新默认下载 GitHub Release 中的小型应用包，并安装到 `./data` 数据卷，不需要挂载 `/var/run/docker.sock`。只有 Python 运行时、系统包、ffmpeg、字体等基础镜像层发生变化时，版本才会标记为“需要完整镜像更新”。
+
+完整镜像更新推荐手动执行：
+
+```bash
+docker compose pull
+docker compose up -d
+```
 
 ---
 

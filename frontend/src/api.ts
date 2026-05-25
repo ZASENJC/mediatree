@@ -705,6 +705,9 @@ export interface UpdateStatus {
   downloaded: number
   total: number
   message: string
+  update_type?: 'app-package' | 'docker-image' | ''
+  logs?: string[]
   can_rollback?: boolean
+  rollback_version?: string
   updated_at?: number
 }
