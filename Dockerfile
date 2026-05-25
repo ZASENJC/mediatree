@@ -6,7 +6,7 @@ COPY frontend/ ./
 RUN npm run build
 
 FROM python:3.12-slim
-WORKDIR /app
+WORKDIR /opt/mediatree/base
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -19,27 +19,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Docker CLI for self-update (docker pull, docker inspect, docker run)
-RUN install -m 0755 -d /etc/apt/keyrings && \
-    curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && \
-    chmod a+r /etc/apt/keyrings/docker.asc && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends docker-ce-cli && \
-    rm -rf /var/lib/apt/lists/*
+ARG INCLUDE_DOCKER_CLI=false
+RUN if [ "$INCLUDE_DOCKER_CLI" = "true" ]; then \
+      install -m 0755 -d /etc/apt/keyrings && \
+      curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && \
+      chmod a+r /etc/apt/keyrings/docker.asc && \
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" > /etc/apt/sources.list.d/docker.list && \
+      apt-get update && \
+      apt-get install -y --no-install-recommends docker-ce-cli && \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
 
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ ./
-COPY --from=frontend-build /build/dist /app/frontend/dist
+COPY --from=frontend-build /build/dist /opt/mediatree/base/frontend/dist
 
 RUN mkdir -p /app/data
 
-COPY VERSION /app/VERSION
+COPY VERSION /opt/mediatree/base/VERSION
+COPY docker/entrypoint.sh /usr/local/bin/mediatree-entrypoint
+RUN chmod +x /usr/local/bin/mediatree-entrypoint
 
 ENV MEDIA_ROOT=/media
 ENV DATA_DIR=/app/data
+ENV MEDIATREE_BASE_DIR=/opt/mediatree/base
 ENV JAVDB_ENABLED=true
 ENV JAVDB_CACHE_HOURS=24
 ENV JAVDB_REQUEST_INTERVAL=5
@@ -50,4 +55,4 @@ ENV PORT=$PORT
 
 EXPOSE $PORT
 
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["/usr/local/bin/mediatree-entrypoint"]

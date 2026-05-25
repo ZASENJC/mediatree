@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { api, Movie, FolderNode } from '../api'
+import { api, Movie, FolderNode, resolveApiUrl } from '../api'
 import { getExcluded } from '../store'
 import { getCached, setCache } from '../cache'
 import { saveScrollPos, restoreScrollPos } from '../scroll'
@@ -129,8 +129,8 @@ export default function FolderPage() {
   }, [backdrops.length, cycleTo])
 
   // Determine which backdrop source to use
-  const activeBackdrop = backdrops.length > 0 ? backdrops[backdropIdx]?.url : folderBackdrop
-  const exitBackdrop = prevIdxRef.current >= 0 && backdrops.length > prevIdxRef.current ? backdrops[prevIdxRef.current]?.url : ''
+  const activeBackdrop = resolveApiUrl(backdrops.length > 0 ? backdrops[backdropIdx]?.url : folderBackdrop)
+  const exitBackdrop = resolveApiUrl(prevIdxRef.current >= 0 && backdrops.length > prevIdxRef.current ? backdrops[prevIdxRef.current]?.url : '')
 
   useEffect(() => {
     const ex = getExcluded()

@@ -1,8 +1,55 @@
 import { getCached, setCache, clearCache } from './cache'
+import { Capacitor } from '@capacitor/core'
 
-const BASE = '/api'
+const DEFAULT_API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '') || '/api'
+const SERVER_URL_KEY = 'mediatree_server_url'
 let memoryToken = ''
 let memoryActiveLibrary = ''
+let memoryServerUrl = ''
+
+function isNativeApp(): boolean {
+  return Capacitor.isNativePlatform()
+}
+
+function normalizeServerUrl(input: string): string {
+  let value = (input || '').trim()
+  if (!value) return ''
+  if (!/^https?:\/\//i.test(value)) value = `http://${value}`
+  return value.replace(/\/+$/, '')
+}
+
+function getServerUrl(): string {
+  try {
+    const stored = normalizeServerUrl(localStorage.getItem(SERVER_URL_KEY) || '')
+    if (stored) memoryServerUrl = stored
+    return stored || memoryServerUrl
+  } catch {
+    return memoryServerUrl
+  }
+}
+
+function setServerUrl(url: string): string {
+  const normalized = normalizeServerUrl(url)
+  memoryServerUrl = normalized
+  try {
+    if (normalized) localStorage.setItem(SERVER_URL_KEY, normalized)
+    else localStorage.removeItem(SERVER_URL_KEY)
+  } catch {}
+  return normalized
+}
+
+function getApiBase(): string {
+  const server = getServerUrl()
+  return server ? `${server}/api` : DEFAULT_API_BASE
+}
+
+function resolveApiUrl(url: string): string {
+  if (!url) return url
+  if (/^(https?:)?\/\//i.test(url) || url.startsWith('blob:') || url.startsWith('data:')) return url
+  if (url === '/api') return getApiBase()
+  if (url.startsWith('/api/')) return `${getApiBase()}${url.slice(4)}`
+  return url
+}
 
 function getToken(): string {
   try {
@@ -45,7 +92,7 @@ async function request<T>(url: string, options?: RequestInit & { signal?: AbortS
     headers['Authorization'] = `Bearer ${token}`
   }
   const { signal, ...fetchOptions } = (options || {}) as RequestInit & { signal?: AbortSignal }
-  const res = await fetch(`${BASE}${url}`, { ...fetchOptions, signal, headers, cache: 'no-store' })
+  const res = await fetch(`${getApiBase()}${url}`, { ...fetchOptions, signal, headers, cache: 'no-store' })
   if (res.status === 401) {
     setToken('')
     if (window.location.pathname !== '/login') {
@@ -154,13 +201,13 @@ export const api = {
       body: JSON.stringify({ position, duration, stopped }),
     }),
 
-  streamUrl: (id: number) => `${BASE}/stream/${id}`,
+  streamUrl: (id: number) => `${getApiBase()}/stream/${id}`,
 
-  externalPlaylistUrl: (id: number) => `${BASE}/external-play/${id}.m3u`,
+  externalPlaylistUrl: (id: number) => `${getApiBase()}/external-play/${id}.m3u`,
 
-  coverUrl: (id: number) => `${BASE}/cover/${id}`,
+  coverUrl: (id: number) => `${getApiBase()}/cover/${id}`,
 
-  thumbnailUrl: (id: number, index: number) => `${BASE}/thumbnail/${id}/${index}`,
+  thumbnailUrl: (id: number, index: number) => `${getApiBase()}/thumbnail/${id}/${index}`,
 
   categories: () => request<Category[]>('/categories'),
 
@@ -249,13 +296,13 @@ export const api = {
 
   subtitleTracks: (movieId: number, signal?: AbortSignal) => request<SubtitleTrack[]>(`/subtitle-tracks/${movieId}`, signal ? { signal } : undefined),
 
-  subtitleUrl: (movieId: number, trackIndex: number) => `${BASE}/subtitle/${movieId}/${trackIndex}`,
+  subtitleUrl: (movieId: number, trackIndex: number) => `${getApiBase()}/subtitle/${movieId}/${trackIndex}`,
 
   subtitleContent: async (movieId: number, trackIndex: number) => {
     const headers: Record<string, string> = {}
     const token = getToken()
     if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await fetch(`${BASE}/subtitle-content/${movieId}/${trackIndex}`, { headers })
+    const res = await fetch(`${getApiBase()}/subtitle-content/${movieId}/${trackIndex}`, { headers })
     if (!res.ok) throw new Error(await res.text())
     return res.text()
   },
@@ -268,20 +315,20 @@ export const api = {
     const headers: Record<string, string> = {}
     const token = getToken()
     if (token) headers['Authorization'] = `Bearer ${token}`
-    const res = await fetch(`${BASE}/subtitle-fonts/upload`, { method: 'POST', headers, body: formData })
+    const res = await fetch(`${getApiBase()}/subtitle-fonts/upload`, { method: 'POST', headers, body: formData })
     if (!res.ok) throw new Error(await res.text())
     return res.json()
   },
 
   deleteFont: (name: string) => request<{ ok: boolean }>(`/subtitle-fonts/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 
-  defaultSubtitleFontUrl: () => `${BASE}/subtitle-fonts/default`,
+  defaultSubtitleFontUrl: () => `${getApiBase()}/subtitle-fonts/default`,
 
-  fontUrl: (name: string) => `${BASE}/subtitle-fonts/${name.split('/').map(encodeURIComponent).join('/')}`,
+  fontUrl: (name: string) => `${getApiBase()}/subtitle-fonts/${name.split('/').map(encodeURIComponent).join('/')}`,
 
-  cachedCoverUrl: (cacheKey: string) => `${BASE}/cached-cover/${cacheKey}`,
+  cachedCoverUrl: (cacheKey: string) => `${getApiBase()}/cached-cover/${cacheKey}`,
 
-  episodeStillUrl: (movieId: number) => `${BASE}/episode-still/${movieId}`,
+  episodeStillUrl: (movieId: number) => `${getApiBase()}/episode-still/${movieId}`,
 
   scanStatus: (mediaRoot: string) =>
     request<{ media_root?: string; status: string; done: number; total: number; roots?: Record<string, any> }>(
@@ -303,7 +350,7 @@ export const api = {
       body: JSON.stringify({ media_root: mediaRoot }),
     }),
 
-  backupUrl: (type: 'core' | 'full') => `${BASE}/backup?backup_type=${type}`,
+  backupUrl: (type: 'core' | 'full') => `${getApiBase()}/backup?backup_type=${type}`,
 
   getRecentWatched: (limit?: number, offset?: number) => {
     const qs = new URLSearchParams()
@@ -403,7 +450,7 @@ export const api = {
     const headers: Record<string, string> = {}
     const token = getToken()
     if (token) headers['Authorization'] = `Bearer ${token}`
-    return fetch(`${BASE}/movies/${movieId}/cover`, { method: 'POST', headers, body: formData }).then(r => {
+    return fetch(`${getApiBase()}/movies/${movieId}/cover`, { method: 'POST', headers, body: formData }).then(r => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
       return r.json()
     })
@@ -457,11 +504,19 @@ export const api = {
   checkForUpdates: () =>
     request<UpdateCheckResult>('/update/check'),
 
-  performUpdate: (version: string) =>
+  performUpdate: (version: string, mode: 'auto' | 'app-package' | 'docker-image' = 'auto') =>
     request<{ ok: boolean; message?: string; version?: string; error?: string }>('/update/perform', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ version }),
+      body: JSON.stringify({ version, mode }),
+    }),
+
+  updateStatus: () =>
+    request<UpdateStatus>('/update/status'),
+
+  rollbackUpdate: () =>
+    request<{ ok: boolean; message?: string; version?: string }>('/update/rollback', {
+      method: 'POST',
     }),
 
   getChangelog: (version: string) =>
@@ -474,10 +529,12 @@ export const api = {
       body: JSON.stringify({ old_username: oldUsername, old_password: oldPassword, new_username: newUsername, new_password: newPassword }),
     }),
 
+  resolveUrl: resolveApiUrl,
+
   logout: () => { setToken(''); clearCache(); window.location.href = '/login?logout=1' },
 }
 
-export { getToken, setToken, getActiveLibrary, setActiveLibrary, clearCache }
+export { getToken, setToken, getActiveLibrary, setActiveLibrary, getServerUrl, setServerUrl, getApiBase, resolveApiUrl, isNativeApp, clearCache }
 
 export interface LibrarySetting {
   media_root: string
@@ -624,15 +681,30 @@ export interface UpdateInfo {
 export interface VersionEntry {
   version: string
   display_version: string
-  name: string
+  name?: string
   published_at: string
   html_url: string
   body?: string
-  source: string
+  source: 'github-release' | string
+  update_type?: 'app-package' | 'docker-image-required'
+  size?: number
+  requires_image_update?: boolean
+  reason?: string
 }
 
 export interface UpdateCheckResult {
   current_version: string
+  current_source?: 'base' | 'app-package' | 'docker-image'
   has_update: boolean
   versions: VersionEntry[]
+}
+
+export interface UpdateStatus {
+  status: 'idle' | 'downloading' | 'verifying' | 'installing' | 'restarting' | 'success' | 'error'
+  version: string
+  downloaded: number
+  total: number
+  message: string
+  can_rollback?: boolean
+  updated_at?: number
 }

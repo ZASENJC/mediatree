@@ -90,7 +90,7 @@ Glassmorphism + Apple-style design language with custom TailwindCSS palette. Liq
 
 ### Settings
 
-Centralized control panel — per-library scraper & access password, cache TTL tuning (24h–168h), TMDB API key configuration, one-click database backup & restore, and Docker in-place upgrade with changelog viewer.
+Centralized control panel — per-library scraper & access password, cache TTL tuning (24h–168h), TMDB API key configuration, one-click database backup & restore, and lightweight app-package updates with changelog viewer.
 
 ---
 

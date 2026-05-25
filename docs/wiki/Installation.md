@@ -72,8 +72,10 @@ See the [docker-compose.yml template](https://github.com/ZASENJC/mediatree/blob/
 
 ## Upgrading
 
+Regular Web updates download a small app package and do not require mounting the Docker socket. Use a full image upgrade only when base image dependencies change.
+
 ```bash
-# Pull latest and restart
+# Full image upgrade
 docker compose pull
 docker compose up -d --force-recreate
 

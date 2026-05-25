@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { api, FolderNode, Movie } from '../api'
+import { api, FolderNode, Movie, resolveApiUrl } from '../api'
 import { getExcluded, getUiPrefs } from '../store'
 import { saveScrollPos, restoreScrollPos } from '../scroll'
 import { showToast } from '../toast'
@@ -22,8 +22,8 @@ function getCoverSrc(cover: string | null | undefined, version?: number): string
   if (!cover) return null
   let url: string
   if (cover.startsWith('http://') || cover.startsWith('https://')) url = cover
-  else if (cover.startsWith('/api/')) url = cover
-  else url = `/api/media/${encodeMediaPath(cover)}`
+  else if (cover.startsWith('/api/')) url = resolveApiUrl(cover)
+  else url = resolveApiUrl(`/api/media/${encodeMediaPath(cover)}`)
   if (version !== undefined) url += `${url.includes('?') ? '&' : '?'}v=${version}`
   return url
 }

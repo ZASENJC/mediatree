@@ -72,8 +72,10 @@ docker pull zasenjc/mediatree:latest
 
 ## 升级
 
+普通 Web 更新会下载小型应用包，不需要挂载 Docker socket。只有基础镜像依赖变化时才需要完整镜像升级。
+
 ```bash
-# 拉取最新镜像并重启
+# 完整镜像升级
 docker compose pull
 docker compose up -d --force-recreate
 
