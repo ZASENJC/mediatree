@@ -1,27 +1,23 @@
-"""
-MediaTree update checker and Docker-based self-upgrade.
+"""MediaTree update checker and self-upgrade helpers.
 
-Checks DockerHub Tags for newer versions and triggers a Docker
-container self-update.  The update flow uses docker inspect to
-extract the running container's configuration.
-
-For compose-managed containers (detected via labels) it reconstructs
-a minimal compose YAML and uses docker compose up -d so management
-tools like dpanel/Portainer keep tracking the container.  For plain
-docker-run containers it rebuilds via docker run.
-
-The actual restart is executed inside a helper container
-(docker:cli) so the process survives when the main container
-is stopped (cgroup isolation).
+The default path installs a small application package into the data volume
+and asks the entrypoint to restart the Python process. The Docker image
+replacement path is retained for base runtime changes and explicit advanced
+updates.
 """
 import asyncio
+import hashlib
 import httpx
 import json
+import os
 import re
 import shlex
 import shutil
 import socket
 import subprocess
+import tarfile
+import threading
+import time
 from pathlib import Path
 from .config import settings, logger
 
@@ -37,6 +33,14 @@ _VERSION_DEV = Path(__file__).parent.parent.parent / "VERSION"
 VERSION_FILE = _VERSION_CONTAINER if _VERSION_CONTAINER.exists() else _VERSION_DEV
 
 DOCKER_SOCKET = Path("/var/run/docker.sock")
+BASE_API_VERSION = 1
+BASE_APP_DIR = Path(os.environ.get("MEDIATREE_BASE_DIR", "/opt/mediatree/base"))
+APP_SOURCE = os.environ.get("MEDIATREE_APP_SOURCE", "")
+APP_DIR = Path(os.environ.get("MEDIATREE_APP_DIR", ""))
+DATA_DIR = Path(settings.data_dir)
+RELEASES_DIR = DATA_DIR / "releases"
+UPDATES_DIR = DATA_DIR / "updates"
+UPDATE_STATUS_FILE = UPDATES_DIR / "status.json"
 
 # Shell metacharacters to reject in version strings
 _FORBIDDEN_CHARS = set(";&|$`\\\n\r")
@@ -82,17 +86,27 @@ def _get_running_image_tag() -> str | None:
 
 
 def get_current_version() -> str:
-    """Read current version — Docker image tag preferred, VERSION file fallback."""
-    tag = _get_running_image_tag()
-    if tag:
-        return tag
-
-    try:
-        if VERSION_FILE.exists():
-            return VERSION_FILE.read_text(encoding="utf-8").strip()
-    except Exception:
-        pass
+    """Read current application version from the active app directory."""
+    for candidate in (APP_DIR / "VERSION", VERSION_FILE, BASE_APP_DIR / "VERSION"):
+        try:
+            if candidate.exists():
+                value = candidate.read_text(encoding="utf-8").strip()
+                if value:
+                    return value
+        except Exception:
+            pass
     return "unknown"
+
+
+def get_current_source() -> str:
+    """Return where the currently running application code came from."""
+    if APP_SOURCE in {"base", "app-package", "docker-image"}:
+        return APP_SOURCE
+    if (APP_DIR / "VERSION").exists() and str(APP_DIR).startswith(str(RELEASES_DIR)):
+        return "app-package"
+    if _get_running_image_tag():
+        return "docker-image"
+    return "base"
 
 
 def _normalize_version(v: str) -> tuple:
@@ -122,14 +136,16 @@ async def fetch_github_releases(max_count: int = 4) -> list[dict]:
             releases = resp.json()
             result = []
             for rel in releases[:max_count]:
+                tag = rel.get("tag_name", "")
                 result.append({
-                    "version": (rel.get("tag_name") or "").lstrip("vV"),
-                    "display_version": rel.get("tag_name", ""),
+                    "version": (tag or "").lstrip("vV"),
+                    "display_version": tag,
                     "name": rel.get("name", ""),
                     "published_at": rel.get("published_at", ""),
                     "html_url": rel.get("html_url", ""),
                     "body": (rel.get("body") or "")[:200],
                     "source": "github",
+                    "assets": rel.get("assets") or [],
                 })
             return result
     except Exception as e:
@@ -173,57 +189,466 @@ async def fetch_dockerhub_tags(max_count: int = 4) -> list[dict]:
 
 async def fetch_github_release_body(version_tag: str) -> str:
     """Fetch full release body (CHANGELOG) from GitHub for a specific version tag."""
-    tag = version_tag if version_tag.lower().startswith("v") else f"v{version_tag}"
-    try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-            resp = await client.get(
-                f"{GITHUB_API}/tags/{tag}",
-                headers={"Accept": "application/vnd.github.v3+json",
-                         "User-Agent": "MediaTree-Updater/1.0"},
-            )
-            resp.raise_for_status()
-            return (resp.json().get("body") or "").strip()
-    except Exception as e:
-        # Try without 'v' prefix if the first attempt failed
-        if version_tag.lower().startswith("v"):
+    tag = (version_tag or "").strip()
+    candidates = []
+    if tag:
+        candidates.append(tag)
+        stripped = tag.lstrip("vV")
+        candidates.append(stripped if tag.lower().startswith("v") else f"v{stripped}")
+
+    last_error: Exception | None = None
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        for candidate in dict.fromkeys(candidates):
             try:
-                async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-                    resp = await client.get(
-                        f"{GITHUB_API}/tags/{version_tag.lstrip('vV')}",
-                        headers={"Accept": "application/vnd.github.v3+json",
-                                 "User-Agent": "MediaTree-Updater/1.0"},
-                    )
-                    resp.raise_for_status()
-                    return (resp.json().get("body") or "").strip()
-            except Exception:
-                pass
-        logger.warning(f"Failed to fetch GitHub release body for {version_tag}: {e}")
+                resp = await client.get(
+                    f"{GITHUB_API}/tags/{candidate}",
+                    headers={"Accept": "application/vnd.github.v3+json",
+                             "User-Agent": "MediaTree-Updater/1.0"},
+                )
+                resp.raise_for_status()
+                return (resp.json().get("body") or "").strip()
+            except Exception as e:
+                last_error = e
+    logger.warning(f"Failed to fetch GitHub release body for {version_tag}: {last_error}")
+    return ""
+
+
+# ─── App package update operations ───
+
+
+def _ensure_update_dirs() -> None:
+    RELEASES_DIR.mkdir(parents=True, exist_ok=True)
+    UPDATES_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _read_pointer(name: str) -> str:
+    try:
+        pointer = RELEASES_DIR / name
+        if pointer.exists():
+            return pointer.read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _write_pointer(name: str, value: str) -> None:
+    _ensure_update_dirs()
+    (RELEASES_DIR / name).write_text(value.strip() + "\n", encoding="utf-8")
+
+
+def _is_valid_app_dir(path: Path) -> bool:
+    return (
+        (path / "app" / "main.py").is_file()
+        and (path / "frontend" / "dist" / "index.html").is_file()
+        and (path / "VERSION").is_file()
+    )
+
+
+def _read_version_file(path: Path) -> str:
+    try:
+        value = path.read_text(encoding="utf-8").strip()
+        return value.lstrip("vV")
+    except Exception:
         return ""
 
 
-# ─── Merged version list ───
+def can_rollback() -> bool:
+    previous = _read_pointer("previous")
+    if previous == "__base__":
+        return _is_valid_app_dir(BASE_APP_DIR)
+    return bool(previous and _is_valid_app_dir(RELEASES_DIR / previous))
+
+
+def _get_rollback_version() -> str:
+    previous = _read_pointer("previous")
+    if previous == "__base__":
+        return _read_version_file(BASE_APP_DIR / "VERSION")
+    if previous and _is_valid_app_dir(RELEASES_DIR / previous):
+        return previous
+    return ""
+
+
+def _read_existing_update_status() -> dict:
+    try:
+        if UPDATE_STATUS_FILE.exists():
+            return json.loads(UPDATE_STATUS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _write_update_status(
+    status: str,
+    version: str = "",
+    downloaded: int = 0,
+    total: int = 0,
+    message: str = "",
+    update_type: str = "",
+    logs: list[str] | None = None,
+) -> dict:
+    _ensure_update_dirs()
+    existing = _read_existing_update_status()
+    payload = {
+        "status": status,
+        "version": version,
+        "downloaded": downloaded,
+        "total": total,
+        "message": message,
+        "update_type": update_type or existing.get("update_type", ""),
+        "logs": [] if status == "idle" else (logs if logs is not None else existing.get("logs", [])),
+        "can_rollback": can_rollback(),
+        "rollback_version": _get_rollback_version(),
+        "updated_at": int(time.time()),
+    }
+    tmp = UPDATE_STATUS_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(UPDATE_STATUS_FILE)
+    return payload
+
+
+def get_update_status() -> dict:
+    try:
+        if UPDATE_STATUS_FILE.exists():
+            payload = json.loads(UPDATE_STATUS_FILE.read_text(encoding="utf-8"))
+            payload["can_rollback"] = can_rollback()
+            payload["rollback_version"] = _get_rollback_version()
+            return payload
+    except Exception:
+        pass
+    return _write_update_status("idle", message="")
+
+
+def mark_update_success_after_restart() -> None:
+    """Mark a previously requested restart as completed after app startup."""
+    try:
+        if not UPDATE_STATUS_FILE.exists():
+            return
+        payload = json.loads(UPDATE_STATUS_FILE.read_text(encoding="utf-8"))
+        if payload.get("status") == "restarting":
+            _write_update_status(
+                "success",
+                get_current_version(),
+                message="更新已完成。",
+                update_type=payload.get("update_type", ""),
+                logs=payload.get("logs", []),
+            )
+    except Exception as e:
+        logger.warning(f"Failed to mark update success after restart: {e}")
+
+
+def _find_asset(assets: list[dict], version: str, suffix: str) -> dict | None:
+    expected = f"mediatree-app-{version}{suffix}"
+    expected_v = f"mediatree-app-v{version}{suffix}"
+    for asset in assets:
+        name = asset.get("name", "")
+        if name in {expected, expected_v}:
+            return asset
+    for asset in assets:
+        name = asset.get("name", "")
+        if name.endswith(suffix):
+            return asset
+    return None
+
+
+async def _fetch_json_url(url: str) -> dict:
+    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+        resp = await client.get(
+            url,
+            headers={"Accept": "application/json", "User-Agent": "MediaTree-Updater/1.0"},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def _build_release_entry(release: dict) -> dict:
+    version = release.get("version", "")
+    assets = release.get("assets") or []
+    manifest_asset = _find_asset(assets, version, ".manifest.json")
+    archive_asset = _find_asset(assets, version, ".tar.gz")
+    sha_asset = _find_asset(assets, version, ".sha256")
+    manifest = {}
+    reason = ""
+
+    if manifest_asset and manifest_asset.get("browser_download_url"):
+        try:
+            manifest = await _fetch_json_url(manifest_asset["browser_download_url"])
+        except Exception as e:
+            reason = f"应用包 manifest 读取失败: {e}"
+    else:
+        reason = "此版本没有应用包产物，请使用完整镜像更新。"
+
+    requires_image = bool(manifest.get("requires_image_update")) if manifest else True
+    if not reason:
+        reason = manifest.get("reason", "")
+    base_api = int(manifest.get("base_api") or BASE_API_VERSION)
+    if not requires_image and base_api > BASE_API_VERSION:
+        requires_image = True
+        reason = "该应用包需要更新的基础镜像版本，请使用完整镜像更新。"
+    if not requires_image and not archive_asset:
+        requires_image = True
+        reason = "release 中缺少应用包 tar.gz，请使用完整镜像更新。"
+    update_type = "docker-image-required" if requires_image else "app-package"
+
+    return {
+        "version": version,
+        "display_version": release.get("display_version") or version,
+        "name": release.get("name", ""),
+        "published_at": release.get("published_at", ""),
+        "html_url": release.get("html_url", ""),
+        "body": release.get("body", ""),
+        "source": "github-release",
+        "update_type": update_type,
+        "size": int(manifest.get("size") or archive_asset.get("size") or 0) if archive_asset else int(manifest.get("size") or 0),
+        "requires_image_update": requires_image,
+        "reason": reason,
+        "manifest": manifest,
+        "manifest_url": manifest_asset.get("browser_download_url") if manifest_asset else "",
+        "archive_url": archive_asset.get("browser_download_url") if archive_asset else "",
+        "sha256_url": sha_asset.get("browser_download_url") if sha_asset else "",
+        "sha256": manifest.get("sha256", ""),
+        "base_api": base_api,
+    }
+
+
+def _public_release_entry(entry: dict) -> dict:
+    """Return only the stable API fields used by the frontend."""
+    return {
+        "version": entry.get("version", ""),
+        "display_version": entry.get("display_version", ""),
+        "published_at": entry.get("published_at", ""),
+        "html_url": entry.get("html_url", ""),
+        "source": entry.get("source", "github-release"),
+        "update_type": entry.get("update_type", "docker-image-required"),
+        "size": entry.get("size", 0),
+        "requires_image_update": bool(entry.get("requires_image_update")),
+        "reason": entry.get("reason", ""),
+    }
+
+
+async def _get_release_entry(version: str) -> dict | None:
+    version = version.lstrip("vV")
+    releases = await fetch_github_releases(max_count=30)
+    for release in releases:
+        if release.get("version", "").lstrip("vV") == version:
+            return await _build_release_entry(release)
+    return None
 
 
 async def get_available_versions() -> dict:
-    """
-    Fetch versions from DockerHub tags.
-    Returns list sorted by version descending.
-    """
+    """Fetch app package versions from GitHub Releases."""
     current = get_current_version()
-    versions = await fetch_dockerhub_tags()
-
-    # Sort descending by version
-    versions.sort(key=lambda x: _normalize_version(x["version"]), reverse=True)
-
-    # Determine if there is a newer version
+    releases = await fetch_github_releases()
+    entries = [await _build_release_entry(release) for release in releases]
+    entries.sort(key=lambda x: _normalize_version(x["version"]), reverse=True)
     current_norm = _normalize_version(current)
-    has_update = any(_normalize_version(v["version"]) > current_norm for v in versions)
+    has_update = any(_normalize_version(v["version"]) > current_norm for v in entries)
 
     return {
         "current_version": current,
+        "current_source": get_current_source(),
         "has_update": has_update,
-        "versions": versions[:4],
+        "versions": [_public_release_entry(entry) for entry in entries[:4]],
     }
+
+
+async def _read_remote_sha256(url: str) -> str:
+    if not url:
+        return ""
+    async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+        resp = await client.get(url, headers={"User-Agent": "MediaTree-Updater/1.0"})
+        resp.raise_for_status()
+        text = resp.text.strip()
+    return text.split()[0] if text else ""
+
+
+async def _download_file_with_status(url: str, path: Path, version: str) -> str:
+    sha = hashlib.sha256()
+    downloaded = 0
+    total = 0
+    async with httpx.AsyncClient(timeout=1800, follow_redirects=True) as client:
+        async with client.stream("GET", url, headers={"User-Agent": "MediaTree-Updater/1.0"}) as resp:
+            resp.raise_for_status()
+            total = int(resp.headers.get("content-length", 0) or 0)
+            _write_update_status("downloading", version, 0, total, "正在下载应用包...", update_type="app-package")
+            with path.open("wb") as f:
+                async for chunk in resp.aiter_bytes(1024 * 256):
+                    if not chunk:
+                        continue
+                    f.write(chunk)
+                    sha.update(chunk)
+                    downloaded += len(chunk)
+                    _write_update_status("downloading", version, downloaded, total, "正在下载应用包...", update_type="app-package")
+    return sha.hexdigest()
+
+
+def _safe_extract_tar(archive: Path, target: Path) -> None:
+    target_root = target.resolve()
+    with tarfile.open(archive, "r:gz") as tar:
+        for member in tar.getmembers():
+            member_path = (target / member.name).resolve()
+            try:
+                member_path.relative_to(target_root)
+            except ValueError as exc:
+                raise ValueError(f"Archive member escapes target directory: {member.name}") from exc
+        tar.extractall(target)
+
+
+def _request_process_restart(
+    version: str,
+    message: str = "更新成功，正在重启服务...",
+    update_type: str = "app-package",
+    logs: list[str] | None = None,
+) -> None:
+    _write_update_status("restarting", version, message=message, update_type=update_type, logs=logs)
+
+    def _restart() -> None:
+        time.sleep(1.0)
+        os._exit(0)
+
+    threading.Thread(target=_restart, name="mediatree-restart", daemon=True).start()
+
+
+async def perform_app_package_update(version: str) -> dict:
+    version_tag = version.lstrip("vV")
+    if not version_tag or any(c in version_tag for c in _FORBIDDEN_CHARS):
+        raise ValueError(f"Invalid version tag: {version}")
+
+    entry = await _get_release_entry(version_tag)
+    if not entry:
+        return {"ok": False, "error": f"未找到版本 {version_tag} 的 release。"}
+    if entry.get("requires_image_update"):
+        reason = entry.get("reason") or "该版本需要完整镜像更新。"
+        return {"ok": False, "error": reason, "requires_image_update": True}
+    if int(entry.get("base_api") or 0) > BASE_API_VERSION:
+        return {
+            "ok": False,
+            "error": "该应用包需要更新的基础镜像版本，请使用完整镜像更新。",
+            "requires_image_update": True,
+        }
+    if not entry.get("archive_url"):
+        return {"ok": False, "error": "release 中缺少应用包 tar.gz。"}
+
+    _ensure_update_dirs()
+    archive_path = UPDATES_DIR / f"mediatree-app-{version_tag}.tar.gz"
+    staging_dir = RELEASES_DIR / f"{version_tag}.staging"
+    final_dir = RELEASES_DIR / version_tag
+
+    try:
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir)
+        staging_dir.mkdir(parents=True, exist_ok=True)
+
+        actual_sha = await _download_file_with_status(entry["archive_url"], archive_path, version_tag)
+        expected_sha = entry.get("sha256") or await _read_remote_sha256(entry.get("sha256_url", ""))
+        _write_update_status("verifying", version_tag, archive_path.stat().st_size, archive_path.stat().st_size, "正在校验应用包...", update_type="app-package")
+        if expected_sha and actual_sha.lower() != expected_sha.lower():
+            raise ValueError("应用包 sha256 校验失败。")
+
+        _write_update_status("installing", version_tag, message="正在安装应用包...", update_type="app-package")
+        _safe_extract_tar(archive_path, staging_dir)
+        if not _is_valid_app_dir(staging_dir):
+            raise ValueError("应用包结构无效，缺少 app/main.py、frontend/dist/index.html 或 VERSION。")
+
+        package_version = (staging_dir / "VERSION").read_text(encoding="utf-8").strip().lstrip("vV")
+        if package_version and package_version != version_tag:
+            raise ValueError(f"应用包版本不匹配: {package_version} != {version_tag}")
+
+        current = _read_pointer("current")
+        if current and current != version_tag and _is_valid_app_dir(RELEASES_DIR / current):
+            _write_pointer("previous", current)
+        elif get_current_source() == "base" and get_current_version() != version_tag:
+            _write_pointer("previous", "__base__")
+
+        if final_dir.exists():
+            shutil.rmtree(final_dir)
+        staging_dir.replace(final_dir)
+        _write_pointer("current", version_tag)
+
+        _request_process_restart(version_tag, update_type="app-package")
+        return {
+            "ok": True,
+            "message": f"已安装应用包 {version_tag}，服务正在重启...",
+            "version": version_tag,
+            "update_type": "app-package",
+        }
+    except Exception as e:
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir, ignore_errors=True)
+        _write_update_status("error", version_tag, message=str(e), update_type="app-package")
+        logger.exception(f"App package update failed: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+async def rollback_app_package() -> dict:
+    previous = _read_pointer("previous")
+    current = _read_pointer("current")
+    if previous == "__base__":
+        base_version = _read_version_file(BASE_APP_DIR / "VERSION") or get_current_version()
+        if current:
+            _write_pointer("previous", current)
+        try:
+            (RELEASES_DIR / "current").unlink()
+        except FileNotFoundError:
+            pass
+        _request_process_restart(base_version, "已切换到镜像内置版本，正在重启服务...", update_type="app-package")
+        return {"ok": True, "message": "已回滚到镜像内置版本，服务正在重启...", "version": base_version}
+    if not previous or not _is_valid_app_dir(RELEASES_DIR / previous):
+        return {"ok": False, "error": "没有可回滚的上一版本。"}
+    if current:
+        _write_pointer("previous", current)
+    _write_pointer("current", previous)
+    _request_process_restart(previous, "已切换到上一版本，正在重启服务...", update_type="app-package")
+    return {"ok": True, "message": f"已回滚到 {previous}，服务正在重启...", "version": previous}
+
+
+def _trim_update_logs(logs: list[str], limit: int = 120) -> list[str]:
+    return logs[-limit:]
+
+
+async def _run_command_with_update_logs(
+    cmd: list[str],
+    version: str,
+    status: str,
+    message: str,
+    timeout: int,
+    logs: list[str],
+) -> tuple[int, list[str]]:
+    logs.append("$ " + " ".join(shlex.quote(part) for part in cmd))
+    _write_update_status(status, version, message=message, update_type="docker-image", logs=_trim_update_logs(logs))
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    async def consume(stream: asyncio.StreamReader | None) -> None:
+        if not stream:
+            return
+        while True:
+            chunk = await stream.read(4096)
+            if not chunk:
+                break
+            text = chunk.decode("utf-8", errors="replace").replace("\r", "\n")
+            for line in text.splitlines():
+                line = line.strip()
+                if line:
+                    logs.append(line)
+            _write_update_status(status, version, message=message, update_type="docker-image", logs=_trim_update_logs(logs))
+
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(consume(process.stdout), consume(process.stderr), process.wait()),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+        logs.append("操作超时。")
+        _write_update_status("error", version, message="操作超时。", update_type="docker-image", logs=_trim_update_logs(logs))
+        raise
+    return process.returncode or 0, _trim_update_logs(logs)
 
 
 # ─── Docker operations ───
@@ -236,7 +661,7 @@ def _check_docker_available() -> str | None:
                 "Mount /var/run/docker.sock for self-update.")
     if shutil.which("docker") is None:
         return ("Docker CLI not found in container. "
-                "Rebuild your image with the latest Dockerfile that includes docker-ce-cli.")
+                "Rebuild the image with INCLUDE_DOCKER_CLI=true to enable advanced Docker updates.")
     return None
 
 
@@ -498,7 +923,7 @@ def _build_docker_run_cmd(config: dict, version_tag: str) -> list[str]:
     return cmd
 
 
-async def perform_update(version: str) -> dict:
+async def perform_docker_update(version: str) -> dict:
     """
     Pull a Docker image and restart the container with the new version.
 
@@ -518,8 +943,25 @@ async def perform_update(version: str) -> dict:
     if not version_tag or any(c in version_tag for c in _FORBIDDEN_CHARS):
         raise ValueError(f"Invalid version tag: {version}")
 
+    logs: list[str] = []
+    _write_update_status(
+        "installing",
+        version_tag,
+        message="正在准备完整镜像更新...",
+        update_type="docker-image",
+        logs=logs,
+    )
+
     docker_error = _check_docker_available()
     if docker_error:
+        logs.append(docker_error)
+        _write_update_status(
+            "error",
+            version_tag,
+            message=docker_error,
+            update_type="docker-image",
+            logs=_trim_update_logs(logs),
+        )
         return {"ok": False, "error": docker_error}
 
     # Try each possible container identifier until one works
@@ -532,8 +974,17 @@ async def perform_update(version: str) -> dict:
         logger.debug(f"Inspect failed for {cid}, trying next candidate")
 
     if not config:
-        return {"ok": False, "error": "Cannot inspect running container. "
-                "Ensure docker.sock is mounted and the container is running."}
+        error = ("Cannot inspect running container. "
+                 "Ensure docker.sock is mounted and the container is running.")
+        logs.append(error)
+        _write_update_status(
+            "error",
+            version_tag,
+            message=error,
+            update_type="docker-image",
+            logs=_trim_update_logs(logs),
+        )
+        return {"ok": False, "error": error}
 
     container_name = config.get("name", "mediatree")
     is_compose = config.get("is_compose_managed", False)
@@ -548,18 +999,35 @@ async def perform_update(version: str) -> dict:
         # ── Step 1: Pull new mediatree image ──
         pull_cmd = ["docker", "pull", f"zasenjc/mediatree:{version_tag}"]
         logger.info(f"Running: {' '.join(pull_cmd)}")
-        pull_process = await asyncio.create_subprocess_exec(
-            *pull_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        pull_code, logs = await _run_command_with_update_logs(
+            pull_cmd,
+            version_tag,
+            "downloading",
+            f"正在拉取 Docker 镜像 zasenjc/mediatree:{version_tag}...",
+            300,
+            logs,
         )
-        _, pull_stderr = await asyncio.wait_for(pull_process.communicate(), timeout=300)
-        if pull_process.returncode != 0:
-            error_msg = pull_stderr.decode("utf-8", errors="replace")[:500]
+        if pull_code != 0:
+            error_msg = "\n".join(logs[-8:])[:500]
             logger.error(f"Docker pull failed: {error_msg}")
+            _write_update_status(
+                "error",
+                version_tag,
+                message=f"镜像拉取失败: {error_msg}",
+                update_type="docker-image",
+                logs=_trim_update_logs(logs),
+            )
             return {"ok": False, "error": f"镜像拉取失败: {error_msg}"}
 
         logger.info(f"Docker pull succeeded for {version_tag}")
+        logs.append(f"镜像 zasenjc/mediatree:{version_tag} 拉取完成。")
+        _write_update_status(
+            "installing",
+            version_tag,
+            message="正在准备 Docker helper...",
+            update_type="docker-image",
+            logs=_trim_update_logs(logs),
+        )
 
         # ── Step 2: Ensure docker:cli helper image is available ──
         check_cli = await asyncio.create_subprocess_exec(
@@ -570,15 +1038,26 @@ async def perform_update(version: str) -> dict:
         await check_cli.wait()
         if check_cli.returncode != 0:
             logger.info("Pulling docker:cli helper image...")
-            cli_pull = await asyncio.create_subprocess_exec(
-                "docker", "pull", "docker:cli",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            cli_code, logs = await _run_command_with_update_logs(
+                ["docker", "pull", "docker:cli"],
+                version_tag,
+                "downloading",
+                "正在拉取 Docker helper 镜像...",
+                120,
+                logs,
             )
-            _, cli_stderr = await asyncio.wait_for(cli_pull.communicate(), timeout=120)
-            if cli_pull.returncode != 0:
-                error_msg = cli_stderr.decode("utf-8", errors="replace")[:500]
+            if cli_code != 0:
+                error_msg = "\n".join(logs[-8:])[:500]
+                _write_update_status(
+                    "error",
+                    version_tag,
+                    message=f"无法拉取 helper 镜像: {error_msg}",
+                    update_type="docker-image",
+                    logs=_trim_update_logs(logs),
+                )
                 return {"ok": False, "error": f"无法拉取 helper 镜像: {error_msg}"}
+        else:
+            logs.append("Docker helper 镜像已存在。")
 
         # ── Step 3: Execute update ──
         if is_compose and compose_project:
@@ -598,6 +1077,15 @@ async def perform_update(version: str) -> dict:
                 "docker:cli", "sh", "-c", compose_script,
             ]
             logger.info(f"Launching helper container for compose up")
+            logs.append("正在通过 docker compose 启动新版本容器。")
+            logs.append("$ " + " ".join(shlex.quote(part) for part in up_cmd))
+            _write_update_status(
+                "restarting",
+                version_tag,
+                message="正在执行 Docker Compose 更新，服务将短暂重启...",
+                update_type="docker-image",
+                logs=_trim_update_logs(logs),
+            )
 
             # Fire-and-forget with stdin pipe for compose YAML
             process = subprocess.Popen(
@@ -630,6 +1118,15 @@ async def perform_update(version: str) -> dict:
                 "docker:cli", "sh", "-c", script,
             ]
             logger.info("Launching helper container for docker run")
+            logs.append("正在通过 docker run 启动新版本容器。")
+            logs.append("$ " + " ".join(shlex.quote(part) for part in up_cmd))
+            _write_update_status(
+                "restarting",
+                version_tag,
+                message="正在执行 Docker 容器替换，服务将短暂重启...",
+                update_type="docker-image",
+                logs=_trim_update_logs(logs),
+            )
 
             subprocess.Popen(
                 up_cmd,
@@ -643,11 +1140,41 @@ async def perform_update(version: str) -> dict:
             "ok": True,
             "message": f"已更新到 {version_tag}，容器正在重启...",
             "version": version_tag,
+            "update_type": "docker-image",
         }
 
     except asyncio.TimeoutError:
         logger.error("Docker operation timed out")
+        _write_update_status(
+            "error",
+            version_tag,
+            message="操作超时（5分钟），请检查网络连接",
+            update_type="docker-image",
+            logs=_trim_update_logs(logs),
+        )
         return {"ok": False, "error": "操作超时（5分钟），请检查网络连接"}
     except Exception as e:
         logger.exception(f"Update failed: {e}")
+        logs.append(str(e))
+        _write_update_status(
+            "error",
+            version_tag,
+            message=f"更新失败: {str(e)[:500]}",
+            update_type="docker-image",
+            logs=_trim_update_logs(logs),
+        )
         return {"ok": False, "error": f"更新失败: {str(e)[:500]}"}
+
+
+async def perform_update(version: str, mode: str = "auto") -> dict:
+    """Default update entrypoint.
+
+    App-package updates are the default. Docker image replacement is retained
+    only when the caller explicitly requests mode="docker-image".
+    """
+    mode = (mode or "auto").strip()
+    if mode == "docker-image":
+        return await perform_docker_update(version)
+    if mode not in {"auto", "app-package"}:
+        return {"ok": False, "error": f"Unsupported update mode: {mode}"}
+    return await perform_app_package_update(version)

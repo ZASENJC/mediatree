@@ -5,6 +5,7 @@ import { getActiveLibrary, setActiveLibrary, api, clearCache, MediaRoot } from '
 import { getUiPrefs, setUiPrefs, getUpdateNotification } from './store'
 import { useToastController } from './toast'
 import { useTaskProgressController } from './taskProgress'
+import { useTheater } from './theater'
 import Home from './pages/Home'
 import Browse from './pages/Browse'
 import FolderPage from './pages/Folder'
@@ -39,6 +40,7 @@ export default function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [hasUpdate, setHasUpdate] = useState(() => getUpdateNotification().available)
+  const { theaterMode, setTheaterMode } = useTheater()
   const toasts = useToastController()
   const taskProgress = useTaskProgressController()
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -130,6 +132,13 @@ export default function App() {
       setCheckingSetup(false)
     }).catch(() => setCheckingSetup(false))
   }, [])
+
+  // 离开详情页时自动退出剧院模式
+  useEffect(() => {
+    if (theaterMode && !location.pathname.startsWith('/detail/')) {
+      setTheaterMode(false)
+    }
+  }, [location.pathname, theaterMode, setTheaterMode])
 
   const scanTimerRef = useRef(0)
 
@@ -284,6 +293,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      {!theaterMode && (
       <header className="sticky top-0 z-50 pt-2 sm:pt-3">
         <div className="mx-auto flex h-12 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6 transform-gpu sm:h-14 sm:gap-3">
           <div className="relative">
@@ -431,8 +441,9 @@ export default function App() {
           </form>
         )}
       </header>
+      )}
 
-      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-7">
+      <main className={`flex-1 w-full min-h-0 ${theaterMode ? 'flex flex-col max-w-none mx-0 px-0 py-0' : 'max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-7'}`}>
         <Routes key={activeLib}>
           <Route path="/" element={<Home />} />
           <Route path="/browse" element={<Browse />} />

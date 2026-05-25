@@ -12,7 +12,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .config import settings, logger, setup_file_logging, is_safe_image_url
-from .updater import get_current_version, get_available_versions, perform_update, fetch_github_release_body
+from .updater import (
+    get_current_version,
+    get_available_versions,
+    perform_update,
+    fetch_github_release_body,
+    get_update_status,
+    rollback_app_package,
+    mark_update_success_after_restart,
+)
 from .database import (
     init_db, close_db_pool, upsert_movie, get_movies, get_movie_detail,
     get_categories, save_category, delete_category, add_tag, remove_tag,
@@ -88,6 +96,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI):
     await init_db()
     setup_file_logging(settings.data_dir)
+    mark_update_success_after_restart()
     from .jellyfin_compat import init_jellyfin
     await init_jellyfin()
     startup_task = None
@@ -935,13 +944,27 @@ async def api_update_check():
 
 @app.post("/api/update/perform")
 async def api_update_perform(data: dict):
-    """Trigger a Docker self-update to the specified version."""
+    """Trigger an app-package update to the specified version."""
     version = data.get("version", "")
+    mode = data.get("mode", "auto")
     if not version:
         raise HTTPException(status_code=400, detail="version required")
-    result = await perform_update(version)
+    result = await perform_update(version, mode=mode)
     if not result.get("ok"):
         raise HTTPException(status_code=500, detail=result.get("error", "Update failed"))
+    return result
+
+@app.get("/api/update/status")
+async def api_update_status():
+    """Return the current app-package update status."""
+    return get_update_status()
+
+@app.post("/api/update/rollback")
+async def api_update_rollback():
+    """Rollback to the previous app-package version."""
+    result = await rollback_app_package()
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Rollback failed"))
     return result
 
 @app.get("/api/update/changelog")

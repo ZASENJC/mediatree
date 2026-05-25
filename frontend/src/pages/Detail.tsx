@@ -3,12 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { api, Movie } from '../api'
 import VideoPlayer from '../components/VideoPlayer'
 import Lightbox from '../components/Lightbox'
+import { useTheater } from '../theater'
 
 type ThumbnailImage = { src: string; fallback?: string; alt: string }
 
 export default function Detail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { theaterMode } = useTheater()
   const [movie, setMovie] = useState<Movie | null>(null)
   const [loading, setLoading] = useState(true)
   const [lightboxIdx, setLightboxIdx] = useState(-1)
@@ -120,17 +122,20 @@ export default function Detail() {
   ].filter(Boolean) as { label: string; value: string; tone?: string }[]
 
   return (
-    <div className="space-y-5">
-      <button
-        onClick={() => navigate(-1)}
-        className="glass-button px-4 py-2 text-sm"
-      >
-        返回
-      </button>
+    <div className={theaterMode ? 'flex-1 flex flex-col min-h-0' : 'space-y-5'}>
+      {!theaterMode && (
+        <button
+          onClick={() => navigate(-1)}
+          className="glass-button px-4 py-2 text-sm"
+        >
+          返回
+        </button>
+      )}
 
       <VideoPlayer src={api.streamUrl(movie.id)} poster={api.coverUrl(movie.id)} movieId={movie.id}
         onWatched={() => { if (!movie.tags?.includes('watched')) toggleTag('watched') }} />
 
+      {!theaterMode && (<>
       <section className="glass-panel p-4 sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0 flex-1">
@@ -428,6 +433,8 @@ export default function Detail() {
           onPrev={() => setLightboxIdx(i => Math.max(0, i - 1))}
           onNext={() => setLightboxIdx(i => Math.min(thumbnailImages.length - 1, i + 1))}
         />
+      )}
+      </>
       )}
     </div>
   )

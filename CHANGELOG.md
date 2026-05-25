@@ -6,6 +6,35 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## v1.0.03 (2026-05-25)
+
+### App-Package Updates
+
+- **Lightweight app-package updates**: Settings now downloads `mediatree-app-<version>.tar.gz` into `/app/data/releases`, so routine releases no longer need a full Docker image pull
+- **Docker socket is advanced-only**: the default compose example no longer mounts `/var/run/docker.sock`; full image replacement remains available for base-image changes
+- **Rollback and status tracking**: added `/api/update/status` and `/api/update/rollback`; failed app-package updates can roll back to the previous app package or the built-in image version
+- **Release artifacts**: GitHub Releases now include the app archive, manifest, and sha256 checksum for update type, size, and integrity checks
+
+### Settings Update UX
+
+- The update panel always shows only the latest 3 versions
+- App-package progress now appears inside the matching version card, and completed status no longer appears as a separate bar
+- Rollback moved into the matching version row beside the changelog action
+- Full image updates show Docker pull/helper logs directly inside the version card
+
+### Player
+
+- Added immersive Theater Mode with a dedicated viewing route, ambient backdrop, and focused playback layout
+- Improved Theater Mode routing, controls, and exit behavior
+
+### Deployment & Mobile
+
+- Docker image layout now separates `/opt/mediatree/base` from updateable app packages under `/app/data/releases`
+- Added an entrypoint launcher that prefers the current data-volume app package and falls back to the previous package or built-in base app
+- Added Capacitor/Android build configuration and native app server URL support
+
+---
+
 ## v1.0.02 (2026-05-25)
 
 ### UI Improvements

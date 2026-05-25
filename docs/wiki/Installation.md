@@ -72,8 +72,12 @@ See the [docker-compose.yml template](https://github.com/ZASENJC/mediatree/blob/
 
 ## Upgrading
 
+Regular Web updates download the small app package from the GitHub Release and unpack it into `./data/releases`. These updates do not require mounting the Docker socket, and failed app-package updates can be rolled back from the matching version row in Settings.
+
+When a release is marked as requiring a full image update, the Python runtime, system packages, ffmpeg, fonts, or another base image layer changed. In that case, run:
+
 ```bash
-# Pull latest and restart
+# Full image upgrade
 docker compose pull
 docker compose up -d --force-recreate
 

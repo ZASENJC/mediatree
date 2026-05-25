@@ -517,3 +517,79 @@ textarea {
 .media-grid {
   contain: layout style;
 }
+
+/* ── Theater Mode (影院模式) ── */
+
+/* 剧院模式：30px 左右边距，50px 上下间距，内部播放器按比例居中 */
+.theater-player-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 50px 30px;
+}
+
+.theater-player-frame {
+  transform-origin: center center;
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+.theater-player-frame-enter {
+  animation: theater-player-scale-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.theater-player-frame-exit {
+  animation: theater-player-scale-out 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes theater-player-scale-in {
+  from {
+    opacity: 0.92;
+    transform: scale(0.965);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes theater-player-scale-out {
+  from {
+    opacity: 0.96;
+    transform: scale(1.018);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 内层尺寸由 VideoPlayer 按可用区域和视频比例计算，避免高度封顶后继续变宽 */
+.theater-player-wrapper > div:first-child {
+  flex: 0 0 auto;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* 播放器只填满已计算好的视频盒子，不再自行拉宽产生额外黑边 */
+.theater-player-wrapper .mediatree-artplayer {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+  min-height: 0 !important;
+}
+
+/* 剧院模式放大圆角 */
+.theater-player-wrapper .mediatree-artplayer .art-video-player {
+  border-radius: 1.5rem;
+}
+
+/* 剧院光效增强：更高透明度 + 更大模糊半径 */
+.theater-ambient-glow {
+  opacity: 0.7 !important;
+  filter: blur(120px) saturate(1.6) !important;
+}

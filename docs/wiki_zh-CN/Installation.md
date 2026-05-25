@@ -72,8 +72,12 @@ docker pull zasenjc/mediatree:latest
 
 ## 升级
 
+普通 Web 更新会下载 GitHub Release 中的小型应用包，并解压到 `./data/releases`。这类更新不需要挂载 Docker socket，失败时可从设置页对应版本回滚到上一应用版本。
+
+当版本标记为“需要完整镜像更新”时，说明 Python 运行时、系统包、ffmpeg、字体或其它基础镜像层发生变化。此时建议手动执行：
+
 ```bash
-# 拉取最新镜像并重启
+# 完整镜像升级
 docker compose pull
 docker compose up -d --force-recreate
 

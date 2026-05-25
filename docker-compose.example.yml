@@ -10,8 +10,9 @@ services:
       - /path/to/your/media:/media/movies:ro
       # 数据目录（持久化数据库、封面缓存、配置）
       - ${DATA_DIR:-./data}:/app/data
-      # Docker 自更新所需（可选）
-      - /var/run/docker.sock:/var/run/docker.sock
+      # 普通应用包更新不需要 Docker socket。
+      # 如需使用高级完整镜像更新，请手动执行 docker compose pull && docker compose up -d，
+      # 或自行挂载 /var/run/docker.sock 并使用包含 Docker CLI 的镜像构建。
     env_file:
       - .env
     environment:
