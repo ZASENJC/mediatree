@@ -4,7 +4,7 @@ services:
     build: .
     container_name: mediatree
     ports:
-      - "${HOST_PORT:-27580}:27580"
+      - "${HOST_PORT:-27580}:80"
     volumes:
       # 挂载你的媒体目录（只读），格式：/你的/本地/路径:/media/别名:ro
       - /path/to/your/media:/media/movies:ro
@@ -16,5 +16,11 @@ services:
     env_file:
       - .env
     environment:
-      - PORT=${HOST_PORT:-27580}
+      - PORT=80
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped

@@ -67,6 +67,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
       const data = await api.login(username, password)
       if (data.ok) {
         setToken(data.token || '')
+        await api.ensureMediaToken(true).catch(() => {})
         onLogin?.()
         window.location.href = '/'
       }

@@ -53,7 +53,7 @@ In production, the backend serves the built frontend at `/`. For development, ru
 ```bash
 # Terminal 1 — Backend on port 80
 cd backend
-pip install -r requirements.txt
+pip install -r requirements.txt -c constraints.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 80
 
 # Terminal 2 — Frontend on port 5173
@@ -69,13 +69,13 @@ The Vite dev server proxies `/api/*` requests to `localhost:80` (configured in `
 ```bash
 # All tests
 cd backend
-python -m unittest discover -s tests -p 'test_*.py'
+python3.12 -m unittest discover -s tests -p 'test_*.py'
 
 # Single test file
-python -m unittest tests.test_anime_naming
+python3.12 -m unittest tests.test_anime_naming
 
 # Specific test
-python -m unittest tests.test_scanner_tmdbid.TestSomething.test_method
+python3.12 -m unittest tests.test_scanner_tmdbid.TestSomething.test_method
 ```
 
 ### Building for Production
@@ -85,7 +85,7 @@ python -m unittest tests.test_scanner_tmdbid.TestSomething.test_method
 cd frontend && npm run build
 
 # Backend syntax check
-python -m compileall backend/app
+python3.12 -m compileall backend/app
 
 # Docker build (multi-arch)
 docker buildx build \

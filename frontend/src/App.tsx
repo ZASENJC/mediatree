@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
-import { getActiveLibrary, setActiveLibrary, api, clearCache, MediaRoot } from './api'
+import { getActiveLibrary, setActiveLibrary, api, clearCache, MediaRoot, getToken, getMediaTokenSync } from './api'
 import { getUiPrefs, setUiPrefs, getUpdateNotification } from './store'
 import { useToastController } from './toast'
 import { useTaskProgressController } from './taskProgress'
@@ -40,6 +40,8 @@ export default function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [hasUpdate, setHasUpdate] = useState(() => getUpdateNotification().available)
+  const [, setMediaTokenVersion] = useState(0)
+  const [checkingMediaToken, setCheckingMediaToken] = useState(() => Boolean(getToken()) && !getMediaTokenSync())
   const { theaterMode, setTheaterMode } = useTheater()
   const toasts = useToastController()
   const taskProgress = useTaskProgressController()
@@ -74,6 +76,20 @@ export default function App() {
   }, [])
 
   useEffect(() => { loadLibraries() }, [loadLibraries])
+  useEffect(() => {
+    if (!getToken()) {
+      setCheckingMediaToken(false)
+      return
+    }
+    api.ensureMediaToken()
+      .then(() => {
+        if (mountedRef.current) setMediaTokenVersion(v => v + 1)
+      })
+      .finally(() => {
+        if (mountedRef.current) setCheckingMediaToken(false)
+      })
+      .catch(() => {})
+  }, [])
   useEffect(() => {
     setMobileNavOpen(false)
     setMobileSearchOpen(false)
@@ -274,7 +290,7 @@ export default function App() {
     ) : null
   )
 
-  if (checkingSetup) {
+  if (checkingSetup || checkingMediaToken) {
     return <div className="min-h-screen bg-aurora" />
   }
 

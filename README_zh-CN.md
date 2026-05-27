@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG_zh-CN.md"><img src="https://img.shields.io/badge/版本-1.0.03-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG_zh-CN.md"><img src="https://img.shields.io/badge/版本-1.0.04-blue?style=flat-square" alt="Version"></a>
   <a href="https://github.com/ZASENJC/mediatree/blob/main/LICENSE"><img src="https://img.shields.io/badge/许可证-MIT-green?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react" alt="React">
@@ -96,6 +96,7 @@
 ```bash
 git clone https://github.com/ZASENJC/mediatree.git && cd mediatree
 cp .env.example .env
+cp docker-compose.example.yml docker-compose.yml
 # 编辑 .env — 设置 AUTH_USER、AUTH_PASS 和 MEDIA_VOLUMES
 docker compose up -d
 open http://localhost:27580
@@ -152,7 +153,7 @@ docker compose up -d
 
 **数据库** — SQLite（WAL 模式，aiosqlite）
 
-**部署** — Docker 多阶段构建（node:20-alpine + python:3.12-slim）
+**部署** — Docker 多阶段构建（node:22-alpine + python:3.12-slim），运行时使用非 root 用户
 
 **平台支持** — linux/amd64 · linux/arm64
 
@@ -162,14 +163,14 @@ docker compose up -d
 
 ```bash
 # 后端（端口 80）
-cd backend && pip install -r requirements.txt
+cd backend && pip install -r requirements.txt -c constraints.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 80
 
 # 前端（端口 5173，反向代理 /api -> localhost:80）
 cd frontend && npm install && npm run dev
 
 # 测试
-cd backend && python -m unittest discover -s tests -p 'test_*.py'
+cd backend && python3.12 -m unittest discover -s tests -p 'test_*.py'
 ```
 
 ---

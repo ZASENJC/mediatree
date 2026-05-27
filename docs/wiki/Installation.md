@@ -56,7 +56,7 @@ You can also pull the pre-built image directly:
 docker pull zasenjc/mediatree:latest
 ```
 
-See the [docker-compose.yml template](https://github.com/ZASENJC/mediatree/blob/main/docker-compose.yml) for a complete deployment example.
+See the [docker-compose.example.yml template](https://github.com/ZASENJC/mediatree/blob/main/docker-compose.example.yml) for a complete deployment example. Copy it to `docker-compose.yml` before editing local media paths.
 
 ## Volume Mounts
 
@@ -91,6 +91,8 @@ docker compose up -d
 ### Permission Issues
 The container runs as non-root user (uid 1000). Ensure your data directory is writable:
 ```bash
+mkdir -p ./data
+sudo chown -R 1000:1000 ./data
 chmod 755 ./data
 ```
 

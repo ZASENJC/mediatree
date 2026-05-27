@@ -53,7 +53,7 @@ mediatree/
 ```bash
 # 终端 1 — 后端（端口 80）
 cd backend
-pip install -r requirements.txt
+pip install -r requirements.txt -c constraints.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 80
 
 # 终端 2 — 前端（端口 5173）
@@ -69,13 +69,13 @@ Vite 开发服务器将 `/api/*` 请求代理到 `localhost:80`（在 `vite.conf
 ```bash
 # 所有测试
 cd backend
-python -m unittest discover -s tests -p 'test_*.py'
+python3.12 -m unittest discover -s tests -p 'test_*.py'
 
 # 单个测试文件
-python -m unittest tests.test_anime_naming
+python3.12 -m unittest tests.test_anime_naming
 
 # 指定测试用例
-python -m unittest tests.test_scanner_tmdbid.TestSomething.test_method
+python3.12 -m unittest tests.test_scanner_tmdbid.TestSomething.test_method
 ```
 
 ### 构建生产版本
@@ -85,7 +85,7 @@ python -m unittest tests.test_scanner_tmdbid.TestSomething.test_method
 cd frontend && npm run build
 
 # 后端语法检查
-python -m compileall backend/app
+python3.12 -m compileall backend/app
 
 # Docker 多架构构建
 docker buildx build \

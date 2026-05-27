@@ -138,6 +138,7 @@ _SAFE_IMAGE_HOSTS = {
     "bgm.tv",
     "img.bgm.tv",
 }
+MAX_REMOTE_IMAGE_BYTES = 8 * 1024 * 1024
 
 
 def is_safe_image_url(url: str) -> bool:
@@ -160,6 +161,47 @@ def is_safe_image_url(url: str) -> bool:
         return False
     except Exception:
         return False
+
+
+async def fetch_safe_image(url: str, *, headers: dict | None = None, timeout: float = 15.0, max_bytes: int = MAX_REMOTE_IMAGE_BYTES):
+    from urllib.parse import urljoin
+
+    if not is_safe_image_url(url):
+        return None
+    import httpx
+    try:
+        current_url = url
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+            for _ in range(5):
+                async with client.stream("GET", current_url, headers=headers or {}) as resp:
+                    if 300 <= resp.status_code < 400:
+                        location = resp.headers.get("location") or ""
+                        if not location:
+                            return None
+                        next_url = urljoin(str(resp.url), location)
+                        if not is_safe_image_url(next_url):
+                            return None
+                        current_url = next_url
+                        continue
+
+                    if resp.status_code != 200:
+                        return None
+                    content_type = resp.headers.get("content-type", "image/jpeg")
+                    if not content_type.lower().startswith("image/"):
+                        logger.warning(f"Blocked image fetch with non-image content-type: {content_type}")
+                        return None
+                    data = bytearray()
+                    async for chunk in resp.aiter_bytes():
+                        data.extend(chunk)
+                        if len(data) > max_bytes:
+                            logger.warning(f"Blocked oversized image fetch: {current_url}")
+                            return None
+                    return bytes(data), content_type
+            logger.warning(f"Blocked image fetch after too many redirects: {url}")
+            return None
+    except Exception as exc:
+        logger.warning(f"Safe image fetch failed for {url}: {exc}")
+        return None
 
 
 settings = Settings()

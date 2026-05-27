@@ -44,6 +44,47 @@ UPDATE_STATUS_FILE = UPDATES_DIR / "status.json"
 
 # Shell metacharacters to reject in version strings
 _FORBIDDEN_CHARS = set(";&|$`\\\n\r")
+_SENSITIVE_ENV_MARKERS = (
+    "PASS",
+    "PASSWORD",
+    "TOKEN",
+    "SECRET",
+    "API_KEY",
+    "ACCESS_KEY",
+    "PRIVATE_KEY",
+    "AUTH",
+)
+
+
+def _is_sensitive_key(key: str) -> bool:
+    upper = (key or "").upper()
+    return any(marker in upper for marker in _SENSITIVE_ENV_MARKERS)
+
+
+def _redact_text(text: str) -> str:
+    def repl(match: re.Match) -> str:
+        key = match.group(1)
+        if not _is_sensitive_key(key):
+            return match.group(0)
+        quote = match.group(3) or ""
+        return f"{key}={quote}***{quote}"
+
+    return re.sub(r"\b([A-Za-z_][A-Za-z0-9_]*)(=)(['\"]?)([^'\"\s,;]+)(['\"]?)", repl, text)
+
+
+def _redact_arg(arg: str) -> str:
+    if "=" not in arg:
+        return arg
+    key, value = arg.split("=", 1)
+    return f"{key}=***" if _is_sensitive_key(key) and value else arg
+
+
+def _format_command_for_logs(cmd: list[str]) -> str:
+    return " ".join(shlex.quote(_redact_arg(part)) for part in cmd)
+
+
+def _redact_logs(logs: list[str]) -> list[str]:
+    return [_redact_text(line) for line in logs]
 
 # ─── Version utilities ───
 
@@ -602,7 +643,7 @@ async def rollback_app_package() -> dict:
 
 
 def _trim_update_logs(logs: list[str], limit: int = 120) -> list[str]:
-    return logs[-limit:]
+    return _redact_logs(logs[-limit:])
 
 
 async def _run_command_with_update_logs(
@@ -613,7 +654,7 @@ async def _run_command_with_update_logs(
     timeout: int,
     logs: list[str],
 ) -> tuple[int, list[str]]:
-    logs.append("$ " + " ".join(shlex.quote(part) for part in cmd))
+    logs.append("$ " + _format_command_for_logs(cmd))
     _write_update_status(status, version, message=message, update_type="docker-image", logs=_trim_update_logs(logs))
     process = await asyncio.create_subprocess_exec(
         *cmd,
@@ -632,7 +673,7 @@ async def _run_command_with_update_logs(
             for line in text.splitlines():
                 line = line.strip()
                 if line:
-                    logs.append(line)
+                    logs.append(_redact_text(line))
             _write_update_status(status, version, message=message, update_type="docker-image", logs=_trim_update_logs(logs))
 
     try:
@@ -1078,7 +1119,7 @@ async def perform_docker_update(version: str) -> dict:
             ]
             logger.info(f"Launching helper container for compose up")
             logs.append("正在通过 docker compose 启动新版本容器。")
-            logs.append("$ " + " ".join(shlex.quote(part) for part in up_cmd))
+            logs.append("$ " + _format_command_for_logs(up_cmd))
             _write_update_status(
                 "restarting",
                 version_tag,
@@ -1103,7 +1144,7 @@ async def perform_docker_update(version: str) -> dict:
         else:
             # ── Docker run path: stop + rm + run ──
             run_cmd = _build_docker_run_cmd(config, version_tag)
-            run_cmd_str = ' '.join(shlex.quote(arg) for arg in run_cmd)
+            run_cmd_str = _format_command_for_logs(run_cmd)
             name_q = shlex.quote(container_name)
             script = (
                 f"docker stop {name_q} 2>/dev/null; "
@@ -1119,7 +1160,7 @@ async def perform_docker_update(version: str) -> dict:
             ]
             logger.info("Launching helper container for docker run")
             logs.append("正在通过 docker run 启动新版本容器。")
-            logs.append("$ " + " ".join(shlex.quote(part) for part in up_cmd))
+            logs.append("$ " + _format_command_for_logs(up_cmd))
             _write_update_status(
                 "restarting",
                 version_tag,
@@ -1155,7 +1196,7 @@ async def perform_docker_update(version: str) -> dict:
         return {"ok": False, "error": "操作超时（5分钟），请检查网络连接"}
     except Exception as e:
         logger.exception(f"Update failed: {e}")
-        logs.append(str(e))
+        logs.append(_redact_text(str(e)))
         _write_update_status(
             "error",
             version_tag,

@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.0.03-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.0.04-blue?style=flat-square" alt="Version"></a>
   <a href="https://github.com/ZASENJC/mediatree/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react" alt="React">
@@ -99,6 +99,7 @@ Centralized control panel — per-library scraper & access password, cache TTL t
 ```bash
 git clone https://github.com/ZASENJC/mediatree.git && cd mediatree
 cp .env.example .env
+cp docker-compose.example.yml docker-compose.yml
 # Edit .env — set AUTH_USER, AUTH_PASS, and MEDIA_VOLUMES
 docker compose up -d
 open http://localhost:27580
@@ -155,7 +156,7 @@ See `.env.example` for all options.
 
 **Database** — SQLite (WAL mode, aiosqlite)
 
-**Deploy** — Docker multi-stage (node:20-alpine + python:3.12-slim)
+**Deploy** — Docker multi-stage (node:22-alpine + python:3.12-slim), non-root runtime user
 
 **Platform** — linux/amd64 · linux/arm64
 
@@ -165,14 +166,14 @@ See `.env.example` for all options.
 
 ```bash
 # Backend (port 80)
-cd backend && pip install -r requirements.txt
+cd backend && pip install -r requirements.txt -c constraints.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 80
 
 # Frontend (port 5173, proxies /api -> localhost:80)
 cd frontend && npm install && npm run dev
 
 # Tests
-cd backend && python -m unittest discover -s tests -p 'test_*.py'
+cd backend && python3.12 -m unittest discover -s tests -p 'test_*.py'
 ```
 
 ---

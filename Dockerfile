@@ -1,4 +1,4 @@
-FROM node:20-alpine AS frontend-build
+FROM node:22-alpine AS frontend-build
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --legacy-peer-deps
@@ -30,13 +30,15 @@ RUN if [ "$INCLUDE_DOCKER_CLI" = "true" ]; then \
       rm -rf /var/lib/apt/lists/*; \
     fi
 
-COPY backend/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY backend/requirements.txt backend/constraints.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -c constraints.txt
 
 COPY backend/ ./
 COPY --from=frontend-build /build/dist /opt/mediatree/base/frontend/dist
 
-RUN mkdir -p /app/data
+RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin mediatree \
+    && mkdir -p /app/data \
+    && chown -R mediatree:mediatree /app/data /opt/mediatree
 
 COPY VERSION /opt/mediatree/base/VERSION
 COPY docker/entrypoint.sh /usr/local/bin/mediatree-entrypoint
@@ -54,5 +56,10 @@ ARG PORT=80
 ENV PORT=$PORT
 
 EXPOSE $PORT
+
+USER mediatree
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -fsS "http://127.0.0.1:${PORT}/api/health" || exit 1
 
 CMD ["/usr/local/bin/mediatree-entrypoint"]

@@ -2,8 +2,7 @@ import os
 import hashlib
 import subprocess
 from pathlib import Path
-import httpx
-from .config import settings, logger
+from .config import settings, logger, fetch_safe_image
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 EPISODE_IMAGE_MARKERS = ("cover", "still", "thumb")
@@ -15,10 +14,10 @@ async def download_and_compress_cover(url: str, cache_key: str, max_width: int =
         return str(cached_path)
 
     try:
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            raw = resp.content
+        fetched = await fetch_safe_image(url, timeout=30)
+        if not fetched:
+            return None
+        raw, _ = fetched
 
         try:
             from PIL import Image
@@ -52,10 +51,10 @@ async def download_and_cache_still(url: str, cache_key: str, max_width: int = 30
         return str(cached_path)
 
     try:
-        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            raw = resp.content
+        fetched = await fetch_safe_image(url, timeout=30)
+        if not fetched:
+            return None
+        raw, _ = fetched
 
         try:
             from PIL import Image

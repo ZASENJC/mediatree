@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties } from 'react'
 import Artplayer, { Option, Setting, SettingOption } from 'artplayer'
-import { api, SubtitleTrack, resolveApiUrl } from '../api'
+import { api, SubtitleTrack, resolveMediaUrl } from '../api'
 import { getUiPrefs, setUiPrefs } from '../store'
 import artplayerPluginAss from './artplayerPluginAss'
 import VRVideoLayer, { VRMode } from './VRVideoLayer'
@@ -82,7 +82,7 @@ function localPlayerOrigin() {
 }
 
 function absoluteApiUrl(url: string) {
-  return new URL(resolveApiUrl(url), window.location.origin).toString()
+  return new URL(resolveMediaUrl(url), window.location.origin).toString()
 }
 
 function bundledCjkFontUrl() {

@@ -3,9 +3,13 @@ import { Capacitor } from '@capacitor/core'
 
 const DEFAULT_API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '') || '/api'
 const SERVER_URL_KEY = 'mediatree_server_url'
+const MEDIA_TOKEN_KEY = 'mediatree_media_token'
 let memoryToken = ''
 let memoryActiveLibrary = ''
 let memoryServerUrl = ''
+let memoryMediaToken = ''
+let memoryMediaTokenExpiresAt = 0
+let mediaTokenPromise: Promise<string> | null = null
 
 function isNativeApp(): boolean {
   return Capacitor.isNativePlatform()
@@ -30,6 +34,7 @@ function getServerUrl(): string {
 
 function setServerUrl(url: string): string {
   const normalized = normalizeServerUrl(url)
+  if (normalized !== memoryServerUrl) clearMediaToken()
   memoryServerUrl = normalized
   try {
     if (normalized) localStorage.setItem(SERVER_URL_KEY, normalized)
@@ -62,7 +67,95 @@ function getToken(): string {
 }
 function setToken(t: string) {
   memoryToken = t
+  clearMediaToken()
   try { localStorage.setItem('mediatree_token', t) } catch {}
+}
+
+function mediaTokenStillValid(expiresAt: number): boolean {
+  return expiresAt > Math.floor(Date.now() / 1000) + 60
+}
+
+function readStoredMediaToken(): string {
+  if (memoryMediaToken && mediaTokenStillValid(memoryMediaTokenExpiresAt)) return memoryMediaToken
+  try {
+    const raw = localStorage.getItem(MEDIA_TOKEN_KEY) || ''
+    if (!raw) return ''
+    const parsed = JSON.parse(raw) as { token?: string; expires_at?: number; api_base?: string }
+    if (!parsed.token || !parsed.expires_at || parsed.api_base !== getApiBase() || !mediaTokenStillValid(parsed.expires_at)) {
+      localStorage.removeItem(MEDIA_TOKEN_KEY)
+      return ''
+    }
+    memoryMediaToken = parsed.token
+    memoryMediaTokenExpiresAt = parsed.expires_at
+    return parsed.token
+  } catch {
+    return ''
+  }
+}
+
+function storeMediaToken(token: string, expiresAt: number) {
+  memoryMediaToken = token
+  memoryMediaTokenExpiresAt = expiresAt
+  try {
+    localStorage.setItem(MEDIA_TOKEN_KEY, JSON.stringify({ token, expires_at: expiresAt, api_base: getApiBase() }))
+  } catch {}
+}
+
+function clearMediaToken() {
+  memoryMediaToken = ''
+  memoryMediaTokenExpiresAt = 0
+  mediaTokenPromise = null
+  try { localStorage.removeItem(MEDIA_TOKEN_KEY) } catch {}
+}
+
+function getMediaTokenSync(): string {
+  return readStoredMediaToken()
+}
+
+async function ensureMediaToken(force = false): Promise<string> {
+  if (!force) {
+    const cached = getMediaTokenSync()
+    if (cached) return cached
+  }
+  if (mediaTokenPromise) return mediaTokenPromise
+  mediaTokenPromise = request<{ token: string; expires_at: number }>('/media-token', { method: 'POST' })
+    .then(data => {
+      storeMediaToken(data.token, data.expires_at)
+      return data.token
+    })
+    .finally(() => {
+      mediaTokenPromise = null
+    })
+  return mediaTokenPromise
+}
+
+function appendMediaToken(url: string): string {
+  const token = getMediaTokenSync()
+  if (!token || /[?&]token=/.test(url)) return url
+  return `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
+}
+
+function isMediaApiPath(path: string): boolean {
+  return [
+    '/api/stream/',
+    '/api/cover/',
+    '/api/episode-still/',
+    '/api/thumbnail/',
+    '/api/subtitle/',
+    '/api/subtitle-file/',
+    '/api/external-play/',
+    '/api/media/',
+  ].some(prefix => path.startsWith(prefix))
+}
+
+function resolveMediaUrl(url: string): string {
+  const resolved = resolveApiUrl(url)
+  try {
+    const parsed = new URL(resolved, window.location.origin)
+    return isMediaApiPath(parsed.pathname) ? appendMediaToken(resolved) : resolved
+  } catch {
+    return isMediaApiPath(resolved) ? appendMediaToken(resolved) : resolved
+  }
 }
 
 function getActiveLibrary(): string {
@@ -201,13 +294,15 @@ export const api = {
       body: JSON.stringify({ position, duration, stopped }),
     }),
 
-  streamUrl: (id: number) => `${getApiBase()}/stream/${id}`,
+  ensureMediaToken,
 
-  externalPlaylistUrl: (id: number) => `${getApiBase()}/external-play/${id}.m3u`,
+  streamUrl: (id: number) => appendMediaToken(`${getApiBase()}/stream/${id}`),
 
-  coverUrl: (id: number) => `${getApiBase()}/cover/${id}`,
+  externalPlaylistUrl: (id: number) => appendMediaToken(`${getApiBase()}/external-play/${id}.m3u`),
 
-  thumbnailUrl: (id: number, index: number) => `${getApiBase()}/thumbnail/${id}/${index}`,
+  coverUrl: (id: number) => appendMediaToken(`${getApiBase()}/cover/${id}`),
+
+  thumbnailUrl: (id: number, index: number) => appendMediaToken(`${getApiBase()}/thumbnail/${id}/${index}`),
 
   categories: () => request<Category[]>('/categories'),
 
@@ -256,6 +351,9 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
+    }).then(result => {
+      clearCache('config')
+      return result
     }),
 
   mediaRoots: () => request<{ items: MediaRoot[] }>('/media-roots', undefined, 'media_roots'),
@@ -296,7 +394,7 @@ export const api = {
 
   subtitleTracks: (movieId: number, signal?: AbortSignal) => request<SubtitleTrack[]>(`/subtitle-tracks/${movieId}`, signal ? { signal } : undefined),
 
-  subtitleUrl: (movieId: number, trackIndex: number) => `${getApiBase()}/subtitle/${movieId}/${trackIndex}`,
+  subtitleUrl: (movieId: number, trackIndex: number) => appendMediaToken(`${getApiBase()}/subtitle/${movieId}/${trackIndex}`),
 
   subtitleContent: async (movieId: number, trackIndex: number) => {
     const headers: Record<string, string> = {}
@@ -328,7 +426,7 @@ export const api = {
 
   cachedCoverUrl: (cacheKey: string) => `${getApiBase()}/cached-cover/${cacheKey}`,
 
-  episodeStillUrl: (movieId: number) => `${getApiBase()}/episode-still/${movieId}`,
+  episodeStillUrl: (movieId: number) => appendMediaToken(`${getApiBase()}/episode-still/${movieId}`),
 
   scanStatus: (mediaRoot: string) =>
     request<{ media_root?: string; status: string; done: number; total: number; roots?: Record<string, any> }>(
@@ -530,11 +628,12 @@ export const api = {
     }),
 
   resolveUrl: resolveApiUrl,
+  resolveMediaUrl,
 
   logout: () => { setToken(''); clearCache(); window.location.href = '/login?logout=1' },
 }
 
-export { getToken, setToken, getActiveLibrary, setActiveLibrary, getServerUrl, setServerUrl, getApiBase, resolveApiUrl, isNativeApp, clearCache }
+export { getToken, setToken, getActiveLibrary, setActiveLibrary, getServerUrl, setServerUrl, getApiBase, resolveApiUrl, resolveMediaUrl, getMediaTokenSync, ensureMediaToken, isNativeApp, clearCache }
 
 export interface LibrarySetting {
   media_root: string

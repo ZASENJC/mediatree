@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Install dependencies
-cd backend && pip install -r requirements.txt
+cd backend && pip install -r requirements.txt -c constraints.txt
 
 # Run backend locally (port 80, proxy from frontend Vite dev server)
 cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 80
@@ -74,7 +74,7 @@ Copy `.env.example` to `.env` and configure:
 In production, the backend serves the built frontend at `/`. In development, run the backend on port 80 (`uvicorn --port 80`) and the Vite dev server on port 5173 — Vite proxies `/api/*` to `localhost:80` (configured in `vite.config.ts`).
 
 ### All backend logic lives in `backend/app/`
-- `main.py` — FastAPI app, all 80+ route handlers, AuthMiddleware, lifespan hooks. This is a single large file (~1700 lines). No separate router modules. Middleware stack: `CORSMiddleware` (all origins), `AuthMiddleware` (Basic/Bearer for `/api/*`), `EmbyPathRewriteMiddleware` (rewrites `/emby` to Jellyfin paths), `SPAFallbackMiddleware` (serves `index.html` for SPA routing).
+- `main.py` — FastAPI app, all 80+ route handlers, AuthMiddleware, lifespan hooks. This is a single large file (~1700 lines). No separate router modules. Middleware stack: `CORSMiddleware` (all origins), `AuthMiddleware` (Basic/Bearer signed sessions for `/api/*`), `EmbyPathRewriteMiddleware` (rewrites `/emby` to Jellyfin paths), `SPAFallbackMiddleware` (serves `index.html` for SPA routing).
 - `scanner.py` — Core scanning and scraping engine (~1800 lines): `scan_media()` walks filesystem, `scrape_for_library()` runs the fallback chain, per-library lock prevents duplicate concurrent scans.
 - `database.py` — All SQLite CRUD (~1150 lines): `init_db()` with schema migrations, movie/folder/tag/category ops, Jellyfin user_data/playback_sessions/tokens tables.
 - `config.py` — `pydantic-settings` + JSON config persistence. `Settings` class reads `.env`, then `load_persisted_config()` overlays `data/config.json`. Runtime changes via `/api/config` POST write back to `config.json`.
@@ -109,8 +109,10 @@ In production, the backend serves the built frontend at `/`. In development, run
 - Single-writer semaphore serializes SQLite writes across concurrent scrapers
 
 ### Auth system
-- `AuthMiddleware` guards `/api/*` routes using Basic/Bearer auth
-- Whitelisted paths bypass auth entirely — covers streaming, subtitles, covers, fonts, Jellyfin compat routes
+- `AuthMiddleware` guards `/api/*` routes using Basic auth or signed Bearer session tokens from `/api/auth/login`
+- Media delivery routes require app auth or a short-lived media token from `/api/media-token`; this covers streams, subtitles, covers, thumbnails, external playlists, and `/api/media/*`
+- Public/limited bypasses remain intentionally narrow: SPA assets, `/api/auth/login`, `/api/auth/status`, `/api/setup/status`, `/api/health`, `/api/version`, cached covers, font reads, and `/api/update/check`
+- First-run `POST /api/setup/save` is allowed without a session only while no library settings exist
 - Jellyfin clients use separate `jellyfin_auth.py` token system (tokens stored in `jellyfin_tokens` table)
 - Library-level passwords stored in `library_settings` table, verified via `/api/library-verify`
 
@@ -121,16 +123,16 @@ In production, the backend serves the built frontend at `/`. In development, run
 - If a scan is already in progress for a root, marks "queued" and re-scans after current scan completes
 
 ### Update / self-upgrade system (`updater.py`)
-- Two-tier update strategy: lightweight app-package (default) and full Docker image (optional, requires Docker socket mount)
+- Two-tier update strategy: lightweight app-package (default) and full Docker image (optional, requires Docker socket mount and a Docker-CLI-capable image)
 - App-package flow: `GET /api/update/check` → `POST /api/update/perform` downloads `mediatree-app-<version>.tar.gz` into `data/releases/` → `mark_update_success_after_restart()` on next startup → `POST /api/update/rollback` to revert to previous version
 - Docker flow: `docker pull zasenjc/mediatree:<tag>` + `docker compose up -d` restart
 - `GET /api/version` — return current version from VERSION file (public, no auth)
-- `GET /api/update/changelog?version=v0.0.00` — fetch full GitHub release body for CHANGELOG modal
+- `GET /api/update/changelog?version=0.0.00` — fetch full GitHub release body for CHANGELOG modal
 - `GET /api/update/status` — return current app-package update status
 - Frontend auto-checks every 15 minutes in `App.tsx`, shows red dot on Settings nav when update available
 - Settings page update panel: version list with "更新日志" (modal) and "更新到此版本" buttons
 - CHANGELOG modal: full-screen darkened backdrop (`bg-black/60 backdrop-blur-sm`), centered `glass-modal` panel
-- Requires `docker.sock` mount and `COMPOSE_FILE` env for Docker self-upgrade to work (not required for app-package mode)
+- Docker self-upgrade requires `docker.sock` access and a Docker-CLI-capable image; app-package mode does not require Docker socket access
 
 ### Atomic scan flow
 ```

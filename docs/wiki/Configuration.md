@@ -57,14 +57,20 @@ services:
     image: zasenjc/mediatree:latest
     container_name: mediatree
     ports:
-      - "${HOST_PORT:-27580}:27580"
+      - "${HOST_PORT:-27580}:80"
     volumes:
       - ${MEDIA_VOLUMES}
       - ${DATA_DIR:-./data}:/app/data
     env_file:
       - .env
     environment:
-      - PORT=${HOST_PORT:-27580}
+      - PORT=80
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
 ```
 

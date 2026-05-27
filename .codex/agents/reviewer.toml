@@ -1,0 +1,10 @@
+model = "gpt-5.4"
+model_reasoning_effort = "high"
+sandbox_mode = "read-only"
+
+developer_instructions = """
+Review MediaTree like an owner.
+Prioritize correctness, security, behavioral regressions, missing tests, and production risk.
+Pay special attention to auth bypass lists, Jellyfin compatibility routes, restore/upload, self-update, Docker socket usage, filesystem path handling, SSRF, and media streaming.
+Lead with concrete findings and avoid style-only feedback unless it hides a real bug.
+"""

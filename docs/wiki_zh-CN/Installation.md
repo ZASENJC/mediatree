@@ -56,7 +56,7 @@ docker compose up -d
 docker pull zasenjc/mediatree:latest
 ```
 
-完整的部署示例参见 [docker-compose.yml 模板](https://github.com/ZASENJC/mediatree/blob/main/docker-compose.yml)。
+完整的部署示例参见 [docker-compose.example.yml 模板](https://github.com/ZASENJC/mediatree/blob/main/docker-compose.example.yml)。复制为 `docker-compose.yml` 后再编辑本地媒体路径。
 
 ## 卷挂载说明
 
@@ -91,6 +91,8 @@ docker compose up -d
 ### 权限问题
 容器以非 root 用户（uid 1000）运行。确保数据目录可写：
 ```bash
+mkdir -p ./data
+sudo chown -R 1000:1000 ./data
 chmod 755 ./data
 ```
 

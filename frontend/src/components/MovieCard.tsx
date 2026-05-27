@@ -71,10 +71,10 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
 
   const isEpisode = movie.tmdb_type === 'tv' && movie.tmdb_episode != null
   const hasEpisodeStill = !!(isEpisode && movie.episode_still)
-  const versionSuffix = coverVersion ? `?v=${encodeURIComponent(coverVersion)}` : ''
+  const withVersion = (url: string) => coverVersion ? `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(coverVersion)}` : url
   const coverSrc = (hasEpisodeStill
     ? api.episodeStillUrl(movie.id)
-    : api.coverUrl(movie.id)) + versionSuffix
+    : api.coverUrl(movie.id))
   const displayTitle = isEpisode
     ? `E${String(movie.tmdb_episode).padStart(2, '0')} ${movie.episode_title || movie.title || movie.code}`
     : (movie.title || movie.code)
@@ -217,14 +217,14 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       >
         <div className={`${hasEpisodeStill ? 'aspect-video' : 'aspect-[2/3]'} relative bg-white/[0.04]`}>
           <img
-            src={coverSrc}
+            src={withVersion(coverSrc)}
             alt={movie.code}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
             loading="lazy"
             onError={(e) => {
               const img = e.target as HTMLImageElement
               if (hasEpisodeStill) {
-                img.src = api.coverUrl(movie.id) + versionSuffix
+                img.src = withVersion(api.coverUrl(movie.id))
               } else {
                 img.style.display = 'none'
               }

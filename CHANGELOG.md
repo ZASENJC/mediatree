@@ -6,7 +6,35 @@ All notable changes to MediaTree are documented here.
 
 ---
 
-## v1.0.03 (2026-05-25)
+## 1.0.04 (2026-05-28)
+
+### Full Image Update Required
+
+- Marked this release as requiring a full Docker image update because the base frontend image, pinned backend runtime dependencies, container user, healthcheck, and compose runtime behavior changed
+- Release manifests now carry `requires_image_update: true` plus an explicit reason so Settings can route users to the Docker image update path instead of app-package installation
+
+### Security & Access Control
+
+- Replaced static bearer auth with signed session tokens and added short-lived media tokens for streams, covers, thumbnails, subtitles, external playlists, and static media files
+- Hardened remote image fetching and local image serving so only safe image URLs and expected local roots are served
+- Tightened backup restore extraction to reject unsafe archive members, links, device files, and tar paths escaping `data_dir`
+- Redacted sensitive environment values from Docker self-update command logs and status output
+- Made Jellyfin name/password authentication fail closed when primary app auth is not configured
+
+### Setup & Scraper Configuration
+
+- Fixed first-run setup so TMDB access token/API configuration can be saved before an authenticated session exists
+- Cleared the frontend config cache after Settings saves scraper/TMDB configuration, so manual scraping immediately sees the updated TMDB state
+
+### Build & Release Pipeline
+
+- Added project Codex/ECC initialization files under `.agents/` and `.codex/`, plus CI validation for backend tests, backend compilation, and frontend builds
+- Pinned backend dependencies with `backend/constraints.txt` while keeping `uvicorn[standard]` extras in `backend/requirements.txt`
+- Updated Docker builds to Node 22, Python 3.12 dependency constraints, a non-root runtime user, and an HTTP healthcheck
+
+---
+
+## 1.0.03 (2026-05-25)
 
 ### App-Package Updates
 
@@ -35,7 +63,7 @@ All notable changes to MediaTree are documented here.
 
 ---
 
-## v1.0.02 (2026-05-25)
+## 1.0.02 (2026-05-25)
 
 ### UI Improvements
 
@@ -49,7 +77,7 @@ All notable changes to MediaTree are documented here.
 
 ---
 
-## v1.0.01 (2026-05-24)
+## 1.0.01 (2026-05-24)
 
 ### Performance
 
@@ -80,7 +108,7 @@ All notable changes to MediaTree are documented here.
 
 ---
 
-## v1.0.0 (2026-05-23) — Initial Public Release
+## 1.0.00 (2026-05-23) — Initial Public Release
 
 ### Core Architecture
 

@@ -1,7 +1,8 @@
 import aiosqlite
 import json
+import sqlite3
 from pathlib import Path
-from .config import settings
+from .config import settings, logger
 
 _db_pool = None
 WEB_USER_ID = "web"
@@ -29,6 +30,17 @@ async def close_db_pool():
 
 async def get_db():
     return await get_db_pool()
+
+
+def _is_expected_migration_error(exc: Exception) -> bool:
+    if not isinstance(exc, sqlite3.OperationalError):
+        return False
+    message = str(exc).lower()
+    return (
+        "duplicate column name" in message
+        or "no such table: movies" in message
+        or "no such table: tags" in message
+    )
 
 
 async def init_db():
@@ -73,16 +85,20 @@ async def init_db():
     for mig in migrations:
         try:
             await db.execute(mig)
-        except Exception:
-            pass
+        except Exception as exc:
+            if not _is_expected_migration_error(exc):
+                logger.exception("Database migration failed: %s", mig)
+                raise
     await db.commit()
 
     # Ensure tags table has created_at column
     try:
         await db.execute("ALTER TABLE tags ADD COLUMN created_at TEXT")
         await db.execute("UPDATE tags SET created_at = datetime('now') WHERE created_at IS NULL")
-    except Exception:
-        pass
+    except Exception as exc:
+        if not _is_expected_migration_error(exc):
+            logger.exception("Database migration failed: tags.created_at")
+            raise
     await db.commit()
 
     await db.executescript("""

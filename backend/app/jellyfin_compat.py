@@ -9,7 +9,7 @@ from fastapi import APIRouter, Request, Query, HTTPException, Response
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .config import settings, logger, is_safe_image_url
+from .config import settings, logger, fetch_safe_image
 from .database import get_db, get_movie_detail
 from .stream import _full_stream, _range_stream, MIME_MAP as STREAM_MIME_MAP
 from .subtitles import (
@@ -79,6 +79,34 @@ def _resolve_host_base(request: Request) -> str:
     return f"{scheme}://{host}"
 
 
+def _safe_image_roots() -> list[Path]:
+    return [
+        Path(settings.covers_dir),
+        Path(settings.data_dir) / "stills",
+        Path(settings.media_root),
+        *[Path(root) for root in settings.get_all_media_roots()],
+    ]
+
+
+def _safe_local_image(path_value: str | os.PathLike | None) -> Path | None:
+    if not path_value:
+        return None
+    try:
+        p = Path(path_value)
+        if not p.exists() or not p.is_file():
+            return None
+        real = p.resolve()
+        for root in _safe_image_roots():
+            try:
+                if real.is_relative_to(root.resolve()):
+                    return real
+            except (OSError, ValueError):
+                continue
+    except (OSError, ValueError):
+        return None
+    return None
+
+
 # ─── Lifecycle ───
 async def init_jellyfin():
     await _ensure_jellyfin_tables()
@@ -139,8 +167,8 @@ async def jf_authenticate_by_name(request: Request, body: AuthByNameRequest):
         raise HTTPException(status_code=400, detail="Username and password required")
 
     if not settings.auth_enabled:
-        pass
-    elif username != settings.auth_user or password != settings.auth_pass:
+        raise HTTPException(status_code=401, detail="Authentication is not configured")
+    if username != settings.auth_user or password != settings.auth_pass:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     auth_header = request.headers.get("Authorization", "")
@@ -864,45 +892,40 @@ async def _serve_image(item_id: str, image_type: str, request: Request):
                         str(p), media_type="image/jpeg",
                         headers={"ETag": f'"{etag}"', "Cache-Control": "public, max-age=3600"},
                     )
-            if Path(cover_local).exists():
+            safe_cover = _safe_local_image(cover_local)
+            if safe_cover:
                 return FileResponse(
-                    cover_local, media_type="image/jpeg",
+                    str(safe_cover), media_type="image/jpeg",
                     headers={"ETag": f'"{etag}"', "Cache-Control": "public, max-age=3600"},
                 )
         cover_remote = movie.get("cover_remote")
-        if cover_remote and is_safe_image_url(cover_remote):
-            import httpx
-            try:
-                async with httpx.AsyncClient(timeout=15) as client:
-                    resp = await client.get(cover_remote)
-                    if resp.status_code == 200:
-                        return Response(
-                            content=resp.content,
-                            media_type=resp.headers.get("content-type", "image/jpeg"),
-                            headers={"ETag": f'"{etag}"', "Cache-Control": "public, max-age=3600"},
-                        )
-            except Exception:
-                pass
+        fetched = await fetch_safe_image(cover_remote) if cover_remote else None
+        if fetched:
+            content, content_type = fetched
+            return Response(
+                content=content,
+                media_type=content_type,
+                headers={"ETag": f'"{etag}"', "Cache-Control": "public, max-age=3600"},
+            )
 
     elif image_type == "backdrop":
         fanart = movie.get("fanart_local")
         if fanart:
-            if (fanart.startswith("http://") or fanart.startswith("https://")) and is_safe_image_url(fanart):
-                import httpx
-                try:
-                    async with httpx.AsyncClient(timeout=15) as client:
-                        resp = await client.get(fanart)
-                        if resp.status_code == 200:
-                            return Response(
-                                content=resp.content,
-                                media_type=resp.headers.get("content-type", "image/jpeg"),
-                                headers={"ETag": f'"{etag}"', "Cache-Control": "public, max-age=3600"},
-                            )
-                except Exception:
-                    pass
-            elif Path(fanart).exists():
+            if fanart.startswith(("http://", "https://")):
+                fetched = await fetch_safe_image(fanart)
+                if fetched:
+                    content, content_type = fetched
+                    return Response(
+                        content=content,
+                        media_type=content_type,
+                        headers={"ETag": f'"{etag}"', "Cache-Control": "public, max-age=3600"},
+                    )
+            else:
+                safe_fanart = _safe_local_image(fanart)
+                if not safe_fanart:
+                    raise HTTPException(status_code=404)
                 return FileResponse(
-                    fanart, media_type="image/jpeg",
+                    str(safe_fanart), media_type="image/jpeg",
                     headers={"ETag": f'"{etag}"', "Cache-Control": "public, max-age=3600"},
                 )
 
@@ -1387,19 +1410,16 @@ async def _serve_image_blob(cover_local: str, cover_remote_or_fanart: str, etag_
             if p.exists():
                 return FileResponse(str(p), media_type="image/jpeg",
                                     headers={"ETag": f'"{etag}"', "Cache-Control": "public, max-age=3600"})
-        if Path(cover_local).exists():
-            return FileResponse(cover_local, media_type="image/jpeg",
+        safe_cover = _safe_local_image(cover_local)
+        if safe_cover:
+            return FileResponse(str(safe_cover), media_type="image/jpeg",
                                 headers={"ETag": f'"{etag}"', "Cache-Control": "public, max-age=3600"})
 
-    if url and (url.startswith("http://") or url.startswith("https://")) and is_safe_image_url(url):
-        import httpx
-        try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(url)
-                if resp.status_code == 200:
-                    return Response(content=resp.content,
-                                    media_type=resp.headers.get("content-type", "image/jpeg"),
-                                    headers={"ETag": f'"{etag}"', "Cache-Control": "public, max-age=3600"})
-        except Exception:
-            pass
+    if url and url.startswith(("http://", "https://")):
+        fetched = await fetch_safe_image(url)
+        if fetched:
+            content, content_type = fetched
+            return Response(content=content,
+                            media_type=content_type,
+                            headers={"ETag": f'"{etag}"', "Cache-Control": "public, max-age=3600"})
     raise HTTPException(status_code=404)

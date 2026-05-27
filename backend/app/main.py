@@ -1,7 +1,10 @@
 import asyncio
+import hmac
 import json as json_module
 import mimetypes
 import os
+import secrets
+import time
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -11,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .config import settings, logger, setup_file_logging, is_safe_image_url
+from .config import settings, logger, setup_file_logging, fetch_safe_image
 from .updater import (
     get_current_version,
     get_available_versions,
@@ -61,35 +64,149 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         if path.startswith("/assets") \
                 or path in ("/api/auth/login", "/api/auth/status", "/api/setup/status", "/api/health", "/api/version") \
-                or path.startswith("/api/stream/") \
-                or path.startswith("/api/cover/") \
                 or path.startswith("/api/cached-cover/") \
-                or path.startswith("/api/episode-still/") \
-                or path.startswith("/api/thumbnail/") \
-                or path.startswith("/api/subtitle-tracks/") \
-                or path.startswith("/api/subtitle/") \
-                or path.startswith("/api/subtitle-content/") \
-                or path.startswith("/api/subtitle-file/") \
-                or path.startswith("/api/external-play/") \
                 or path.startswith("/fonts/") \
                 or (path == "/api/subtitle-fonts" and request.method in ("GET", "HEAD")) \
                 or (path.startswith("/api/subtitle-fonts/") and request.method in ("GET", "HEAD")) \
-                or path.startswith("/api/media/") \
                 or path == "/api/update/check":
             return await call_next(request)
-        auth = request.headers.get("Authorization", "")
-        if auth == f"Bearer {settings.auth_token}":
+        if path == "/api/setup/save" and request.method == "POST" and not await has_any_library_setting():
             return await call_next(request)
-        if auth.startswith("Basic "):
-            import base64
-            try:
-                decoded = base64.b64decode(auth[6:]).decode()
-                user, _, pwd = decoded.partition(":")
-                if user == settings.auth_user and pwd == settings.auth_pass:
-                    return await call_next(request)
-            except Exception:
-                pass
+        if _is_media_route(path):
+            if _has_media_access(request):
+                return await call_next(request)
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        if _has_app_auth(request):
+            return await call_next(request)
         return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+
+MEDIA_TOKEN_TTL_SECONDS = 6 * 60 * 60
+AUTH_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
+MEDIA_ROUTE_PREFIXES = (
+    "/api/stream/",
+    "/api/cover/",
+    "/api/episode-still/",
+    "/api/thumbnail/",
+    "/api/subtitle-tracks/",
+    "/api/subtitle/",
+    "/api/subtitle-content/",
+    "/api/subtitle-file/",
+    "/api/external-play/",
+    "/api/media-info/",
+    "/api/media/",
+)
+
+
+def _is_media_route(path: str) -> bool:
+    return path.startswith(MEDIA_ROUTE_PREFIXES)
+
+
+def _auth_secret() -> str:
+    secret = f"{settings.auth_user}:{settings.auth_pass}"
+    if secret == ":":
+        secret = os.environ.get("MEDIATREE_MEDIA_TOKEN_SECRET", "") or "mediatree-dev-token-secret"
+    return secret
+
+
+def _sign_token(kind: str, expiry: int, nonce: str) -> str:
+    payload = f"{kind}:{expiry}:{nonce}"
+    signature = hmac.new(_auth_secret().encode(), payload.encode(), "sha256").hexdigest()
+    return f"{payload}:{signature}"
+
+
+def _verify_signed_token(token: str, kind: str) -> bool:
+    parts = (token or "").split(":")
+    if len(parts) != 4:
+        return False
+    token_kind, expiry_raw, nonce, signature = parts
+    if not hmac.compare_digest(token_kind, kind):
+        return False
+    try:
+        expiry = int(expiry_raw)
+    except ValueError:
+        return False
+    if expiry < int(time.time()) or not nonce:
+        return False
+    expected = _sign_token(kind, expiry, nonce).rsplit(":", 1)[-1]
+    return hmac.compare_digest(signature, expected)
+
+
+def _create_auth_session_token() -> str:
+    expiry = int(time.time()) + AUTH_SESSION_TTL_SECONDS
+    nonce = secrets.token_urlsafe(18)
+    return _sign_token("auth", expiry, nonce)
+
+
+def _verify_auth_session_token(token: str) -> bool:
+    return _verify_signed_token(token, "auth")
+
+
+def _sign_media_token(expiry: int, nonce: str) -> str:
+    return _sign_token("media", expiry, nonce)
+
+
+def _verify_media_token(token: str) -> bool:
+    return _verify_signed_token(token, "media")
+
+
+def _has_app_auth(request: Request) -> bool:
+    if not settings.auth_enabled:
+        return True
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer ") and _verify_auth_session_token(auth[7:]):
+        return True
+    if auth.startswith("Basic "):
+        import base64
+        try:
+            decoded = base64.b64decode(auth[6:]).decode()
+            user, _, pwd = decoded.partition(":")
+            return hmac.compare_digest(user, settings.auth_user) and hmac.compare_digest(pwd, settings.auth_pass)
+        except Exception:
+            return False
+    return False
+
+
+def _require_media_access(request: Request) -> None:
+    if _has_media_access(request):
+        return
+    raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def _has_media_access(request: Request) -> bool:
+    if _has_app_auth(request):
+        return True
+    token = request.query_params.get("token") or request.headers.get("X-MediaTree-Media-Token", "")
+    if token and _verify_media_token(token):
+        return True
+    return False
+
+
+def _safe_local_file(path_value: str | os.PathLike | None, allowed_roots: list[Path]) -> Path | None:
+    if not path_value:
+        return None
+    try:
+        p = Path(path_value)
+        if not p.exists() or not p.is_file():
+            return None
+        real = p.resolve()
+        for root in allowed_roots:
+            try:
+                if real.is_relative_to(root.resolve()):
+                    return real
+            except (OSError, ValueError):
+                continue
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def _safe_image_roots() -> list[Path]:
+    return [
+        Path(settings.covers_dir),
+        Path(settings.data_dir) / "stills",
+        Path(settings.media_root),
+    ]
 
 
 @asynccontextmanager
@@ -170,7 +287,7 @@ async def api_auth_login(data: dict):
     pwd = data.get("password", "")
     if settings.auth_enabled:
         if user == settings.auth_user and pwd == settings.auth_pass:
-            return {"token": settings.auth_token, "ok": True}
+            return {"token": _create_auth_session_token(), "ok": True}
         raise HTTPException(status_code=401, detail="Invalid credentials")
     return {"token": "", "ok": True}
 
@@ -180,9 +297,42 @@ async def api_auth_status():
     return {"need_auth": settings.auth_enabled}
 
 
+@app.post("/api/media-token")
+async def api_media_token(request: Request):
+    if settings.auth_enabled and not _has_app_auth(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    expiry = int(time.time()) + MEDIA_TOKEN_TTL_SECONDS
+    nonce = secrets.token_urlsafe(18)
+    return {"token": _sign_media_token(expiry, nonce), "expires_at": expiry}
+
+
 @app.get("/api/health")
 async def health():
-    return {"status": "ok"}
+    checks = {"database": False, "data_dir_writable": False}
+    try:
+        from .database import get_db
+        db = await get_db()
+        cur = await db.execute("SELECT 1")
+        await cur.fetchone()
+        checks["database"] = True
+    except Exception:
+        logger.exception("Health check database probe failed")
+
+    try:
+        data_dir = Path(settings.data_dir)
+        data_dir.mkdir(parents=True, exist_ok=True)
+        probe = data_dir / ".healthcheck"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        checks["data_dir_writable"] = True
+    except Exception:
+        logger.exception("Health check data_dir probe failed")
+
+    ok = all(checks.values())
+    return JSONResponse(
+        status_code=200 if ok else 503,
+        content={"status": "ok" if ok else "error", "checks": checks},
+    )
 
 
 async def _require_enabled_media_root(media_root: str) -> dict | None:
@@ -361,6 +511,7 @@ async def api_save_progress(movie_id: int, data: dict):
 
 @app.get("/api/stream/{movie_id}")
 async def api_stream(movie_id: int, request: Request):
+    _require_media_access(request)
     movie = await get_movie_detail(movie_id)
     if not movie:
         raise HTTPException(status_code=404)
@@ -368,7 +519,8 @@ async def api_stream(movie_id: int, request: Request):
 
 
 @app.get("/api/media-info/{movie_id}")
-async def api_media_info(movie_id: int):
+async def api_media_info(movie_id: int, request: Request):
+    _require_media_access(request)
     movie = await get_movie_detail(movie_id)
     if not movie:
         raise HTTPException(status_code=404)
@@ -381,7 +533,8 @@ async def api_media_info(movie_id: int):
 
 
 @app.get("/api/cover/{movie_id}")
-async def api_cover(movie_id: int):
+async def api_cover(movie_id: int, request: Request):
+    _require_media_access(request)
     movie = await get_movie_detail(movie_id)
     if not movie:
         raise HTTPException(status_code=404)
@@ -391,22 +544,18 @@ async def api_cover(movie_id: int):
         if p.exists():
             return FileResponse(p, headers={"Cache-Control": "no-store"})
     cover_path = movie.get("cover_local")
-    if cover_path and Path(cover_path).exists():
-        return FileResponse(cover_path, headers={"Cache-Control": "no-store"})
+    local_cover = _safe_local_file(cover_path, _safe_image_roots())
+    if local_cover:
+        return FileResponse(local_cover, headers={"Cache-Control": "no-store"})
     remote = movie.get("cover_remote")
-    if remote and is_safe_image_url(remote):
-        import httpx
-        try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(remote, headers={"Referer": "https://www.javdatabase.com", "User-Agent": "Mozilla/5.0"})
-                if resp.status_code == 200:
-                    return Response(
-                        content=resp.content,
-                        media_type=resp.headers.get("content-type", "image/jpeg"),
-                        headers={"Cache-Control": "no-store"},
-                    )
-        except Exception:
-            pass
+    fetched = await fetch_safe_image(remote, headers={"Referer": "https://www.javdatabase.com", "User-Agent": "Mozilla/5.0"}) if remote else None
+    if fetched:
+        content, content_type = fetched
+        return Response(
+            content=content,
+            media_type=content_type,
+            headers={"Cache-Control": "no-store"},
+        )
     return Response(status_code=404, content="No cover available")
 
 
@@ -425,7 +574,8 @@ async def api_cached_cover(cache_key: str):
 
 
 @app.get("/api/episode-still/{movie_id}")
-async def api_episode_still(movie_id: int):
+async def api_episode_still(movie_id: int, request: Request):
+    _require_media_access(request)
     from .covers import find_local_episode_still, generate_video_still
 
     movie = await get_movie_detail(movie_id)
@@ -433,19 +583,15 @@ async def api_episode_still(movie_id: int):
         raise HTTPException(status_code=404)
     for candidate in (movie.get("episode_still_local"), movie.get("episode_still")):
         if candidate and not str(candidate).startswith(("http://", "https://")):
-            local = Path(candidate)
-            if local.exists():
+            local = _safe_local_file(candidate, _safe_image_roots())
+            if local:
                 return FileResponse(local)
     remote = movie.get("episode_still")
     if remote and str(remote).startswith(("http://", "https://")):
-        import httpx
-        try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(remote)
-                if resp.status_code == 200:
-                    return Response(content=resp.content, media_type=resp.headers.get("content-type", "image/jpeg"))
-        except Exception:
-            pass
+        fetched = await fetch_safe_image(remote)
+        if fetched:
+            content, content_type = fetched
+            return Response(content=content, media_type=content_type)
     local_still = find_local_episode_still(movie["path"])
     if local_still:
         return FileResponse(local_still)
@@ -456,28 +602,26 @@ async def api_episode_still(movie_id: int):
 
 
 @app.get("/api/thumbnail/{movie_id}/{index}")
-async def api_thumbnail(movie_id: int, index: int):
+async def api_thumbnail(movie_id: int, index: int, request: Request):
+    _require_media_access(request)
     movie = await get_movie_detail(movie_id)
     if not movie:
         raise HTTPException(status_code=404)
     thumbs = movie.get("javdb_thumbnails", [])
     if not thumbs or index >= len(thumbs):
         raise HTTPException(status_code=404)
-    import httpx
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(thumbs[index], headers={"Referer": "https://www.javdatabase.com", "User-Agent": "Mozilla/5.0"})
-            if resp.status_code == 200:
-                return Response(content=resp.content, media_type=resp.headers.get("content-type", "image/jpeg"))
-    except Exception:
-        pass
+    fetched = await fetch_safe_image(thumbs[index], headers={"Referer": "https://www.javdatabase.com", "User-Agent": "Mozilla/5.0"})
+    if fetched:
+        content, content_type = fetched
+        return Response(content=content, media_type=content_type)
     raise HTTPException(status_code=404)
 
 
 # ─── Subtitle ───
 
 @app.get("/api/subtitle-tracks/{movie_id}")
-async def api_subtitle_tracks(movie_id: int):
+async def api_subtitle_tracks(movie_id: int, request: Request):
+    _require_media_access(request)
     movie = await get_movie_detail(movie_id)
     if not movie:
         raise HTTPException(status_code=404)
@@ -495,7 +639,6 @@ async def api_subtitle_tracks(movie_id: int):
             **t,
             "format": t.get("format") or codec,
             "url": f"/api/subtitle/{movie_id}/{idx}",
-            "path": movie["path"],
             "source": "embedded",
             "is_external": False,
             "web_supported": codec.lower() in {"ass", "ssa", "srt", "subrip", "webvtt", "vtt", "mov_text"},
@@ -516,7 +659,6 @@ async def api_subtitle_tracks(movie_id: int):
             "title": t.get("name", ""),
             "name": t.get("name", ""),
             "source": "external",
-            "path": t["path"],
             "format": fmt,
             "url": f"/api/subtitle/{movie_id}/{idx}",
             "is_external": True,
@@ -526,7 +668,8 @@ async def api_subtitle_tracks(movie_id: int):
 
 
 @app.get("/api/subtitle/{movie_id}/{track_index}")
-async def api_subtitle(movie_id: int, track_index: int):
+async def api_subtitle(movie_id: int, track_index: int, request: Request):
+    _require_media_access(request)
     movie = await get_movie_detail(movie_id)
     if not movie:
         raise HTTPException(status_code=404)
@@ -558,7 +701,8 @@ async def api_subtitle(movie_id: int, track_index: int):
 
 
 @app.get("/api/subtitle-content/{movie_id}/{track_index}")
-async def api_subtitle_content(movie_id: int, track_index: int):
+async def api_subtitle_content(movie_id: int, track_index: int, request: Request):
+    _require_media_access(request)
     movie = await get_movie_detail(movie_id)
     if not movie:
         raise HTTPException(status_code=404)
@@ -587,7 +731,8 @@ async def api_subtitle_content(movie_id: int, track_index: int):
 
 
 @app.get("/api/subtitle-file/{movie_id}/{track_index}/{filename}")
-async def api_subtitle_file(movie_id: int, track_index: int, filename: str):
+async def api_subtitle_file(movie_id: int, track_index: int, filename: str, request: Request):
+    _require_media_access(request)
     movie = await get_movie_detail(movie_id)
     if not movie:
         raise HTTPException(status_code=404)
@@ -605,6 +750,7 @@ async def api_subtitle_file(movie_id: int, track_index: int, filename: str):
 
 @app.get("/api/external-play/{movie_id}.m3u")
 async def api_external_play_playlist(movie_id: int, request: Request):
+    _require_media_access(request)
     from urllib.parse import quote
     movie = await get_movie_detail(movie_id)
     if not movie:
@@ -613,13 +759,17 @@ async def api_external_play_playlist(movie_id: int, request: Request):
     if request.url.hostname in {"0.0.0.0", "::", "[::]"}:
         port = f":{request.url.port}" if request.url.port else ""
         base = f"{request.url.scheme}://127.0.0.1{port}"
-    stream_url = f"{base}/api/stream/{movie_id}"
+    token_param = ""
+    token = request.query_params.get("token") or ""
+    if token:
+        token_param = f"?token={quote(token)}"
+    stream_url = f"{base}/api/stream/{movie_id}{token_param}"
     lines = ["#EXTM3U"]
     external = find_external_subtitles(movie["path"])
     for i, sub in enumerate(external):
         idx = 1000 + i
         name = quote(Path(sub["path"]).name)
-        sub_url = f"{base}/api/subtitle-file/{movie_id}/{idx}/{name}"
+        sub_url = f"{base}/api/subtitle-file/{movie_id}/{idx}/{name}{token_param}"
         lines.append(f"#EXTVLCOPT:sub-file={sub_url}")
         lines.append(f"#EXT-X-MPV-OPT:sub-file={sub_url}")
     lines.append(f"#EXTINF:-1,{movie.get('title') or movie.get('code') or Path(movie['path']).name}")
@@ -827,6 +977,22 @@ def _validate_backup_path(file_path: str, allowed_suffixes: set | None = None) -
         raise HTTPException(status_code=400, detail="Invalid backup file path")
 
 
+def _safe_restore_members(tar, data_root: Path):
+    data_root_resolved = data_root.resolve()
+    for member in tar.getmembers():
+        name = (member.name or "").replace("\\", "/")
+        target = (data_root_resolved / name).resolve()
+        if member.issym() or member.islnk() or member.isdev():
+            raise HTTPException(status_code=400, detail="Unsupported backup member type")
+        try:
+            if not target.is_relative_to(data_root_resolved):
+                raise HTTPException(status_code=400, detail="Invalid backup archive path")
+        except (OSError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid backup archive path")
+        if name == "browser.db" or name.startswith("covers/") or name.startswith("stills/"):
+            yield member
+
+
 @app.post("/api/restore")
 async def api_restore(data: dict):
     import shutil
@@ -848,11 +1014,7 @@ async def api_restore(data: dict):
         data_root_resolved = Path(settings.data_dir).resolve()
         try:
             with tarfile.open(str(backup_source), "r:gz") as tar:
-                for member in tar.getmembers():
-                    # Prevent tar-slip: ensure extracted path stays within data_dir
-                    member_path = (data_root_resolved / member.name).resolve()
-                    if not member_path.is_relative_to(data_root_resolved):
-                        continue
+                for member in _safe_restore_members(tar, data_root_resolved):
                     if member.name == "browser.db":
                         tar.extract(member, str(data_root_resolved))
                     elif member.name.startswith("covers"):
@@ -902,17 +1064,18 @@ async def api_restore_upload(file: UploadFile = None):
         if suffix == ".gz":
             import tarfile
             await close_db_pool()
+            data_root_resolved = Path(settings.data_dir).resolve()
             try:
                 with tarfile.open(tmp_path, "r:gz") as tar:
-                    for member in tar.getmembers():
+                    for member in _safe_restore_members(tar, data_root_resolved):
                         if member.name == "browser.db":
-                            tar.extract(member, str(Path(settings.data_dir)))
+                            tar.extract(member, str(data_root_resolved))
                         elif member.name.startswith("covers") and not member.isdir():
-                            tar.extract(member, str(Path(settings.data_dir)))
+                            tar.extract(member, str(data_root_resolved))
                         elif member.name.startswith("stills") and not member.isdir():
                             stills_dir = Path(settings.data_dir) / "stills"
                             stills_dir.mkdir(parents=True, exist_ok=True)
-                            tar.extract(member, str(Path(settings.data_dir)))
+                            tar.extract(member, str(data_root_resolved))
             finally:
                 from . import database as db_module
                 db_module._db_pool = None
@@ -992,10 +1155,7 @@ async def api_change_password(request: Request, data: dict):
 
     if settings.auth_enabled:
         # Verify both token and old password to prevent token-only attacks
-        auth = request.headers.get("Authorization", "")
-        if auth != f"Bearer {settings.auth_token}" and not (
-            auth.startswith("Basic ") and old_user == settings.auth_user and old_pass == settings.auth_pass
-        ):
+        if not _has_app_auth(request):
             logger.warning("Change password rejected: invalid auth or old credentials")
             raise HTTPException(status_code=401, detail="Invalid credentials")
         if old_user != settings.auth_user or old_pass != settings.auth_pass:
@@ -1463,6 +1623,7 @@ def _resolve_media_path(file_path: str) -> Path:
 
 @app.get("/api/media/{file_path:path}")
 async def api_media_file(file_path: str, request: Request):
+    _require_media_access(request)
     real = _resolve_media_path(file_path)
     # Check library password protection for files under media roots
     from .database import get_library_passwords, verify_library_password_v2
@@ -1471,19 +1632,7 @@ async def api_media_file(file_path: str, request: Request):
         try:
             if real.is_relative_to(lib_root) or str(real).startswith(str(lib_root)):
                 # Check for library password - if set, require auth
-                auth = request.headers.get("Authorization", "")
-                valid = False
-                if auth == f"Bearer {settings.auth_token}":
-                    valid = True
-                elif auth.startswith("Basic "):
-                    import base64
-                    try:
-                        decoded = base64.b64decode(auth[6:]).decode()
-                        user, _, pwd = decoded.partition(":")
-                        if user == settings.auth_user and pwd == settings.auth_pass:
-                            valid = True
-                    except Exception:
-                        pass
+                valid = _has_media_access(request)
                 # If auth is not valid, check library-specific password via query param or header
                 if not valid:
                     lib_pwd = request.query_params.get("pwd") or request.headers.get("X-Library-Password", "")

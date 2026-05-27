@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/constraints.txt
+
+      - name: Install backend dependencies
+        run: pip install -r backend/requirements.txt -c backend/constraints.txt
+
+      - name: Run backend tests
+        run: PYTHONPATH=. python -m unittest discover -s tests -p 'test_*.py'
+        working-directory: backend
+
+      - name: Compile backend
+        run: python -m compileall -q backend/app
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        run: |
+          npm ci --legacy-peer-deps
+          npm run build
+        working-directory: frontend
+
+      - name: Validate Docker build
+        run: docker build --build-arg PORT=80 .
