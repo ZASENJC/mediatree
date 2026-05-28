@@ -15,6 +15,7 @@ All notable changes to MediaTree are documented here.
 - Settings now treats the highest installed image/app-package version as the single current version shown to users, so image and app-package releases stay on one shared version line without exposing layer-specific version splits in the UI
 - When Docker CLI or `docker.sock` is unavailable, Settings now shows explicit host-side guidance to use `docker compose pull && docker compose up -d` instead of exposing raw container errors
 - Container startup now automatically prefers the newer base image version over an older persisted app-package, so full image updates are no longer masked by stale `data/releases/current` pointers
+- Stale failed Docker update status is now cleared once the target version is already installed, preventing old Docker CLI errors from reappearing on the current-version card
 
 ### Security & Access Control
 

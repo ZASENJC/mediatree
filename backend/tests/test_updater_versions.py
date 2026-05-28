@@ -1,4 +1,7 @@
 import unittest
+import json
+import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from app import updater
@@ -64,6 +67,34 @@ class UpdaterVersionStateTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["overlay_is_outdated"])
         self.assertFalse(result["has_update"])
         self.assertEqual(result["versions"][0]["display_version"], "v1.0.04")
+
+    def test_get_update_status_clears_stale_error_for_current_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            releases_dir = root / "releases"
+            updates_dir = root / "updates"
+            status_file = updates_dir / "status.json"
+            updates_dir.mkdir(parents=True)
+            status_file.write_text(json.dumps({
+                "status": "error",
+                "version": "1.0.04",
+                "downloaded": 0,
+                "total": 0,
+                "message": "Docker CLI not found in container.",
+                "update_type": "docker-image",
+                "logs": ["Docker CLI not found in container."],
+            }), encoding="utf-8")
+
+            with patch.object(updater, "RELEASES_DIR", releases_dir), \
+                    patch.object(updater, "UPDATES_DIR", updates_dir), \
+                    patch.object(updater, "UPDATE_STATUS_FILE", status_file), \
+                    patch.object(updater, "get_version_state", return_value={"current_version": "1.0.04"}):
+                status = updater.get_update_status()
+
+        self.assertEqual(status["status"], "success")
+        self.assertEqual(status["version"], "1.0.04")
+        self.assertEqual(status["message"], "更新已完成。")
+        self.assertEqual(status["logs"], [])
 
 
 if __name__ == "__main__":

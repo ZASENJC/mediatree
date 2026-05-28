@@ -203,8 +203,6 @@ export default function Settings() {
       setUpdateResult(result)
       if (result.has_update) {
         setUpdateMsg(`发现新版本 ${result.versions[0]?.display_version || ''}`)
-      } else if (result.status_note) {
-        setUpdateMsg(result.status_note)
       }
     }).catch(() => {})
     api.updateStatus().then(setUpdateProgress).catch(() => {})
@@ -665,8 +663,6 @@ export default function Settings() {
                       if (status) setUpdateProgress(status)
                       if (result.has_update) {
                         setUpdateMsg(`发现新版本 ${result.versions[0]?.display_version || ''}`)
-                      } else if (result.status_note) {
-                        setUpdateMsg(result.status_note)
                       } else {
                         setUpdateMsg('已是最新版本')
                       }
@@ -703,12 +699,6 @@ export default function Settings() {
                   {updateResult?.base_version || '...'}
                 </span>
               </p>
-              <p>
-                覆盖状态：
-                <span className={`font-medium ${updateResult?.overlay_active ? 'text-apple-yellow' : 'text-apple-mint'}`}>
-                  {updateResult?.overlay_active ? '正在运行应用包覆盖层' : '未覆盖，直接运行镜像内置版本'}
-                </span>
-              </p>
             </div>
 
             {updateMsg && (
@@ -741,6 +731,7 @@ export default function Settings() {
                   const versionKey = normalizeVersion(v.version)
                   const isCurrent = versionKey === normalizeVersion(result.current_version)
                   const activeUpdate = updateProgress
+                    && !isCurrent
                     && normalizeVersion(updateProgress.version) === versionKey
                     && updateProgress.status !== 'idle'
                     && updateProgress.status !== 'success'
@@ -754,6 +745,7 @@ export default function Settings() {
                   const rollbackVersion = normalizeVersion(updateProgress?.rollback_version)
                   const canRollbackToThis = Boolean(updateProgress?.can_rollback && rollbackVersion && rollbackVersion === versionKey && !isCurrent)
                   const isBusy = updatePerforming === v.version || Boolean(activeUpdate && activeUpdate.status !== 'error')
+                  const dockerErrorGuide = activeUpdate?.status === 'error' ? getDockerUpdateGuide(activeUpdate.message) : ''
                   return (
                     <div key={v.version}
                          className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
@@ -928,9 +920,9 @@ export default function Settings() {
                         <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-2xl border border-white/10 bg-black/35 p-3 font-mono text-[11px] text-gray-400">
                           <div className={activeUpdate.status === 'error' ? 'mb-1 text-red-400' : 'mb-1 text-gray-300'}>
                             {statusLabel(activeUpdate.status)}
-                            {activeUpdate.message ? ` · ${activeUpdate.message}` : ''}
+                            {(dockerErrorGuide || activeUpdate.message) ? ` · ${dockerErrorGuide || activeUpdate.message}` : ''}
                           </div>
-                          {(activeUpdate.logs || []).length > 0 ? (
+                          {activeUpdate.status === 'error' ? null : (activeUpdate.logs || []).length > 0 ? (
                             activeUpdate.logs!.map((line, logIndex) => (
                               <div key={logIndex} className="break-all">{line}</div>
                             ))

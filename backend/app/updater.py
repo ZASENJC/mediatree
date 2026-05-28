@@ -406,6 +406,16 @@ def get_update_status() -> dict:
     try:
         if UPDATE_STATUS_FILE.exists():
             payload = json.loads(UPDATE_STATUS_FILE.read_text(encoding="utf-8"))
+            if payload.get("status") == "error" and payload.get("version"):
+                current = get_version_state().get("current_version", "")
+                if _normalize_version(current) >= _normalize_version(payload.get("version", "")):
+                    return _write_update_status(
+                        "success",
+                        current,
+                        message="更新已完成。",
+                        update_type=payload.get("update_type", ""),
+                        logs=[],
+                    )
             payload["can_rollback"] = can_rollback()
             payload["rollback_version"] = _get_rollback_version()
             return payload
