@@ -21,17 +21,55 @@ valid_app_dir() {
   [ -f "$dir/app/main.py" ] && [ -f "$dir/frontend/dist/index.html" ] && [ -f "$dir/VERSION" ]
 }
 
+read_version() {
+  dir="$1"
+  if [ -f "$dir/VERSION" ]; then
+    head -n 1 "$dir/VERSION" | tr -d '[:space:]'
+  fi
+}
+
+version_weight() {
+  version="${1%%-*}"
+  version="${version#v}"
+  version="${version#V}"
+  old_ifs="$IFS"
+  IFS=.
+  set -- $version
+  IFS="$old_ifs"
+  major="${1:-0}"
+  minor="${2:-0}"
+  patch="${3:-0}"
+  printf '%d%03d%03d\n' "$major" "$minor" "$patch"
+}
+
+version_gt() {
+  [ "$(version_weight "$1")" -gt "$(version_weight "$2")" ]
+}
+
 choose_app_dir() {
+  base_version="$(read_version "$BASE_DIR")"
   current="$(read_pointer current)"
   if [ -n "$current" ] && valid_app_dir "$RELEASES_DIR/$current"; then
-    printf '%s|app-package\n' "$RELEASES_DIR/$current"
+    current_dir="$RELEASES_DIR/$current"
+    current_version="$(read_version "$current_dir")"
+    if [ -n "$base_version" ] && [ -n "$current_version" ] && version_gt "$base_version" "$current_version"; then
+      printf '%s|base\n' "$BASE_DIR"
+      return
+    fi
+    printf '%s|app-package\n' "$current_dir"
     return
   fi
 
   previous="$(read_pointer previous)"
   if [ -n "$previous" ] && valid_app_dir "$RELEASES_DIR/$previous"; then
+    previous_dir="$RELEASES_DIR/$previous"
+    previous_version="$(read_version "$previous_dir")"
+    if [ -n "$base_version" ] && [ -n "$previous_version" ] && version_gt "$base_version" "$previous_version"; then
+      printf '%s|base\n' "$BASE_DIR"
+      return
+    fi
     printf '%s\n' "$previous" > "$RELEASES_DIR/current"
-    printf '%s|app-package\n' "$RELEASES_DIR/$previous"
+    printf '%s|app-package\n' "$previous_dir"
     return
   fi
 
@@ -49,6 +87,11 @@ terminate() {
 }
 
 trap terminate TERM INT
+
+if [ "${MEDIATREE_ENTRYPOINT_PRINT_CHOICE:-}" = "1" ]; then
+  choose_app_dir
+  exit 0
+fi
 
 while :; do
   choice="$(choose_app_dir)"
