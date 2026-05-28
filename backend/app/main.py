@@ -1102,6 +1102,7 @@ async def api_version():
     info = get_version_state()
     return {
         "version": info["current_version"],
+        "runtime_version": info["runtime_version"],
         "current_source": info["current_source"],
         "base_version": info["base_version"],
         "effective_version": info["effective_version"],

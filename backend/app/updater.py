@@ -164,38 +164,38 @@ def get_current_source() -> str:
 
 
 def get_version_state() -> dict:
-    """Describe the running app version and the image-bundled base version."""
-    current_version = get_current_version()
+    """Describe the user-visible version state and underlying sources."""
+    runtime_version = get_current_version()
     base_version = get_base_version()
     current_source = get_current_source()
     overlay_active = current_source == "app-package"
-    effective_version = current_version
+    effective_version = runtime_version
     if _normalize_version(base_version) > _normalize_version(effective_version):
         effective_version = base_version
     overlay_is_outdated = (
         overlay_active
-        and _normalize_version(base_version) > _normalize_version(current_version)
+        and _normalize_version(base_version) > _normalize_version(runtime_version)
     )
 
     status_note = ""
     if overlay_is_outdated:
         status_note = (
-            f"当前运行的是应用包 {current_version}，它覆盖了镜像内置版本 {base_version}。"
-            f"统一更新基线已按 {effective_version} 计算。"
-            "如果你刚手动拉取了 latest，新镜像已经到位，但仍需切回镜像内置版本或继续更新应用包。"
+            f"当前已更新到 {effective_version}。"
+            f"运行中的应用包仍是 {runtime_version}，镜像内置版本是 {base_version}。"
         )
-    elif overlay_active and base_version != "unknown" and _normalize_version(current_version) > _normalize_version(base_version):
+    elif overlay_active and base_version != "unknown" and _normalize_version(runtime_version) > _normalize_version(base_version):
         status_note = (
-            f"当前运行的是应用包 {current_version}，镜像内置版本为 {base_version}。"
-            f"统一更新基线已按 {effective_version} 计算。"
+            f"当前已更新到 {effective_version}。"
+            f"镜像内置版本为 {base_version}。"
         )
     elif overlay_active and base_version != "unknown":
-        status_note = f"当前运行的是应用包 {current_version}，镜像内置版本为 {base_version}。"
-    elif current_source in {"base", "docker-image"} and current_version != "unknown":
-        status_note = f"当前运行的是镜像内置版本 {current_version}，统一更新基线也是 {effective_version}。"
+        status_note = f"当前已更新到 {effective_version}。"
+    elif current_source in {"base", "docker-image"} and effective_version != "unknown":
+        status_note = f"当前已更新到 {effective_version}。"
 
     return {
-        "current_version": current_version,
+        "current_version": effective_version,
+        "runtime_version": runtime_version,
         "current_source": current_source,
         "base_version": base_version,
         "effective_version": effective_version,

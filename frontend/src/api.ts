@@ -775,6 +775,7 @@ export interface Config {
 
 export interface UpdateInfo {
   version: string
+  runtime_version?: string
   current_source?: 'base' | 'app-package' | 'docker-image'
   base_version?: string
   effective_version?: string
@@ -799,6 +800,7 @@ export interface VersionEntry {
 
 export interface UpdateCheckResult {
   current_version: string
+  runtime_version?: string
   current_source?: 'base' | 'app-package' | 'docker-image'
   base_version?: string
   effective_version?: string

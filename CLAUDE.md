@@ -127,7 +127,7 @@ In production, the backend serves the built frontend at `/`. In development, run
 - Two-tier update strategy: lightweight app-package (default) and full Docker image (optional, requires Docker socket mount and a Docker-CLI-capable image)
 - App-package flow: `GET /api/update/check` → `POST /api/update/perform` downloads `mediatree-app-<version>.tar.gz` into `data/releases/` → `mark_update_success_after_restart()` on next startup → `POST /api/update/rollback` to revert to previous version
 - Docker flow: `docker pull zasenjc/mediatree:<tag>` + `docker compose up -d` restart
-- `GET /api/version` — return running version, image base version, and the unified effective update baseline (public, no auth)
+- `GET /api/version` — return the user-visible current version (highest installed version), plus runtime/image details for internal update decisions (public, no auth)
 - `GET /api/update/changelog?version=0.0.00` — fetch full GitHub release body for CHANGELOG modal
 - `GET /api/update/status` — return current app-package update status
 - Frontend auto-checks every 15 minutes in `App.tsx`, shows red dot on Settings nav when update available
