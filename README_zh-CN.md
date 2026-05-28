@@ -108,7 +108,9 @@ open http://localhost:27580
 
 ## 更新策略
 
-设置页的普通 Web 更新默认下载 GitHub Release 中的小型应用包，并安装到 `./data` 数据卷，不需要挂载 `/var/run/docker.sock`。只有 Python 运行时、系统包、ffmpeg、字体等基础镜像层发生变化时，版本才会标记为“需要完整镜像更新”。
+设置页的普通 Web 更新默认下载 GitHub Release 中的小型应用包，并安装到 `./data` 数据卷，不需要挂载 `/var/run/docker.sock`。只有 Python 运行时、系统包、ffmpeg、字体、entrypoint/bootstrap 行为或 Docker 自更新前提能力等基础镜像层发生变化时，版本才会标记为“需要完整镜像更新”。
+
+应用包发布和完整镜像发布共用同一条版本基线。只要其中一侧已经达到某个版本，后续检查更新时就会把该版本视为已安装，不再把镜像版号和应用包版号拆成两条独立轨道。
 
 完整镜像更新推荐手动执行：
 

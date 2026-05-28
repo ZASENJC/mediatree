@@ -12,6 +12,8 @@ All notable changes to MediaTree are documented here.
 
 - Marked this release as requiring a full Docker image update because the base frontend image, pinned backend runtime dependencies, container user, healthcheck, and compose runtime behavior changed
 - Release manifests now carry `requires_image_update: true` plus an explicit reason so Settings can route users to the Docker image update path instead of app-package installation
+- Settings now distinguishes running app-package version, image-bundled version, and a unified effective update baseline so image and app-package releases stay on one shared version line
+- When Docker CLI or `docker.sock` is unavailable, Settings now shows explicit host-side guidance to use `docker compose pull && docker compose up -d` instead of exposing raw container errors
 
 ### Security & Access Control
 

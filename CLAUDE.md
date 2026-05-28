@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Before each push, sync `CLAUDE.md`, `CHANGELOG.md`, and `README.md` to reflect the current code state.
 - Include documentation updates in the same commit; do not commit them separately.
 - Version rule: use `0.0.00` three-level format without `v` prefix (e.g., `1.0.01`, `1.0.02`), increment sequentially, no more skipping major/minor version numbers. DockerHub tags must also use the same format without `v` prefix. When updating the version number, also create a corresponding GitHub Release (`gh release create 1.0.00`) synced with the CHANGELOG entry for that version.
+- Default release decision rule: unless the user explicitly overrides it, automatically decide whether a change should ship as `app-package` or require a full Docker image update. Use `app-package` for pure application/frontend changes; require a full image update for Dockerfile/runtime/system-package/python/entrypoint/self-update capability changes or anything unsafe to deliver as an app package. Treat app-package and image releases as sharing one version baseline rather than two separate tracks.
 
 ## Interaction Language Rules
 
@@ -126,13 +127,14 @@ In production, the backend serves the built frontend at `/`. In development, run
 - Two-tier update strategy: lightweight app-package (default) and full Docker image (optional, requires Docker socket mount and a Docker-CLI-capable image)
 - App-package flow: `GET /api/update/check` → `POST /api/update/perform` downloads `mediatree-app-<version>.tar.gz` into `data/releases/` → `mark_update_success_after_restart()` on next startup → `POST /api/update/rollback` to revert to previous version
 - Docker flow: `docker pull zasenjc/mediatree:<tag>` + `docker compose up -d` restart
-- `GET /api/version` — return current version from VERSION file (public, no auth)
+- `GET /api/version` — return running version, image base version, and the unified effective update baseline (public, no auth)
 - `GET /api/update/changelog?version=0.0.00` — fetch full GitHub release body for CHANGELOG modal
 - `GET /api/update/status` — return current app-package update status
 - Frontend auto-checks every 15 minutes in `App.tsx`, shows red dot on Settings nav when update available
 - Settings page update panel: version list with "更新日志" (modal) and "更新到此版本" buttons
 - CHANGELOG modal: full-screen darkened backdrop (`bg-black/60 backdrop-blur-sm`), centered `glass-modal` panel
 - Docker self-upgrade requires `docker.sock` access and a Docker-CLI-capable image; app-package mode does not require Docker socket access
+- Update comparisons must use the higher of the app-package version and image base version as the effective baseline, so image/package releases do not drift into separate version tracks
 
 ### Atomic scan flow
 ```

@@ -111,7 +111,9 @@ open http://localhost:27580
 
 ## Update Strategy
 
-Regular Web updates from Settings download the small app package attached to the GitHub Release and install it into the `./data` volume. They do not require mounting `/var/run/docker.sock`. Releases are marked as requiring a full image update only when the base layer changes, such as the Python runtime, system packages, ffmpeg, or fonts.
+Regular Web updates from Settings download the small app package attached to the GitHub Release and install it into the `./data` volume. They do not require mounting `/var/run/docker.sock`. Releases are marked as requiring a full image update only when the base layer changes, such as the Python runtime, system packages, ffmpeg, fonts, entrypoint/bootstrap behavior, or Docker self-update prerequisites.
+
+App-package releases and full image releases share one version baseline. If either side has already reached a version, MediaTree treats that version as installed for future update comparisons instead of maintaining separate image/package version tracks.
 
 For full image updates, run:
 

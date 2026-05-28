@@ -127,3 +127,11 @@ Codex does not provide Claude Code hooks in this repo, so enforce security throu
 - Preserve user changes and ignored local files unless the user explicitly asks to remove or reset them.
 - `docker-compose.yml`, `.env`, `data/`, `frontend/node_modules/`, and `frontend/dist/` are local/runtime artifacts.
 - Do not revert unrelated changes.
+
+## Update Release Policy
+
+- App-package updates and full Docker image updates share one version baseline. When either side reaches a version, subsequent update comparisons must continue from the higher installed version instead of the currently running layer alone.
+- Unless the user explicitly overrides it, automatically choose the release/update path before push or release work:
+  - Use `app-package` when the change is limited to application code or built frontend assets and does not require a new base image/runtime layer.
+  - Use full Docker image update when the change touches the runtime/base image surface, including Dockerfile, system packages, Python version or pinned dependency layer, ffmpeg/fonts, container user/permissions, entrypoint/bootstrap behavior, Docker self-update prerequisites, or any change that cannot be delivered safely by replacing only the app package.
+- When the chosen path is full Docker image update, keep Settings/release messaging aligned so users are guided to host-side `docker compose pull && docker compose up -d` when in-container image replacement is unavailable.
