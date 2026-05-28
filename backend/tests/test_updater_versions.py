@@ -13,9 +13,11 @@ class UpdaterVersionStateTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(state["current_version"], "1.0.03")
         self.assertEqual(state["base_version"], "1.0.04")
+        self.assertEqual(state["effective_version"], "1.0.04")
         self.assertTrue(state["overlay_active"])
         self.assertTrue(state["overlay_is_outdated"])
         self.assertIn("latest", state["status_note"])
+        self.assertIn("统一更新基线已按 1.0.04 计算", state["status_note"])
 
     async def test_get_available_versions_exposes_base_version_and_overlay_state(self):
         release = {
@@ -43,6 +45,7 @@ class UpdaterVersionStateTest(unittest.IsolatedAsyncioTestCase):
             "current_version": "1.0.03",
             "current_source": "app-package",
             "base_version": "1.0.04",
+            "effective_version": "1.0.04",
             "overlay_active": True,
             "overlay_is_outdated": True,
             "status_note": "当前运行的是应用包 1.0.03，镜像内置版本为 1.0.04。",
@@ -55,9 +58,10 @@ class UpdaterVersionStateTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["current_version"], "1.0.03")
         self.assertEqual(result["base_version"], "1.0.04")
+        self.assertEqual(result["effective_version"], "1.0.04")
         self.assertTrue(result["overlay_active"])
         self.assertTrue(result["overlay_is_outdated"])
-        self.assertTrue(result["has_update"])
+        self.assertFalse(result["has_update"])
         self.assertEqual(result["versions"][0]["display_version"], "v1.0.04")
 
 

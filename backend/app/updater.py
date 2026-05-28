@@ -169,6 +169,9 @@ def get_version_state() -> dict:
     base_version = get_base_version()
     current_source = get_current_source()
     overlay_active = current_source == "app-package"
+    effective_version = current_version
+    if _normalize_version(base_version) > _normalize_version(effective_version):
+        effective_version = base_version
     overlay_is_outdated = (
         overlay_active
         and _normalize_version(base_version) > _normalize_version(current_version)
@@ -178,17 +181,24 @@ def get_version_state() -> dict:
     if overlay_is_outdated:
         status_note = (
             f"当前运行的是应用包 {current_version}，它覆盖了镜像内置版本 {base_version}。"
+            f"统一更新基线已按 {effective_version} 计算。"
             "如果你刚手动拉取了 latest，新镜像已经到位，但仍需切回镜像内置版本或继续更新应用包。"
+        )
+    elif overlay_active and base_version != "unknown" and _normalize_version(current_version) > _normalize_version(base_version):
+        status_note = (
+            f"当前运行的是应用包 {current_version}，镜像内置版本为 {base_version}。"
+            f"统一更新基线已按 {effective_version} 计算。"
         )
     elif overlay_active and base_version != "unknown":
         status_note = f"当前运行的是应用包 {current_version}，镜像内置版本为 {base_version}。"
     elif current_source in {"base", "docker-image"} and current_version != "unknown":
-        status_note = f"当前运行的是镜像内置版本 {current_version}。"
+        status_note = f"当前运行的是镜像内置版本 {current_version}，统一更新基线也是 {effective_version}。"
 
     return {
         "current_version": current_version,
         "current_source": current_source,
         "base_version": base_version,
+        "effective_version": effective_version,
         "overlay_active": overlay_active,
         "overlay_is_outdated": overlay_is_outdated,
         "status_note": status_note,
@@ -524,16 +534,18 @@ async def get_available_versions() -> dict:
     """Fetch app package versions from GitHub Releases."""
     version_state = get_version_state()
     current = version_state["current_version"]
+    effective = version_state["effective_version"]
     releases = await fetch_github_releases()
     entries = [await _build_release_entry(release) for release in releases]
     entries.sort(key=lambda x: _normalize_version(x["version"]), reverse=True)
-    current_norm = _normalize_version(current)
-    has_update = any(_normalize_version(v["version"]) > current_norm for v in entries)
+    effective_norm = _normalize_version(effective)
+    has_update = any(_normalize_version(v["version"]) > effective_norm for v in entries)
 
     return {
         "current_version": current,
         "current_source": version_state["current_source"],
         "base_version": version_state["base_version"],
+        "effective_version": effective,
         "overlay_active": version_state["overlay_active"],
         "overlay_is_outdated": version_state["overlay_is_outdated"],
         "status_note": version_state["status_note"],

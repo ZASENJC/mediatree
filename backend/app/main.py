@@ -1104,6 +1104,7 @@ async def api_version():
         "version": info["current_version"],
         "current_source": info["current_source"],
         "base_version": info["base_version"],
+        "effective_version": info["effective_version"],
         "overlay_active": info["overlay_active"],
         "overlay_is_outdated": info["overlay_is_outdated"],
         "status_note": info["status_note"],

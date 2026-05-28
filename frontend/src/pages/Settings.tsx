@@ -114,6 +114,7 @@ export default function Settings() {
   }
 
   const normalizeVersion = (version?: string) => (version || '').replace(/^v/i, '')
+  const effectiveVersion = updateResult?.effective_version || updateResult?.current_version || ''
 
   const getDockerUpdateGuide = (message?: string) => {
     const text = (message || '').trim()
@@ -687,9 +688,15 @@ export default function Settings() {
 
             <div className="mb-3 grid grid-cols-1 gap-2 text-xs text-gray-500 sm:grid-cols-2">
               <p>
-                当前版本：
+                运行中版本：
                 <span className="text-white font-medium">
                   {updateResult?.current_version || '...'}
+                </span>
+              </p>
+              <p>
+                统一更新基线：
+                <span className="text-white font-medium">
+                  {updateResult?.effective_version || updateResult?.current_version || '...'}
                 </span>
               </p>
               <p>
@@ -740,7 +747,8 @@ export default function Settings() {
                   const result = updateResult
                   if (!result) return null
                   const versionKey = normalizeVersion(v.version)
-                  const isCurrent = versionKey === normalizeVersion(result.current_version)
+                  const isRuntimeCurrent = versionKey === normalizeVersion(result.current_version)
+                  const isInstalledBaseline = versionKey === normalizeVersion(result.effective_version || result.current_version)
                   const activeUpdate = updateProgress
                     && normalizeVersion(updateProgress.version) === versionKey
                     && updateProgress.status !== 'idle'
@@ -753,7 +761,7 @@ export default function Settings() {
                     ? Math.min(100, Math.round((activeUpdate.downloaded / activeUpdate.total) * 100))
                     : 0
                   const rollbackVersion = normalizeVersion(updateProgress?.rollback_version)
-                  const canRollbackToThis = Boolean(updateProgress?.can_rollback && rollbackVersion && rollbackVersion === versionKey && !isCurrent)
+                  const canRollbackToThis = Boolean(updateProgress?.can_rollback && rollbackVersion && rollbackVersion === versionKey && !isRuntimeCurrent)
                   const isBusy = updatePerforming === v.version || Boolean(activeUpdate && activeUpdate.status !== 'error')
                   return (
                     <div key={v.version}
@@ -762,12 +770,17 @@ export default function Settings() {
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-white truncate">
                             {v.display_version || v.version}
-                            {isCurrent && (
+                            {isRuntimeCurrent && (
                               <span className="ml-2 inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] text-gray-400">
-                                当前
+                                运行中
                               </span>
                             )}
-                            {!isCurrent && i === 0 && result.has_update && (
+                            {!isRuntimeCurrent && isInstalledBaseline && (
+                              <span className="ml-2 inline-flex items-center rounded-full border border-apple-blue/30 bg-apple-blue/15 px-2 py-0.5 text-[10px] text-apple-blue">
+                                已计入基线
+                              </span>
+                            )}
+                            {!isInstalledBaseline && i === 0 && result.has_update && (
                               <span className="ml-2 inline-flex items-center rounded-full border border-green-400/30 bg-green-500/15 px-2 py-0.5 text-[10px] text-green-400">
                                 最新
                               </span>
@@ -830,7 +843,7 @@ export default function Settings() {
                             >
                               {updatePerforming === v.version ? '回滚中...' : '回滚到此版本'}
                             </button>
-                          ) : !isCurrent && !v.requires_image_update ? (
+                          ) : !isInstalledBaseline && !v.requires_image_update ? (
                             <button
                               onClick={async () => {
                                 if (!confirm(`确定要切换到 ${v.display_version || v.version} 吗？容器将自动重启。`)) return
@@ -860,7 +873,7 @@ export default function Settings() {
                             >
                               {updatePerforming === v.version ? '更新中...' : '下载并更新'}
                             </button>
-                          ) : !isCurrent && v.requires_image_update ? (
+                          ) : !isInstalledBaseline && v.requires_image_update ? (
                             <button
                               onClick={async () => {
                                 if (!confirm(`确定要执行完整镜像更新到 ${v.display_version || v.version} 吗？该操作需要已挂载 Docker socket。`)) return
