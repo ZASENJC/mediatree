@@ -139,6 +139,19 @@ def get_current_version() -> str:
     return "unknown"
 
 
+def get_base_version() -> str:
+    """Read the built-in version shipped inside the current image."""
+    for candidate in (BASE_APP_DIR / "VERSION", VERSION_FILE):
+        try:
+            if candidate.exists():
+                value = candidate.read_text(encoding="utf-8").strip()
+                if value:
+                    return value
+        except Exception:
+            pass
+    return "unknown"
+
+
 def get_current_source() -> str:
     """Return where the currently running application code came from."""
     if APP_SOURCE in {"base", "app-package", "docker-image"}:
@@ -148,6 +161,38 @@ def get_current_source() -> str:
     if _get_running_image_tag():
         return "docker-image"
     return "base"
+
+
+def get_version_state() -> dict:
+    """Describe the running app version and the image-bundled base version."""
+    current_version = get_current_version()
+    base_version = get_base_version()
+    current_source = get_current_source()
+    overlay_active = current_source == "app-package"
+    overlay_is_outdated = (
+        overlay_active
+        and _normalize_version(base_version) > _normalize_version(current_version)
+    )
+
+    status_note = ""
+    if overlay_is_outdated:
+        status_note = (
+            f"当前运行的是应用包 {current_version}，它覆盖了镜像内置版本 {base_version}。"
+            "如果你刚手动拉取了 latest，新镜像已经到位，但仍需切回镜像内置版本或继续更新应用包。"
+        )
+    elif overlay_active and base_version != "unknown":
+        status_note = f"当前运行的是应用包 {current_version}，镜像内置版本为 {base_version}。"
+    elif current_source in {"base", "docker-image"} and current_version != "unknown":
+        status_note = f"当前运行的是镜像内置版本 {current_version}。"
+
+    return {
+        "current_version": current_version,
+        "current_source": current_source,
+        "base_version": base_version,
+        "overlay_active": overlay_active,
+        "overlay_is_outdated": overlay_is_outdated,
+        "status_note": status_note,
+    }
 
 
 def _normalize_version(v: str) -> tuple:
@@ -477,7 +522,8 @@ async def _get_release_entry(version: str) -> dict | None:
 
 async def get_available_versions() -> dict:
     """Fetch app package versions from GitHub Releases."""
-    current = get_current_version()
+    version_state = get_version_state()
+    current = version_state["current_version"]
     releases = await fetch_github_releases()
     entries = [await _build_release_entry(release) for release in releases]
     entries.sort(key=lambda x: _normalize_version(x["version"]), reverse=True)
@@ -486,7 +532,11 @@ async def get_available_versions() -> dict:
 
     return {
         "current_version": current,
-        "current_source": get_current_source(),
+        "current_source": version_state["current_source"],
+        "base_version": version_state["base_version"],
+        "overlay_active": version_state["overlay_active"],
+        "overlay_is_outdated": version_state["overlay_is_outdated"],
+        "status_note": version_state["status_note"],
         "has_update": has_update,
         "versions": [_public_release_entry(entry) for entry in entries[:4]],
     }
@@ -698,11 +748,16 @@ async def _run_command_with_update_logs(
 def _check_docker_available() -> str | None:
     """Check if Docker socket and CLI are available. Returns error message or None if OK."""
     if not DOCKER_SOCKET.exists():
-        return ("Docker socket not available. "
-                "Mount /var/run/docker.sock for self-update.")
+        return (
+            "当前容器未挂载 Docker socket（/var/run/docker.sock），无法在设置页执行完整镜像更新。"
+            "请在宿主机重新创建容器并挂载该 socket，或直接在宿主机执行 docker compose pull && docker compose up -d。"
+        )
     if shutil.which("docker") is None:
-        return ("Docker CLI not found in container. "
-                "Rebuild the image with INCLUDE_DOCKER_CLI=true to enable advanced Docker updates.")
+        return (
+            "当前镜像未包含 Docker CLI，无法在设置页内执行完整镜像更新。"
+            "请在宿主机执行 docker compose pull && docker compose up -d（或按你原来的 docker run 方式重建容器）；"
+            "如果希望以后在设置页直接完成完整镜像更新，请用 INCLUDE_DOCKER_CLI=true 重新构建镜像。"
+        )
     return None
 
 

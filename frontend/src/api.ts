@@ -775,6 +775,11 @@ export interface Config {
 
 export interface UpdateInfo {
   version: string
+  current_source?: 'base' | 'app-package' | 'docker-image'
+  base_version?: string
+  overlay_active?: boolean
+  overlay_is_outdated?: boolean
+  status_note?: string
 }
 
 export interface VersionEntry {
@@ -794,6 +799,10 @@ export interface VersionEntry {
 export interface UpdateCheckResult {
   current_version: string
   current_source?: 'base' | 'app-package' | 'docker-image'
+  base_version?: string
+  overlay_active?: boolean
+  overlay_is_outdated?: boolean
+  status_note?: string
   has_update: boolean
   versions: VersionEntry[]
 }

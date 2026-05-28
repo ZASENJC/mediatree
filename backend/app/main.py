@@ -23,6 +23,7 @@ from .updater import (
     get_update_status,
     rollback_app_package,
     mark_update_success_after_restart,
+    get_version_state,
 )
 from .database import (
     init_db, close_db_pool, upsert_movie, get_movies, get_movie_detail,
@@ -1098,7 +1099,15 @@ async def api_restore_upload(file: UploadFile = None):
 @app.get("/api/version")
 async def api_version():
     """Get current application version."""
-    return {"version": get_current_version()}
+    info = get_version_state()
+    return {
+        "version": info["current_version"],
+        "current_source": info["current_source"],
+        "base_version": info["base_version"],
+        "overlay_active": info["overlay_active"],
+        "overlay_is_outdated": info["overlay_is_outdated"],
+        "status_note": info["status_note"],
+    }
 
 @app.get("/api/update/check")
 async def api_update_check():

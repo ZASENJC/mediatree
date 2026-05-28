@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { marked } from 'marked'
-import { api, Config, MediaRoot, LibrarySetting, UpdateStatus, clearCache, getServerUrl, setServerUrl as saveServerUrl, isNativeApp, resolveApiUrl } from '../api'
+import { api, Config, MediaRoot, LibrarySetting, UpdateCheckResult, UpdateStatus, clearCache, getServerUrl, setServerUrl as saveServerUrl, isNativeApp, resolveApiUrl } from '../api'
 import { getUiPrefs, setUiPrefs, dismissUpdate } from '../store'
 
 const SCRAPER_META: Record<string, { label: string; desc: string; hasKey: boolean }> = {
@@ -63,7 +63,7 @@ export default function Settings() {
 
   // update
   const [updateChecking, setUpdateChecking] = useState(false)
-  const [updateResult, setUpdateResult] = useState<any>(null)
+  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null)
   const [updatePerforming, setUpdatePerforming] = useState<string | null>(null)
   const [updateMsg, setUpdateMsg] = useState('')
   const [updateProgress, setUpdateProgress] = useState<UpdateStatus | null>(null)
@@ -114,6 +114,18 @@ export default function Settings() {
   }
 
   const normalizeVersion = (version?: string) => (version || '').replace(/^v/i, '')
+
+  const getDockerUpdateGuide = (message?: string) => {
+    const text = (message || '').trim()
+    if (!text) return ''
+    if (text.includes('Docker CLI')) {
+      return '请改为在宿主机执行完整镜像更新：如果你用的是 docker compose，执行 docker compose pull && docker compose up -d；如果你用的是 docker run，请按原参数重新 pull 并重建容器。若希望以后能在设置页里直接完成完整镜像更新，请重建镜像时加入 INCLUDE_DOCKER_CLI=true。'
+    }
+    if (text.includes('Docker socket') || text.includes('/var/run/docker.sock')) {
+      return '当前容器没有挂载 /var/run/docker.sock，设置页无法直接替换容器。请在宿主机重新创建容器并挂载该 socket，或直接在宿主机执行 docker compose pull && docker compose up -d。'
+    }
+    return ''
+  }
 
   const stopUpdatePolling = () => {
     if (updateStatusTimer.current) {
@@ -192,6 +204,8 @@ export default function Settings() {
       setUpdateResult(result)
       if (result.has_update) {
         setUpdateMsg(`发现新版本 ${result.versions[0]?.display_version || ''}`)
+      } else if (result.status_note) {
+        setUpdateMsg(result.status_note)
       }
     }).catch(() => {})
     api.updateStatus().then(setUpdateProgress).catch(() => {})
@@ -210,6 +224,11 @@ export default function Settings() {
     () => (updateResult?.versions || []).slice(0, 3),
     [updateResult]
   )
+
+  const dockerUpdateGuide = useMemo(() => {
+    const statusMessage = updateProgress?.status === 'error' ? updateProgress.message : ''
+    return getDockerUpdateGuide(statusMessage || updateMsg)
+  }, [updateMsg, updateProgress])
 
   const saveGlobal = async () => {
     setSaving(true)
@@ -647,6 +666,8 @@ export default function Settings() {
                       if (status) setUpdateProgress(status)
                       if (result.has_update) {
                         setUpdateMsg(`发现新版本 ${result.versions[0]?.display_version || ''}`)
+                      } else if (result.status_note) {
+                        setUpdateMsg(result.status_note)
                       } else {
                         setUpdateMsg('已是最新版本')
                       }
@@ -677,6 +698,18 @@ export default function Settings() {
                   {sourceLabel(updateResult?.current_source)}
                 </span>
               </p>
+              <p>
+                镜像内置版本：
+                <span className="text-white font-medium">
+                  {updateResult?.base_version || '...'}
+                </span>
+              </p>
+              <p>
+                覆盖状态：
+                <span className={`font-medium ${updateResult?.overlay_active ? 'text-apple-yellow' : 'text-apple-mint'}`}>
+                  {updateResult?.overlay_active ? '正在运行应用包覆盖层' : '未覆盖，直接运行镜像内置版本'}
+                </span>
+              </p>
             </div>
 
             {updateMsg && (
@@ -685,11 +718,29 @@ export default function Settings() {
               </p>
             )}
 
+            {updateResult?.status_note && (
+              <div className={`mb-3 rounded-2xl border px-3 py-2 text-xs ${
+                updateResult.overlay_is_outdated
+                  ? 'border-apple-yellow/30 bg-apple-yellow/10 text-apple-yellow'
+                  : 'border-white/10 bg-white/[0.04] text-gray-400'
+              }`}>
+                {updateResult.status_note}
+              </div>
+            )}
+
+            {dockerUpdateGuide && (
+              <div className="mb-3 rounded-2xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                {dockerUpdateGuide}
+              </div>
+            )}
+
             {visibleUpdateVersions.length > 0 && (
               <div className="space-y-2">
                 {visibleUpdateVersions.map((v: any, i: number) => {
+                  const result = updateResult
+                  if (!result) return null
                   const versionKey = normalizeVersion(v.version)
-                  const isCurrent = versionKey === normalizeVersion(updateResult.current_version)
+                  const isCurrent = versionKey === normalizeVersion(result.current_version)
                   const activeUpdate = updateProgress
                     && normalizeVersion(updateProgress.version) === versionKey
                     && updateProgress.status !== 'idle'
@@ -716,7 +767,7 @@ export default function Settings() {
                                 当前
                               </span>
                             )}
-                            {!isCurrent && i === 0 && updateResult.has_update && (
+                            {!isCurrent && i === 0 && result.has_update && (
                               <span className="ml-2 inline-flex items-center rounded-full border border-green-400/30 bg-green-500/15 px-2 py-0.5 text-[10px] text-green-400">
                                 最新
                               </span>
