@@ -6,6 +6,20 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## 1.0.05 (2026-06-02)
+
+### Branding
+
+- Replaced the website favicon with the new MediaTree logo asset
+- Replaced the login page logo mark with the new transparent PNG logo
+- Updated README logo references to use the new repository-hosted PNG asset
+
+### Release Type
+
+- App-package update; no Docker image update is required
+
+---
+
 ## 1.0.04 (2026-05-28)
 
 ### Full Image Update Required

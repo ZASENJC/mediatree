@@ -91,7 +91,11 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
     <div className="flex min-h-screen items-center justify-center bg-aurora px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 h-14 w-14 rounded-3xl border border-white/10 bg-white/[0.08] shadow-glass backdrop-blur-2xl" />
+          <img
+            src="/logo.png"
+            alt="MediaTree"
+            className="mx-auto mb-4 h-16 w-16 object-contain drop-shadow-[0_0_18px_rgba(190,255,170,0.45)]"
+          />
           <h1 className="text-4xl font-bold tracking-tight text-white">MediaTree</h1>
           <p className="mt-2 text-sm text-gray-500">登录以访问媒体库</p>
         </div>
