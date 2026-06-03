@@ -66,7 +66,7 @@ class TMDBScraper(BaseScraper):
         candidate_names: list[str] | None = None,
         movie: dict | None = None,
     ) -> dict | None:
-        """TMDB scraper fallback chain: TMDB ID exact → Bangumi → TMDB title search."""
+        """TMDB scraper fallback chain: IMDB/TMDB ID exact → TMDB title search → Bangumi."""
         from ..config import settings, logger
         from ..title_match import (
             clean_search_title, build_search_queries, candidate_title_matches,

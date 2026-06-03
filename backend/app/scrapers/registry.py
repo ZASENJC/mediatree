@@ -53,7 +53,7 @@ def _normalize_name(name: str | None) -> str:
 class AutoScraper(BaseScraper):
     name = "auto"
     label = "Auto"
-    description = "MediaTree fallback chain: TMDB ID, Bangumi, then TMDB"
+    description = "MediaTree fallback chain: IMDB/TMDB ID, TMDB title, then Bangumi"
     supported_media_types = {"movie", "tv", "anime", "jav"}
     requires_api_key = False
 
@@ -71,7 +71,7 @@ class AutoScraper(BaseScraper):
         candidate_names: list[str] | None = None,
         movie: dict | None = None,
     ) -> dict | None:
-        """Auto scraper fallback chain: TMDB ID → Bangumi → TMDB title (both movie+tv)."""
+        """Auto scraper fallback chain: IMDB/TMDB ID → TMDB title (movie+tv) → Bangumi."""
         from ..config import logger
         from ..title_match import (
             clean_search_title, build_search_queries, candidate_title_matches,
