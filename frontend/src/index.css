@@ -233,27 +233,28 @@ canvas[data-mediatree-subtitle="ass"] {
   background: #000;
 }
 
-/* ── YouTube-style: controls hide when mouse leaves ── */
+/* ── YouTube-style: controls hide with the whole player chrome ── */
 .mediatree-artplayer .art-control {
   background: transparent;
   transition: opacity 0.3s ease;
 }
 
-.mediatree-artplayer:not(:hover) .art-control {
+.mediatree-player-frame:not(:hover):not(:focus-within) .mediatree-artplayer .art-control {
   opacity: 0 !important;
   pointer-events: none !important;
 }
 
-.mediatree-artplayer:hover .art-control {
+.mediatree-player-frame:hover .mediatree-artplayer .art-control,
+.mediatree-player-frame:focus-within .mediatree-artplayer .art-control {
   opacity: 1 !important;
   pointer-events: auto !important;
 }
 
-/* Center play/pause state: hide when playing & not hovering */
-.mediatree-artplayer.art-playing:not(:hover) .art-state {
+/* Hide ArtPlayer's center play/pause state overlay. */
+.mediatree-artplayer .art-state {
+  display: none !important;
   opacity: 0 !important;
   pointer-events: none !important;
-  transition: opacity 0.2s ease;
 }
 
 /* ── YouTube-style thin progress bar ── */
@@ -343,6 +344,99 @@ canvas[data-mediatree-subtitle="ass"] {
   word-break: break-word;
   line-height: 1.45;
   font-family: "Noto Sans CJK SC", "Noto Sans SC", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "WenQuanYi Micro Hei", "Arial Unicode MS", sans-serif;
+}
+
+.episode-switcher {
+  transform: translateY(-50%) translateX(0.5rem) scale(0.96);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.26s ease,
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mediatree-player-frame:hover .episode-switcher,
+.mediatree-player-frame:focus-within .episode-switcher {
+  transform: translateY(-50%) translateX(0) scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.episode-switcher-button {
+  position: relative;
+  display: flex;
+  width: 2.875rem;
+  height: 2.875rem;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.94);
+  background:
+    radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.36), transparent 32%),
+    radial-gradient(circle at 74% 78%, rgba(10, 132, 255, 0.18), transparent 38%),
+    rgba(10, 14, 22, 0.34);
+  box-shadow:
+    0 18px 52px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    inset 0 -12px 22px rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(22px) saturate(170%) brightness(1.08);
+  -webkit-backdrop-filter: blur(22px) saturate(170%) brightness(1.08);
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.episode-switcher-button::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.2), transparent 42%),
+    linear-gradient(315deg, rgba(255, 255, 255, 0.08), transparent 58%);
+  mix-blend-mode: screen;
+}
+
+.episode-switcher-button:hover,
+.episode-switcher-button:focus-visible,
+.episode-switcher-button-active {
+  border-color: rgba(10, 132, 255, 0.48);
+  background:
+    radial-gradient(circle at 26% 18%, rgba(255, 255, 255, 0.42), transparent 34%),
+    radial-gradient(circle at 72% 76%, rgba(10, 132, 255, 0.32), transparent 42%),
+    rgba(8, 18, 32, 0.5);
+  box-shadow:
+    0 20px 58px rgba(0, 0, 0, 0.42),
+    0 10px 30px rgba(10, 132, 255, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.36);
+  transform: scale(1.04);
+}
+
+.episode-switcher-button:focus-visible {
+  outline: 2px solid rgba(10, 132, 255, 0.68);
+  outline-offset: 3px;
+}
+
+.episode-switcher-icon {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 1.1rem;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.episode-switcher-icon span {
+  display: block;
+  height: 0.12rem;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.28);
 }
 
 .mediatree-art-gesture-layer {

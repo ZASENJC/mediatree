@@ -7,12 +7,44 @@ import { useTheater } from '../theater'
 
 type ThumbnailImage = { src: string; fallback?: string; alt: string }
 
+function parentFolder(path?: string) {
+  if (!path || !path.includes('/')) return ''
+  return path.split('/').slice(0, -1).join('/')
+}
+
+function inferEpisodeNumber(movie: Movie) {
+  if (movie.tmdb_episode != null) return movie.tmdb_episode
+  if (movie.episode_number != null) return movie.episode_number
+  const text = [
+    movie.display_title,
+    movie.episode_title,
+    movie.code,
+    movie.path.split('/').pop(),
+  ].filter(Boolean).join(' ')
+  const match = text.match(/[Ss]\d{1,2}\s*[Ee](\d{1,4})|(?:EP?|第)\s*0*(\d{1,4})\s*(?:集|話|话)?/i)
+  const value = Number(match?.[1] || match?.[2] || 0)
+  return value > 0 ? value : Number.MAX_SAFE_INTEGER
+}
+
+function sortEpisodes(items: Movie[]) {
+  return [...items].sort((a, b) => {
+    const seasonA = a.tmdb_season ?? 0
+    const seasonB = b.tmdb_season ?? 0
+    if (seasonA !== seasonB) return seasonA - seasonB
+    const episodeA = inferEpisodeNumber(a)
+    const episodeB = inferEpisodeNumber(b)
+    if (episodeA !== episodeB) return episodeA - episodeB
+    return (a.path || a.code).localeCompare(b.path || b.code, 'zh-CN')
+  })
+}
+
 export default function Detail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { theaterMode } = useTheater()
   const [movie, setMovie] = useState<Movie | null>(null)
   const [loading, setLoading] = useState(true)
+  const [episodes, setEpisodes] = useState<Movie[]>([])
   const [lightboxIdx, setLightboxIdx] = useState(-1)
   const [infoExpanded, setInfoExpanded] = useState(false)
 
@@ -30,11 +62,44 @@ export default function Detail() {
 
   useEffect(() => {
     if (!id) return
+    setLoading(true)
+    setEpisodes([])
+    setPosters([])
+    setVideos([])
+    setReviews([])
+    setShowAllReviews(false)
+    setTrailerKey(null)
+    setTmdbDataLoaded(false)
     api.detail(Number(id)).then((data) => {
       setMovie(data)
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [id])
+
+  useEffect(() => {
+    if (!movie?.folder_levels) {
+      setEpisodes([])
+      return
+    }
+    let cancelled = false
+    const loadEpisodes = async () => {
+      const mediaRoot = movie.media_root || undefined
+      const primary = await api.movies({ folder: movie.folder_levels, sort: 'name', limit: 2000, media_root: mediaRoot })
+      let items = primary.movies || []
+      const parent = parentFolder(movie.folder_levels)
+      if (items.length <= 1 && parent) {
+        const fallback = await api.movies({ folder: parent, sort: 'name', limit: 2000, media_root: mediaRoot })
+        if ((fallback.movies || []).some(item => item.id === movie.id)) {
+          items = fallback.movies || items
+        }
+      }
+      if (!cancelled) setEpisodes(sortEpisodes(items))
+    }
+    loadEpisodes().catch(() => {
+      if (!cancelled) setEpisodes([])
+    })
+    return () => { cancelled = true }
+  }, [movie?.id, movie?.folder_levels, movie?.media_root])
 
   // Load TMDB extended data when movie has tmdb_id
   useEffect(() => {
@@ -133,6 +198,10 @@ export default function Detail() {
       )}
 
       <VideoPlayer src={api.streamUrl(movie.id)} poster={api.coverUrl(movie.id)} movieId={movie.id}
+        episodes={episodes}
+        onEpisodeSelect={(episode) => {
+          if (episode.id !== movie.id) navigate(`/detail/${episode.id}`)
+        }}
         onWatched={() => { if (!movie.tags?.includes('watched')) toggleTag('watched') }} />
 
       {!theaterMode && (<>

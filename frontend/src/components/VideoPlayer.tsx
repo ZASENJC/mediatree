@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { CSSProperties } from 'react'
 import Artplayer, { Option, Setting, SettingOption } from 'artplayer'
-import { api, SubtitleTrack, resolveMediaUrl } from '../api'
+import { api, type Movie, type SubtitleTrack, resolveMediaUrl } from '../api'
 import { getUiPrefs, setUiPrefs } from '../store'
 import artplayerPluginAss from './artplayerPluginAss'
 import VRVideoLayer, { VRMode } from './VRVideoLayer'
@@ -12,6 +12,8 @@ interface Props {
   src: string
   poster?: string
   movieId: number
+  episodes?: Movie[]
+  onEpisodeSelect?: (episode: Movie) => void
   onWatched?: () => void
 }
 
@@ -71,6 +73,16 @@ function fmt(t: number) {
   return h > 0
     ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
     : `${m}:${s.toString().padStart(2, '0')}`
+}
+
+function episodeLabel(movie: Movie) {
+  const number = movie.tmdb_episode ?? movie.episode_number
+  const prefix = number != null
+    ? `${movie.tmdb_season != null ? `S${String(movie.tmdb_season).padStart(2, '0')}` : ''}E${String(number).padStart(2, '0')}`
+    : ''
+  const title = movie.episode_title || movie.display_title || movie.title || movie.code
+  if (!prefix) return title
+  return title.toLowerCase().includes(prefix.toLowerCase()) ? title : `${prefix} ${title}`
 }
 
 function localPlayerOrigin() {
@@ -573,7 +585,7 @@ function useTheaterPlayerSize(
   return size
 }
 
-export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) {
+export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpisodeSelect, onWatched }: Props) {
   const artContainerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const playerFrameRef = useRef<HTMLDivElement>(null)
@@ -621,6 +633,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   const [mediaDuration, setMediaDuration] = useState(0)
   const [videoError, setVideoError] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
+  const [episodeMenuOpen, setEpisodeMenuOpen] = useState(false)
   const [unsupportedAudio, setUnsupportedAudio] = useState('')
   const [fontUrls, setFontUrls] = useState<string[]>(() => buildAssFontConfig([]).fonts)
   const [availableFonts, setAvailableFonts] = useState<Record<string, string>>(() => buildAssFontConfig([]).availableFonts)
@@ -643,6 +656,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
   }, [src, useTranscode, transcodeMode, transcodeStart])
 
   const displayDuration = mediaDuration || displayDurationRef.current
+  const selectableEpisodes = episodes.length > 1 ? episodes : []
   const hasExternalSubtitles = tracks.some(t => t.source === 'external')
   const externalPlaylistUrl = new URL(api.externalPlaylistUrl(movieId), localPlayerOrigin()).toString()
   const localPlaybackUrl = hasExternalSubtitles ? externalPlaylistUrl : streamUrl
@@ -728,6 +742,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
 
   useEffect(() => {
     const saved = getSavedPos(movieId)
+    setEpisodeMenuOpen(false)
     setResumePos(saved)
     watchedRef.current = false
     subtitleTrackRequestRef.current += 1
@@ -1298,7 +1313,7 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
       fullscreen: true,
       fullscreenWeb: true,
       subtitleOffset: true,
-      miniProgressBar: true,
+      miniProgressBar: false,
       playsInline: true,
       lock: true,
       gesture: false,
@@ -1693,11 +1708,68 @@ export default function VideoPlayer({ src, poster, movieId, onWatched }: Props) 
         style={playerStyle}>
         <div
           ref={playerFrameRef}
-          className={`theater-player-frame relative z-[1] overflow-hidden rounded-3xl ${theaterTransition ? `theater-player-frame-${theaterTransition}` : ''}`}
+          className={`mediatree-player-frame theater-player-frame relative z-[1] overflow-hidden rounded-3xl ${theaterTransition ? `theater-player-frame-${theaterTransition}` : ''}`}
           style={theaterMode ? theaterFrameStyle : undefined}
+          onMouseLeave={() => setEpisodeMenuOpen(false)}
         >
         <div ref={artContainerRef} className="mediatree-artplayer w-full" />
         <VRVideoLayer art={artInstance} mode={vrMode} />
+
+        {selectableEpisodes.length > 0 && (
+          <div className="episode-switcher absolute right-3 top-1/2 z-50 flex items-center justify-end sm:right-4">
+            {episodeMenuOpen && (
+              <div className="mr-2 max-h-[min(22rem,70dvh)] w-[min(18rem,calc(100vw-5rem))] overflow-hidden rounded-2xl border border-white/10 bg-black/70 shadow-glass backdrop-blur-2xl">
+                <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
+                  <p className="text-xs font-semibold text-white">选集</p>
+                  <span className="text-[11px] text-gray-500">{selectableEpisodes.length}</span>
+                </div>
+                <div className="max-h-[calc(min(22rem,70dvh)-2.5rem)] overflow-y-auto p-1.5">
+                  {selectableEpisodes.map(episode => {
+                    const active = episode.id === movieId
+                    const progress = Math.max(0, Math.min(100, episode.progress_percent || 0))
+                    return (
+                      <button
+                        key={episode.id}
+                        onClick={() => {
+                          setEpisodeMenuOpen(false)
+                          if (!active) onEpisodeSelect?.(episode)
+                        }}
+                        className={`mb-1 flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-all last:mb-0 ${
+                          active
+                            ? 'border border-apple-blue/35 bg-apple-blue/20 text-white'
+                            : 'text-gray-300 hover:bg-white/[0.1] hover:text-white'
+                        }`}
+                      >
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${active ? 'bg-apple-blue shadow-glow' : 'bg-white/20'}`} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-medium">{episodeLabel(episode)}</span>
+                          <span className="mt-0.5 block truncate text-[11px] text-gray-500">
+                            {episode.duration ? `${episode.duration}分` : episode.code}
+                            {progress > 0 && progress < 90 ? ` · ${Math.round(progress)}%` : ''}
+                          </span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            <button
+              onClick={() => setEpisodeMenuOpen(open => !open)}
+              className={`episode-switcher-button ${episodeMenuOpen ? 'episode-switcher-button-active' : ''}`}
+              aria-label="选集"
+              aria-expanded={episodeMenuOpen}
+              title="选集"
+            >
+              <span className="sr-only">选集</span>
+              <span className="episode-switcher-icon" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
+            </button>
+          </div>
+        )}
 
         {seekOsd && (
           <div className="glass-popover absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 px-4 py-2 text-sm font-semibold text-white">
