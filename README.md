@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ZASENJC/mediatree/main/frontend/public/logo.png" alt="MediaTree" width="80" />
+  <img src="https://raw.githubusercontent.com/ZASENJC/mediatree/main/docs/assets/logo.png" alt="MediaTree" width="96" />
 </p>
 
 <h1 align="center">MediaTree</h1>
@@ -26,9 +26,6 @@
 
 ![Home](https://img.qunq.de/file/1779640696711_home_no_text.png)
 *Home — media library grid with glassmorphism cards*
-
-![Detail](docs/screenshots/detail.png)
-*Detail — metadata, cast, keywords & reviews*
 
 ![Player](https://img.qunq.de/file/1779640693184_movie.png)
 *Player — streaming with ASS subtitle rendering*

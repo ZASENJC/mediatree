@@ -1,5 +1,9 @@
 [English](../wiki/Home) | **简体中文**
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ZASENJC/mediatree/main/docs/assets/logo.png" alt="MediaTree" width="96" />
+</p>
+
 # MediaTree Wiki
 
 欢迎查阅 MediaTree 文档。MediaTree 是一个自托管的媒体库管理器，将优雅的玻璃态 UI 与 Jellyfin 兼容 API 和强大的插件化刮削系统融为一体。

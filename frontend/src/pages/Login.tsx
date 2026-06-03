@@ -92,7 +92,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <img
-            src="/logo.png"
+            src="https://img.qunq.de/file/1780511284576_LOGO4K-%E9%80%8F%E6%98%8E.png"
             alt="MediaTree"
             className="mx-auto mb-4 h-16 w-16 object-contain drop-shadow-[0_0_18px_rgba(190,255,170,0.45)]"
           />

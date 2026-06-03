@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ZASENJC/mediatree/main/frontend/public/logo.png" alt="MediaTree" width="80" />
+  <img src="https://raw.githubusercontent.com/ZASENJC/mediatree/main/docs/assets/logo.png" alt="MediaTree" width="96" />
 </p>
 
 <h1 align="center">MediaTree</h1>
