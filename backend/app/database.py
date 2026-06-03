@@ -7,6 +7,7 @@ from .config import settings, logger
 _db_pool = None
 WEB_USER_ID = "web"
 WATCHED_THRESHOLD = 0.9
+CONTINUE_WATCHING_MIN_SECONDS = 60
 
 
 async def get_db_pool():
@@ -463,33 +464,180 @@ def _decorate_local_episode_fields(movies: list[dict]):
             m["title"] = clean_title
 
 
+def _duration_seconds_for_progress(movie: dict, position_seconds: float) -> float:
+    duration = float(movie.get("duration") or 0)
+    if duration and position_seconds > duration and duration < 1000:
+        duration *= 60
+    return duration
+
+
+def _continue_progress_state(movie: dict) -> tuple[float, bool]:
+    position = int(movie.get("_playback_position_ticks") or 0) / 10_000_000
+    duration = _duration_seconds_for_progress(movie, position)
+    completed_by_progress = bool(duration > 0 and position > 0 and (position / duration) >= WATCHED_THRESHOLD)
+    completed = bool(movie.get("_played")) or bool(movie.get("_watched_tag")) or completed_by_progress
+    return position, completed
+
+
+def _continue_activity_date(movie: dict) -> str:
+    return movie.get("_last_played_date") or movie.get("_watched_tag_created_at") or ""
+
+
+def _episode_order_value(movie: dict) -> int | None:
+    value = movie.get("tmdb_episode")
+    if value is None:
+        value = movie.get("episode_number")
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _episode_sort_key(movie: dict):
+    order = _episode_order_value(movie)
+    return (order is None, order or 0, movie.get("path") or "", int(movie.get("id") or 0))
+
+
+def _season_group_key(movie: dict) -> tuple | None:
+    if not (movie.get("tmdb_type") == "tv" or _episode_order_value(movie) is not None):
+        return None
+    media_root = movie.get("media_root") or ""
+    if movie.get("tmdb_id") is not None and movie.get("tmdb_season") is not None:
+        return ("tmdb", media_root, str(movie.get("tmdb_id")), str(movie.get("tmdb_season")))
+    folder = (movie.get("folder_levels") or "").strip("/")
+    if folder:
+        return ("folder", media_root, folder)
+    path = movie.get("path")
+    if path:
+        return ("path", media_root, str(Path(path).parent))
+    return None
+
+
+def _add_continue_candidate(candidates: dict[int, dict], movie: dict, sort_date: str):
+    movie_id = int(movie["id"])
+    sort_key = sort_date or movie.get("updated_at") or movie.get("created_at") or ""
+    existing = candidates.get(movie_id)
+    if existing is None or sort_key > (existing.get("_continue_sort_date") or ""):
+        movie["_continue_sort_date"] = sort_key
+        candidates[movie_id] = movie
+
+
+async def _fetch_continue_rows(db, cols: str, where: str, params: list) -> list[dict]:
+    query = f"""SELECT {cols},
+            COALESCE(ud.playback_position_ticks, 0) AS _playback_position_ticks,
+            COALESCE(ud.played, 0) AS _played,
+            ud.last_played_date AS _last_played_date,
+            CASE WHEN watched_tags.movie_id IS NULL THEN 0 ELSE 1 END AS _watched_tag,
+            watched_tags.created_at AS _watched_tag_created_at
+        FROM movies m
+        LEFT JOIN user_data ud
+          ON ud.user_id=? AND ud.item_id=CAST(m.id AS TEXT)
+        LEFT JOIN tags watched_tags
+          ON watched_tags.movie_id=m.id AND watched_tags.tag='watched'
+        {where}
+        ORDER BY COALESCE(ud.last_played_date, watched_tags.created_at, m.updated_at) DESC"""
+    cur = await db.execute(query, [WEB_USER_ID, *params])
+    return [dict(row) for row in await cur.fetchall()]
+
+
 async def get_recent_watched(media_root: str = "", limit: int = 200, offset: int = 0):
     db = await get_db()
-    min_recent_ticks = 180 * 10_000_000
-    where = """ WHERE EXISTS (
-        SELECT 1 FROM user_data ud
-        WHERE ud.user_id=? AND ud.item_id=CAST(m.id AS TEXT)
-          AND ud.last_played_date IS NOT NULL
-          AND (ud.played=1 OR ud.playback_position_ticks>=?)
-    )"""
-    params = [WEB_USER_ID, min_recent_ticks]
-    if media_root:
-        where += " AND m.media_root = ?"
-        params.append(media_root)
-    count_cur = await db.execute(f"SELECT COUNT(*) FROM movies m{where}", params)
-    total = (await count_cur.fetchone())[0]
+    min_continue_ticks = CONTINUE_WATCHING_MIN_SECONDS * 10_000_000
     cols = "m.id, m.path, m.code, m.title, m.original_title, m.overview, m.actress, m.release_date, m.duration, m.cover_local, m.cover_remote, m.javdb_score, m.javdb_likes, m.folder_levels, m.created_at, m.updated_at, m.media_root, m.tmdb_id, m.tmdb_type, m.tmdb_season, m.tmdb_episode, m.episode_title, m.episode_overview, m.episode_still, m.episode_still_local, m.clean_title, m.episode_number, m.display_title, m.external_audio_tracks, m.genre, m.content_rating, m.\"cast\", m.crew"
-    query = f"""SELECT {cols} FROM movies m{where}
-        ORDER BY (
-            SELECT ud.last_played_date FROM user_data ud
-            WHERE ud.user_id=? AND ud.item_id=CAST(m.id AS TEXT)
-        ) DESC
-        LIMIT ? OFFSET ?"""
-    params.extend([WEB_USER_ID])
-    params.extend([limit, offset])
-    cur = await db.execute(query, params)
-    rows = await cur.fetchall()
-    movies = [dict(r) for r in rows]
+    activity_where = "WHERE (ud.playback_position_ticks>? OR ud.played=1 OR watched_tags.movie_id IS NOT NULL)"
+    activity_params: list = [min_continue_ticks]
+    if media_root:
+        activity_where += " AND m.media_root=?"
+        activity_params.append(media_root)
+
+    movie_map: dict[int, dict] = {}
+    season_keys: set[tuple] = set()
+    for movie in await _fetch_continue_rows(db, cols, activity_where, activity_params):
+        _position, completed = _continue_progress_state(movie)
+        movie["_continue_completed"] = completed
+        movie_map[int(movie["id"])] = movie
+        if completed:
+            season_key = _season_group_key(movie)
+            if season_key is not None:
+                season_keys.add(season_key)
+
+    for season_key in season_keys:
+        key_type = season_key[0]
+        if key_type == "tmdb":
+            _kind, key_media_root, tmdb_id, tmdb_season = season_key
+            siblings_where = "WHERE m.media_root=? AND m.tmdb_id=? AND m.tmdb_season=?"
+            siblings_params = [key_media_root, tmdb_id, tmdb_season]
+        elif key_type == "folder":
+            _kind, key_media_root, folder = season_key
+            siblings_where = "WHERE m.media_root=? AND m.folder_levels=?"
+            siblings_params = [key_media_root, folder]
+        elif key_type == "path":
+            _kind, key_media_root, parent_path = season_key
+            siblings_where = "WHERE m.media_root=? AND m.path LIKE ?"
+            siblings_params = [key_media_root, f"{parent_path}/%"]
+        else:
+            continue
+        for movie in await _fetch_continue_rows(db, cols, siblings_where, siblings_params):
+            _position, completed = _continue_progress_state(movie)
+            movie["_continue_completed"] = completed
+            movie_map[int(movie["id"])] = movie
+
+    candidates: dict[int, dict] = {}
+    seasons: dict[tuple, list[dict]] = {}
+    for movie in movie_map.values():
+        completed = bool(movie.get("_continue_completed"))
+        if movie.get("_last_played_date") and int(movie.get("_playback_position_ticks") or 0) > min_continue_ticks and not completed:
+            _add_continue_candidate(candidates, movie, _continue_activity_date(movie))
+        season_key = _season_group_key(movie)
+        if season_key is not None:
+            seasons.setdefault(season_key, []).append(movie)
+
+    for season_movies in seasons.values():
+        ordered = sorted(season_movies, key=_episode_sort_key)
+        completed_indexes = [index for index, movie in enumerate(ordered) if movie.get("_continue_completed")]
+        if not completed_indexes or len(completed_indexes) == len(ordered):
+            continue
+        latest_completed_index = max(completed_indexes)
+        next_episode = next(
+            (movie for index, movie in enumerate(ordered)
+             if index > latest_completed_index and not movie.get("_continue_completed")),
+            None,
+        )
+        if next_episode is None:
+            next_episode = next((movie for movie in ordered if not movie.get("_continue_completed")), None)
+        if next_episode is None:
+            continue
+        latest_completed_date = max(
+            (_continue_activity_date(movie) for movie in ordered if movie.get("_continue_completed")),
+            default="",
+        )
+        _add_continue_candidate(
+            candidates,
+            next_episode,
+            max(_continue_activity_date(next_episode), latest_completed_date),
+        )
+
+    ordered_candidates = sorted(
+        candidates.values(),
+        key=lambda movie: (
+            movie.get("_continue_sort_date") or "",
+            movie.get("updated_at") or "",
+            int(movie.get("id") or 0),
+        ),
+        reverse=True,
+    )
+    total = len(ordered_candidates)
+    safe_limit = max(0, int(limit or 0))
+    safe_offset = max(0, int(offset or 0))
+    paged = ordered_candidates[safe_offset:safe_offset + safe_limit]
+    movies = []
+    for movie in paged:
+        public_movie = dict(movie)
+        for key in list(public_movie.keys()):
+            if key.startswith("_"):
+                public_movie.pop(key, None)
+        movies.append(public_movie)
+
     _decorate_local_episode_fields(movies)
     if movies:
         movie_ids = [m["id"] for m in movies]
@@ -1016,7 +1164,7 @@ async def save_progress(movie_id: int, position: float, duration: float | None =
     if total and pos > total and total < 1000:
         total *= 60
     played = bool(total > 0 and (pos / total) >= WATCHED_THRESHOLD)
-    recent = bool(pos >= 180 or played)
+    recent = bool(pos > CONTINUE_WATCHING_MIN_SECONDS or played)
     ticks = int(pos * 10_000_000)
     await db.execute(
         """INSERT INTO user_data (user_id, item_id, playback_position_ticks, play_count, is_favorite, played, last_played_date, updated_at)

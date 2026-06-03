@@ -612,6 +612,10 @@ textarea {
   contain: layout style;
 }
 
+.media-grid-adaptive > .media-grid-card {
+  align-self: start;
+}
+
 /* ── Theater Mode (影院模式) ── */
 
 /* 剧院模式：30px 左右边距，50px 上下间距，内部播放器按比例居中 */

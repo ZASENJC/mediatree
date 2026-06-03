@@ -16,9 +16,10 @@ interface MovieCardProps {
   onUpdated?: () => void
   showBadges?: boolean
   hideTitle?: boolean
+  adaptiveCover?: boolean
 }
 
-export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = false }: MovieCardProps) {
+export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = false, adaptiveCover = false }: MovieCardProps) {
   const navigate = useNavigate()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [showEdit, setShowEdit] = useState(false)
@@ -215,11 +216,11 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
         onMouseLeave={() => setHovered(false)}
         className="glass-card apple-focus media-grid-card group cursor-pointer overflow-hidden"
       >
-        <div className={`${hasEpisodeStill ? 'aspect-video' : 'aspect-[2/3]'} relative bg-white/[0.04]`}>
+        <div className={`${adaptiveCover ? 'min-h-40 overflow-hidden' : (hasEpisodeStill ? 'aspect-video' : 'aspect-[2/3]')} relative bg-white/[0.04]`}>
           <img
             src={withVersion(coverSrc)}
             alt={movie.code}
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+            className={`${adaptiveCover ? 'h-auto' : 'h-full'} w-full object-cover transition-transform duration-500 group-hover:scale-105`}
             loading="lazy"
             onError={(e) => {
               const img = e.target as HTMLImageElement

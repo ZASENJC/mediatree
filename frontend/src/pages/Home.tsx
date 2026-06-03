@@ -347,7 +347,7 @@ export default function Home() {
         <div>
           <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">Library</p>
           <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            {tab === 'recent' ? '最近观看' : '我的媒体库'}
+            {tab === 'recent' ? '继续观看' : '我的媒体库'}
           </h1>
           <p className="mt-1 text-sm text-gray-500">
             {tab === 'recent' ? `共 ${recentTotal} 部` : `共 ${tree.length} 个目录`}
@@ -361,7 +361,7 @@ export default function Home() {
             </button>
             <button onClick={() => setTab('recent')}
               className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${tab === 'recent' ? 'bg-apple-blue/80 text-white shadow-glow' : 'text-gray-400 hover:text-white'}`}>
-              最近观看
+              继续观看
             </button>
           </div>
           <SortDropdown options={sortOptions} current={sort} onChange={handleSort} />
@@ -372,13 +372,13 @@ export default function Home() {
         recentMovies.length === 0 ? (
           <div className="glass-panel py-20 text-center text-gray-500">
             <p className="mb-2 text-3xl font-light text-white/60">--</p>
-            <p>还没有观看记录</p>
-            <p className="mt-2 text-sm text-gray-600">点击"已看"标签即可记录观看</p>
+            <p>还没有继续观看记录</p>
+            <p className="mt-2 text-sm text-gray-600">播放超过 1 分钟后会显示在这里</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid media-grid-adaptive">
             {recentMovies.map((movie) => (
-              <MovieCard key={movie.id} movie={movie} onUpdated={loadRecent} hideTitle={hideHomeTitleText} />
+              <MovieCard key={movie.id} movie={movie} onUpdated={loadRecent} showBadges={false} hideTitle={hideHomeTitleText} adaptiveCover />
             ))}
           </div>
         )
