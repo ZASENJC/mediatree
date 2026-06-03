@@ -6,6 +6,24 @@
 
 ---
 
+## 1.0.06 (2026-06-03)
+
+### 自动刮削
+
+- 将自动刮削的 watcher 和调度策略拆到独立后端辅助模块，让触发规则更容易测试和维护
+- 自动刮削从固定间隔检查改为媒体库文件变动触发，并覆盖文件夹新增/删除这类结构变化
+- 容器内 watcher 默认使用 polling，并支持 `FILE_WATCHER_FORCE_POLLING` 与 `FILE_WATCHER_POLL_DELAY_MS` 覆盖配置，修复 Docker Desktop bind mount 变动漏触发的问题
+
+### 刮削器
+
+- 修正 auto/TMDB 刮削器的回退链说明，与实际 IMDB/TMDB ID → TMDB 标题 → Bangumi 顺序保持一致
+
+### 发布类型
+
+- 应用包级更新；不需要完整 Docker 镜像更新
+
+---
+
 ## 1.0.05 (2026-06-02)
 
 ### 品牌资源

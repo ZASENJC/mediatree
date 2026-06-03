@@ -6,6 +6,24 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## 1.0.06 (2026-06-03)
+
+### Auto Scraping
+
+- Split automatic scraping watcher and scheduling policy into dedicated backend helpers so scan triggers are easier to test and maintain
+- Changed automatic scraping from fixed-interval checks to media-root file-change triggers, including folder add/delete structure changes
+- Default the watcher to polling inside containers, with `FILE_WATCHER_FORCE_POLLING` and `FILE_WATCHER_POLL_DELAY_MS` overrides, fixing missed Docker Desktop bind-mount changes
+
+### Scrapers
+
+- Corrected auto/TMDB scraper fallback descriptions to match the actual IMDB/TMDB ID → TMDB title → Bangumi order
+
+### Release Type
+
+- App-package update; no Docker image update is required
+
+---
+
 ## 1.0.05 (2026-06-02)
 
 ### Branding

@@ -77,6 +77,7 @@ In production, the backend serves the built frontend at `/`. In development, run
 ### All backend logic lives in `backend/app/`
 - `main.py` — FastAPI app, all 80+ route handlers, AuthMiddleware, lifespan hooks. This is a single large file (~1700 lines). No separate router modules. Middleware stack: `CORSMiddleware` (all origins), `AuthMiddleware` (Basic/Bearer signed sessions for `/api/*`), `EmbyPathRewriteMiddleware` (rewrites `/emby` to Jellyfin paths), `SPAFallbackMiddleware` (serves `index.html` for SPA routing).
 - `scanner.py` — Core scanning and scraping engine (~1800 lines): `scan_media()` walks filesystem, `scrape_for_library()` runs the fallback chain, per-library lock prevents duplicate concurrent scans.
+- `auto_scrape.py` — Automatic scrape scheduling and watcher path policy. Coalesces affected media roots, filters relevant file/folder changes, and centralizes container-safe watcher polling defaults.
 - `database.py` — All SQLite CRUD (~1150 lines): `init_db()` with schema migrations, movie/folder/tag/category ops, Jellyfin user_data/playback_sessions/tokens tables.
 - `config.py` — `pydantic-settings` + JSON config persistence. `Settings` class reads `.env`, then `load_persisted_config()` overlays `data/config.json`. Runtime changes via `/api/config` POST write back to `config.json`.
 - `models.py` — Pydantic v2 models: `Movie`, `JavdbCache`, `Category`, `Tag`, `ScanResult`, `ConfigUpdate`, `FolderNode`.
@@ -119,7 +120,8 @@ In production, the backend serves the built frontend at `/`. In development, run
 
 ### File watcher (`watcher.py`)
 - Uses `watchfiles.awatch()` with 15s debounce on enabled media roots
-- Only processes video/subtitle/NFO/cover file extensions
+- Defaults to watchfiles polling inside containers (`poll_delay_ms=1000`) so Docker Desktop bind-mounted libraries do not miss host-side file moves; override with `FILE_WATCHER_FORCE_POLLING` and `FILE_WATCHER_POLL_DELAY_MS`
+- Treats file/folder added and deleted events as media-library structure changes; modified events are filtered to video/subtitle/NFO/cover paths and real directories
 - Merges batched changes by media_root, triggers `run_scan_for_root(trigger="watcher")`
 - If a scan is already in progress for a root, marks "queued" and re-scans after current scan completes
 
