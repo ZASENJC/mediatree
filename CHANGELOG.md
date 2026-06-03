@@ -6,6 +6,32 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## 1.0.07 (2026-06-04)
+
+### Continue Watching
+
+- Renamed "Recent Watching" entry points to "Continue Watching"
+- Refined continue-watching eligibility so unfinished movies, singles, and episodes appear after at least 1 minute of progress, while fully watched items are excluded
+- Added next-episode selection for partially watched seasons and cleaned the Continue Watching page cards so only the flag marker remains
+- Kept poster width stable while letting Continue Watching card covers adapt their height
+
+### Player
+
+- Restyled the episode switcher as a translucent liquid-glass hamburger button
+- Synced the episode switcher visibility with the ArtPlayer control chrome so it appears and hides with the player UI
+
+### Branding & Docs
+
+- Updated README and wiki logo marks to use the new repository-hosted logo asset
+- Switched the login page logo and site favicon to the remote transparent logo URL
+- Removed unused local frontend logo/icon assets and a broken README detail screenshot link
+
+### Release Type
+
+- App-package update; no Docker image update is required
+
+---
+
 ## 1.0.06 (2026-06-03)
 
 ### Auto Scraping
