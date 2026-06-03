@@ -634,6 +634,7 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
   const [videoError, setVideoError] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
   const [episodeMenuOpen, setEpisodeMenuOpen] = useState(false)
+  const [playerChromeVisible, setPlayerChromeVisible] = useState(true)
   const [unsupportedAudio, setUnsupportedAudio] = useState('')
   const [fontUrls, setFontUrls] = useState<string[]>(() => buildAssFontConfig([]).fonts)
   const [availableFonts, setAvailableFonts] = useState<Record<string, string>>(() => buildAssFontConfig([]).availableFonts)
@@ -1414,7 +1415,13 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
     const art = new Artplayer(option)
     artRef.current = art
     setArtInstance(art)
+    setPlayerChromeVisible(true)
     streamSrcRef.current = streamSrc
+
+    const syncPlayerChrome = (visible: boolean) => {
+      setPlayerChromeVisible(visible)
+      if (!visible) setEpisodeMenuOpen(false)
+    }
 
     art.on('ready', () => {
       artReadyRef.current = true
@@ -1449,6 +1456,7 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
         loadSeekRef.current = null
       }
     })
+    art.on('control', syncPlayerChrome)
     art.on('video:timeupdate', () => {
       const virtualTime = useTranscodeRef.current ? transcodeStartRef.current + art.currentTime : art.currentTime
       currentTimeRef.current = virtualTime
@@ -1527,6 +1535,7 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
       document.documentElement.style.touchAction = ''
       artRef.current = null
       setArtInstance(null)
+      setPlayerChromeVisible(true)
     }
   }, [movieId])
 
@@ -1716,7 +1725,7 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
         <VRVideoLayer art={artInstance} mode={vrMode} />
 
         {selectableEpisodes.length > 0 && (
-          <div className="episode-switcher absolute right-3 top-1/2 z-50 flex items-center justify-end sm:right-4">
+          <div className={`episode-switcher absolute right-3 top-1/2 z-50 flex items-center justify-end sm:right-4 ${playerChromeVisible ? 'episode-switcher-visible' : ''}`}>
             {episodeMenuOpen && (
               <div className="mr-2 max-h-[min(22rem,70dvh)] w-[min(18rem,calc(100vw-5rem))] overflow-hidden rounded-2xl border border-white/10 bg-black/70 shadow-glass backdrop-blur-2xl">
                 <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">

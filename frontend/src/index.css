@@ -239,17 +239,6 @@ canvas[data-mediatree-subtitle="ass"] {
   transition: opacity 0.3s ease;
 }
 
-.mediatree-player-frame:not(:hover):not(:focus-within) .mediatree-artplayer .art-control {
-  opacity: 0 !important;
-  pointer-events: none !important;
-}
-
-.mediatree-player-frame:hover .mediatree-artplayer .art-control,
-.mediatree-player-frame:focus-within .mediatree-artplayer .art-control {
-  opacity: 1 !important;
-  pointer-events: auto !important;
-}
-
 /* Hide ArtPlayer's center play/pause state overlay. */
 .mediatree-artplayer .art-state {
   display: none !important;
@@ -295,6 +284,16 @@ canvas[data-mediatree-subtitle="ass"] {
 .mediatree-artplayer .art-bottom {
   padding: 0 12px 8px;
   background: transparent !important;
+}
+
+.mediatree-artplayer .art-video-player.art-hover:not(.art-control-show) .art-bottom {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mediatree-artplayer .art-video-player.art-hover:not(.art-control-show) .art-bottom .art-controls,
+.mediatree-artplayer .art-video-player.art-hover:not(.art-control-show) .art-bottom .art-progress {
+  transform: translateY(var(--art-bottom-offset));
 }
 
 /* Control buttons — blue icons, no hover background */
@@ -355,8 +354,7 @@ canvas[data-mediatree-subtitle="ass"] {
     transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.mediatree-player-frame:hover .episode-switcher,
-.mediatree-player-frame:focus-within .episode-switcher {
+.episode-switcher-visible {
   transform: translateY(-50%) translateX(0) scale(1);
   opacity: 1;
   pointer-events: auto;
