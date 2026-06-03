@@ -125,6 +125,7 @@ Codex does not provide Claude Code hooks in this repo, so enforce security throu
 ## Git Hygiene
 
 - Preserve user changes and ignored local files unless the user explicitly asks to remove or reset them.
+- Before each push, sync `CLAUDE.md`, `AGENTS.md`, `CHANGELOG.md`, and `README.md` to reflect the current code state.
 - `docker-compose.yml`, `.env`, `data/`, `frontend/node_modules/`, and `frontend/dist/` are local/runtime artifacts.
 - Do not revert unrelated changes.
 
