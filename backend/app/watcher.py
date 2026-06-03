@@ -1,4 +1,5 @@
 import asyncio
+import os
 from pathlib import Path
 
 from watchfiles import awatch
@@ -7,8 +8,10 @@ from .config import settings, logger
 from .database import get_all_library_settings
 from .auto_scrape import (
     AutoScrapeScheduler,
-    affected_media_roots_for_paths,
-    is_auto_scrape_relevant_path,
+    affected_media_roots_for_changes,
+    is_auto_scrape_relevant_change,
+    resolve_watch_force_polling,
+    resolve_watch_poll_delay_ms,
 )
 
 
@@ -64,9 +67,23 @@ async def start_file_watcher(startup_task: asyncio.Task | None = None):
             await asyncio.sleep(30)
             continue
 
-        logger.info(f"File watcher started on {len(roots)} enabled roots")
+        force_polling = resolve_watch_force_polling(
+            os.environ.get("FILE_WATCHER_FORCE_POLLING"),
+            in_container=Path("/.dockerenv").exists(),
+        )
+        poll_delay_ms = resolve_watch_poll_delay_ms(os.environ.get("FILE_WATCHER_POLL_DELAY_MS"))
+        backend = "polling" if force_polling else ("auto" if force_polling is None else "native")
+        logger.info(
+            f"File watcher started on {len(roots)} enabled roots "
+            f"backend={backend} poll_delay_ms={poll_delay_ms}"
+        )
         try:
-            iterator = awatch(*roots, debounce=15000).__aiter__()
+            iterator = awatch(
+                *roots,
+                debounce=15000,
+                force_polling=force_polling,
+                poll_delay_ms=poll_delay_ms,
+            ).__aiter__()
             changes_task = asyncio.create_task(iterator.__anext__())
             while True:
                 done, _pending = await asyncio.wait({changes_task}, timeout=60)
@@ -92,20 +109,20 @@ async def start_file_watcher(startup_task: asyncio.Task | None = None):
                     break
                 changes_task = asyncio.create_task(iterator.__anext__())
 
-                relevant_paths = [
-                    Path(path_str)
-                    for _change_type, path_str in changes
-                    if is_auto_scrape_relevant_path(Path(path_str))
+                relevant_changes = [
+                    (change_type, Path(path_str))
+                    for change_type, path_str in changes
+                    if is_auto_scrape_relevant_change(change_type, Path(path_str))
                 ]
-                if not relevant_paths:
+                if not relevant_changes:
                     continue
 
-                affected = affected_media_roots_for_paths(relevant_paths, roots)
+                affected = affected_media_roots_for_changes(relevant_changes, roots)
                 if not affected:
                     continue
 
                 logger.info(
-                    f"Watcher detected changes: paths={len(relevant_paths)} roots={len(affected)}"
+                    f"Watcher detected changes: paths={len(relevant_changes)} roots={len(affected)}"
                 )
                 _auto_scrape_scheduler.schedule_roots(affected, trigger="watcher")
 
