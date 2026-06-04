@@ -150,7 +150,7 @@ docker compose up -d
 
 ## Community / Channels
 
-- Telegram group: [Join the discussion](https://t.me/+-4Ezcae7I74yMmI1)
+- Telegram group: [Join the discussion](https://t.me/mediatree_group)
 - Telegram update channel: [Subscribe to updates](https://t.me/mediatreex)
 
 ## License
