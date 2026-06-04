@@ -1,192 +1,106 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ZASENJC/mediatree/main/docs/assets/logo.png" alt="MediaTree" width="96" />
+  <img src="docs/assets/logo.png" alt="MediaTree" width="112" />
 </p>
 
 <h1 align="center">MediaTree</h1>
 
 <p align="center">
-  <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
+  <strong>把本地视频文件夹变成一个好看、好刮削、好播放的私人媒体库。
 </p>
 
 <p align="center">
-  <em>Self-hosted media library — one command deploy.<br>Elegant UI, multi-source scraping, ASS subtitle rendering,<br>movies, TV, anime & JAV — all in one place.</em>
+  <strong>简体中文</strong> · <a href="README_en.md">English</a> · <a href="#快速部署">快速部署</a> · <a href="https://github.com/ZASENJC/mediatree/wiki">Wiki</a> · <a href="CHANGELOG_zh-CN.md">更新日志</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.0.07-blue?style=flat-square" alt="Version"></a>
-  <a href="https://github.com/ZASENJC/mediatree/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
+  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG_zh-CN.md"><img src="https://img.shields.io/badge/版本-1.0.07-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/ZASENJC/mediatree/blob/main/LICENSE"><img src="https://img.shields.io/badge/许可证-MIT-green?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react" alt="React">
   <img src="https://img.shields.io/badge/docker-amd64|arm64-2496ED?style=flat-square&logo=docker" alt="Docker">
+  <a href="https://github.com/ZASENJC/mediatree-app"><img src="https://img.shields.io/badge/android-app-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android App"></a>
 </p>
 
----
+MediaTree 面向把电影、电视剧、动漫和私人片库保存在自己硬盘上的用户。你只需要把媒体目录挂进去，它会扫描文件、补全海报和信息，并提供浏览器播放与 Jellyfin 兼容客户端访问能力，不需要搭一套复杂的媒体服务器。
 
-## Screenshots
+## 为什么用 MediaTree
 
-![Home](https://img.qunq.de/file/1779640696711_home_no_text.png)
-*Home — media library grid with glassmorphism cards*
+- **文件还在原处**：用只读挂载接入现有目录，不改变你的文件结构。
+- **少做手工整理**：从 TMDB、Bangumi、Javdatabase 获取海报、标题、演员、季集和详情。
+- **播放器够用**：支持直链播放、HTTP Range 跳转、按需转码、ASS/SSA 特效字幕、画中画和 IINA/mpv/VLC 外部播放。
+- **打开就能管理**：按媒体库、文件夹树、收藏、分类和季集浏览；支持启动扫描和文件变动自动更新。
+- **不只 Web 能用**：提供 Jellyfin 兼容 API，可接入 VidHub、Infuse、Kodi、VLC、IINA 和 mpv。
+- **部署简单**：Docker Compose、SQLite、持久化 `./data`，支持 linux/amd64 和 linux/arm64。
 
-![Player](https://img.qunq.de/file/1779640693184_movie.png)
-*Player — streaming with ASS subtitle rendering*
+需要移动端体验时，可以配合独立 Android 客户端 [ZASENJC/mediatree-app](https://github.com/ZASENJC/mediatree-app) 使用；它支持 MediaTree、Jellyfin、Emby、SMB 和 WebDAV，本项目仍作为可独立部署的服务端。
 
-![Browse](https://img.qunq.de/file/1779640700855_browser.png)
-*Browse — folder tree navigation with seasonal tabs*
+## 界面预览
 
-![Settings](https://img.qunq.de/file/1779640699625_settings.png)
-*Settings — scraper config, library management, backup & updates*
+| 媒体库 | 播放器 |
+|---|---|
+| ![首页](https://img.qunq.de/file/1779640696711_home_no_text.png) | ![播放器](https://img.qunq.de/file/1779640693184_movie.png) |
+| 扫描后的海报墙 | 播放、详情和字幕 |
 
----
+| 浏览 | 设置 |
+|---|---|
+| ![浏览](https://img.qunq.de/file/1779640700855_browser.png) | ![设置页](https://img.qunq.de/file/1779640699625_settings.png) |
+| 文件夹树和季集导航 | 媒体库、刮削器、备份和更新 |
 
-## Features
+## 快速部署
 
-### Media Library
-
-- Multi-library with per-root scraper and access password
-- Recursive scanning with file-change watcher auto-incremental update, including folder structure changes
-- Folder tree browser with seasonal tab switching
-- Source filename / scraped title display toggle
-- Favorites, categories, and excluded folders
-
-### Scrapers
-
-- **TMDB** — Movie & TV metadata (cast, crew, stills, reviews, keywords)
-- **Bangumi** — Anime metadata for Chinese & Japanese titles
-- **Javdatabase** — JAV code-based metadata with fuzzy search fallback
-- Plugin architecture with configurable intelligent fallback chain
-- Manual scrape with search-and-select UI
-- Batch folder-level scraping via right-click context menu
-- Scraper cache with configurable TTL (24h–168h)
-
-### Video Player
-
-- ArtPlayer 5 with custom YouTube-style controls
-- Direct streaming + HTTP Range support (byte-range seeking)
-- On-demand ffmpeg H.264 transcoding
-- Touch gestures — tap, double-tap, swipe for mobile control
-- Keyboard shortcuts — Space/K, arrows, F, M
-- VR/360° video via Three.js equirectangular rendering
-- Picture-in-picture + external player (IINA, mpv, VLC)
-
-### Subtitles
-
-- ASS/SSA rendering via @jellyfin/libass-wasm (full effects, fonts, positioning)
-- External subtitle auto-matching by basename + language suffix + episode
-- CJK fallback font (Source Han Sans CN Bold) for anime subtitles
-- SRT → WebVTT native conversion (pure Python, no ffmpeg dependency)
-- Auto-encoding detection (16 encodings + charset-normalizer)
-- User font upload and management
-
-### Jellyfin Compatible
-
-36 Jellyfin-compatible API endpoints — connect **VidHub**, **Infuse**, **Kodi**, **VLC**, **IINA**, and **mpv** directly. Series → Season → Episode hierarchy from folder structure, multi-client auth (MediaBrowser Token, X-Emby-Token, Bearer, api_key), Emby path compatibility, and playback progress tracking.
-
-### UI Design
-
-Glassmorphism + Apple-style design language with custom TailwindCSS palette. Liquid glass header with chromatic dispersion, aurora gradient backgrounds, theater mode ambient lighting, image lightbox with gesture navigation, and responsive mobile-first layout.
-
-### Settings
-
-Centralized control panel — per-library scraper & access password, cache TTL tuning (24h–168h), TMDB API key configuration, one-click database backup & restore, and lightweight app-package updates with changelog viewer.
-
----
-
-## Quick Start
+克隆项目，复制示例配置，挂载至少一个媒体目录，然后启动容器：
 
 ```bash
 git clone https://github.com/ZASENJC/mediatree.git && cd mediatree
 cp .env.example .env
 cp docker-compose.example.yml docker-compose.yml
-# Edit .env — set AUTH_USER, AUTH_PASS, and MEDIA_VOLUMES
+
+# 先编辑 .env：
+# AUTH_USER=admin
+# AUTH_PASS=change-me
+# MEDIA_VOLUMES=/path/to/movies:/media/movies:ro
+
 docker compose up -d
-open http://localhost:27580
 ```
 
-> **Docker Hub**: `docker pull zasenjc/mediatree:latest`
+打开 `http://localhost:27580`，登录后扫描媒体库即可使用。
 
----
+Docker Hub 镜像：`zasenjc/mediatree:latest`
 
-## Update Strategy
+## 常用配置
 
-Regular Web updates from Settings download the small app package attached to the GitHub Release and install it into the `./data` volume. They do not require mounting `/var/run/docker.sock`. Releases are marked as requiring a full image update only when the base layer changes, such as the Python runtime, system packages, ffmpeg, fonts, entrypoint/bootstrap behavior, or Docker self-update prerequisites.
+| 变量 | 作用 |
+|---|---|
+| `AUTH_USER` / `AUTH_PASS` | 启用管理员登录 |
+| `MEDIA_VOLUMES` | 挂载媒体目录，例如 `/host/movies:/media/movies:ro` |
+| `DATA_DIR` | 保存数据库、封面、字体、备份和应用包更新。默认 `./data` |
+| `HOST_PORT` | Web 访问端口。默认 `27580` |
+| `TMDB_API_KEY` / `TMDB_ACCESS_TOKEN` | 可选，用于改善 TMDB 刮削 |
+| `JAVDB_ENABLED` | 启用或关闭 Javdatabase 刮削 |
 
-App-package releases and full image releases share one version baseline. If either side has already reached a version, MediaTree treats that version as installed for future update comparisons instead of maintaining separate image/package version tracks.
+完整配置见 [.env.example](.env.example)。高级配置、刮削逻辑、客户端兼容和排障说明放在 [Wiki](https://github.com/ZASENJC/mediatree/wiki)。
 
-For full image updates, run:
+## 更新
+
+日常版本可以在设置页安装小型应用包，更新内容会进入 `./data`。只有 Python、系统包、ffmpeg、字体或启动流程等基础运行层变化时，才需要完整镜像更新。
+
+完整镜像更新：
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
----
+## 文档
 
-## Configuration
-
-**`AUTH_USER`** — Admin username (auth enabled when set)
-
-**`AUTH_PASS`** — Admin password
-
-**`MEDIA_VOLUMES`** — Media directories: `/host/path:/media/alias:ro`
-
-**`DATA_DIR`** — Persistent data (DB, covers, fonts) — default `./data`
-
-**`HOST_PORT`** — Host port mapping — default `27580`
-
-**`SCAN_ON_STARTUP`** — Auto-scan on container start — default `true`
-
-**`TMDB_API_KEY`** — TMDB v3 API key *(optional)*
-
-**`TMDB_ACCESS_TOKEN`** — TMDB v4 access token *(optional)*
-
-**`JAVDB_ENABLED`** — Enable JavDatabase scraper — default `true`
-
-See `.env.example` for all options.
-
----
-
-## Tech Stack
-
-**Backend** — Python 3.12 · FastAPI · Uvicorn · httpx · aiosqlite · Pydantic v2 · ffmpeg
-
-**Frontend** — React 18 · TypeScript 5 · TailwindCSS 3 · Vite · ArtPlayer 5 · Three.js
-
-**Subtitles** — @jellyfin/libass-wasm · fonttools · charset-normalizer
-
-**Database** — SQLite (WAL mode, aiosqlite)
-
-**Deploy** — Docker multi-stage (node:22-alpine + python:3.12-slim), non-root runtime user
-
-**Platform** — linux/amd64 · linux/arm64
-
----
-
-## Development
-
-```bash
-# Backend (port 80)
-cd backend && pip install -r requirements.txt -c constraints.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 80
-
-# Frontend (port 5173, proxies /api -> localhost:80)
-cd frontend && npm install && npm run dev
-
-# Tests
-cd backend && python3.12 -m unittest discover -s tests -p 'test_*.py'
-```
-
----
-
-## Documentation
-
-| Document | Description |
+| 文档 | 说明 |
 |---|---|
-| [CHANGELOG.md](CHANGELOG.md) | Version history & release notes |
-| [CLAUDE.md](CLAUDE.md) | AI-assisted development guide |
-| [Wiki](https://github.com/ZASENJC/mediatree/wiki) | Full documentation & guides |
+| [Wiki](https://github.com/ZASENJC/mediatree/wiki) | 完整使用指南、高级配置、刮削说明和排障 |
+| [README_en.md](README_en.md) | English README |
+| [CHANGELOG_zh-CN.md](CHANGELOG_zh-CN.md) | 中文版本历史 |
+| [CHANGELOG.md](CHANGELOG.md) | 英文版本历史 |
+| [CLAUDE.md](CLAUDE.md) | 开发和 AI 辅助维护说明 |
 
----
-
-## License
+## 许可证
 
 MIT © [ZASENJC](https://github.com/ZASENJC)

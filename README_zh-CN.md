@@ -1,15 +1,16 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ZASENJC/mediatree/main/docs/assets/logo.png" alt="MediaTree" width="96" />
+  <img src="docs/assets/logo.png" alt="MediaTree" width="112" />
 </p>
 
 <h1 align="center">MediaTree</h1>
 
 <p align="center">
-  <a href="README.md">English</a> | <strong>简体中文</strong>
+  <strong>把本地视频文件夹变成一个好看、好刮削、好播放的私人媒体库。</strong><br>
+  支持电影、番剧及JAV。
 </p>
 
 <p align="center">
-  <em>一键部署的个人媒体库。<br>质感 UI，多源元数据刮削，ASS 特效字幕渲染，<br>电影、电视剧、动漫与 JAV — 一站管理。</em>
+  <strong>简体中文</strong> · <a href="README_en.md">English</a> · <a href="#快速部署">快速部署</a> · <a href="https://github.com/ZASENJC/mediatree/wiki">Wiki</a> · <a href="CHANGELOG_zh-CN.md">更新日志</a>
 </p>
 
 <p align="center">
@@ -18,175 +19,88 @@
   <img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react" alt="React">
   <img src="https://img.shields.io/badge/docker-amd64|arm64-2496ED?style=flat-square&logo=docker" alt="Docker">
+  <a href="https://github.com/ZASENJC/mediatree-app"><img src="https://img.shields.io/badge/android-app-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android App"></a>
 </p>
 
----
+MediaTree 面向把电影、电视剧、动漫和私人片库保存在自己硬盘上的用户。你只需要把媒体目录挂进去，它会扫描文件、补全海报和信息，并提供浏览器播放与 Jellyfin 兼容客户端访问能力，不需要搭一套复杂的媒体服务器。
+
+## 为什么用 MediaTree
+
+- **文件还在原处**：用只读挂载接入现有目录，不改变你的文件结构。
+- **少做手工整理**：从 TMDB、Bangumi、Javdatabase 获取海报、标题、演员、季集和详情。
+- **播放器够用**：支持直链播放、HTTP Range 跳转、按需转码、ASS/SSA 特效字幕、画中画和 IINA/mpv/VLC 外部播放。
+- **打开就能管理**：按媒体库、文件夹树、收藏、分类和季集浏览；支持启动扫描和文件变动自动更新。
+- **不只 Web 能用**：提供 Jellyfin 兼容 API，可接入 VidHub、Infuse、Kodi、VLC、IINA 和 mpv。
+- **部署简单**：Docker Compose、SQLite、持久化 `./data`，支持 linux/amd64 和 linux/arm64。
+
+需要移动端体验时，可以配合独立 Android 客户端 [ZASENJC/mediatree-app](https://github.com/ZASENJC/mediatree-app) 使用；它支持 MediaTree、Jellyfin、Emby、SMB 和 WebDAV，本项目仍作为可独立部署的服务端。
 
 ## 界面预览
 
-![首页](https://img.qunq.de/file/1779640696711_home_no_text.png)
-*首页 — 卡片瀑布流媒体库*
+| 媒体库 | 播放器 |
+|---|---|
+| ![首页](https://img.qunq.de/file/1779640696711_home_no_text.png) | ![播放器](https://img.qunq.de/file/1779640693184_movie.png) |
+| 扫描后的海报墙 | 播放、详情和字幕 |
 
-![浏览](https://img.qunq.de/file/1779640700855_browser.png)
-*浏览页 — 文件夹树导航与季集切换*
+| 浏览 | 设置 |
+|---|---|
+| ![浏览](https://img.qunq.de/file/1779640700855_browser.png) | ![设置页](https://img.qunq.de/file/1779640699625_settings.png) |
+| 文件夹树和季集导航 | 媒体库、刮削器、备份和更新 |
 
-![播放器](https://img.qunq.de/file/1779640693184_movie.png)
-*播放页 — 流媒体播放 + 完整影片信息*
+## 快速部署
 
-![设置页](https://img.qunq.de/file/1779640699625_settings.png)
-*设置 — 刮削器配置、媒体库管理、备份与自更新*
-
----
-
-## 特性
-
-### 媒体库
-
-- 多库支持，每个库独立刮削器配置和访问密码
-- 递归扫描 + 文件夹结构变动监控自动增量更新
-- 文件夹树浏览器，支持季集标签切换
-- 源文件名 / 刮削标题 显示切换
-- 收藏、分类和排除文件夹
-
-### 刮削器
-
-- **TMDB** — 电影和电视剧元数据（演员、制作人、剧照、评论、关键词）
-- **Bangumi** — 中/日文动漫元数据
-- **Javdatabase** — JAV 番号元数据，支持模糊搜索回退
-- 插件架构 + 可配置智能回退链
-- 手动刮削，支持搜索选择和确认
-- 右键菜单批量文件夹刮削
-- 刮削缓存，可配置 TTL（24h–168h）
-
-### 视频播放器
-
-- ArtPlayer 5 定制 YouTube 风格控件
-- 直链播放 + HTTP Range 字节跳转
-- 按需 ffmpeg H.264 转码
-- 触摸手势 — 轻触、双击、滑动移动端控制
-- 键盘快捷键 — Space/K、方向键、F、M
-- VR/360° 视频（Three.js 等距矩形渲染）
-- 画中画 + 外部播放器（IINA、mpv、VLC）
-
-### 字幕系统
-
-- ASS/SSA 渲染（@jellyfin/libass-wasm，完整特效、字体、定位）
-- 外挂字幕自动匹配（文件名 + 语言后缀 + 集数）
-- CJK 回退字体（思源黑体 CN Bold），适配动漫字幕
-- SRT → WebVTT 原生转换（纯 Python，无 ffmpeg 依赖）
-- 编码自动检测（16 种编码 + charset-normalizer）
-- 用户字体上传和管理
-
-### Jellyfin 兼容
-
-36 个 Jellyfin 兼容 API 端点 — 可直接接入 **VidHub**、**Infuse**、**Kodi**、**VLC**、**IINA** 和 **mpv**。支持 Series → Season → Episode 文件夹层级、多客户端认证（MediaBrowser Token、X-Emby-Token、Bearer、api_key）、Emby 路径兼容和播放进度跟踪。
-
-### UI 设计
-
-玻璃态 + Apple 风格设计语言，定制 TailwindCSS 调色板。Liquid Glass 顶栏色散光晕、极光渐变背景、剧院模式环境光效、图片灯箱手势导航和响应式移动端布局。
-
-### 设置
-
-控制中心 — 逐库配置刮削器与访问密码、调整缓存 TTL（24h–168h）、绑定 TMDB API 密钥、一键备份还原数据库，以及轻量应用包更新与更新日志查看。
-
----
-
-## 快速开始
+克隆项目，复制示例配置，挂载至少一个媒体目录，然后启动容器：
 
 ```bash
 git clone https://github.com/ZASENJC/mediatree.git && cd mediatree
 cp .env.example .env
 cp docker-compose.example.yml docker-compose.yml
-# 编辑 .env — 设置 AUTH_USER、AUTH_PASS 和 MEDIA_VOLUMES
+
+# 先编辑 .env：
+# AUTH_USER=admin
+# AUTH_PASS=change-me
+# MEDIA_VOLUMES=/path/to/movies:/media/movies:ro
+
 docker compose up -d
-open http://localhost:27580
 ```
 
-> **Docker Hub**: `docker pull zasenjc/mediatree:latest`
+打开 `http://localhost:27580`，登录后扫描媒体库即可使用。
 
----
+Docker Hub 镜像：`zasenjc/mediatree:latest`
 
-## 更新策略
+## 常用配置
 
-设置页的普通 Web 更新默认下载 GitHub Release 中的小型应用包，并安装到 `./data` 数据卷，不需要挂载 `/var/run/docker.sock`。只有 Python 运行时、系统包、ffmpeg、字体、entrypoint/bootstrap 行为或 Docker 自更新前提能力等基础镜像层发生变化时，版本才会标记为“需要完整镜像更新”。
+| 变量 | 作用 |
+|---|---|
+| `AUTH_USER` / `AUTH_PASS` | 启用管理员登录 |
+| `MEDIA_VOLUMES` | 挂载媒体目录，例如 `/host/movies:/media/movies:ro` |
+| `DATA_DIR` | 保存数据库、封面、字体、备份和应用包更新。默认 `./data` |
+| `HOST_PORT` | Web 访问端口。默认 `27580` |
+| `TMDB_API_KEY` / `TMDB_ACCESS_TOKEN` | 可选，用于改善 TMDB 刮削 |
+| `JAVDB_ENABLED` | 启用或关闭 Javdatabase 刮削 |
 
-应用包发布和完整镜像发布共用同一条版本基线。只要其中一侧已经达到某个版本，后续检查更新时就会把该版本视为已安装，不再把镜像版号和应用包版号拆成两条独立轨道。
+完整配置见 [.env.example](.env.example)。高级配置、刮削逻辑、客户端兼容和排障说明放在 [Wiki](https://github.com/ZASENJC/mediatree/wiki)。
 
-完整镜像更新推荐手动执行：
+## 更新
+
+日常版本可以在设置页安装小型应用包，更新内容会进入 `./data`。只有 Python、系统包、ffmpeg、字体或启动流程等基础运行层变化时，才需要完整镜像更新。
+
+完整镜像更新：
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
----
-
-## 配置
-
-**`AUTH_USER`** — 管理员用户名（设置后启用认证）
-
-**`AUTH_PASS`** — 管理员密码
-
-**`MEDIA_VOLUMES`** — 媒体目录：`/主机路径:/容器挂载点:ro`
-
-**`DATA_DIR`** — 持久化数据（数据库、封面、字体）— 默认 `./data`
-
-**`HOST_PORT`** — 主机端口映射 — 默认 `27580`
-
-**`SCAN_ON_STARTUP`** — 容器启动时自动扫描 — 默认 `true`
-
-**`TMDB_API_KEY`** — TMDB v3 API 密钥（可选）
-
-**`TMDB_ACCESS_TOKEN`** — TMDB v4 访问令牌（可选）
-
-**`JAVDB_ENABLED`** — 启用 JavDatabase 刮削器 — 默认 `true`
-
-完整配置项参见 `.env.example`。
-
----
-
-## 技术栈
-
-**后端** — Python 3.12 · FastAPI · Uvicorn · httpx · aiosqlite · Pydantic v2 · ffmpeg
-
-**前端** — React 18 · TypeScript 5 · TailwindCSS 3 · Vite · ArtPlayer 5 · Three.js
-
-**字幕** — @jellyfin/libass-wasm · fonttools · charset-normalizer
-
-**数据库** — SQLite（WAL 模式，aiosqlite）
-
-**部署** — Docker 多阶段构建（node:22-alpine + python:3.12-slim），运行时使用非 root 用户
-
-**平台支持** — linux/amd64 · linux/arm64
-
----
-
-## 本地开发
-
-```bash
-# 后端（端口 80）
-cd backend && pip install -r requirements.txt -c constraints.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 80
-
-# 前端（端口 5173，反向代理 /api -> localhost:80）
-cd frontend && npm install && npm run dev
-
-# 测试
-cd backend && python3.12 -m unittest discover -s tests -p 'test_*.py'
-```
-
----
-
 ## 文档
 
 | 文档 | 说明 |
 |---|---|
-| [CHANGELOG.md](CHANGELOG.md) | 版本历史和发布说明（英文） |
-| [CHANGELOG_zh-CN.md](CHANGELOG_zh-CN.md) | 版本历史（中文） |
-| [CLAUDE.md](CLAUDE.md) | AI 辅助开发指南 |
-| [Wiki](https://github.com/ZASENJC/mediatree/wiki) | 完整文档和指南 |
-
----
+| [Wiki](https://github.com/ZASENJC/mediatree/wiki) | 完整使用指南、高级配置、刮削说明和排障 |
+| [README_en.md](README_en.md) | English README |
+| [CHANGELOG_zh-CN.md](CHANGELOG_zh-CN.md) | 中文版本历史 |
+| [CHANGELOG.md](CHANGELOG.md) | 英文版本历史 |
+| [CLAUDE.md](CLAUDE.md) | 开发和 AI 辅助维护说明 |
 
 ## 许可证
 
