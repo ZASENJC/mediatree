@@ -5,7 +5,8 @@
 <h1 align="center">MediaTree</h1>
 
 <p align="center">
-  <strong>Turn local video folders into a polished private streaming library.</strong>
+  <strong>Turn local video folders into a polished private streaming library.</strong><br>
+  Supports movies, anime, and JAV.
 </p>
 
 <p align="center">
@@ -18,6 +19,7 @@
   <img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react" alt="React">
   <img src="https://img.shields.io/badge/docker-amd64|arm64-2496ED?style=flat-square&logo=docker" alt="Docker">
+  <a href="https://github.com/ZASENJC/mediatree-app"><img src="https://img.shields.io/badge/android-app-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android App"></a>
 </p>
 
 MediaTree is built for people who keep movies, TV shows, anime, and private niche libraries on their own disks. Point it at your folders, let it scan and enrich the files, then watch from the browser or Jellyfin-compatible apps without running a heavy media stack.
@@ -47,22 +49,69 @@ For a mobile experience, pair it with the standalone Android client [ZASENJC/med
 
 ## Quick Deploy
 
-Clone the repo, copy the example config, mount at least one media folder, and start the container:
+Create `docker-compose.yml`, update the account, password, and media paths in the comments, then start the container:
+
+```yaml
+services:
+  mediatree:
+    image: zasenjc/mediatree:latest
+    container_name: mediatree
+    restart: unless-stopped
+
+    ports:
+      # Left side is the host port. Open http://localhost:27580 after startup.
+      - "27580:80"
+
+    volumes:
+      # Persistent data: database, covers, fonts, backups, and app-package updates.
+      - ./data:/app/data
+
+      # Mount your media folder as read-only. Change the left side to your real host path.
+      - /path/to/your/movies:/media/movies:ro
+      # Add more media folders if needed.
+      # - /path/to/your/anime:/media/anime:ro
+
+    environment:
+      # Admin account. Login is enabled when these are set.
+      - AUTH_USER=admin
+      - AUTH_PASS=change-me
+
+      # Internal service port. Usually keep this unchanged.
+      - PORT=80
+
+      # Scan libraries when the container starts.
+      - SCAN_ON_STARTUP=true
+
+      # Enable or disable Javdatabase scraping.
+      - JAVDB_ENABLED=true
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+```
+
+Start:
 
 ```bash
-git clone https://github.com/ZASENJC/mediatree.git && cd mediatree
-cp .env.example .env
-cp docker-compose.example.yml docker-compose.yml
-
-# Edit .env first:
-# AUTH_USER=admin
-# AUTH_PASS=change-me
-# MEDIA_VOLUMES=/path/to/movies:/media/movies:ro
-
 docker compose up -d
 ```
 
 Open `http://localhost:27580`, sign in, scan your library, and start watching.
+
+You can also clone the repo and use the example config:
+
+```bash
+git clone https://github.com/ZASENJC/mediatree.git
+cd mediatree
+cp .env.example .env
+cp docker-compose.example.yml docker-compose.yml
+
+# Edit .env and docker-compose.yml, then start.
+docker compose up -d
+```
 
 Docker Hub image: `zasenjc/mediatree:latest`
 

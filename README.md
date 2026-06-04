@@ -5,7 +5,8 @@
 <h1 align="center">MediaTree</h1>
 
 <p align="center">
-  <strong>把本地视频文件夹变成一个好看、好刮削、好播放的私人媒体库。
+  <strong>把本地视频文件夹变成一个好看、好刮削、好播放的私人媒体库。</strong><br>
+  支持电影、番剧及JAV。
 </p>
 
 <p align="center">
@@ -48,22 +49,69 @@ MediaTree 面向把电影、电视剧、动漫和私人片库保存在自己硬�
 
 ## 快速部署
 
-克隆项目，复制示例配置，挂载至少一个媒体目录，然后启动容器：
+新建 `docker-compose.yml`，按注释改好账号、密码和媒体目录后启动：
+
+```yaml
+services:
+  mediatree:
+    image: zasenjc/mediatree:latest
+    container_name: mediatree
+    restart: unless-stopped
+
+    ports:
+      # 左侧是宿主机访问端口，启动后打开 http://localhost:27580
+      - "27580:80"
+
+    volumes:
+      # 持久化数据目录：数据库、封面、字体、备份和应用包更新都会保存在这里
+      - ./data:/app/data
+
+      # 挂载你的媒体目录，建议只读。左侧改成宿主机真实路径，右侧是容器内路径
+      - /path/to/your/movies:/media/movies:ro
+      # 可以继续添加更多媒体目录
+      # - /path/to/your/anime:/media/anime:ro
+
+    environment:
+      # 管理员账号，设置后启用登录
+      - AUTH_USER=admin
+      - AUTH_PASS=change-me
+
+      # 容器内部服务端口，通常不需要改
+      - PORT=80
+
+      # 启动时自动扫描媒体库
+      - SCAN_ON_STARTUP=true
+
+      # 是否启用 Javdatabase 刮削
+      - JAVDB_ENABLED=true
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+```
+
+启动：
 
 ```bash
-git clone https://github.com/ZASENJC/mediatree.git && cd mediatree
-cp .env.example .env
-cp docker-compose.example.yml docker-compose.yml
-
-# 先编辑 .env：
-# AUTH_USER=admin
-# AUTH_PASS=change-me
-# MEDIA_VOLUMES=/path/to/movies:/media/movies:ro
-
 docker compose up -d
 ```
 
 打开 `http://localhost:27580`，登录后扫描媒体库即可使用。
+
+也可以从仓库 clone 示例配置：
+
+```bash
+git clone https://github.com/ZASENJC/mediatree.git
+cd mediatree
+cp .env.example .env
+cp docker-compose.example.yml docker-compose.yml
+
+# 编辑 .env 和 docker-compose.yml 后启动
+docker compose up -d
+```
 
 Docker Hub 镜像：`zasenjc/mediatree:latest`
 
