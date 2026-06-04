@@ -149,6 +149,11 @@ docker compose up -d
 | [CHANGELOG.md](CHANGELOG.md) | 英文版本历史 |
 | [CLAUDE.md](CLAUDE.md) | 开发和 AI 辅助维护说明 |
 
+## 群组 / 频道
+
+- Telegram 群组：[加入讨论](https://t.me/+-4Ezcae7I74yMmI1)
+- Telegram 更新通知频道：[订阅更新](https://t.me/mediatreex)
+
 ## 许可证
 
 MIT © [ZASENJC](https://github.com/ZASENJC)

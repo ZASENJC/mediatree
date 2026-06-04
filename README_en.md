@@ -148,6 +148,11 @@ docker compose up -d
 | [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
 | [CLAUDE.md](CLAUDE.md) | Development and AI-assisted maintenance notes |
 
+## Community / Channels
+
+- Telegram group: [Join the discussion](https://t.me/+-4Ezcae7I74yMmI1)
+- Telegram update channel: [Subscribe to updates](https://t.me/mediatreex)
+
 ## License
 
 MIT © [ZASENJC](https://github.com/ZASENJC)
