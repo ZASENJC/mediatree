@@ -6,6 +6,19 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## 1.0.09 (2026-06-06)
+
+### Branding
+
+- Restored the runtime site favicon and login page logo to the repository-hosted rounded PNG logo
+- Added `frontend/public/logo.png` so app-package builds include the same logo used by the README and GitHub display
+
+### Release Type
+
+- App-package update; no Docker image update is required
+
+---
+
 ## 1.0.08 (2026-06-06)
 
 ### Security & Access Control
@@ -42,7 +55,7 @@ All notable changes to MediaTree are documented here.
 ### Branding & Docs
 
 - Updated README and wiki logo marks to use the new repository-hosted logo asset
-- Switched the login page logo and site favicon to the remote transparent logo URL
+- Temporarily switched the login page logo and site favicon to a remote transparent logo URL
 - Removed unused local frontend logo/icon assets and a broken README detail screenshot link
 
 ### Release Type
