@@ -6,16 +6,27 @@
 
 ---
 
-## 1.0.09 (2026-06-06)
+## 1.0.10 (2026-06-06)
+
+### 重大安全更新
+
+- 将认证加固重新作为完整 Docker 镜像更新发布，让部署环境同时刷新基础镜像和应用基线
+- 匿名首次访问仍会被阻止：没有有效会话的用户必须停留在登录页或首次管理员初始化页
+- 未登录时仍禁止首次媒体库初始化、更新检查、媒体库业务接口，以及部分 Jellyfin 兼容媒体接口
 
 ### 品牌资源
 
 - 将运行时站点图标和登录页 LOGO 恢复为仓库内的圆角 PNG LOGO
-- 新增 `frontend/public/logo.png`，应用包构建会包含与 README / GitHub 展示一致的 LOGO 图
+- 新增 `frontend/public/logo.png`，Docker 镜像构建会包含与 README / GitHub 展示一致的 LOGO 图
+
+### 更新方式
+
+- Docker Compose：执行 `docker compose pull && docker compose up -d`
+- Docker run：执行 `docker pull zasenjc/mediatree:1.0.10`，再按原参数重新创建容器
 
 ### 发布类型
 
-- 应用包级更新；不需要完整 Docker 镜像更新
+- 需要完整 Docker 镜像更新
 
 ---
 

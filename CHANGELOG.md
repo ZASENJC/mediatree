@@ -6,16 +6,27 @@ All notable changes to MediaTree are documented here.
 
 ---
 
-## 1.0.09 (2026-06-06)
+## 1.0.10 (2026-06-06)
+
+### Critical Security Update
+
+- Reissued the authentication hardening as a full Docker image update so deployments refresh the base image and application baseline together
+- Anonymous first-open access remains blocked: users without a valid session must stay on the login or first-launch admin setup screen
+- Unauthenticated first-run setup, update checks, media library APIs, and selected Jellyfin-compatible media routes remain protected
 
 ### Branding
 
 - Restored the runtime site favicon and login page logo to the repository-hosted rounded PNG logo
-- Added `frontend/public/logo.png` so app-package builds include the same logo used by the README and GitHub display
+- Added `frontend/public/logo.png` so Docker image builds include the same logo used by the README and GitHub display
+
+### Update Instructions
+
+- Docker Compose: run `docker compose pull && docker compose up -d`
+- Docker run: run `docker pull zasenjc/mediatree:1.0.10`, then recreate the container with your original parameters
 
 ### Release Type
 
-- App-package update; no Docker image update is required
+- Full Docker image update is required
 
 ---
 

@@ -17,6 +17,7 @@ jobs:
       DOCKERHUB_TOKEN_SET: ${{ secrets.DOCKERHUB_TOKEN != '' }}
       RELEASE_REQUIRES_IMAGE_UPDATE: "false"
       RELEASE_UPDATE_REASON: "应用包级更新；不需要完整 Docker 镜像更新。"
+      RELEASE_METADATA_FILE: ".github/release-metadata.json"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,6 +45,35 @@ jobs:
         run: |
           VERSION=$(cat VERSION | head -1 | tr -d '[:space:]')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Resolve release metadata
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          metadata_path = Path(os.environ.get("RELEASE_METADATA_FILE", ".github/release-metadata.json"))
+          fallback = {
+              "requires_image_update": False,
+              "reason": "应用包级更新；不需要完整 Docker 镜像更新。",
+          }
+          metadata = {}
+          if metadata_path.exists():
+              metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+          release = metadata.get("versions", {}).get(version, metadata.get("default", fallback))
+          requires_image_update = "true" if release.get("requires_image_update") else "false"
+          reason = release.get("reason") or fallback["reason"]
+
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"RELEASE_REQUIRES_IMAGE_UPDATE={requires_image_update}\n")
+              env.write("RELEASE_UPDATE_REASON<<EOF\n")
+              env.write(reason + "\n")
+              env.write("EOF\n")
+          PY
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
 
       - name: Extract release notes from CHANGELOG
         id: changelog
