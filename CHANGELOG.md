@@ -6,6 +6,25 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## 1.0.08 (2026-06-06)
+
+### Security & Access Control
+
+- Changed authentication to fail closed by default, so empty `AUTH_USER` / `AUTH_PASS` no longer opens anonymous access
+- Added first-launch admin setup with signed session tokens and hashed password storage
+- Blocked unauthenticated first-run setup, update checks, media library APIs, and selected Jellyfin-compatible media routes
+- Updated the frontend so first-time or incognito visitors without a token stay on the login/setup screen instead of loading the media library UI
+
+### Docs
+
+- Clarified that `AUTH_USER` / `AUTH_PASS` preset the admin account; leaving them empty now starts the first-launch admin creation flow
+
+### Release Type
+
+- App-package update; no Docker image update is required
+
+---
+
 ## 1.0.07 (2026-06-04)
 
 ### Continue Watching
