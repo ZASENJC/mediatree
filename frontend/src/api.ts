@@ -68,7 +68,10 @@ function getToken(): string {
 function setToken(t: string) {
   memoryToken = t
   clearMediaToken()
-  try { localStorage.setItem('mediatree_token', t) } catch {}
+  try {
+    if (t) localStorage.setItem('mediatree_token', t)
+    else localStorage.removeItem('mediatree_token')
+  } catch {}
 }
 
 function mediaTokenStillValid(expiresAt: number): boolean {
@@ -172,6 +175,11 @@ function setActiveLibrary(lib: string) {
   try { localStorage.setItem('mediatree_library', lib) } catch {}
 }
 
+function clearActiveLibrary() {
+  memoryActiveLibrary = ''
+  try { localStorage.removeItem('mediatree_library') } catch {}
+}
+
 async function request<T>(url: string, options?: RequestInit & { signal?: AbortSignal }, cacheKey?: string): Promise<T> {
   if (cacheKey) {
     const cached = getCached<T>(cacheKey)
@@ -188,6 +196,7 @@ async function request<T>(url: string, options?: RequestInit & { signal?: AbortS
   const res = await fetch(`${getApiBase()}${url}`, { ...fetchOptions, signal, headers, cache: 'no-store' })
   if (res.status === 401) {
     setToken('')
+    clearActiveLibrary()
     if (window.location.pathname !== '/login') {
       window.location.href = '/login'
     }
@@ -213,10 +222,17 @@ function libParam(): string {
 }
 
 export const api = {
-  authStatus: () => request<{ need_auth: boolean }>('/auth/status'),
+  authStatus: () => request<{ need_auth: boolean; auth_configured: boolean }>('/auth/status'),
 
   login: (username: string, password: string) =>
     request<{ token: string; ok: boolean }>('/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    }),
+
+  setupAuth: (username: string, password: string) =>
+    request<{ token: string; ok: boolean }>('/auth/setup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
@@ -630,7 +646,7 @@ export const api = {
   resolveUrl: resolveApiUrl,
   resolveMediaUrl,
 
-  logout: () => { setToken(''); clearCache(); window.location.href = '/login?logout=1' },
+  logout: () => { setToken(''); clearActiveLibrary(); clearCache(); window.location.href = '/login?logout=1' },
 }
 
 export { getToken, setToken, getActiveLibrary, setActiveLibrary, getServerUrl, setServerUrl, getApiBase, resolveApiUrl, resolveMediaUrl, getMediaTokenSync, ensureMediaToken, isNativeApp, clearCache }

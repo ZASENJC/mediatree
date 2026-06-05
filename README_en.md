@@ -72,7 +72,7 @@ services:
       # - /path/to/your/anime:/media/anime:ro
 
     environment:
-      # Admin account. Login is enabled when these are set.
+      # Preset admin account. You can leave these empty and create the admin account on first launch.
       - AUTH_USER=admin
       - AUTH_PASS=change-me
 
@@ -99,7 +99,7 @@ Start:
 docker compose up -d
 ```
 
-Open `http://localhost:27580`, sign in, scan your library, and start watching.
+Open `http://localhost:27580`, sign in, scan your library, and start watching. If `AUTH_USER` / `AUTH_PASS` are not preset, the first launch asks you to create an admin account.
 
 You can also clone the repo and use the example config:
 
@@ -119,7 +119,7 @@ Docker Hub image: `zasenjc/mediatree:latest`
 
 | Variable | What it does |
 |---|---|
-| `AUTH_USER` / `AUTH_PASS` | Enables the admin login |
+| `AUTH_USER` / `AUTH_PASS` | Presets the admin login; leave empty to create it on first launch |
 | `MEDIA_VOLUMES` | Mounts your media folders, for example `/host/movies:/media/movies:ro` |
 | `DATA_DIR` | Stores database, covers, fonts, backups, and app-package updates. Default: `./data` |
 | `HOST_PORT` | Web port on the host. Default: `27580` |

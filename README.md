@@ -72,7 +72,7 @@ services:
       # - /path/to/your/anime:/media/anime:ro
 
     environment:
-      # 管理员账号，设置后启用登录
+      # 预置管理员账号。也可以留空，首次打开网页时创建管理员账号
       - AUTH_USER=admin
       - AUTH_PASS=change-me
 
@@ -99,7 +99,7 @@ services:
 docker compose up -d
 ```
 
-打开 `http://localhost:27580`，登录后扫描媒体库即可使用。
+打开 `http://localhost:27580`，登录后扫描媒体库即可使用。未预置 `AUTH_USER` / `AUTH_PASS` 时，首次打开会先要求创建管理员账号。
 
 也可以从仓库 clone 示例配置：
 
@@ -119,7 +119,7 @@ Docker Hub 镜像：`zasenjc/mediatree:latest`
 
 | 变量 | 作用 |
 |---|---|
-| `AUTH_USER` / `AUTH_PASS` | 启用管理员登录 |
+| `AUTH_USER` / `AUTH_PASS` | 预置管理员登录账号；留空时首次打开网页创建账号 |
 | `MEDIA_VOLUMES` | 挂载媒体目录，例如 `/host/movies:/media/movies:ro` |
 | `DATA_DIR` | 保存数据库、封面、字体、备份和应用包更新。默认 `./data` |
 | `HOST_PORT` | Web 访问端口。默认 `27580` |

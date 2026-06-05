@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .config import settings, logger, fetch_safe_image
+from .auth import verify_auth_credentials
 from .database import get_db, get_movie_detail
 from .stream import _full_stream, _range_stream, MIME_MAP as STREAM_MIME_MAP
 from .subtitles import (
@@ -166,9 +167,9 @@ async def jf_authenticate_by_name(request: Request, body: AuthByNameRequest):
     if not username or not password:
         raise HTTPException(status_code=400, detail="Username and password required")
 
-    if not settings.auth_enabled:
+    if not settings.auth_configured:
         raise HTTPException(status_code=401, detail="Authentication is not configured")
-    if username != settings.auth_user or password != settings.auth_pass:
+    if not verify_auth_credentials(username, password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     auth_header = request.headers.get("Authorization", "")
@@ -862,6 +863,8 @@ async def jf_item_image_logo(item_id: str, request: Request):
 
 
 async def _serve_image(item_id: str, image_type: str, request: Request):
+    await get_jellyfin_user(request)
+
     # Handle Series/Season IDs
     if item_id.startswith("series_"):
         return await _serve_series_image(item_id, image_type)
@@ -1308,11 +1311,13 @@ async def jf_library_media_folders(request: Request):
 
 @router.get("/Items/{item_id}/Intros")
 async def jf_item_intros(item_id: str, request: Request):
+    await get_jellyfin_user(request)
     return {"Items": [], "TotalRecordCount": 0}
 
 
 @router.get("/Users/{user_id}/Items/{item_id}/Intros")
 async def jf_user_item_intros(user_id: str, item_id: str, request: Request):
+    await get_jellyfin_user(request)
     return {"Items": [], "TotalRecordCount": 0}
 
 
@@ -1324,6 +1329,7 @@ async def jf_genres(request: Request):
 
 @router.get("/DisplayPreferences/{user_id}")
 async def jf_display_preferences(user_id: str, request: Request):
+    await get_jellyfin_user(request)
     return {
         "Id": user_id,
         "SortBy": "SortName",
@@ -1335,6 +1341,7 @@ async def jf_display_preferences(user_id: str, request: Request):
 
 @router.post("/DisplayPreferences/{user_id}")
 async def jf_display_preferences_save(user_id: str, request: Request):
+    await get_jellyfin_user(request)
     return {"ok": True}
 
 

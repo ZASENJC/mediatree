@@ -58,6 +58,7 @@ export default function App() {
   useEffect(() => { return () => { mountedRef.current = false } }, [])
 
   const loadLibraries = useCallback(async () => {
+    if (!getToken()) return
     try {
       const data = await api.mediaRoots()
       if (!mountedRef.current) return
@@ -100,6 +101,7 @@ export default function App() {
 
   // 版本更新检查（每 15 分钟轮询）
   useEffect(() => {
+    if (!getToken()) return
     const check = async () => {
       try {
         const result = await api.checkForUpdates()
@@ -143,6 +145,11 @@ export default function App() {
   }, [searchQuery])
 
   useEffect(() => {
+    if (!getToken()) {
+      setShowSetup(false)
+      setCheckingSetup(false)
+      return
+    }
     api.setupStatus().then(d => {
       if (d.needs_setup) setShowSetup(true)
       setCheckingSetup(false)
@@ -159,6 +166,7 @@ export default function App() {
   const scanTimerRef = useRef(0)
 
   useEffect(() => {
+    if (!getToken()) return
     let hadActive = false
     const poll = async () => {
       try {
@@ -292,6 +300,14 @@ export default function App() {
 
   if (checkingSetup || checkingMediaToken) {
     return <div className="min-h-screen bg-aurora" />
+  }
+
+  if (!getToken()) {
+    return (
+      <Routes>
+        <Route path="*" element={<Login onLogin={loadLibraries} />} />
+      </Routes>
+    )
   }
 
   if (showSetup) {

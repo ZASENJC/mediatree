@@ -35,6 +35,7 @@ from .database import (
     get_library_settings, save_progress, get_progress,
     get_review_queue, approve_review_item, clear_review_queue,
 )
+from .auth import auth_secret, store_auth_credentials, valid_new_auth_credentials, verify_auth_credentials
 from .scanner import scan_media, scrape_for_library, run_scan_for_root, rescrape_movie, rescrape_movie_manual, rescrape_folder, rescrape_folder_manual, search_for_scrape, apply_folder_scrape_result, fetch_search_backdrops, change_folder_cover, change_folder_backdrop, edit_folder_movies, delete_folder_movies, request_cancel_scan, clear_library_scraped_data
 from .javdb import search_javdb
 from .stream import get_video_stream, get_media_info
@@ -61,17 +62,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 or path.startswith("/Genres") \
                 or path.startswith("/emby"):
             return await call_next(request)
-        if not settings.auth_enabled:
-            return await call_next(request)
         if path.startswith("/assets") \
-                or path in ("/api/auth/login", "/api/auth/status", "/api/setup/status", "/api/health", "/api/version") \
+                or path in ("/api/auth/login", "/api/auth/setup", "/api/auth/status", "/api/health", "/api/version") \
                 or path.startswith("/api/cached-cover/") \
                 or path.startswith("/fonts/") \
                 or (path == "/api/subtitle-fonts" and request.method in ("GET", "HEAD")) \
-                or (path.startswith("/api/subtitle-fonts/") and request.method in ("GET", "HEAD")) \
-                or path == "/api/update/check":
-            return await call_next(request)
-        if path == "/api/setup/save" and request.method == "POST" and not await has_any_library_setting():
+                or (path.startswith("/api/subtitle-fonts/") and request.method in ("GET", "HEAD")):
             return await call_next(request)
         if _is_media_route(path):
             if _has_media_access(request):
@@ -104,10 +100,7 @@ def _is_media_route(path: str) -> bool:
 
 
 def _auth_secret() -> str:
-    secret = f"{settings.auth_user}:{settings.auth_pass}"
-    if secret == ":":
-        secret = os.environ.get("MEDIATREE_MEDIA_TOKEN_SECRET", "") or "mediatree-dev-token-secret"
-    return secret
+    return auth_secret()
 
 
 def _sign_token(kind: str, expiry: int, nonce: str) -> str:
@@ -140,6 +133,8 @@ def _create_auth_session_token() -> str:
 
 
 def _verify_auth_session_token(token: str) -> bool:
+    if not settings.auth_configured:
+        return False
     return _verify_signed_token(token, "auth")
 
 
@@ -152,8 +147,8 @@ def _verify_media_token(token: str) -> bool:
 
 
 def _has_app_auth(request: Request) -> bool:
-    if not settings.auth_enabled:
-        return True
+    if not settings.auth_configured:
+        return False
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer ") and _verify_auth_session_token(auth[7:]):
         return True
@@ -162,7 +157,7 @@ def _has_app_auth(request: Request) -> bool:
         try:
             decoded = base64.b64decode(auth[6:]).decode()
             user, _, pwd = decoded.partition(":")
-            return hmac.compare_digest(user, settings.auth_user) and hmac.compare_digest(pwd, settings.auth_pass)
+            return verify_auth_credentials(user, pwd)
         except Exception:
             return False
     return False
@@ -286,21 +281,34 @@ app.add_middleware(EmbyPathRewriteMiddleware)
 async def api_auth_login(data: dict):
     user = data.get("username", "")
     pwd = data.get("password", "")
-    if settings.auth_enabled:
-        if user == settings.auth_user and pwd == settings.auth_pass:
-            return {"token": _create_auth_session_token(), "ok": True}
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    return {"token": "", "ok": True}
+    if not settings.auth_configured:
+        raise HTTPException(status_code=409, detail="Authentication is not initialized")
+    if verify_auth_credentials(user, pwd):
+        return {"token": _create_auth_session_token(), "ok": True}
+    raise HTTPException(status_code=401, detail="Invalid credentials")
+
+
+@app.post("/api/auth/setup")
+async def api_auth_setup(data: dict):
+    if settings.auth_configured:
+        raise HTTPException(status_code=409, detail="Authentication is already initialized")
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+    valid, reason = valid_new_auth_credentials(username, password)
+    if not valid:
+        raise HTTPException(status_code=400, detail=reason)
+    store_auth_credentials(username, password)
+    return {"token": _create_auth_session_token(), "ok": True}
 
 
 @app.get("/api/auth/status")
 async def api_auth_status():
-    return {"need_auth": settings.auth_enabled}
+    return {"need_auth": True, "auth_configured": settings.auth_configured}
 
 
 @app.post("/api/media-token")
 async def api_media_token(request: Request):
-    if settings.auth_enabled and not _has_app_auth(request):
+    if not _has_app_auth(request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     expiry = int(time.time()) + MEDIA_TOKEN_TTL_SECONDS
     nonce = secrets.token_urlsafe(18)
@@ -1161,20 +1169,18 @@ async def api_recent_watched(media_root: str = Query(""), limit: int = Query(200
 async def api_change_password(request: Request, data: dict):
     old_user = data.get("old_username", "")
     old_pass = data.get("old_password", "")
-    new_user = data.get("new_username", "")
+    new_user = (data.get("new_username", "") or "").strip()
     new_pass = data.get("new_password", "")
 
-    if settings.auth_enabled:
-        # Verify both token and old password to prevent token-only attacks
-        if not _has_app_auth(request):
-            logger.warning("Change password rejected: invalid auth or old credentials")
-            raise HTTPException(status_code=401, detail="Invalid credentials")
-        if old_user != settings.auth_user or old_pass != settings.auth_pass:
-            raise HTTPException(status_code=401, detail="Invalid credentials")
+    # Verify both token and old password to prevent token-only attacks.
+    if not _has_app_auth(request) or not verify_auth_credentials(old_user, old_pass):
+        logger.warning("Change password rejected: invalid auth or old credentials")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    valid, reason = valid_new_auth_credentials(new_user, new_pass)
+    if not valid:
+        raise HTTPException(status_code=400, detail=reason)
 
-    settings.auth_user = new_user
-    settings.auth_pass = new_pass
-    settings.save_config()
+    store_auth_credentials(new_user, new_pass)
     return {"ok": True}
 
 

@@ -52,6 +52,7 @@ class Settings(BaseSettings):
 
     auth_user: str = ""
     auth_pass: str = ""
+    auth_password_hash: str = ""
 
     @property
     def db_path(self) -> str:
@@ -69,7 +70,11 @@ class Settings(BaseSettings):
 
     @property
     def auth_enabled(self) -> bool:
-        return bool(self.auth_user)
+        return self.auth_configured
+
+    @property
+    def auth_configured(self) -> bool:
+        return bool(self.auth_user and (self.auth_pass or self.auth_password_hash))
 
     @property
     def auth_token(self) -> str:
@@ -93,7 +98,7 @@ class Settings(BaseSettings):
                     data = json.load(f)
                 for key, val in data.items():
                     if hasattr(self, key):
-                        if key == "auth_user" and val:
+                        if key in ("auth_user", "auth_password_hash") and val:
                             setattr(self, key, val)
                         elif key not in ("auth_user", "auth_pass"):
                             setattr(self, key, val)
@@ -119,6 +124,7 @@ class Settings(BaseSettings):
                 "update_check_enabled": self.update_check_enabled,
                 "update_check_interval_hours": self.update_check_interval_hours,
                 "auth_user": self.auth_user,
+                "auth_password_hash": self.auth_password_hash,
             }
             with open(self.config_path, "w") as f:
                 json.dump(data, f, indent=2)

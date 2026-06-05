@@ -32,6 +32,7 @@ class SecurityRegressionTest(unittest.TestCase):
         self.orig_data_dir = config.settings.data_dir
         self.orig_auth_user = config.settings.auth_user
         self.orig_auth_pass = config.settings.auth_pass
+        self.orig_auth_password_hash = config.settings.auth_password_hash
         self.orig_tmdb_token = config.settings.tmdb_access_token
         self.orig_db_pool = database._db_pool
 
@@ -39,6 +40,7 @@ class SecurityRegressionTest(unittest.TestCase):
         config.settings.data_dir = str(self.data_dir)
         config.settings.auth_user = "admin"
         config.settings.auth_pass = "secret"
+        config.settings.auth_password_hash = ""
         config.settings.tmdb_access_token = ""
         database._db_pool = None
 
@@ -62,6 +64,7 @@ class SecurityRegressionTest(unittest.TestCase):
         config.settings.data_dir = self.orig_data_dir
         config.settings.auth_user = self.orig_auth_user
         config.settings.auth_pass = self.orig_auth_pass
+        config.settings.auth_password_hash = self.orig_auth_password_hash
         config.settings.tmdb_access_token = self.orig_tmdb_token
         self.tmpdir.cleanup()
 
@@ -140,6 +143,7 @@ class SecurityRegressionTest(unittest.TestCase):
     def test_jellyfin_login_fails_closed_without_primary_auth(self):
         config.settings.auth_user = ""
         config.settings.auth_pass = ""
+        config.settings.auth_password_hash = ""
 
         class RequestStub:
             headers = {}
@@ -152,6 +156,23 @@ class SecurityRegressionTest(unittest.TestCase):
 
         import asyncio
         asyncio.run(run())
+
+    def test_jellyfin_compat_routes_require_token(self):
+        with TestClient(main.app) as client:
+            for path in (
+                "/Library/MediaFolders",
+                "/Items/1/Intros",
+                "/Users/web/Items/1/Intros",
+                "/DisplayPreferences/web",
+                "/Items/1/Images/Primary",
+            ):
+                response = client.get(path)
+                self.assertEqual(response.status_code, 401, path)
+
+    def test_setup_and_update_status_require_auth(self):
+        with TestClient(main.app) as client:
+            self.assertEqual(client.get("/api/setup/status").status_code, 401)
+            self.assertEqual(client.get("/api/update/check").status_code, 401)
 
     def test_update_logs_redact_sensitive_env_values(self):
         command = ["docker", "run", "-e", "AUTH_PASS=secret", "-e", "TMDB_ACCESS_TOKEN=abc123", "-e", "PORT=80"]
@@ -197,17 +218,73 @@ class SecurityRegressionTest(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    def test_initial_setup_can_save_tmdb_token_without_existing_session(self):
+    def test_unconfigured_auth_fails_closed_by_default(self):
+        config.settings.auth_user = ""
+        config.settings.auth_pass = ""
+
+        with TestClient(main.app) as client:
+            status = client.get("/api/auth/status")
+            self.assertEqual(status.status_code, 200)
+            self.assertTrue(status.json()["need_auth"])
+            self.assertFalse(status.json()["auth_configured"])
+
+            response = client.get("/api/media-roots")
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_auth_setup_bootstraps_first_admin_session(self):
+        config.settings.auth_user = ""
+        config.settings.auth_pass = ""
+
         with TestClient(main.app) as client:
             response = client.post(
+                "/api/auth/setup",
+                json={"username": "admin", "password": "new-secret"},
+            )
+            self.assertEqual(response.status_code, 200)
+            session_token = response.json()["token"]
+            self.assertTrue(session_token)
+
+            authorized = client.get(
+                "/api/media-roots",
+                headers={"Authorization": f"Bearer {session_token}"},
+            )
+
+        self.assertEqual(authorized.status_code, 200)
+        self.assertEqual(config.settings.auth_user, "admin")
+        self.assertEqual(config.settings.auth_pass, "")
+        self.assertTrue(config.settings.auth_password_hash.startswith("pbkdf2:"))
+        self.assertTrue(main.verify_auth_credentials("admin", "new-secret"))
+
+    def test_auth_setup_is_rejected_after_admin_exists(self):
+        with TestClient(main.app) as client:
+            response = client.post(
+                "/api/auth/setup",
+                json={"username": "other", "password": "new-secret"},
+            )
+
+        self.assertEqual(response.status_code, 409)
+
+    def test_initial_setup_requires_auth_when_no_library_exists(self):
+        with TestClient(main.app) as client:
+            unauthenticated = client.post(
                 "/api/setup/save",
                 json={
                     "tmdb_access_token": "Bearer setup-token",
                     "libraries": [{"media_root": str(self.media_root), "scraper": "tmdb_tv"}],
                 },
             )
+            authorized = client.post(
+                "/api/setup/save",
+                json={
+                    "tmdb_access_token": "Bearer setup-token",
+                    "libraries": [{"media_root": str(self.media_root), "scraper": "tmdb_tv"}],
+                },
+                headers=self.auth_headers(),
+            )
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(unauthenticated.status_code, 401)
+        self.assertEqual(authorized.status_code, 200)
         self.assertEqual(config.settings.tmdb_access_token, "setup-token")
 
     def test_setup_save_requires_auth_after_initial_setup_completed(self):
