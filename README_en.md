@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.0.07-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.0.11-blue?style=flat-square" alt="Version"></a>
   <a href="https://github.com/ZASENJC/mediatree/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react" alt="React">
@@ -134,7 +134,7 @@ See [.env.example](.env.example) for all options. Detailed setup, scraper behavi
 
 ## Updates
 
-Most updates can be installed directly from Settings. MediaTree downloads a small app package into `./data`, so you usually do not need to pull a new Docker image. New installs that use `zasenjc/mediatree:latest` also start from the newest version.
+Most updates can be installed directly from Settings. MediaTree downloads a small app package into `./data`, so you usually do not need to pull a new Docker image. After an app-package update restarts successfully, MediaTree keeps the current package and one rollback package, then removes older packages. New installs that use `zasenjc/mediatree:latest` also start from the newest version.
 
 Some releases show "full image update required". That usually means the runtime changed too, such as Python, ffmpeg, fonts, or startup behavior. The simplest path is to run the two host-side commands below. If you want Settings to perform full image updates automatically, mount `/var/run/docker.sock:/var/run/docker.sock` in `docker-compose.yml`; this gives the container control over Docker on the host, so leave it unmounted if you are unsure.
 

@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG_zh-CN.md"><img src="https://img.shields.io/badge/版本-1.0.07-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG_zh-CN.md"><img src="https://img.shields.io/badge/版本-1.0.11-blue?style=flat-square" alt="Version"></a>
   <a href="https://github.com/ZASENJC/mediatree/blob/main/LICENSE"><img src="https://img.shields.io/badge/许可证-MIT-green?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react" alt="React">
@@ -134,7 +134,7 @@ Docker Hub 镜像：`zasenjc/mediatree:latest`
 
 ## 更新
 
-大多数更新都可以直接在设置页完成，点一下就会下载小型应用包并安装到 `./data`，不需要重新拉 Docker 镜像。新安装的用户只要使用 `zasenjc/mediatree:latest`，也会直接拿到最新版本。
+大多数更新都可以直接在设置页完成，点一下就会下载小型应用包并安装到 `./data`，不需要重新拉 Docker 镜像。应用包更新成功并完成重启后，会自动保留当前版本和一个可回滚的上一版，并清理更旧的应用包。新安装的用户只要使用 `zasenjc/mediatree:latest`，也会直接拿到最新版本。
 
 少数更新会提示“需要完整镜像更新”，通常是因为运行环境也变了，例如 Python、ffmpeg、字体或启动流程。这时最简单的做法是在宿主机执行下面两条命令。如果想让设置页也能自动完成这类完整镜像更新，可以在 `docker-compose.yml` 里挂载 `/var/run/docker.sock:/var/run/docker.sock`；但这会让容器获得控制宿主机 Docker 的能力，不确定时建议不要挂载。
 

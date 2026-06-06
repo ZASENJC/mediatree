@@ -6,6 +6,34 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## 1.0.11 (2026-06-06)
+
+### Updates
+
+- App-package updates now clean stale older app package directories and downloaded archives after the new package restarts successfully
+- The current package and one valid previous package are retained so rollback and startup fallback remain available
+- Unknown directories under `data/releases/` are ignored by cleanup to avoid removing user or future runtime files
+
+### Security & Dependencies
+
+- Updated the production React Router dependency chain to clear the same-origin redirect advisory reported by `npm audit --omit=dev`
+
+### Release Pipeline
+
+- App-package releases now also refresh DockerHub `zasenjc/mediatree:latest`, so new Docker installs start from the newest application baseline
+- Full image releases continue to publish both the versioned Docker tag and `latest`
+
+### Branding & Docs
+
+- Restored login and favicon assets to local bundled files instead of remote image URLs
+- Clarified Docker socket mounting for optional full image updates in README, compose examples, and wiki docs
+
+### Release Type
+
+- App-package update; no full Docker image update is required
+
+---
+
 ## 1.0.10 (2026-06-06)
 
 ### Critical Security Update

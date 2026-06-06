@@ -84,7 +84,7 @@ In production, the backend serves the built frontend at `/`. In development, run
 - `stream.py` — Video streaming with HTTP Range support (byte-range seeking), ffmpeg transcoding, media info extraction via ffprobe.
 - `covers.py` — Cover image management: download, compress (Pillow, max 500px, JPEG q=80), episode still generation.
 - `title_match.py` — Title matching utilities: code extraction, TMDB ID token parsing, CJK/romaji extraction, season inference, folder clean name generation.
-- `updater.py` — Two-tier self-update system. App-package mode: downloads `mediatree-app-<version>.tar.gz` into `data/releases/`, supports rollback to previous version. Docker mode: `get_available_versions()` polls DockerHub tags, `perform_update()` pulls target image then restarts via `docker compose up -d`. `fetch_github_release_body()` fetches full GitHub release notes for the CHANGELOG modal.
+- `updater.py` — Two-tier self-update system. App-package mode: downloads `mediatree-app-<version>.tar.gz` into `data/releases/`, supports rollback to previous version, and cleans older packages after successful restart. Docker mode: `get_available_versions()` polls DockerHub tags, `perform_update()` pulls target image then restarts via `docker compose up -d`. `fetch_github_release_body()` fetches full GitHub release notes for the CHANGELOG modal.
 
 ### Scraper plugin system (`backend/app/scrapers/`)
 - `base.py` — `BaseScraper` abstract class with `search() -> ScrapeCandidate` and `get_detail() -> ScrapeResult`. Dataclasses defined here.
@@ -128,7 +128,7 @@ In production, the backend serves the built frontend at `/`. In development, run
 ### Update / self-upgrade system (`updater.py`)
 - Two-tier update strategy: lightweight app-package (default) and full Docker image (optional, requires Docker socket mount and a Docker-CLI-capable image)
 - GitHub Actions publishes the app package for every release and refreshes DockerHub `latest`; full image releases additionally publish `zasenjc/mediatree:<version>`
-- App-package flow: `GET /api/update/check` → `POST /api/update/perform` downloads `mediatree-app-<version>.tar.gz` into `data/releases/` → `mark_update_success_after_restart()` on next startup → `POST /api/update/rollback` to revert to previous version
+- App-package flow: `GET /api/update/check` → `POST /api/update/perform` downloads `mediatree-app-<version>.tar.gz` into `data/releases/` → `mark_update_success_after_restart()` on next startup marks success and cleans older packages → `POST /api/update/rollback` to revert to previous version
 - Docker flow: `docker pull zasenjc/mediatree:<tag>` + `docker compose up -d` restart
 - `GET /api/version` — return the user-visible current version (highest installed version), plus runtime/image details for internal update decisions (public, no auth)
 - `GET /api/update/changelog?version=0.0.00` — fetch full GitHub release body for CHANGELOG modal
