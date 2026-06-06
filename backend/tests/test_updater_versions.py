@@ -96,6 +96,93 @@ class UpdaterVersionStateTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status["message"], "更新已完成。")
         self.assertEqual(status["logs"], [])
 
+    def test_cleanup_old_app_packages_keeps_current_and_previous_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            releases_dir = root / "releases"
+            updates_dir = root / "updates"
+            releases_dir.mkdir(parents=True)
+            updates_dir.mkdir(parents=True)
+
+            def make_app(version: str) -> None:
+                app_dir = releases_dir / version
+                (app_dir / "app").mkdir(parents=True)
+                (app_dir / "frontend" / "dist").mkdir(parents=True)
+                (app_dir / "app" / "main.py").write_text("app = None\n", encoding="utf-8")
+                (app_dir / "frontend" / "dist" / "index.html").write_text("<html></html>\n", encoding="utf-8")
+                (app_dir / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+
+            for version in ("1.0.01", "1.0.02", "1.0.03", "1.0.04"):
+                make_app(version)
+                (updates_dir / f"mediatree-app-{version}.tar.gz").write_bytes(b"archive")
+            (releases_dir / "1.0.05.staging").mkdir()
+            (releases_dir / "manual-notes").mkdir()
+            (releases_dir / "current").write_text("1.0.04\n", encoding="utf-8")
+            (releases_dir / "previous").write_text("1.0.03\n", encoding="utf-8")
+
+            with patch.object(updater, "RELEASES_DIR", releases_dir), \
+                    patch.object(updater, "UPDATES_DIR", updates_dir):
+                removed = updater._cleanup_old_app_packages("1.0.04")
+
+            self.assertEqual(removed["release_dirs"], ["1.0.01", "1.0.02", "1.0.05.staging"])
+            self.assertEqual(removed["archives"], ["mediatree-app-1.0.01.tar.gz", "mediatree-app-1.0.02.tar.gz"])
+            self.assertTrue((releases_dir / "1.0.03").exists())
+            self.assertTrue((releases_dir / "1.0.04").exists())
+            self.assertTrue((updates_dir / "mediatree-app-1.0.03.tar.gz").exists())
+            self.assertTrue((updates_dir / "mediatree-app-1.0.04.tar.gz").exists())
+            self.assertTrue((releases_dir / "manual-notes").exists())
+            self.assertFalse((releases_dir / "1.0.01").exists())
+            self.assertFalse((updates_dir / "mediatree-app-1.0.01.tar.gz").exists())
+
+    def test_mark_update_success_after_restart_cleans_old_app_packages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            releases_dir = root / "releases"
+            updates_dir = root / "updates"
+            status_file = updates_dir / "status.json"
+            releases_dir.mkdir(parents=True)
+            updates_dir.mkdir(parents=True)
+
+            def make_app(version: str) -> None:
+                app_dir = releases_dir / version
+                (app_dir / "app").mkdir(parents=True)
+                (app_dir / "frontend" / "dist").mkdir(parents=True)
+                (app_dir / "app" / "main.py").write_text("app = None\n", encoding="utf-8")
+                (app_dir / "frontend" / "dist" / "index.html").write_text("<html></html>\n", encoding="utf-8")
+                (app_dir / "VERSION").write_text(f"{version}\n", encoding="utf-8")
+
+            for version in ("1.0.02", "1.0.03", "1.0.04"):
+                make_app(version)
+                (updates_dir / f"mediatree-app-{version}.tar.gz").write_bytes(b"archive")
+            (releases_dir / "current").write_text("1.0.04\n", encoding="utf-8")
+            (releases_dir / "previous").write_text("1.0.03\n", encoding="utf-8")
+            status_file.write_text(json.dumps({
+                "status": "restarting",
+                "version": "1.0.04",
+                "downloaded": 0,
+                "total": 0,
+                "message": "正在重启服务...",
+                "update_type": "app-package",
+                "logs": [],
+            }), encoding="utf-8")
+
+            with patch.object(updater, "RELEASES_DIR", releases_dir), \
+                    patch.object(updater, "UPDATES_DIR", updates_dir), \
+                    patch.object(updater, "UPDATE_STATUS_FILE", status_file), \
+                    patch.object(updater, "get_current_version", return_value="1.0.04"):
+                updater.mark_update_success_after_restart()
+
+            status = json.loads(status_file.read_text(encoding="utf-8"))
+
+            self.assertEqual(status["status"], "success")
+            self.assertEqual(status["version"], "1.0.04")
+            self.assertTrue((releases_dir / "1.0.04").exists())
+            self.assertTrue((releases_dir / "1.0.03").exists())
+            self.assertFalse((releases_dir / "1.0.02").exists())
+            self.assertTrue((updates_dir / "mediatree-app-1.0.04.tar.gz").exists())
+            self.assertTrue((updates_dir / "mediatree-app-1.0.03.tar.gz").exists())
+            self.assertFalse((updates_dir / "mediatree-app-1.0.02.tar.gz").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

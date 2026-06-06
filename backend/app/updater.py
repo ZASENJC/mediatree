@@ -44,6 +44,7 @@ UPDATE_STATUS_FILE = UPDATES_DIR / "status.json"
 
 # Shell metacharacters to reject in version strings
 _FORBIDDEN_CHARS = set(";&|$`\\\n\r")
+_APP_PACKAGE_DIR_RE = re.compile(r"^v?\d+(?:\.\d+){1,3}(?:[-_][A-Za-z0-9][A-Za-z0-9._-]*)?$")
 _SENSITIVE_ENV_MARKERS = (
     "PASS",
     "PASSWORD",
@@ -348,6 +349,63 @@ def _read_version_file(path: Path) -> str:
         return ""
 
 
+def _is_app_package_release_dir(path: Path) -> bool:
+    name = path.name
+    if name.endswith(".staging"):
+        name = name.removesuffix(".staging")
+    return path.is_dir() and bool(_APP_PACKAGE_DIR_RE.match(name))
+
+
+def _cleanup_old_app_packages(current_version: str) -> dict[str, list[str]]:
+    """Remove stale app-package directories and archives after a successful update."""
+    keep_versions = {
+        (current_version or "").strip().lstrip("vV"),
+        _read_pointer("current").lstrip("vV"),
+    }
+    previous = _read_pointer("previous").lstrip("vV")
+    if previous and previous != "__base__" and _is_valid_app_dir(RELEASES_DIR / previous):
+        keep_versions.add(previous)
+    keep_versions.discard("")
+
+    removed: dict[str, list[str]] = {"release_dirs": [], "archives": []}
+    try:
+        for path in RELEASES_DIR.iterdir():
+            if path.name in {"current", "previous"}:
+                continue
+            if not _is_app_package_release_dir(path):
+                continue
+            package_version = path.name.removesuffix(".staging").lstrip("vV")
+            if path.name.endswith(".staging") or package_version not in keep_versions:
+                shutil.rmtree(path, ignore_errors=True)
+                removed["release_dirs"].append(path.name)
+    except FileNotFoundError:
+        pass
+
+    try:
+        for archive in UPDATES_DIR.glob("mediatree-app-*.tar.gz"):
+            archive_version = archive.name.removeprefix("mediatree-app-").removesuffix(".tar.gz").lstrip("vV")
+            if archive_version not in keep_versions:
+                try:
+                    archive.unlink()
+                    removed["archives"].append(archive.name)
+                except FileNotFoundError:
+                    pass
+    except FileNotFoundError:
+        pass
+
+    removed["release_dirs"].sort()
+    removed["archives"].sort()
+    return removed
+
+
+def _log_app_package_cleanup(removed: dict[str, list[str]]) -> None:
+    if removed["release_dirs"] or removed["archives"]:
+        logger.info(
+            "Cleaned old app packages after update: "
+            f"release_dirs={removed['release_dirs']} archives={removed['archives']}"
+        )
+
+
 def can_rollback() -> bool:
     previous = _read_pointer("previous")
     if previous == "__base__":
@@ -431,13 +489,19 @@ def mark_update_success_after_restart() -> None:
             return
         payload = json.loads(UPDATE_STATUS_FILE.read_text(encoding="utf-8"))
         if payload.get("status") == "restarting":
+            current_version = get_current_version()
             _write_update_status(
                 "success",
-                get_current_version(),
+                current_version,
                 message="更新已完成。",
                 update_type=payload.get("update_type", ""),
                 logs=payload.get("logs", []),
             )
+            if payload.get("update_type") == "app-package":
+                try:
+                    _log_app_package_cleanup(_cleanup_old_app_packages(current_version))
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to clean old app packages: {cleanup_error}")
     except Exception as e:
         logger.warning(f"Failed to mark update success after restart: {e}")
 
