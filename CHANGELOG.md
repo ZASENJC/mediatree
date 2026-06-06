@@ -6,6 +6,25 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## 1.0.12 (2026-06-06)
+
+### Branding
+
+- Fixed the login page logo by serving `login-logo.png` and `site-logo.png` as explicit public frontend assets before authentication
+- Removed the legacy runtime `frontend/public/logo.png` asset so runtime branding now uses only `login-logo.png` and `site-logo.png`
+- Kept documentation logo references on `docs/assets/logo.png`, which remains separate from runtime UI assets
+
+### Security
+
+- Kept the public static asset allowlist limited to fixed brand asset filenames
+- Preserved Jellyfin-compatible route 401 responses instead of letting the SPA fallback rewrite them to the frontend shell
+
+### Release Type
+
+- App-package update; no full Docker image update is required
+
+---
+
 ## 1.0.11 (2026-06-06)
 
 ### Updates

@@ -113,7 +113,7 @@ In production, the backend serves the built frontend at `/`. In development, run
 ### Auth system
 - `AuthMiddleware` guards `/api/*` routes using Basic auth or signed Bearer session tokens from `/api/auth/login`
 - Media delivery routes require app auth or a short-lived media token from `/api/media-token`; this covers streams, subtitles, covers, thumbnails, external playlists, and `/api/media/*`
-- Public/limited bypasses remain intentionally narrow: SPA assets, `/api/auth/login`, `/api/auth/status`, `/api/setup/status`, `/api/health`, `/api/version`, cached covers, font reads, and `/api/update/check`
+- Public/limited bypasses remain intentionally narrow: SPA assets, fixed brand assets (`/login-logo.png`, `/site-logo.png`), `/api/auth/login`, `/api/auth/status`, `/api/setup/status`, `/api/health`, `/api/version`, cached covers, font reads, and `/api/update/check`
 - First-run `POST /api/setup/save` is allowed without a session only while no library settings exist
 - Jellyfin clients use separate `jellyfin_auth.py` token system (tokens stored in `jellyfin_tokens` table)
 - Library-level passwords stored in `library_settings` table, verified via `/api/library-verify`

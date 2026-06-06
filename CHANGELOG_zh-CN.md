@@ -6,6 +6,25 @@
 
 ---
 
+## 1.0.12 (2026-06-06)
+
+### 品牌资源
+
+- 修复登录页 LOGO：未登录状态下也会直接公开提供 `login-logo.png` 和 `site-logo.png`
+- 删除旧的运行时 `frontend/public/logo.png`，运行时品牌资源只保留 `login-logo.png` 和 `site-logo.png`
+- 文档中的 LOGO 仍继续使用独立的 `docs/assets/logo.png`，不再和运行时 UI 资源混用
+
+### 安全
+
+- 前端公开静态资源白名单保持为固定品牌文件名，不开放任意根路径文件
+- Jellyfin 兼容路由的 401 响应不再被 SPA fallback 改写成前端首页
+
+### 发布类型
+
+- 应用包级更新；不需要完整 Docker 镜像更新
+
+---
+
 ## 1.0.11 (2026-06-06)
 
 ### 更新流程
