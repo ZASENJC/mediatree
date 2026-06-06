@@ -71,6 +71,10 @@ services:
       # Add more media folders if needed.
       # - /path/to/your/anime:/media/anime:ro
 
+      # Optional: let Settings perform full Docker image updates.
+      # This gives the container Docker control on the host; app-package updates do not need it.
+      # - /var/run/docker.sock:/var/run/docker.sock
+
     environment:
       # Preset admin account. You can leave these empty and create the admin account on first launch.
       - AUTH_USER=admin
@@ -130,7 +134,9 @@ See [.env.example](.env.example) for all options. Detailed setup, scraper behavi
 
 ## Updates
 
-Routine updates can be installed from Settings as small app packages in `./data`. Every release also refreshes Docker Hub `zasenjc/mediatree:latest`, so new Docker installs start from the newest application baseline. Settings only asks for a full Docker image update when the runtime layer changes, such as Python, system packages, ffmpeg, fonts, or startup behavior.
+Most updates can be installed directly from Settings. MediaTree downloads a small app package into `./data`, so you usually do not need to pull a new Docker image. New installs that use `zasenjc/mediatree:latest` also start from the newest version.
+
+Some releases show "full image update required". That usually means the runtime changed too, such as Python, ffmpeg, fonts, or startup behavior. The simplest path is to run the two host-side commands below. If you want Settings to perform full image updates automatically, mount `/var/run/docker.sock:/var/run/docker.sock` in `docker-compose.yml`; this gives the container control over Docker on the host, so leave it unmounted if you are unsure.
 
 For full image updates:
 

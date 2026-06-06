@@ -74,6 +74,8 @@ See the [docker-compose.example.yml template](https://github.com/ZASENJC/mediatr
 
 Regular Web updates download the small app package from the GitHub Release and unpack it into `./data/releases`. These updates do not require mounting the Docker socket, and failed app-package updates can be rolled back from the matching version row in Settings.
 
+To let Settings perform a full Docker image update, mount `/var/run/docker.sock:/var/run/docker.sock` so the container can use the host Docker engine to pull the new image and recreate itself. This gives the container Docker control on the host; leave it unmounted in untrusted environments and use the host-side commands below instead.
+
 When a release is marked as requiring a full image update, the Python runtime, system packages, ffmpeg, fonts, or another base image layer changed. In that case, run:
 
 ```bash

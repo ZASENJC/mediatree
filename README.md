@@ -71,6 +71,10 @@ services:
       # 可以继续添加更多媒体目录
       # - /path/to/your/anime:/media/anime:ro
 
+      # 可选：允许设置页执行完整 Docker 镜像更新。
+      # 这会让容器获得宿主机 Docker 控制权限；普通应用包更新不需要。
+      # - /var/run/docker.sock:/var/run/docker.sock
+
     environment:
       # 预置管理员账号。也可以留空，首次打开网页时创建管理员账号
       - AUTH_USER=admin
@@ -130,7 +134,9 @@ Docker Hub 镜像：`zasenjc/mediatree:latest`
 
 ## 更新
 
-日常版本可以在设置页安装小型应用包，更新内容会进入 `./data`。每次发布也会同步刷新 Docker Hub 的 `zasenjc/mediatree:latest`，所以新部署直接拉取 `latest` 就会拿到最新应用基线。只有 Python、系统包、ffmpeg、字体或启动流程等基础运行层变化时，设置页才会提示完整镜像更新。
+大多数更新都可以直接在设置页完成，点一下就会下载小型应用包并安装到 `./data`，不需要重新拉 Docker 镜像。新安装的用户只要使用 `zasenjc/mediatree:latest`，也会直接拿到最新版本。
+
+少数更新会提示“需要完整镜像更新”，通常是因为运行环境也变了，例如 Python、ffmpeg、字体或启动流程。这时最简单的做法是在宿主机执行下面两条命令。如果想让设置页也能自动完成这类完整镜像更新，可以在 `docker-compose.yml` 里挂载 `/var/run/docker.sock:/var/run/docker.sock`；但这会让容器获得控制宿主机 Docker 的能力，不确定时建议不要挂载。
 
 完整镜像更新：
 
