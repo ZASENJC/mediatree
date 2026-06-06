@@ -47,22 +47,33 @@ mimetypes.add_type("font/ttf", ".ttf")
 mimetypes.add_type("font/otf", ".otf")
 mimetypes.add_type("font/collection", ".ttc")
 
+PUBLIC_FRONTEND_FILES = frozenset({"login-logo.png", "site-logo.png", "logo.png"})
+PUBLIC_FRONTEND_PATHS = frozenset(f"/{name}" for name in PUBLIC_FRONTEND_FILES)
+JELLYFIN_ROUTE_PREFIXES = (
+    "/System",
+    "/Users",
+    "/Items",
+    "/Videos",
+    "/Sessions",
+    "/Shows",
+    "/Library",
+    "/DisplayPreferences",
+    "/Genres",
+    "/emby",
+)
+
+
+def _is_jellyfin_compat_route(path: str) -> bool:
+    return path.startswith(JELLYFIN_ROUTE_PREFIXES)
+
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path.startswith("/System") \
-                or path.startswith("/Users") \
-                or path.startswith("/Items") \
-                or path.startswith("/Videos") \
-                or path.startswith("/Sessions") \
-                or path.startswith("/Shows") \
-                or path.startswith("/Library") \
-                or path.startswith("/DisplayPreferences") \
-                or path.startswith("/Genres") \
-                or path.startswith("/emby"):
+        if _is_jellyfin_compat_route(path):
             return await call_next(request)
         if path.startswith("/assets") \
+                or path in PUBLIC_FRONTEND_PATHS \
                 or path in ("/api/auth/login", "/api/auth/setup", "/api/auth/status", "/api/health", "/api/version") \
                 or path.startswith("/api/cached-cover/") \
                 or path.startswith("/fonts/") \
@@ -1815,7 +1826,9 @@ async def api_episode_images(series_id: int, season_num: int, ep_num: int):
 
 # ─── SPA ───
 
-FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
+_FRONTEND_PACKAGE_DIR = Path(__file__).parent.parent / "frontend" / "dist"
+_FRONTEND_DEV_DIR = Path(__file__).parent.parent.parent / "frontend" / "dist"
+FRONTEND_DIR = _FRONTEND_PACKAGE_DIR if _FRONTEND_PACKAGE_DIR.exists() else _FRONTEND_DEV_DIR
 INDEX_HTML = ""
 
 if FRONTEND_DIR.exists():
@@ -1823,6 +1836,23 @@ if FRONTEND_DIR.exists():
     fonts_dir = FRONTEND_DIR / "fonts"
     if fonts_dir.exists():
         app.mount("/fonts", StaticFiles(directory=str(fonts_dir)), name="fonts")
+
+    def _public_frontend_file_endpoint(path: Path):
+        async def endpoint():
+            return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
+
+        return endpoint
+
+    for public_file in sorted(PUBLIC_FRONTEND_FILES):
+        public_path = FRONTEND_DIR / public_file
+        if public_path.is_file():
+            app.add_api_route(
+                f"/{public_file}",
+                _public_frontend_file_endpoint(public_path),
+                methods=["GET", "HEAD"],
+                include_in_schema=False,
+            )
+
     with open(FRONTEND_DIR / "index.html", "r") as f:
         INDEX_HTML = f.read()
 
@@ -1842,12 +1872,16 @@ class SPAFallbackMiddleware(BaseHTTPMiddleware):
         if response.status_code == 404 and INDEX_HTML \
                 and not request.url.path.startswith("/api") \
                 and not request.url.path.startswith("/assets") \
-                and not request.url.path.startswith("/fonts"):
+                and not request.url.path.startswith("/fonts") \
+                and request.url.path not in PUBLIC_FRONTEND_PATHS \
+                and not _is_jellyfin_compat_route(request.url.path):
             return Response(content=INDEX_HTML, media_type="text/html")
         if response.status_code == 401 and INDEX_HTML \
                 and not request.url.path.startswith("/api") \
                 and not request.url.path.startswith("/assets") \
-                and not request.url.path.startswith("/fonts"):
+                and not request.url.path.startswith("/fonts") \
+                and request.url.path not in PUBLIC_FRONTEND_PATHS \
+                and not _is_jellyfin_compat_route(request.url.path):
             return Response(content=INDEX_HTML, media_type="text/html")
         return response
 
