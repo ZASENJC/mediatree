@@ -130,7 +130,7 @@ Docker Hub 镜像：`zasenjc/mediatree:latest`
 
 ## 更新
 
-日常版本可以在设置页安装小型应用包，更新内容会进入 `./data`。只有 Python、系统包、ffmpeg、字体或启动流程等基础运行层变化时，才需要完整镜像更新。
+日常版本可以在设置页安装小型应用包，更新内容会进入 `./data`。每次发布也会同步刷新 Docker Hub 的 `zasenjc/mediatree:latest`，所以新部署直接拉取 `latest` 就会拿到最新应用基线。只有 Python、系统包、ffmpeg、字体或启动流程等基础运行层变化时，设置页才会提示完整镜像更新。
 
 完整镜像更新：
 

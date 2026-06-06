@@ -130,7 +130,7 @@ See [.env.example](.env.example) for all options. Detailed setup, scraper behavi
 
 ## Updates
 
-Routine updates can be installed from Settings as small app packages in `./data`. A full Docker image update is only needed when the runtime layer changes, such as Python, system packages, ffmpeg, fonts, or startup behavior.
+Routine updates can be installed from Settings as small app packages in `./data`. Every release also refreshes Docker Hub `zasenjc/mediatree:latest`, so new Docker installs start from the newest application baseline. Settings only asks for a full Docker image update when the runtime layer changes, such as Python, system packages, ffmpeg, fonts, or startup behavior.
 
 For full image updates:
 
