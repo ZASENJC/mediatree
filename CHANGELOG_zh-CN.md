@@ -21,7 +21,8 @@
 
 ### 发布流水线
 
-- 为多架构 DockerHub `latest` 刷新增加显式 QEMU 初始化、GitHub Actions Docker build cache 和 job timeout
+- GitHub Actions release 流程只负责测试、构建应用包资产、更新 tag 和 GitHub Release，不再登录 DockerHub 或发布 Docker 镜像
+- 应用包更新后的 DockerHub `latest` 同步改为维护者本地执行 `scripts/push-docker-release.sh` 构建并推送
 
 ### 发布类型
 

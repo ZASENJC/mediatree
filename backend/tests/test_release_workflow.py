@@ -5,6 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "release-tag.yml"
+LOCAL_DOCKER_PUSH = ROOT / "scripts" / "push-docker-release.sh"
 
 
 class ReleaseWorkflowTest(unittest.TestCase):
@@ -18,27 +19,38 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIsNotNone(match, f"missing workflow step: {name}")
         return match.group("body")
 
-    def test_regular_app_package_release_pushes_only_latest_image(self):
-        push = self._step_block("Push Docker image")
+    def test_release_workflow_does_not_push_dockerhub_images(self):
+        forbidden = [
+            "docker/build-push-action",
+            "docker/login-action",
+            "docker/setup-buildx-action",
+            "DOCKERHUB_USERNAME",
+            "DOCKERHUB_TOKEN",
+            "zasenjc/mediatree:latest",
+            "docker buildx build",
+        ]
 
-        self.assertIn("zasenjc/mediatree:latest", push)
-        self.assertIn("RELEASE_REQUIRES_IMAGE_UPDATE", push)
-        self.assertNotIn("zasenjc/mediatree:${{ steps.version.outputs.version }}", push)
+        for marker in forbidden:
+            self.assertNotIn(marker, self.workflow)
 
-    def test_full_image_release_pushes_version_tag_and_latest(self):
-        versioned_push = self._step_block("Push versioned Docker image")
-
-        self.assertIn("RELEASE_REQUIRES_IMAGE_UPDATE == 'true'", versioned_push)
-        self.assertIn("zasenjc/mediatree:${{ steps.version.outputs.version }}", versioned_push)
-        self.assertIn("zasenjc/mediatree:latest", versioned_push)
-
-    def test_dockerhub_credentials_are_required_before_release_is_published(self):
-        require = self._step_block("Require DockerHub credentials")
+    def test_release_workflow_publishes_app_package_before_tag_and_release(self):
+        app_package_pos = self.workflow.index("- name: Build app update package")
         update_tag_pos = self.workflow.index("- name: Update tag after validation")
+        github_release_pos = self.workflow.index("- name: Update GitHub Release")
 
-        self.assertLess(self.workflow.index("- name: Require DockerHub credentials"), update_tag_pos)
-        self.assertIn("DOCKERHUB_USERNAME_SET != 'true'", require)
-        self.assertIn("DOCKERHUB_TOKEN_SET != 'true'", require)
+        self.assertLess(app_package_pos, update_tag_pos)
+        self.assertLess(update_tag_pos, github_release_pos)
+
+    def test_local_docker_push_script_handles_app_package_and_full_image_releases(self):
+        script = LOCAL_DOCKER_PUSH.read_text(encoding="utf-8")
+
+        self.assertIn(".github/release-metadata.json", script)
+        self.assertIn("requires_image_update", script)
+        self.assertIn("zasenjc/mediatree:latest", script)
+        self.assertIn("zasenjc/mediatree:${VERSION}", script)
+        self.assertIn("docker buildx build", script)
+        self.assertIn("--platform", script)
+        self.assertIn("linux/amd64,linux/arm64", script)
 
 
 if __name__ == "__main__":

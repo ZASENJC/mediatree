@@ -21,7 +21,8 @@ All notable changes to MediaTree are documented here.
 
 ### Release Pipeline
 
-- Added explicit QEMU setup, GitHub Actions Docker build cache, and a job timeout for multi-arch DockerHub `latest` refreshes
+- Limited the GitHub Actions release workflow to tests, app-package assets, tag updates, and GitHub Release publication; it no longer logs in to DockerHub or publishes Docker images
+- Changed DockerHub `latest` sync after app-package updates to a maintainer-local `scripts/push-docker-release.sh` build and push
 
 ### Release Type
 

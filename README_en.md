@@ -136,6 +136,8 @@ See [.env.example](.env.example) for all options. Detailed setup, scraper behavi
 
 Most updates can be installed directly from Settings. MediaTree downloads a small app package into `./data`, so you usually do not need to pull a new Docker image. After an app-package update restarts successfully, MediaTree keeps the current package and one rollback package, then removes older packages. New installs that use `zasenjc/mediatree:latest` also start from the newest version.
 
+For app-package releases, maintainers now build and push `zasenjc/mediatree:latest` locally instead of syncing DockerHub through GitHub Actions. Existing installs keep using the Settings app-package path, while new installs still start from the latest application baseline.
+
 Some releases show "full image update required". That usually means the runtime changed too, such as Python, ffmpeg, fonts, or startup behavior. The simplest path is to run the two host-side commands below. If you want Settings to perform full image updates automatically, mount `/var/run/docker.sock:/var/run/docker.sock` in `docker-compose.yml`; this gives the container control over Docker on the host, so leave it unmounted if you are unsure.
 
 For full image updates:

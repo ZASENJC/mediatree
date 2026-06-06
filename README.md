@@ -136,6 +136,8 @@ Docker Hub 镜像：`zasenjc/mediatree:latest`
 
 大多数更新都可以直接在设置页完成，点一下就会下载小型应用包并安装到 `./data`，不需要重新拉 Docker 镜像。应用包更新成功并完成重启后，会自动保留当前版本和一个可回滚的上一版，并清理更旧的应用包。新安装的用户只要使用 `zasenjc/mediatree:latest`，也会直接拿到最新版本。
 
+发布应用包更新时，维护者会在本地构建并推送 `zasenjc/mediatree:latest`，不再通过 GitHub Actions 同步 DockerHub。这样新安装用户仍会拿到最新应用基线，已安装用户则继续走设置页里的应用包更新。
+
 少数更新会提示“需要完整镜像更新”，通常是因为运行环境也变了，例如 Python、ffmpeg、字体或启动流程。这时最简单的做法是在宿主机执行下面两条命令。如果想让设置页也能自动完成这类完整镜像更新，可以在 `docker-compose.yml` 里挂载 `/var/run/docker.sock:/var/run/docker.sock`；但这会让容器获得控制宿主机 Docker 的能力，不确定时建议不要挂载。
 
 完整镜像更新：
