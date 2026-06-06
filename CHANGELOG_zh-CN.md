@@ -19,6 +19,10 @@
 - 前端公开静态资源白名单保持为固定品牌文件名，不开放任意根路径文件
 - Jellyfin 兼容路由的 401 响应不再被 SPA fallback 改写成前端首页
 
+### 发布流水线
+
+- 为多架构 DockerHub `latest` 刷新增加显式 QEMU 初始化、GitHub Actions Docker build cache 和 job timeout
+
 ### 发布类型
 
 - 应用包级更新；不需要完整 Docker 镜像更新

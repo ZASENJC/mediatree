@@ -19,6 +19,10 @@ All notable changes to MediaTree are documented here.
 - Kept the public static asset allowlist limited to fixed brand asset filenames
 - Preserved Jellyfin-compatible route 401 responses instead of letting the SPA fallback rewrite them to the frontend shell
 
+### Release Pipeline
+
+- Added explicit QEMU setup, GitHub Actions Docker build cache, and a job timeout for multi-arch DockerHub `latest` refreshes
+
 ### Release Type
 
 - App-package update; no full Docker image update is required
