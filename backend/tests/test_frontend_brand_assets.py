@@ -36,6 +36,10 @@ class FrontendBrandAssetsTest(unittest.TestCase):
 
         self.assertIn("/login-logo.png", main.PUBLIC_FRONTEND_PATHS)
         self.assertIn("/site-logo.png", main.PUBLIC_FRONTEND_PATHS)
+        self.assertNotIn("/logo.png", main.PUBLIC_FRONTEND_PATHS)
+
+    def test_legacy_runtime_logo_asset_is_not_required(self):
+        self.assertFalse((FRONTEND / "public" / "logo.png").exists())
 
     def test_built_brand_assets_are_served_without_auth(self):
         if not (FRONTEND / "dist" / "login-logo.png").is_file():

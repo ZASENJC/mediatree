@@ -47,7 +47,7 @@ mimetypes.add_type("font/ttf", ".ttf")
 mimetypes.add_type("font/otf", ".otf")
 mimetypes.add_type("font/collection", ".ttc")
 
-PUBLIC_FRONTEND_FILES = frozenset({"login-logo.png", "site-logo.png", "logo.png"})
+PUBLIC_FRONTEND_FILES = frozenset({"login-logo.png", "site-logo.png"})
 PUBLIC_FRONTEND_PATHS = frozenset(f"/{name}" for name in PUBLIC_FRONTEND_FILES)
 JELLYFIN_ROUTE_PREFIXES = (
     "/System",
