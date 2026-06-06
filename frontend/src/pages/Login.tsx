@@ -104,7 +104,7 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <img
-            src="/logo.png"
+            src="/login-logo.png"
             alt="MediaTree"
             className="mx-auto mb-4 h-16 w-16 object-contain drop-shadow-[0_0_18px_rgba(190,255,170,0.45)]"
           />
