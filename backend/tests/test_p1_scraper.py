@@ -122,6 +122,23 @@ class CompleteScrapedDataTest(unittest.TestCase):
         self.assertFalse(has_complete_scraped_data({"title": "", "cover_local": "", "cover_remote": ""}))
 
 
+class JavdatabaseScraperCodePolicyTest(unittest.IsolatedAsyncioTestCase):
+    async def test_full_scrape_skips_rows_without_explicit_jav_code(self):
+        from app.scrapers.javdatabase_scraper import JavdatabaseScraper
+
+        scraper = JavdatabaseScraper()
+        scraper.get_detail = AsyncMock(return_value=None)
+
+        result = await scraper.full_scrape(
+            "Sperm Mania-298 Ria Kurumi",
+            code="Sperm Mania 298 Ria Kurumi",
+            movie={"local_metadata": json.dumps({"jav_code_explicit": False})},
+        )
+
+        self.assertIsNone(result)
+        scraper.get_detail.assert_not_called()
+
+
 # ── Media Type Inference Edge Cases ───────────────────────────────────────
 
 

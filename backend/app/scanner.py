@@ -21,6 +21,7 @@ from .title_match import (
     title_matches, candidate_title_matches,
     _is_specific_search_query, _first_tmdb_token,
     build_search_queries, clean_search_title,
+    extract_jav_code,
     is_season_folder, infer_season_number,
     has_local_data, has_complete_scraped_data,
     infer_tmdb_media_type,
@@ -178,10 +179,11 @@ def build_local_metadata(folder: Path, folder_name: str, code: str) -> dict:
     if year: metadata["detected_year"] = year
     return metadata
 
-def scan_media(root: str = None) -> list[dict]:
+def scan_media(root: str = None, javdatabase_roots: set[str] | None = None) -> list[dict]:
     from .covers import find_local_episode_still
     from .subtitles import find_external_audio_tracks
 
+    javdatabase_roots = javdatabase_roots or set()
     if root is None:
         roots = settings.get_all_media_roots()
     else:
@@ -190,6 +192,7 @@ def scan_media(root: str = None) -> list[dict]:
     for media_root in roots:
         base = Path(media_root)
         if not base.exists(): continue
+        use_javdatabase_policy = media_root in javdatabase_roots
         trigger = _scan_progress.get(media_root, {}).get("trigger")
         _set_scan_progress(media_root, status="scanning", done=0, total=0, trigger=trigger)
         for dirpath, dirnames, filenames in os.walk(base):
@@ -197,10 +200,13 @@ def scan_media(root: str = None) -> list[dict]:
             media_files = sorted({folder / f for f in filenames if Path(f).suffix.lower() in VIDEO_EXTS})
             if not media_files: continue
             detected_code = extract_code(folder.name)
-            code = detected_code
+            jav_code = extract_jav_code(folder.name) if use_javdatabase_policy else None
+            code = jav_code or detected_code
             if not code and filenames:
                 for f in filenames:
-                    code = extract_code(Path(f).stem)
+                    stem = Path(f).stem
+                    jav_code = extract_jav_code(stem) if use_javdatabase_policy else None
+                    code = jav_code or extract_code(stem)
                     if code:
                         detected_code = code
                         break
@@ -228,6 +234,8 @@ def scan_media(root: str = None) -> list[dict]:
                 external_audio_tracks = find_external_audio_tracks(str(mf))
                 item_meta = dict(local_meta)
                 item_meta["anime_naming"] = anime_info.as_dict()
+                if use_javdatabase_policy:
+                    item_meta["jav_code_explicit"] = bool(jav_code)
                 item_meta_json = json.dumps(item_meta, ensure_ascii=False) if item_meta else "{}"
                 item = {
                     "path": str(mf), "code": item_code, "title": title or clean_title or None,
@@ -669,7 +677,7 @@ async def scrape_for_library(media_root: str):
                             else:
                                 scraper_obj = get_scraper(sb)
                                 if sb == "javdatabase":
-                                    data = await scraper_obj.full_scrape(search_name, code=code)
+                                    data = await scraper_obj.full_scrape(search_name, code=code, candidate_names=candidate_names, movie=r)
                                 else:
                                     data = await scraper_obj.full_scrape(search_name, code=code, candidate_names=candidate_names, movie=r)
                             if not data or not data.get("title"):
@@ -840,7 +848,7 @@ async def cleanup_deleted_files(media_root: str) -> int:
 
 
 async def run_scan_for_root(media_root: str, trigger: str = "manual") -> dict:
-    from .database import upsert_movie
+    from .database import get_library_settings, upsert_movie
     from .config import logger
     lock = _scan_lock_for(media_root)
     if lock.locked():
@@ -867,7 +875,10 @@ async def run_scan_for_root(media_root: str, trigger: str = "manual") -> dict:
                 trigger=trigger,
             )
             logger.info(f"Scan started for {media_root} trigger={trigger}")
-            results = await asyncio.to_thread(scan_media, root=media_root)
+            lib_setting = await get_library_settings(media_root)
+            scraper_name = normalize_scraper_name(lib_setting.get("scraper") if lib_setting else "auto")
+            javdatabase_roots = {media_root} if scraper_name == "javdatabase" else set()
+            results = await asyncio.to_thread(scan_media, root=media_root, javdatabase_roots=javdatabase_roots)
             for item in results:
                 async with _sqlite_write_semaphore:
                     await upsert_movie(item)
@@ -1005,7 +1016,7 @@ async def rescrape_movie(movie_id: int) -> dict:
             else:
                 scraper_obj = get_scraper(sb)
                 if sb == "javdatabase":
-                    data = await scraper_obj.full_scrape(search_name, code=code)
+                    data = await scraper_obj.full_scrape(search_name, code=code, candidate_names=candidate_names, movie=movie)
                 else:
                     data = await scraper_obj.full_scrape(search_name, code=code, candidate_names=candidate_names, movie=movie)
             if not data or not data.get("title"):

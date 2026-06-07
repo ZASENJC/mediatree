@@ -17,6 +17,12 @@ from .scrapers.base import ScrapeCandidate
 
 CODE_PATTERN = re.compile(r"(?i)([A-Z]+\d*)-?(\d{2,6})")
 CODE_PATTERN_UNDERSCORE = re.compile(r"(?i)([A-Z]+\d*)_(\d{2,6})")
+JAV_EXPLICIT_CODE_PATTERN = re.compile(
+    r"(?i)(?<![A-Z0-9])([A-Z]{2,}\d*)[-_](\d{2,6})(?![A-Z0-9])"
+)
+JAV_EXPLICIT_COMPACT_CODE_PATTERN = re.compile(
+    r"(?i)(?<![A-Z0-9])([A-Z]{2,})(\d{3,6})(?![A-Z0-9])"
+)
 TMDB_TYPED_PATTERN = re.compile(
     r"(?i)\btmdb(?:id)?[\s:=._-]*(movie|tv|m|t)[\s:=._-]+(\d{1,10})\b"
 )
@@ -176,6 +182,18 @@ def _extract_code_raw(name: str) -> str | None:
     return None
 
 
+def _extract_explicit_jav_code_raw(name: str) -> str | None:
+    match = JAV_EXPLICIT_CODE_PATTERN.search(name)
+    if match:
+        if match.start() > 0 and (name[match.start() - 1] or "").isspace():
+            return None
+        return _format_code_match(match)
+    match = JAV_EXPLICIT_COMPACT_CODE_PATTERN.search(name)
+    if match:
+        return _format_code_match(match)
+    return None
+
+
 def clean_jav_title(name: str) -> str:
     value = name or ""
     if "@" not in value:
@@ -195,6 +213,18 @@ def extract_code(name: str) -> str | None:
     if cleaned != (name or ""):
         return _extract_code_raw(name or "")
     return None
+
+
+def extract_jav_code(name: str) -> str | None:
+    value = name or ""
+    if "@" in value:
+        for part in reversed(value.split("@")):
+            candidate = part.strip()
+            code = _extract_explicit_jav_code_raw(candidate)
+            if code:
+                return code
+        return None
+    return _extract_explicit_jav_code_raw(value)
 
 
 # ── Name cleaning ───────────────────────────────────────────────────────────

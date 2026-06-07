@@ -18,6 +18,7 @@ from app.title_match import (
     extract_alpha,
     extract_cjk,
     extract_code,
+    extract_jav_code,
     extract_imdb_id_from_name,
     extract_romaji,
     extract_tmdb_token_from_name,
@@ -182,6 +183,55 @@ class CodeExtractionTest(unittest.TestCase):
         self.assertEqual(extract_code("第一會所新片@SIS001@MDBK-416"), "MDBK-416")
         self.assertEqual(extract_code("HHD800@NEOS-003"), "NEOS-003")
         self.assertEqual(extract_code("ABC-123@sample"), "ABC-123")
+
+    def test_explicit_jav_code_rejects_site_and_descriptive_names_without_code(self):
+        self.assertIsNone(extract_jav_code("c3.coomer"))
+        self.assertIsNone(extract_jav_code("2048.cc-雪白巨乳美人 后入狂艹操漫画级身材女友，不仔细看还以为是AI动画呢，简直无敌了！"))
+        self.assertIsNone(extract_jav_code("Sperm Mania-298 Ria Kurumi"))
+
+    def test_explicit_jav_code_accepts_delimited_or_at_segment_codes(self):
+        self.assertEqual(extract_jav_code("ABP-123"), "ABP-123")
+        self.assertEqual(extract_jav_code("hhd800.com@NEOS-003"), "NEOS-003")
+        self.assertEqual(extract_jav_code("第一會所新片@SIS001@MDBK-416"), "MDBK-416")
+
+    def test_scan_marks_explicit_jav_code_policy(self):
+        from app.scanner import scan_media
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            explicit = root / "hhd800.com@NEOS-003"
+            descriptive = root / "Sperm Mania-298 Ria Kurumi"
+            explicit.mkdir()
+            descriptive.mkdir()
+            (explicit / "video.mp4").write_bytes(b"")
+            (descriptive / "video.mp4").write_bytes(b"")
+
+            rows = {item["folder_levels"]: item for item in scan_media(str(root))}
+
+        explicit_meta = json.loads(rows["hhd800.com@NEOS-003"]["local_metadata"])
+        descriptive_meta = json.loads(rows["Sperm Mania-298 Ria Kurumi"]["local_metadata"])
+        self.assertNotIn("jav_code_explicit", explicit_meta)
+        self.assertNotIn("jav_code_explicit", descriptive_meta)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            explicit = root / "hhd800.com@NEOS-003"
+            descriptive = root / "Sperm Mania-298 Ria Kurumi"
+            explicit.mkdir()
+            descriptive.mkdir()
+            (explicit / "video.mp4").write_bytes(b"")
+            (descriptive / "video.mp4").write_bytes(b"")
+
+            rows = {
+                item["folder_levels"]: item
+                for item in scan_media(str(root), javdatabase_roots={str(root)})
+            }
+
+        explicit_meta = json.loads(rows["hhd800.com@NEOS-003"]["local_metadata"])
+        descriptive_meta = json.loads(rows["Sperm Mania-298 Ria Kurumi"]["local_metadata"])
+        self.assertEqual(rows["hhd800.com@NEOS-003"]["code"], "NEOS-003")
+        self.assertTrue(explicit_meta["jav_code_explicit"])
+        self.assertFalse(descriptive_meta["jav_code_explicit"])
 
     def test_code_with_digit_and_underscore(self):
         # Underscore-separated: CODE_PATTERN (with -?) incorrectly fires first

@@ -68,6 +68,9 @@ class JavdatabaseScraper(BaseScraper):
         """Javdatabase scraper: code-based exact match with fuzzy fallback."""
         from .utils import scrape_result_to_legacy
 
+        if _explicit_jav_code_flag(movie) is False:
+            return None
+
         result = await self.get_detail(code or search_name)
         if not result or not result.title:
             return None
@@ -143,3 +146,20 @@ def _load_thumbnails(value) -> list[str]:
     except (json.JSONDecodeError, TypeError):
         return []
     return []
+
+
+def _explicit_jav_code_flag(movie: dict | None) -> bool | None:
+    if not movie:
+        return None
+    raw = movie.get("local_metadata")
+    if isinstance(raw, str) and raw:
+        try:
+            metadata = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return None
+    elif isinstance(raw, dict):
+        metadata = raw
+    else:
+        return None
+    value = metadata.get("jav_code_explicit")
+    return value if isinstance(value, bool) else None

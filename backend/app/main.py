@@ -555,6 +555,8 @@ async def api_media_info(movie_id: int, request: Request):
 @app.get("/api/cover/{movie_id}")
 async def api_cover(movie_id: int, request: Request):
     _require_media_access(request)
+    from .covers import generate_video_still
+
     movie = await get_movie_detail(movie_id)
     if not movie:
         raise HTTPException(status_code=404)
@@ -576,6 +578,9 @@ async def api_cover(movie_id: int, request: Request):
             media_type=content_type,
             headers={"Cache-Control": "no-store"},
         )
+    generated = generate_video_still(movie["path"], cache_key=f"cover:{movie['path']}", at_seconds=1.0)
+    if generated:
+        return FileResponse(generated, headers={"Cache-Control": "no-store"})
     return Response(status_code=404, content="No cover available")
 
 
