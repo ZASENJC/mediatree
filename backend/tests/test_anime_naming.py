@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -103,7 +104,8 @@ class AnimeNamingTest(unittest.TestCase):
         self.assertEqual(item["tmdb_episode"], 12)
         self.assertEqual(item["display_title"], "Senpai wa Otokonoko - EP12")
         self.assertEqual(item["episode_still_local"], str(still))
-        self.assertIn(str(audio), item["external_audio_tracks"])
+        audio_tracks = json.loads(item["external_audio_tracks"])
+        self.assertIn(str(audio), [track["path"] for track in audio_tracks])
 
 
 class AnimeEpisodeSortingTest(unittest.IsolatedAsyncioTestCase):

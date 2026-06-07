@@ -52,6 +52,17 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("--platform", script)
         self.assertIn("linux/amd64,linux/arm64", script)
 
+    def test_release_manifest_includes_windows_base_update_metadata(self):
+        app_package = self._step_block("Build app update package")
+        metadata = (ROOT / ".github" / "release-metadata.json").read_text(encoding="utf-8")
+
+        self.assertIn("requires_windows_base_update", app_package)
+        self.assertIn("windows_reason", app_package)
+        self.assertIn("RELEASE_REQUIRES_WINDOWS_BASE_UPDATE", self.workflow)
+        self.assertIn("RELEASE_WINDOWS_UPDATE_REASON", self.workflow)
+        self.assertIn("requires_windows_base_update", metadata)
+        self.assertIn("windows_reason", metadata)
+
 
 if __name__ == "__main__":
     unittest.main()

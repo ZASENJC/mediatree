@@ -14,7 +14,9 @@ jobs:
     timeout-minutes: 45
     env:
       RELEASE_REQUIRES_IMAGE_UPDATE: "false"
+      RELEASE_REQUIRES_WINDOWS_BASE_UPDATE: "false"
       RELEASE_UPDATE_REASON: "应用包级更新；不需要完整 Docker 镜像更新。"
+      RELEASE_WINDOWS_UPDATE_REASON: "应用包级更新；不需要更新 Windows 桌面版基础运行时。"
       RELEASE_METADATA_FILE: ".github/release-metadata.json"
     steps:
       - name: Checkout
@@ -55,19 +57,27 @@ jobs:
           metadata_path = Path(os.environ.get("RELEASE_METADATA_FILE", ".github/release-metadata.json"))
           fallback = {
               "requires_image_update": False,
+              "requires_windows_base_update": False,
               "reason": "应用包级更新；不需要完整 Docker 镜像更新。",
+              "windows_reason": "应用包级更新；不需要更新 Windows 桌面版基础运行时。",
           }
           metadata = {}
           if metadata_path.exists():
               metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
           release = metadata.get("versions", {}).get(version, metadata.get("default", fallback))
           requires_image_update = "true" if release.get("requires_image_update") else "false"
+          requires_windows_base_update = "true" if release.get("requires_windows_base_update") else "false"
           reason = release.get("reason") or fallback["reason"]
+          windows_reason = release.get("windows_reason") or fallback["windows_reason"]
 
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
               env.write(f"RELEASE_REQUIRES_IMAGE_UPDATE={requires_image_update}\n")
+              env.write(f"RELEASE_REQUIRES_WINDOWS_BASE_UPDATE={requires_windows_base_update}\n")
               env.write("RELEASE_UPDATE_REASON<<EOF\n")
               env.write(reason + "\n")
+              env.write("EOF\n")
+              env.write("RELEASE_WINDOWS_UPDATE_REASON<<EOF\n")
+              env.write(windows_reason + "\n")
               env.write("EOF\n")
           PY
         env:
@@ -129,7 +139,9 @@ jobs:
             "version": "$VERSION",
             "base_api": 1,
             "requires_image_update": $RELEASE_REQUIRES_IMAGE_UPDATE,
+            "requires_windows_base_update": $RELEASE_REQUIRES_WINDOWS_BASE_UPDATE,
             "reason": "$RELEASE_UPDATE_REASON",
+            "windows_reason": "$RELEASE_WINDOWS_UPDATE_REASON",
             "archive": "mediatree-app-$VERSION.tar.gz",
             "sha256": "",
             "size": 0,
@@ -146,7 +158,9 @@ jobs:
             "version": "$VERSION",
             "base_api": 1,
             "requires_image_update": $RELEASE_REQUIRES_IMAGE_UPDATE,
+            "requires_windows_base_update": $RELEASE_REQUIRES_WINDOWS_BASE_UPDATE,
             "reason": "$RELEASE_UPDATE_REASON",
+            "windows_reason": "$RELEASE_WINDOWS_UPDATE_REASON",
             "archive": "mediatree-app-$VERSION.tar.gz",
             "sha256": "$SHA",
             "size": $SIZE,

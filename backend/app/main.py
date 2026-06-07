@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .config import settings, logger, setup_file_logging, fetch_safe_image
+from .config import settings, logger, setup_file_logging, close_file_logging, fetch_safe_image
 from .updater import (
     get_current_version,
     get_available_versions,
@@ -235,6 +235,7 @@ async def lifespan(app: FastAPI):
     if watch_task:
         watch_task.cancel()
     await close_db_pool()
+    close_file_logging()
 
 
 async def run_startup_scan():
@@ -1837,9 +1838,15 @@ async def api_episode_images(series_id: int, season_num: int, ep_num: int):
 
 # ─── SPA ───
 
+_FRONTEND_ENV_DIR = Path(os.environ["MEDIATREE_FRONTEND_DIR"]) if os.environ.get("MEDIATREE_FRONTEND_DIR") else None
 _FRONTEND_PACKAGE_DIR = Path(__file__).parent.parent / "frontend" / "dist"
 _FRONTEND_DEV_DIR = Path(__file__).parent.parent.parent / "frontend" / "dist"
-FRONTEND_DIR = _FRONTEND_PACKAGE_DIR if _FRONTEND_PACKAGE_DIR.exists() else _FRONTEND_DEV_DIR
+_FRONTEND_CANDIDATES = [
+    candidate
+    for candidate in (_FRONTEND_ENV_DIR, _FRONTEND_PACKAGE_DIR, _FRONTEND_DEV_DIR)
+    if candidate is not None
+]
+FRONTEND_DIR = next((candidate for candidate in _FRONTEND_CANDIDATES if candidate.exists()), _FRONTEND_PACKAGE_DIR)
 INDEX_HTML = ""
 
 if FRONTEND_DIR.exists():

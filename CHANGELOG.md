@@ -6,6 +6,24 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## Unreleased
+
+### Windows Desktop
+
+- Added the Windows desktop V1 build path with a WinUI 3 shell, WebView2, local PyInstaller onedir backend, and MSIX/.appinstaller packaging
+- The Windows desktop runtime reuses the existing app-package updater, so routine FastAPI/React changes continue to ship through `mediatree-app-<version>.tar.gz`
+- Release manifests now include `requires_windows_base_update` and `windows_reason`, so only Windows runtime changes require a new desktop package
+
+### Release Pipeline
+
+- Added a Windows release workflow that skips ordinary app-package releases and builds MSIX assets only when manually triggered or when Windows base update metadata requires it
+
+### Release Type
+
+- App-package update; no full Docker image update is required; no Windows desktop base update is required
+
+---
+
 ## 1.0.12 (2026-06-06)
 
 ### Branding

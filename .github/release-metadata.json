@@ -1,12 +1,16 @@
 {
   "default": {
     "requires_image_update": false,
-    "reason": "应用包级更新；不需要完整 Docker 镜像更新。"
+    "requires_windows_base_update": false,
+    "reason": "应用包级更新；不需要完整 Docker 镜像更新。",
+    "windows_reason": "应用包级更新；不需要更新 Windows 桌面版基础运行时。"
   },
   "versions": {
     "1.0.10": {
       "requires_image_update": true,
-      "reason": "重大安全更新；请在宿主机执行 docker compose pull && docker compose up -d 拉取完整 Docker 镜像更新。"
+      "requires_windows_base_update": false,
+      "reason": "重大安全更新；请在宿主机执行 docker compose pull && docker compose up -d 拉取完整 Docker 镜像更新。",
+      "windows_reason": "应用包级更新；不需要更新 Windows 桌面版基础运行时。"
     }
   }
 }

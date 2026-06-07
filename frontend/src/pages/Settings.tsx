@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { marked } from 'marked'
 import { api, Config, MediaRoot, LibrarySetting, UpdateCheckResult, UpdateStatus, clearCache, getServerUrl, setServerUrl as saveServerUrl, isNativeApp, resolveApiUrl } from '../api'
 import { getUiPrefs, setUiPrefs, dismissUpdate } from '../store'
+import { isWindowsShell } from '../windowsBridge'
 
 const SCRAPER_META: Record<string, { label: string; desc: string; hasKey: boolean }> = {
   tmdb_movie: { label: 'TMDB 电影', desc: '适合电影库；tmdbid 调用 /movie 精确刮削', hasKey: true },
@@ -25,6 +26,7 @@ interface ScanState {
 
 export default function Settings() {
   const nativeApp = isNativeApp()
+  const windowsShell = isWindowsShell()
   const [config, setConfig] = useState<Config | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -124,6 +126,11 @@ export default function Settings() {
       return '当前容器没有挂载 /var/run/docker.sock，设置页无法直接替换容器。请在宿主机重新创建容器并挂载该 socket，或直接在宿主机执行 docker compose pull && docker compose up -d。'
     }
     return ''
+  }
+
+  const getWindowsUpdateGuide = (v?: any) => {
+    const reason = v?.reason || v?.windows_reason || '该版本需要更新 Windows 桌面版基础运行时。'
+    return `${reason} 请从该版本 GitHub Release 下载并安装 MediaTree-Windows-${v?.version || '新版'}.msix 或 .appinstaller。日常 FastAPI/React 更新仍会继续使用应用包更新。`
   }
 
   const stopUpdatePolling = () => {
@@ -359,7 +366,7 @@ export default function Settings() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* 左列 */}
         <div className="space-y-5">
-          {nativeApp && (
+          {nativeApp && !windowsShell && (
             <div className={cardClass}>
               <h2 className={sectionTitle}>服务器</h2>
               <label className={labelClass}>MediaTree 后端地址</label>
@@ -690,7 +697,7 @@ export default function Settings() {
               <p>
                 运行来源：
                 <span className="text-white font-medium">
-                  {sourceLabel(updateResult?.current_source)}
+                  {windowsShell ? `Windows · ${sourceLabel(updateResult?.current_source)}` : sourceLabel(updateResult?.current_source)}
                 </span>
               </p>
               <p>
@@ -728,6 +735,7 @@ export default function Settings() {
                     ? updateProgress
                     : null
                   const isDockerUpdate = Boolean(activeUpdate && (activeUpdate.update_type === 'docker-image' || v.requires_image_update))
+                  const requiresWindowsBase = Boolean(windowsShell && v.requires_windows_base_update)
                   const isAppUpdate = Boolean(activeUpdate && !isDockerUpdate)
                   const progressPercent = activeUpdate?.total
                     ? Math.min(100, Math.round((activeUpdate.downloaded / activeUpdate.total) * 100))
@@ -761,13 +769,13 @@ export default function Settings() {
                           )}
                           <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
                             <span className={`inline-flex rounded-full border px-2 py-0.5 ${
-                              v.requires_image_update
+                              v.requires_image_update || requiresWindowsBase
                                 ? 'border-apple-yellow/30 bg-apple-yellow/10 text-apple-yellow'
                                 : 'border-apple-mint/30 bg-apple-mint/10 text-apple-mint'
                             }`}>
-                              {v.requires_image_update ? '需要完整镜像更新' : '应用包更新'}
+                              {requiresWindowsBase ? '需要 Windows 桌面版更新' : v.requires_image_update ? '需要完整镜像更新' : '应用包更新'}
                             </span>
-                            {!v.requires_image_update && (
+                            {!v.requires_image_update && !requiresWindowsBase && (
                               <span>{formatSize(v.size)}</span>
                             )}
                             {v.reason && (
@@ -811,7 +819,7 @@ export default function Settings() {
                             >
                               {updatePerforming === v.version ? '回滚中...' : '回滚到此版本'}
                             </button>
-                          ) : !isCurrent && !v.requires_image_update ? (
+                          ) : !isCurrent && !v.requires_image_update && !requiresWindowsBase ? (
                             <button
                               onClick={async () => {
                                 if (!confirm(`确定要切换到 ${v.display_version || v.version} 吗？容器将自动重启。`)) return
@@ -841,6 +849,16 @@ export default function Settings() {
                             >
                               {updatePerforming === v.version ? '更新中...' : '下载并更新'}
                             </button>
+                          ) : !isCurrent && requiresWindowsBase ? (
+                            <a
+                              href={v.html_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              title={getWindowsUpdateGuide(v)}
+                              className={`${btnDark} text-xs px-2 py-1`}
+                            >
+                              下载桌面新版
+                            </a>
                           ) : !isCurrent && v.requires_image_update ? (
                             <button
                               onClick={async () => {

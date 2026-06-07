@@ -41,6 +41,7 @@ DATA_DIR = Path(settings.data_dir)
 RELEASES_DIR = DATA_DIR / "releases"
 UPDATES_DIR = DATA_DIR / "updates"
 UPDATE_STATUS_FILE = UPDATES_DIR / "status.json"
+UPDATE_PLATFORM = os.environ.get("MEDIATREE_UPDATE_PLATFORM", "docker").strip().lower() or "docker"
 
 # Shell metacharacters to reject in version strings
 _FORBIDDEN_CHARS = set(";&|$`\\\n\r")
@@ -548,8 +549,10 @@ async def _build_release_entry(release: dict) -> dict:
         reason = "此版本没有应用包产物，请使用完整镜像更新。"
 
     requires_image = bool(manifest.get("requires_image_update")) if manifest else True
+    requires_windows_base = bool(manifest.get("requires_windows_base_update")) if manifest else False
     if not reason:
         reason = manifest.get("reason", "")
+    windows_reason = manifest.get("windows_reason", "") if manifest else ""
     base_api = int(manifest.get("base_api") or BASE_API_VERSION)
     if not requires_image and base_api > BASE_API_VERSION:
         requires_image = True
@@ -558,6 +561,9 @@ async def _build_release_entry(release: dict) -> dict:
         requires_image = True
         reason = "release 中缺少应用包 tar.gz，请使用完整镜像更新。"
     update_type = "docker-image-required" if requires_image else "app-package"
+    if UPDATE_PLATFORM == "windows" and requires_windows_base:
+        update_type = "windows-base-required"
+        reason = windows_reason or reason or "该版本需要更新 Windows 桌面版基础运行时。"
 
     return {
         "version": version,
@@ -570,7 +576,9 @@ async def _build_release_entry(release: dict) -> dict:
         "update_type": update_type,
         "size": int(manifest.get("size") or archive_asset.get("size") or 0) if archive_asset else int(manifest.get("size") or 0),
         "requires_image_update": requires_image,
+        "requires_windows_base_update": requires_windows_base,
         "reason": reason,
+        "windows_reason": windows_reason,
         "manifest": manifest,
         "manifest_url": manifest_asset.get("browser_download_url") if manifest_asset else "",
         "archive_url": archive_asset.get("browser_download_url") if archive_asset else "",
@@ -591,6 +599,7 @@ def _public_release_entry(entry: dict) -> dict:
         "update_type": entry.get("update_type", "docker-image-required"),
         "size": entry.get("size", 0),
         "requires_image_update": bool(entry.get("requires_image_update")),
+        "requires_windows_base_update": bool(entry.get("requires_windows_base_update")),
         "reason": entry.get("reason", ""),
     }
 
@@ -696,6 +705,9 @@ async def perform_app_package_update(version: str) -> dict:
     if entry.get("requires_image_update"):
         reason = entry.get("reason") or "该版本需要完整镜像更新。"
         return {"ok": False, "error": reason, "requires_image_update": True}
+    if UPDATE_PLATFORM == "windows" and entry.get("requires_windows_base_update"):
+        reason = entry.get("reason") or entry.get("windows_reason") or "该版本需要更新 Windows 桌面版基础运行时。"
+        return {"ok": False, "error": reason, "requires_windows_base_update": True}
     if int(entry.get("base_api") or 0) > BASE_API_VERSION:
         return {
             "ok": False,

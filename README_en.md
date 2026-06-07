@@ -19,6 +19,7 @@
   <img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react" alt="React">
   <img src="https://img.shields.io/badge/docker-amd64|arm64-2496ED?style=flat-square&logo=docker" alt="Docker">
+  <img src="https://img.shields.io/badge/windows-desktop-0078D4?style=flat-square&logo=windows11&logoColor=white" alt="Windows Desktop">
   <a href="https://github.com/ZASENJC/mediatree-app"><img src="https://img.shields.io/badge/android-app-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android App"></a>
 </p>
 
@@ -33,7 +34,7 @@ MediaTree is built for people who keep movies, TV shows, anime, and private nich
 - **Works with more than the web UI** - Jellyfin-compatible APIs let VidHub, Infuse, Kodi, VLC, IINA, and mpv connect directly.
 - **Simple to run at home** - Docker Compose, SQLite, persistent `./data`, linux/amd64 and linux/arm64 images.
 
-For a mobile experience, pair it with the standalone Android client [ZASENJC/mediatree-app](https://github.com/ZASENJC/mediatree-app). It supports MediaTree, Jellyfin, Emby, SMB, and WebDAV while this project remains the separately deployable server.
+For a local desktop experience, use the Windows desktop build: it launches the local FastAPI backend from a WinUI 3 shell and renders the same MediaTree web app inside WebView2. For a mobile experience, pair it with the standalone Android client [ZASENJC/mediatree-app](https://github.com/ZASENJC/mediatree-app). It supports MediaTree, Jellyfin, Emby, SMB, and WebDAV while this project remains the separately deployable server.
 
 ## Screenshots
 
@@ -119,6 +120,18 @@ docker compose up -d
 
 Docker Hub image: `zasenjc/mediatree:latest`
 
+## Windows Desktop
+
+The first Windows desktop build targets Windows 10 19041+ / Windows 11 x64. It is not an external browser launcher: the app starts a local `mediatree-server.exe` backend and opens `http://127.0.0.1:<random-port>` inside an embedded WebView2 hosted by a WinUI 3 window.
+
+Desktop data is stored under `%APPDATA%\MediaTree\data`, and logs are stored under `%LOCALAPPDATA%\MediaTree\logs`. Routine FastAPI / React updates reuse the same `mediatree-app-<version>.tar.gz` app package from GitHub Releases. A new `MediaTree-Windows-<version>.msix` / `.appinstaller` is only needed when Python dependencies, ffmpeg, the WinUI shell, the WebView2 bridge, or the PyInstaller base runtime changes.
+
+Maintainer local Windows build:
+
+```powershell
+pwsh packaging/windows/build-windows.ps1 -Configuration Release
+```
+
 ## Configuration You Usually Need
 
 | Variable | What it does |
@@ -137,6 +150,8 @@ See [.env.example](.env.example) for all options. Detailed setup, scraper behavi
 Most updates can be installed directly from Settings. MediaTree downloads a small app package into `./data`, so you usually do not need to pull a new Docker image. After an app-package update restarts successfully, MediaTree keeps the current package and one rollback package, then removes older packages. New installs that use `zasenjc/mediatree:latest` also start from the newest version.
 
 For app-package releases, maintainers now build and push `zasenjc/mediatree:latest` locally instead of syncing DockerHub through GitHub Actions. Existing installs keep using the Settings app-package path, while new installs still start from the latest application baseline.
+
+The Windows desktop build uses the same app-package update stream. If a release only changes FastAPI / React code, keep `.github/release-metadata.json` at `requires_windows_base_update: false`; if it changes Python dependencies, ffmpeg, the WinUI shell, or PyInstaller packaging, mark that version with `requires_windows_base_update: true` and publish a new MSIX/.appinstaller.
 
 Some releases show "full image update required". That usually means the runtime changed too, such as Python, ffmpeg, fonts, or startup behavior. The simplest path is to run the two host-side commands below. If you want Settings to perform full image updates automatically, mount `/var/run/docker.sock:/var/run/docker.sock` in `docker-compose.yml`; this gives the container control over Docker on the host, so leave it unmounted if you are unsure.
 

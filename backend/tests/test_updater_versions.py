@@ -68,6 +68,106 @@ class UpdaterVersionStateTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result["has_update"])
         self.assertEqual(result["versions"][0]["display_version"], "v1.0.04")
 
+    async def test_build_release_entry_marks_windows_base_update_on_windows_runtime(self):
+        release = {
+            "version": "1.0.11",
+            "display_version": "v1.0.11",
+            "name": "v1.0.11",
+            "published_at": "2026-06-08T00:00:00Z",
+            "html_url": "https://example.com/release/v1.0.11",
+            "body": "",
+            "source": "github",
+            "assets": [
+                {
+                    "name": "mediatree-app-1.0.11.manifest.json",
+                    "browser_download_url": "https://example.com/manifest.json",
+                },
+                {
+                    "name": "mediatree-app-1.0.11.tar.gz",
+                    "browser_download_url": "https://example.com/archive.tar.gz",
+                    "size": 123,
+                },
+            ],
+        }
+        manifest = {
+            "version": "1.0.11",
+            "base_api": 1,
+            "requires_image_update": False,
+            "requires_windows_base_update": True,
+            "reason": "应用包级更新；不需要完整 Docker 镜像更新。",
+            "windows_reason": "Windows runtime changed.",
+            "sha256": "abc",
+            "size": 123,
+        }
+
+        with patch.object(updater, "UPDATE_PLATFORM", "windows"), \
+                patch.object(updater, "_fetch_json_url", AsyncMock(return_value=manifest)):
+            entry = await updater._build_release_entry(release)
+
+        self.assertEqual(entry["update_type"], "windows-base-required")
+        self.assertTrue(entry["requires_windows_base_update"])
+        self.assertFalse(entry["requires_image_update"])
+        self.assertEqual(entry["reason"], "Windows runtime changed.")
+
+    async def test_build_release_entry_keeps_docker_app_package_when_only_windows_base_required(self):
+        release = {
+            "version": "1.0.11",
+            "display_version": "v1.0.11",
+            "name": "v1.0.11",
+            "published_at": "2026-06-08T00:00:00Z",
+            "html_url": "https://example.com/release/v1.0.11",
+            "body": "",
+            "source": "github",
+            "assets": [
+                {
+                    "name": "mediatree-app-1.0.11.manifest.json",
+                    "browser_download_url": "https://example.com/manifest.json",
+                },
+                {
+                    "name": "mediatree-app-1.0.11.tar.gz",
+                    "browser_download_url": "https://example.com/archive.tar.gz",
+                    "size": 123,
+                },
+            ],
+        }
+        manifest = {
+            "version": "1.0.11",
+            "base_api": 1,
+            "requires_image_update": False,
+            "requires_windows_base_update": True,
+            "reason": "应用包级更新；不需要完整 Docker 镜像更新。",
+            "windows_reason": "Windows runtime changed.",
+            "sha256": "abc",
+            "size": 123,
+        }
+
+        with patch.object(updater, "UPDATE_PLATFORM", "docker"), \
+                patch.object(updater, "_fetch_json_url", AsyncMock(return_value=manifest)):
+            entry = await updater._build_release_entry(release)
+
+        self.assertEqual(entry["update_type"], "app-package")
+        self.assertTrue(entry["requires_windows_base_update"])
+        self.assertFalse(entry["requires_image_update"])
+        self.assertEqual(entry["reason"], "应用包级更新；不需要完整 Docker 镜像更新。")
+
+    async def test_perform_app_package_update_rejects_windows_base_required_release(self):
+        release_entry = {
+            "version": "1.0.11",
+            "requires_image_update": False,
+            "requires_windows_base_update": True,
+            "reason": "Windows runtime changed.",
+            "archive_url": "https://example.com/archive.tar.gz",
+            "base_api": updater.BASE_API_VERSION,
+        }
+
+        with patch.object(updater, "UPDATE_PLATFORM", "windows"), \
+                patch.object(updater, "_get_release_entry", AsyncMock(return_value=release_entry)):
+            result = await updater.perform_app_package_update("1.0.11")
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["requires_windows_base_update"])
+        self.assertIn("Windows runtime changed.", result["error"])
+
     def test_get_update_status_clears_stale_error_for_current_version(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

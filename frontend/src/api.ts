@@ -1,5 +1,6 @@
 import { getCached, setCache, clearCache } from './cache'
 import { Capacitor } from '@capacitor/core'
+import { isWindowsShell } from './windowsBridge'
 
 const DEFAULT_API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '') || '/api'
 const SERVER_URL_KEY = 'mediatree_server_url'
@@ -12,7 +13,7 @@ let memoryMediaTokenExpiresAt = 0
 let mediaTokenPromise: Promise<string> | null = null
 
 function isNativeApp(): boolean {
-  return Capacitor.isNativePlatform()
+  return Capacitor.isNativePlatform() || isWindowsShell()
 }
 
 function normalizeServerUrl(input: string): string {
@@ -808,10 +809,12 @@ export interface VersionEntry {
   html_url: string
   body?: string
   source: 'github-release' | string
-  update_type?: 'app-package' | 'docker-image-required'
+  update_type?: 'app-package' | 'docker-image-required' | 'windows-base-required'
   size?: number
   requires_image_update?: boolean
+  requires_windows_base_update?: boolean
   reason?: string
+  windows_reason?: string
 }
 
 export interface UpdateCheckResult {

@@ -8,23 +8,41 @@ from logging.handlers import RotatingFileHandler
 
 log_dir = None
 log_file = None
+_file_handler = None
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("mediatree")
 
 
 def setup_file_logging(data_dir: str):
-    global log_dir, log_file
+    global log_dir, log_file, _file_handler
     log_dir = Path(data_dir) / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "mediatree.log"
     try:
+        if _file_handler is not None:
+            current = Path(getattr(_file_handler, "baseFilename", ""))
+            if current == log_file:
+                return
+            close_file_logging()
         fh = RotatingFileHandler(str(log_file), maxBytes=2 * 1024 * 1024, backupCount=3, encoding="utf-8")
         fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
         logger.addHandler(fh)
+        _file_handler = fh
         logger.info("File logging initialized")
     except Exception as e:
         logger.warning(f"File logging setup failed: {e}")
+
+
+def close_file_logging():
+    global _file_handler
+    if _file_handler is None:
+        return
+    try:
+        logger.removeHandler(_file_handler)
+        _file_handler.close()
+    finally:
+        _file_handler = None
 
 
 class Settings(BaseSettings):

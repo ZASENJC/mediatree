@@ -1,0 +1,107 @@
+name: Windows Desktop Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build. Defaults to VERSION file."
+        required: false
+        type: string
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      RELEASE_METADATA_FILE: ".github/release-metadata.json"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/constraints.txt
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Resolve Windows release metadata
+        id: metadata
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.version }}"
+          if (-not $version) {
+            $version = (Get-Content VERSION -TotalCount 1).Trim()
+          }
+          $metadataPath = "${env:RELEASE_METADATA_FILE}"
+          $requires = $false
+          if (Test-Path $metadataPath) {
+            $metadata = Get-Content $metadataPath -Raw | ConvertFrom-Json
+            $entry = $metadata.default
+            if ($metadata.versions.PSObject.Properties.Name -contains $version) {
+              $entry = $metadata.versions.$version
+            }
+            $requires = [bool]$entry.requires_windows_base_update
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "requires_windows_base_update=$($requires.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - name: Stop when Windows base update is not required
+        if: ${{ github.event_name != 'workflow_dispatch' && steps.metadata.outputs.requires_windows_base_update != 'true' }}
+        shell: pwsh
+        run: |
+          Write-Host "Windows base update is not required for ${{ steps.metadata.outputs.version }}. Skipping MSIX build."
+
+      - name: Build Windows package
+        if: ${{ github.event_name == 'workflow_dispatch' || steps.metadata.outputs.requires_windows_base_update == 'true' }}
+        shell: pwsh
+        run: |
+          packaging/windows/build-windows.ps1 -Configuration Release -Version "${{ steps.metadata.outputs.version }}"
+
+      - name: Collect Windows artifacts
+        if: ${{ github.event_name == 'workflow_dispatch' || steps.metadata.outputs.requires_windows_base_update == 'true' }}
+        id: artifacts
+        shell: pwsh
+        run: |
+          $version = "${{ steps.metadata.outputs.version }}"
+          $out = New-Item -ItemType Directory -Force -Path "dist/windows/release"
+          $files = Get-ChildItem dist/windows -Recurse -File | Where-Object {
+            $_.Extension -in ".msix", ".appinstaller", ".cer"
+          }
+          foreach ($file in $files) {
+            Copy-Item $file.FullName -Destination $out.FullName -Force
+          }
+          Get-ChildItem $out.FullName -File | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)" | Set-Content "$($_.FullName).sha256"
+          }
+          "path=$($out.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload Windows release assets
+        if: ${{ github.event_name == 'workflow_dispatch' || steps.metadata.outputs.requires_windows_base_update == 'true' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.metadata.outputs.version }}
+          make_latest: true
+          files: |
+            dist/windows/release/*

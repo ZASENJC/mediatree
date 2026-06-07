@@ -6,6 +6,24 @@
 
 ---
 
+## Unreleased
+
+### Windows 桌面版
+
+- 新增 Windows 桌面版 V1 搭建链路：WinUI 3 壳、WebView2、本地 PyInstaller onedir 后端和 MSIX/.appinstaller 打包
+- Windows 桌面版复用现有应用包更新机制，日常 FastAPI/React 更新继续通过 `mediatree-app-<version>.tar.gz` 同步
+- Release manifest 新增 `requires_windows_base_update` 与 `windows_reason`，仅在 Windows 基础运行时变化时要求安装新版桌面包
+
+### 发布流水线
+
+- 新增 Windows release workflow：普通应用包更新不会重打 Windows 壳；手动触发或 Windows base 更新标记为 true 时才生成 MSIX 资产
+
+### 发布类型
+
+- 应用包级更新；不需要完整 Docker 镜像更新；不需要更新 Windows 桌面版基础运行时
+
+---
+
 ## 1.0.12 (2026-06-06)
 
 ### 品牌资源

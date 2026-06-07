@@ -9,3 +9,7 @@ frontend/dist/
 docker-compose.yml
 frontend/tsconfig.tsbuildinfo
 .playwright-mcp/
+build/
+dist/windows/
+windows/MediaTree.Windows/Assets/
+windows/MediaTree.Windows/server/
