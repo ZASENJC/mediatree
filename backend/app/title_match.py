@@ -205,8 +205,8 @@ def clean_jav_title(name: str) -> str:
     return value
 
 
-def extract_code(name: str) -> str | None:
-    cleaned = clean_jav_title(name)
+def extract_code(name: str, *, clean_jav_prefix: bool = True) -> str | None:
+    cleaned = clean_jav_title(name) if clean_jav_prefix else (name or "")
     code = _extract_code_raw(cleaned)
     if code:
         return code

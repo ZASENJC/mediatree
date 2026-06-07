@@ -310,6 +310,41 @@ class SecurityRegressionTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 401)
 
+    def test_javdatabase_search_requires_javdatabase_library(self):
+        import asyncio
+
+        async def seed_library():
+            await database.init_db()
+            await database.save_library_settings({
+                "media_root": str(self.media_root),
+                "scraper": "tmdb_movie",
+                "tmdb_key": "",
+                "password_hash": None,
+                "enabled": 1,
+            })
+
+        asyncio.run(seed_library())
+
+        with TestClient(main.app) as client:
+            search_response = client.post(
+                "/api/search-scrape",
+                json={
+                    "query": "ABP-123",
+                    "scraper": "javdatabase",
+                    "media_root": str(self.media_root),
+                },
+                headers=self.auth_headers(),
+            )
+            fetch_response = client.post(
+                f"/api/javdb/fetch?code=ABP-123&media_root={self.media_root}",
+                headers=self.auth_headers(),
+            )
+
+        self.assertEqual(search_response.status_code, 400)
+        self.assertIn("Javdatabase", search_response.json()["detail"])
+        self.assertEqual(fetch_response.status_code, 400)
+        self.assertIn("Javdatabase", fetch_response.json()["detail"])
+
 
 if __name__ == "__main__":
     unittest.main()

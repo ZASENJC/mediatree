@@ -46,6 +46,7 @@ export default function Home() {
   const tab = searchParams.get('tab') || 'library'
 
   const [tree, setTree] = useState<FolderNode[]>([])
+  const [libraryScrapers, setLibraryScrapers] = useState<Record<string, string>>({})
   const [recentMovies, setRecentMovies] = useState<Movie[]>([])
   const [recentTotal, setRecentTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -88,6 +89,7 @@ export default function Home() {
 
   const [showFolderEdit, setShowFolderEdit] = useState(false)
   const [editFolderMovie, setEditFolderMovie] = useState<Movie | null>(null)
+  const activeFolderUsesJavdatabase = libraryScrapers[activeMediaRoot] === 'javdatabase'
 
   const load = useCallback(() => {
     setLoading(true)
@@ -116,6 +118,11 @@ export default function Home() {
       }
       setTree(filtered)
     }).catch(() => {}).finally(() => setLoading(false))
+    api.mediaRoots().then(data => {
+      const scrapers: Record<string, string> = {}
+      ;(data.items || []).forEach(item => { scrapers[item.path] = item.scraper || 'auto' })
+      setLibraryScrapers(scrapers)
+    }).catch(() => {})
   }, [sort])
 
   const loadRecent = useCallback(() => {
@@ -193,7 +200,7 @@ export default function Home() {
     } catch {}
     setFolderScrapeSearching(true)
     try {
-      const data = await api.searchScrape(folderScrapeQuery.trim(), folderScrapeSrc || undefined)
+      const data = await api.searchScrape(folderScrapeQuery.trim(), folderScrapeSrc || undefined, activeMediaRoot)
       const results = data.results || []
       setFolderScrapeResults(results)
       if (results.length === 0) {
@@ -203,11 +210,12 @@ export default function Home() {
           setFolderScrapeBackdrops(bd.backdrops || [])
         }).catch(() => {})
       }
-    } catch {
-      console.error('Search scrape failed')
+    } catch (err) {
+      console.error('Search scrape failed', err)
+      showToast(`搜索失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
     }
     setFolderScrapeSearching(false)
-  }, [folderScrapeQuery, folderScrapeSrc])
+  }, [folderScrapeQuery, folderScrapeSrc, activeMediaRoot])
 
   const handleSelectFolderScrapeResult = useCallback(async (result: any) => {
     if (folderScrapeApplying) return
@@ -467,7 +475,7 @@ export default function Home() {
                 <option value="tmdb_movie">TMDB 电影</option>
                 <option value="tmdb_tv">TMDB 剧集/番剧</option>
                 <option value="bangumi">Bangumi</option>
-                <option value="javdatabase">Javdatabase</option>
+                {activeFolderUsesJavdatabase && <option value="javdatabase">Javdatabase</option>}
               </select>
               <button onClick={handleFolderScrapeSearch} disabled={folderScrapeSearching}
                 className="glass-button-primary px-4 py-2 text-sm">

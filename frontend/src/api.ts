@@ -485,11 +485,11 @@ export const api = {
       body: JSON.stringify({ folder, media_root: mediaRoot }),
     }),
 
-  searchScrape: (query: string, scraper?: string) =>
+  searchScrape: (query: string, scraper?: string, mediaRoot?: string) =>
     request<{ results: { source: string; source_id: string; media_type: string; title: string; original_title: string; year: string; poster_url?: string; overview: string }[] }>('/search-scrape', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, scraper: scraper || 'tmdb_movie' }),
+      body: JSON.stringify({ query, scraper: scraper || 'tmdb_movie', media_root: mediaRoot || getActiveLibrary() }),
     }),
 
   rescrapeFolderManual: (folder: string, mediaRoot: string, query: string, scraper?: string) =>
