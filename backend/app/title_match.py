@@ -162,13 +162,38 @@ def _first_tmdb_token(candidate_names: list[str], default_label: str = "candidat
 
 # ── Code extraction ─────────────────────────────────────────────────────────
 
-def extract_code(name: str) -> str | None:
+def _format_code_match(match: re.Match) -> str:
+    return f"{match.group(1).upper()}-{match.group(2)}"
+
+
+def _extract_code_raw(name: str) -> str | None:
     match = CODE_PATTERN.search(name)
     if match:
-        return f"{match.group(1).upper()}-{match.group(2)}"
+        return _format_code_match(match)
     match = CODE_PATTERN_UNDERSCORE.search(name)
     if match:
-        return f"{match.group(1).upper()}-{match.group(2)}"
+        return _format_code_match(match)
+    return None
+
+
+def clean_jav_title(name: str) -> str:
+    value = name or ""
+    if "@" not in value:
+        return value
+    for part in reversed(value.split("@")):
+        candidate = part.strip()
+        if candidate and _extract_code_raw(candidate):
+            return candidate
+    return value
+
+
+def extract_code(name: str) -> str | None:
+    cleaned = clean_jav_title(name)
+    code = _extract_code_raw(cleaned)
+    if code:
+        return code
+    if cleaned != (name or ""):
+        return _extract_code_raw(name or "")
     return None
 
 

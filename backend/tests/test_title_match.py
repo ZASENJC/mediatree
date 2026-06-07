@@ -173,6 +173,16 @@ class CodeExtractionTest(unittest.TestCase):
     def test_code_with_underscore(self):
         self.assertEqual(extract_code("ABC_123"), "ABC-123")
 
+    def test_jav_download_site_prefix_before_at_is_ignored(self):
+        self.assertEqual(extract_code("hhd800.com@NEOS-003"), "NEOS-003")
+        self.assertEqual(extract_code("www.example.com@ssni-888"), "SSNI-888")
+        self.assertEqual(extract_code("hhd800.com@NEOS_003"), "NEOS-003")
+
+    def test_jav_at_segments_prefer_last_code_segment(self):
+        self.assertEqual(extract_code("第一會所新片@SIS001@MDBK-416"), "MDBK-416")
+        self.assertEqual(extract_code("HHD800@NEOS-003"), "NEOS-003")
+        self.assertEqual(extract_code("ABC-123@sample"), "ABC-123")
+
     def test_code_with_digit_and_underscore(self):
         # Underscore-separated: CODE_PATTERN (with -?) incorrectly fires first
         self.assertEqual(extract_code("T28_54321"), "T-28")
