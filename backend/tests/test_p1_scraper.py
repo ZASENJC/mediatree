@@ -138,6 +138,37 @@ class JavdatabaseScraperCodePolicyTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result)
         scraper.get_detail.assert_not_called()
 
+    async def test_javdatabase_requires_matching_library_scraper(self):
+        from app import database
+        from app.scanner import ensure_javdatabase_allowed
+
+        old_data_dir = database.settings.data_dir
+        with tempfile.TemporaryDirectory() as tmp:
+            database.settings.data_dir = tmp
+            await database.close_db_pool()
+            await database.init_db()
+            await database.save_library_settings({
+                "media_root": "/media/movies",
+                "scraper": "tmdb_movie",
+                "tmdb_key": "",
+                "password_hash": None,
+                "enabled": 1,
+            })
+            await database.save_library_settings({
+                "media_root": "/media/jav",
+                "scraper": "javdatabase",
+                "tmdb_key": "",
+                "password_hash": None,
+                "enabled": 1,
+            })
+
+            self.assertFalse(await ensure_javdatabase_allowed("/media/movies"))
+            self.assertTrue(await ensure_javdatabase_allowed("/media/jav"))
+            self.assertFalse(await ensure_javdatabase_allowed(""))
+
+            await database.close_db_pool()
+            database.settings.data_dir = old_data_dir
+
 
 # ── Media Type Inference Edge Cases ───────────────────────────────────────
 

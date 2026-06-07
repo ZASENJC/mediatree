@@ -15,6 +15,8 @@ export interface BackdropResult {
 interface ManualScrapeModalProps {
   title?: string
   initialQuery?: string
+  mediaRoot?: string
+  allowJavdatabase?: boolean
   /** 是否在结果卡片上显示"选背景"按钮 */
   showBackdropButton?: boolean
   /** 选择背景时的回调，接收背景图 URL */
@@ -36,6 +38,8 @@ const SCRAPER_OPTIONS: { value: ManualScraperName; label: string }[] = [
 export default function ManualScrapeModal({
   title,
   initialQuery = '',
+  mediaRoot,
+  allowJavdatabase = true,
   showBackdropButton = false,
   onSelectBackdrop,
   onApply,
@@ -53,7 +57,7 @@ export default function ManualScrapeModal({
     if (!trimmedQuery) return
     setSearching(true)
     try {
-      const data = await api.searchScrape(trimmedQuery, scraper)
+      const data = await api.searchScrape(trimmedQuery, scraper, mediaRoot)
       const found = (data.results || []).map(result => ({
         ...result,
         scraper: result.scraper || scraper,
@@ -112,7 +116,7 @@ export default function ManualScrapeModal({
             onChange={e => setScraper(e.target.value as ManualScraperName)}
             className="glass-input px-3 py-2 text-sm text-gray-300"
           >
-            {SCRAPER_OPTIONS.map(o => (
+            {SCRAPER_OPTIONS.filter(o => allowJavdatabase || o.value !== 'javdatabase').map(o => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>

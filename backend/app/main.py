@@ -37,7 +37,7 @@ from .database import (
     get_folder_specials, set_folder_specials_visibility,
 )
 from .auth import auth_secret, store_auth_credentials, valid_new_auth_credentials, verify_auth_credentials
-from .scanner import scan_media, scrape_for_library, run_scan_for_root, rescrape_movie, rescrape_movie_manual, rescrape_folder, rescrape_folder_manual, search_for_scrape, apply_folder_scrape_result, fetch_search_backdrops, change_folder_cover, change_folder_backdrop, edit_folder_movies, delete_folder_movies, request_cancel_scan, clear_library_scraped_data
+from .scanner import scan_media, scrape_for_library, run_scan_for_root, rescrape_movie, rescrape_movie_manual, rescrape_folder, rescrape_folder_manual, search_for_scrape, apply_folder_scrape_result, fetch_search_backdrops, change_folder_cover, change_folder_backdrop, edit_folder_movies, delete_folder_movies, request_cancel_scan, clear_library_scraped_data, ensure_javdatabase_allowed
 from .javdb import search_javdb
 from .stream import get_video_stream, get_media_info
 from .subtitles import get_subtitle_tracks, find_external_subtitles, find_external_audio_tracks, extract_subtitle_stream_raw, load_external_subtitle, list_fonts, install_font, remove_font, get_fonts_dir, resolve_font_path, get_default_subtitle_font_path
@@ -1603,7 +1603,9 @@ async def api_verify_library(data: dict):
 # ─── JavDB ───
 
 @app.post("/api/javdb/fetch")
-async def api_javdb_fetch(code: str = Query(...)):
+async def api_javdb_fetch(code: str = Query(...), media_root: str = Query("")):
+    if not await ensure_javdatabase_allowed(media_root):
+        raise HTTPException(status_code=400, detail="Javdatabase is only available for libraries using the javdatabase scraper")
     data = await search_javdb(code)
     return data if data else {"error": "Not found"}
 

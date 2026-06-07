@@ -35,6 +35,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const [coverVersion, setCoverVersion] = useState(() => movie.updated_at || '')
   const prevMovieId = useRef(movie.id)
   const [hovered, setHovered] = useState(false)
+  const [libraryScrapers, setLibraryScrapers] = useState<Record<string, string>>({})
 
   useEffect(() => {
     if (prevMovieId.current !== movie.id) {
@@ -42,6 +43,13 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       setCoverVersion(movie.updated_at || '')
     }
   }, [movie.id, movie.updated_at])
+  useEffect(() => {
+    api.mediaRoots().then(data => {
+      const scrapers: Record<string, string> = {}
+      ;(data.items || []).forEach(item => { scrapers[item.path] = item.scraper || 'auto' })
+      setLibraryScrapers(scrapers)
+    }).catch(() => {})
+  }, [])
   const [localWatched, setLocalWatched] = useState<boolean | null>(null)
 
   const goDetail = () => {
@@ -86,6 +94,8 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const watched = localWatched !== null ? localWatched : (movie.tags || []).includes('watched')
   const progressPercent = Math.max(0, Math.min(100, movie.progress_percent || 0))
   const showProgress = !watched && progressPercent > 0 && progressPercent < 90
+  const movieLibraryScraper = movie.media_root ? libraryScrapers[movie.media_root] : undefined
+  const canUseJavdatabase = movieLibraryScraper === 'javdatabase'
 
   const checkTmdbConfig = useCallback(async (scraperName: string = manualScraper) => {
     try {
@@ -118,7 +128,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
     await checkTmdbConfig()
     setSearching(true)
     try {
-      const data = await api.searchScrape(query, manualScraper)
+      const data = await api.searchScrape(query, manualScraper, movie.media_root || '')
       setSearchResults((data.results || []).map(result => ({
         ...result,
         scraper: result.scraper || manualScraper,
@@ -127,12 +137,12 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
         showToast('没有找到匹配结果')
       }
     } catch (err) {
-      console.error('Search scrape failed')
+      console.error('Search scrape failed', err)
       showToast(`搜索失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
     } finally {
       setSearching(false)
     }
-  }, [manualQuery, manualScraper, checkTmdbConfig])
+  }, [manualQuery, manualScraper, movie.media_root, checkTmdbConfig])
 
   const handleSelectSearchResult = useCallback(async (result: ScrapeSearchResult) => {
     if (applying) return
@@ -340,7 +350,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
                 <option value="tmdb_tv">TMDB 剧集/番剧</option>
                 <option value="tmdb_collection">TMDB 合集</option>
                 <option value="bangumi">Bangumi</option>
-                <option value="javdatabase">Javdatabase</option>
+                {canUseJavdatabase && <option value="javdatabase">Javdatabase</option>}
               </select>
               <button onClick={handleSearch} disabled={searching}
                 className="glass-button-primary px-4 py-2 text-sm">

@@ -210,6 +210,7 @@ class CodeExtractionTest(unittest.TestCase):
 
         explicit_meta = json.loads(rows["hhd800.com@NEOS-003"]["local_metadata"])
         descriptive_meta = json.loads(rows["Sperm Mania-298 Ria Kurumi"]["local_metadata"])
+        self.assertNotEqual(rows["hhd800.com@NEOS-003"]["code"], "NEOS-003")
         self.assertNotIn("jav_code_explicit", explicit_meta)
         self.assertNotIn("jav_code_explicit", descriptive_meta)
 

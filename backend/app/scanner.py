@@ -240,14 +240,14 @@ def scan_media(root: str = None, javdatabase_roots: set[str] | None = None) -> l
                 continue
             media_files = sorted({folder / f for f in filenames if Path(f).suffix.lower() in VIDEO_EXTS})
             if not media_files: continue
-            detected_code = extract_code(folder.name)
+            detected_code = extract_code(folder.name, clean_jav_prefix=use_javdatabase_policy)
             jav_code = extract_jav_code(folder.name) if use_javdatabase_policy else None
             code = jav_code or detected_code
             if not code and filenames:
                 for f in filenames:
                     stem = Path(f).stem
                     jav_code = extract_jav_code(stem) if use_javdatabase_policy else None
-                    code = jav_code or extract_code(stem)
+                    code = jav_code or extract_code(stem, clean_jav_prefix=use_javdatabase_policy)
                     if code:
                         detected_code = code
                         break
@@ -350,6 +350,16 @@ def build_configured_rescrape_chain(preferred: str) -> list[str]:
     if preferred in {"auto", "tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi", "javdatabase"}:
         return [preferred]
     return ["auto"]
+
+
+async def ensure_javdatabase_allowed(media_root: str) -> bool:
+    if not media_root:
+        return False
+    from .database import get_library_settings
+
+    lib_setting = await get_library_settings(media_root)
+    scraper = normalize_scraper_name(lib_setting.get("scraper") if lib_setting else "auto")
+    return scraper == "javdatabase"
 
 
 # ── Thin wrappers for rescrape/manual scrape compat ─────────────────────────
@@ -1208,6 +1218,9 @@ async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: st
 
     preferred = normalize_scraper_name(preferred_scraper)
 
+    if preferred == "javdatabase" and not await ensure_javdatabase_allowed(media_root):
+        return {"ok": False, "error": "Javdatabase is only available for libraries using the javdatabase scraper"}
+
     if source_id and preferred_scraper:
         data = None
         if preferred in {"tmdb_movie", "tmdb_tv"}:
@@ -1257,7 +1270,7 @@ async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: st
             else:
                 scraper_obj = get_scraper(sb)
                 if sb == "javdatabase":
-                    data = await scraper_obj.full_scrape(query, code=code)
+                    data = await scraper_obj.full_scrape(query, code=code, candidate_names=[query, movie.get("title") or "", code], movie=movie)
                 else:
                     data = await scraper_obj.full_scrape(query, code=code, candidate_names=[query, movie.get("title") or "", code], movie=movie)
             if not data or not data.get("title"):
@@ -1466,6 +1479,8 @@ async def search_for_scrape(query: str, scraper: str = "tmdb", media_root: str =
         items = await _search_scraper_candidates("bangumi", query, limit=10)
         return [_candidate_to_search_result(item, "bangumi") for item in items]
     elif scraper == "javdatabase":
+        if not await ensure_javdatabase_allowed(media_root):
+            raise ValueError("Javdatabase is only available for libraries using the javdatabase scraper")
         items = await _search_scraper_candidates("javdatabase", query, media_type="movie", limit=10)
         return [_candidate_to_search_result(item, "javdatabase") for item in items]
     return []
@@ -1528,6 +1543,10 @@ async def rescrape_folder_manual(folder_levels: str, media_root: str, query: str
             search_name = parent_name
 
     preferred = normalize_scraper_name(preferred_scraper)
+
+    if preferred == "javdatabase" and not await ensure_javdatabase_allowed(media_root):
+        return {"ok": False, "error": "Javdatabase is only available for libraries using the javdatabase scraper"}
+
     if preferred_scraper and preferred in {"tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi", "javdatabase", "auto"}:
         chain = [preferred]
     else:
@@ -1599,6 +1618,8 @@ async def apply_folder_scrape_result(folder_levels: str, media_root: str, source
 
     if not media_root:
         return {"ok": False, "error": "media_root required"}
+    if source == "javdatabase" and not await ensure_javdatabase_allowed(media_root):
+        return {"ok": False, "error": "Javdatabase is only available for libraries using the javdatabase scraper"}
 
     data = None
     if source == "tmdb":
