@@ -39,12 +39,44 @@ public sealed partial class ShellPage : Page
 
     public void NavigateToMovie(int movieId)
     {
-        _contentFrame.Navigate(typeof(MovieDetailPage), new MovieNavigationParameter(movieId));
+        NavigateToPlayer(movieId);
     }
 
     public void NavigateToPlayer(int movieId)
     {
         _contentFrame.Navigate(typeof(PlayerPage), new PlayerNavigationParameter(movieId));
+    }
+
+    public void NavigateToFolder(string folderPath, string mediaRoot, string title)
+    {
+        _contentFrame.Navigate(typeof(FolderPage), new FolderNavigationParameter(folderPath, mediaRoot, title));
+    }
+
+    public void GoBackOrLibrary()
+    {
+        RemoveTopPlayerPagesFromBackStack();
+
+        if (_contentFrame.CanGoBack)
+        {
+            _contentFrame.GoBack();
+            return;
+        }
+
+        NavigateToLibrary();
+    }
+
+    private void RemoveTopPlayerPagesFromBackStack()
+    {
+        while (_contentFrame.BackStack.Count > 0)
+        {
+            var lastIndex = _contentFrame.BackStack.Count - 1;
+            if (_contentFrame.BackStack[lastIndex].SourcePageType != typeof(PlayerPage))
+            {
+                return;
+            }
+
+            _contentFrame.BackStack.RemoveAt(lastIndex);
+        }
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs args)

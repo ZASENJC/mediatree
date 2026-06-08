@@ -35,7 +35,7 @@ public sealed partial class PlayerPage : Page
         (_titleText, _playerHost, _playPauseButton, _progressSlider, _timeText, _volumeSlider, _speedBox, _statusText) = BuildContent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
-        _saveTimer.Tick += async (_, _) => await SaveProgressAsync(false);
+        _saveTimer.Tick += OnSaveTimerTick;
     }
 
     private (TextBlock titleText, MpvPlayerControl playerHost, Button playPauseButton, Slider progressSlider, TextBlock timeText, Slider volumeSlider, ComboBox speedBox, TextBlock statusText) BuildContent()
@@ -306,7 +306,19 @@ public sealed partial class PlayerPage : Page
             ShellLogger.Error(ex, "Failed to save native playback before back navigation.");
         }
 
-        ShellPage.Current?.NavigateToMovie(_movieId);
+        ShellPage.Current?.GoBackOrLibrary();
+    }
+
+    private async void OnSaveTimerTick(object? sender, object args)
+    {
+        try
+        {
+            await SaveProgressAsync(false);
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to save native playback progress.");
+        }
     }
 
     private async void OnUnloaded(object sender, RoutedEventArgs args)

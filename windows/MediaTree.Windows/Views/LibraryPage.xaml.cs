@@ -587,14 +587,14 @@ public sealed partial class LibraryPage : Page
         }
     }
 
-    private async void OnFolderItemClick(object sender, ItemClickEventArgs args)
+    private void OnFolderItemClick(object sender, ItemClickEventArgs args)
     {
         if (args.ClickedItem is not FrameworkElement { Tag: FolderCardItem item })
         {
             return;
         }
 
-        await OpenFolderItemAsync(item);
+        OpenFolderItem(item);
     }
 
     private void OnMovieItemClick(object sender, ItemClickEventArgs args)
@@ -605,7 +605,7 @@ public sealed partial class LibraryPage : Page
         }
     }
 
-    private async Task OpenFolderItemAsync(FolderCardItem item)
+    private void OpenFolderItem(FolderCardItem item)
     {
         try
         {
@@ -615,7 +615,7 @@ public sealed partial class LibraryPage : Page
             }
 
             _searchBox.Text = "";
-            await LoadMoviesAsync(item.Path);
+            ShellPage.Current?.NavigateToFolder(item.Path, _activeMediaRoot, item.Title);
         }
         catch (Exception ex)
         {
@@ -814,7 +814,7 @@ public sealed partial class LibraryPage : Page
             Tag = item,
         };
         AutomationProperties.SetAutomationId(card, $"FolderCard_{item.Path.Replace("\\", "_").Replace("/", "_")}");
-        card.Click += async (_, _) => await OpenFolderItemAsync(item);
+        card.Click += (_, _) => OpenFolderItem(item);
         return card;
     }
 

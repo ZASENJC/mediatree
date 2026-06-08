@@ -53,6 +53,24 @@ public sealed class MovieDto
     [JsonPropertyName("content_rating")]
     public string ContentRating { get; set; } = "";
 
+    [JsonPropertyName("folder_levels")]
+    public string FolderLevels { get; set; } = "";
+
+    [JsonPropertyName("tmdb_season")]
+    [JsonConverter(typeof(NullToNullableIntConverter))]
+    public int? TmdbSeason { get; set; }
+
+    [JsonPropertyName("tmdb_episode")]
+    [JsonConverter(typeof(NullToNullableIntConverter))]
+    public int? TmdbEpisode { get; set; }
+
+    [JsonPropertyName("episode_number")]
+    [JsonConverter(typeof(NullToNullableIntConverter))]
+    public int? EpisodeNumber { get; set; }
+
+    [JsonPropertyName("episode_title")]
+    public string EpisodeTitle { get; set; } = "";
+
     [JsonPropertyName("playback_position")]
     [JsonConverter(typeof(NullToZeroDoubleConverter))]
     public double PlaybackPosition { get; set; }
@@ -118,5 +136,59 @@ internal sealed class NullToZeroDoubleConverter : JsonConverter<double>
     public override void Write(Utf8JsonWriter writer, double value, JsonSerializerOptions options)
     {
         writer.WriteNumberValue(value);
+    }
+}
+
+internal sealed class NullToNullableIntConverter : JsonConverter<int?>
+{
+    public override int? Read(ref Utf8JsonReader reader, System.Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return null;
+        }
+
+        if (reader.TokenType == JsonTokenType.Number)
+        {
+            if (reader.TryGetInt32(out var intValue))
+            {
+                return intValue;
+            }
+
+            return (int)reader.GetDouble();
+        }
+
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var value = reader.GetString();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intValue))
+            {
+                return intValue;
+            }
+
+            if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleValue))
+            {
+                return (int)doubleValue;
+            }
+        }
+
+        throw new JsonException($"Cannot convert {reader.TokenType} to nullable int.");
+    }
+
+    public override void Write(Utf8JsonWriter writer, int? value, JsonSerializerOptions options)
+    {
+        if (value.HasValue)
+        {
+            writer.WriteNumberValue(value.Value);
+        }
+        else
+        {
+            writer.WriteNullValue();
+        }
     }
 }
