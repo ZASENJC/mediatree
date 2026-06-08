@@ -638,6 +638,7 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
   const [episodeMenuOpen, setEpisodeMenuOpen] = useState(false)
   const [playerChromeVisible, setPlayerChromeVisible] = useState(true)
   const [unsupportedAudio, setUnsupportedAudio] = useState('')
+  const [transcodePromptDismissed, setTranscodePromptDismissed] = useState(false)
   const [autoTranscodeAudio, setAutoTranscodeAudio] = useState('')
   const [fontUrls, setFontUrls] = useState<string[]>(() => buildAssFontConfig([]).fonts)
   const [availableFonts, setAvailableFonts] = useState<Record<string, string>>(() => buildAssFontConfig([]).availableFonts)
@@ -765,6 +766,7 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
     setSubtitleVisibleState(true)
     setAutoTranscodeAudio('')
     setUnsupportedAudio('')
+    setTranscodePromptDismissed(false)
     setShowResume(false)
     window.clearTimeout(resumeTimerRef.current)
     window.clearTimeout(progressSaveTimerRef.current)
@@ -895,6 +897,10 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
   const hideResumePrompt = useCallback(() => {
     window.clearTimeout(resumeTimerRef.current)
     setShowResume(false)
+  }, [])
+
+  const hideTranscodePrompt = useCallback(() => {
+    setTranscodePromptDismissed(true)
   }, [])
 
   const seekToTime = useCallback((time: number) => {
@@ -1478,6 +1484,7 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
     art.on('video:timeupdate', () => {
       const virtualTime = useTranscodeRef.current ? transcodeStartRef.current + art.currentTime : art.currentTime
       currentTimeRef.current = virtualTime
+      if (art.playing && virtualTime > 0) hideTranscodePrompt()
       const now = Date.now()
       if (virtualTime > 3 && (!lastPosSaveAtRef.current || now - lastPosSaveAtRef.current >= POS_SAVE_INTERVAL)) {
         lastPosSaveAtRef.current = now
@@ -1497,6 +1504,7 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
         onWatched?.()
       }
     })
+    art.on('video:playing', hideTranscodePrompt)
     art.on('video:play', hideResumePrompt)
     art.on('video:pause', () => {
       const pos = currentTimeRef.current || art.currentTime || 0
@@ -1815,7 +1823,7 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
           </div>
         )}
 
-        {unsupportedAudio && !useTranscode && !videoError && (
+        {unsupportedAudio && !useTranscode && !videoError && !transcodePromptDismissed && (
           <div className="absolute left-3 right-3 top-3 z-30 rounded-2xl border border-amber-400/25 bg-black/55 px-3 py-2 shadow-glass backdrop-blur-2xl">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
