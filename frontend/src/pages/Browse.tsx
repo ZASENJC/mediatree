@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { api, Movie, FolderNode } from '../api'
 import { getExcluded, setExcluded } from '../store'
@@ -8,6 +8,8 @@ import { WatchedBadge } from '../components/WatchedBadge'
 import SortDropdown from '../components/SortDropdown'
 
 import { BROWSE_SORT_OPTIONS } from '../constants/sortOptions'
+
+const MOBILE_TREE_EXIT_MS = 300
 
 export default function Browse() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -30,6 +32,8 @@ export default function Browse() {
   const [folders, setFolders] = useState<FolderNode[]>([])
   const [excluded, setExcludedState] = useState<Set<string>>(getExcluded())
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false)
+  const [mobileTreeClosing, setMobileTreeClosing] = useState(false)
+  const mobileTreeCloseTimer = useRef<number | null>(null)
   const pageSize = 48
 
   const sortedFolders = useMemo(() => {
@@ -128,17 +132,42 @@ export default function Browse() {
     setSearchParams(p, { replace: true })
   }
 
+  const openMobileTree = useCallback(() => {
+    if (mobileTreeCloseTimer.current) {
+      window.clearTimeout(mobileTreeCloseTimer.current)
+      mobileTreeCloseTimer.current = null
+    }
+    setMobileTreeClosing(false)
+    setMobileTreeOpen(true)
+  }, [])
+
+  const closeMobileTree = useCallback(() => {
+    if (!mobileTreeOpen || mobileTreeClosing) return
+    setMobileTreeClosing(true)
+    mobileTreeCloseTimer.current = window.setTimeout(() => {
+      setMobileTreeOpen(false)
+      setMobileTreeClosing(false)
+      mobileTreeCloseTimer.current = null
+    }, MOBILE_TREE_EXIT_MS)
+  }, [mobileTreeClosing, mobileTreeOpen])
+
+  useEffect(() => () => {
+    if (mobileTreeCloseTimer.current) {
+      window.clearTimeout(mobileTreeCloseTimer.current)
+    }
+  }, [])
+
   const handleFolderSelect = (path: string) => {
     setFolder(path)
-    setMobileTreeOpen(false)
+    closeMobileTree()
     const p = new URLSearchParams()
     if (path) p.set('folder', path)
     if (sort !== 'created_desc') p.set('sort', sort)
     setSearchParams(p, { replace: true })
   }
 
-  const renderFolderTree = () => (
-    <div className="space-y-0.5 max-h-[65vh] overflow-y-auto pr-1">
+  const renderFolderTree = (scrollClass = 'max-h-[65vh]') => (
+    <div className={`space-y-0.5 overflow-y-auto pr-1 ${scrollClass}`}>
       {sortedFolders.length === 0 ? (
         <p className="text-xs text-gray-600 px-2">无文件夹</p>
       ) : (
@@ -163,7 +192,7 @@ export default function Browse() {
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2">
             <button
-              onClick={() => setMobileTreeOpen(true)}
+              onClick={openMobileTree}
               className="glass-button h-9 w-9 shrink-0 p-0 lg:hidden"
               aria-label="打开文件夹"
             >
@@ -185,22 +214,25 @@ export default function Browse() {
 
       {mobileTreeOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-2xl" onClick={() => setMobileTreeOpen(false)} />
-          <aside className="glass-modal absolute left-3 top-3 h-[calc(100%-1.5rem)] w-[82vw] max-w-xs overflow-hidden p-4">
+          <div
+            className={`absolute inset-0 bg-black/20 ${mobileTreeClosing ? 'mobile-folder-backdrop-out' : 'mobile-folder-backdrop-in'}`}
+            onClick={closeMobileTree}
+          />
+          <aside className={`mobile-folder-drawer absolute left-0 top-0 flex h-full w-[82vw] max-w-xs flex-col overflow-hidden rounded-r-[2rem] border-r border-white/10 bg-[rgba(8,10,18,0.86)] p-4 shadow-[24px_0_80px_rgba(0,0,0,0.42),inset_-1px_0_0_rgba(255,255,255,0.08)] backdrop-blur-2xl ${mobileTreeClosing ? 'mobile-folder-drawer-out' : 'mobile-folder-drawer-in'}`}>
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-apple-blue/70">Folders</p>
                 <h2 className="text-sm font-semibold text-white">文件夹</h2>
               </div>
               <button
-                onClick={() => setMobileTreeOpen(false)}
+                onClick={closeMobileTree}
                 className="glass-button h-8 w-8 p-0 text-gray-300"
                 aria-label="关闭文件夹"
               >
                 ×
               </button>
             </div>
-            {renderFolderTree()}
+            {renderFolderTree('min-h-0 flex-1')}
           </aside>
         </div>
       )}
