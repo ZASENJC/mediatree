@@ -88,6 +88,17 @@ public sealed class LibMpvPlayerService : IMpvPlayerService
         return Task.CompletedTask;
     }
 
+    public Task ShowTextAsync(string text, int durationMilliseconds = 1200, CancellationToken cancellationToken = default)
+    {
+        EnsureInitialized();
+        MpvNative.Command(
+            _handle,
+            "show-text",
+            text,
+            Math.Clamp(durationMilliseconds, 250, 5000).ToString(CultureInfo.InvariantCulture));
+        return Task.CompletedTask;
+    }
+
     public Task StopAsync(CancellationToken cancellationToken = default)
     {
         if (_handle != IntPtr.Zero)

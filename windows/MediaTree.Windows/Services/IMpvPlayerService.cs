@@ -96,6 +96,7 @@ public interface IMpvPlayerService : IDisposable
     Task SetSpeedAsync(double speed, CancellationToken cancellationToken = default);
     Task SelectSubtitleAsync(int subtitleId, CancellationToken cancellationToken = default);
     Task SelectAudioAsync(int audioId, CancellationToken cancellationToken = default);
+    Task ShowTextAsync(string text, int durationMilliseconds = 1200, CancellationToken cancellationToken = default);
     Task StopAsync(CancellationToken cancellationToken = default);
 
     PlayerStateSnapshot CurrentState { get; }

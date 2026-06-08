@@ -38,6 +38,12 @@ internal static class MpvNative
         SetOption(handle, "terminal", "no");
         SetOption(handle, "idle", "yes");
         SetOption(handle, "force-window", "no");
+        TrySetOption(handle, "osc", "yes");
+        TrySetOption(handle, "input-default-bindings", "yes");
+        TrySetOption(handle, "osd-level", "1");
+        TrySetOption(handle, "osd-duration", "1200");
+        TrySetOption(handle, "cursor-autohide", "1000");
+        TrySetOption(handle, "script-opts", "osc-layout=bottombar,osc-seekbarstyle=bar,osc-visibility=auto");
         SetOption(handle, "vo", "gpu-next");
         SetOption(handle, "gpu-api", "d3d11");
         SetOption(handle, "gpu-context", "d3d11");
@@ -139,6 +145,15 @@ internal static class MpvNative
     private static void SetOption(IntPtr handle, string name, string value)
     {
         Check(mpv_set_option_string(handle, name, value), $"mpv_set_option_string {name}");
+    }
+
+    private static void TrySetOption(IntPtr handle, string name, string value)
+    {
+        var result = mpv_set_option_string(handle, name, value);
+        if (result < 0)
+        {
+            ShellLogger.Error($"Optional mpv option {name} failed with mpv error {result}.");
+        }
     }
 
     private static void Check(int code, string operation)

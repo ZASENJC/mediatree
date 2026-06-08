@@ -30,12 +30,10 @@ public sealed partial class PlayerPage : Page
         Border TopChrome,
         Border BottomChrome,
         Button PlayPauseButton,
-        Button CenterPlayButton,
         Button SubtitleButton,
         Button AudioButton,
         Button EpisodeButton,
         Button VolumeButton,
-        Button TheaterButton,
         Button FullScreenButton,
         Slider ProgressSlider,
         Slider VolumeSlider,
@@ -44,8 +42,6 @@ public sealed partial class PlayerPage : Page
         TextBlock TrackSummaryText,
         TextBlock TimeText,
         TextBlock StatusText,
-        Border OsdBadge,
-        TextBlock OsdText,
         Border ResumePrompt,
         TextBlock ResumeText,
         Border EpisodePanel,
@@ -53,18 +49,14 @@ public sealed partial class PlayerPage : Page
         StackPanel EpisodeItems);
 
     private readonly DispatcherTimer _chromeTimer = new() { Interval = TimeSpan.FromSeconds(3) };
-    private readonly DispatcherTimer _osdTimer = new() { Interval = TimeSpan.FromSeconds(1.2) };
     private readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     private readonly Button _audioButton;
     private readonly Border _bottomChrome;
-    private readonly Button _centerPlayButton;
     private readonly Button _episodeButton;
     private readonly TextBlock _episodeCountText;
     private readonly StackPanel _episodeItems;
     private readonly Border _episodePanel;
     private readonly Button _fullScreenButton;
-    private readonly Border _osdBadge;
-    private readonly TextBlock _osdText;
     private readonly Button _playPauseButton;
     private readonly MpvPlayerControl _playerHost;
     private readonly Slider _progressSlider;
@@ -74,7 +66,6 @@ public sealed partial class PlayerPage : Page
     private readonly ComboBox _speedBox;
     private readonly TextBlock _statusText;
     private readonly Button _subtitleButton;
-    private readonly Button _theaterButton;
     private readonly TextBlock _timeText;
     private readonly TextBlock _titleText;
     private readonly Border _topChrome;
@@ -94,7 +85,6 @@ public sealed partial class PlayerPage : Page
     private bool _ignoreVolume;
     private bool _muted;
     private bool _playbackStarted;
-    private bool _theaterMode;
     private double _duration;
     private double _lastKnownVolume = 80;
     private double _resumePosition;
@@ -107,12 +97,10 @@ public sealed partial class PlayerPage : Page
         _topChrome = ui.TopChrome;
         _bottomChrome = ui.BottomChrome;
         _playPauseButton = ui.PlayPauseButton;
-        _centerPlayButton = ui.CenterPlayButton;
         _subtitleButton = ui.SubtitleButton;
         _audioButton = ui.AudioButton;
         _episodeButton = ui.EpisodeButton;
         _volumeButton = ui.VolumeButton;
-        _theaterButton = ui.TheaterButton;
         _fullScreenButton = ui.FullScreenButton;
         _progressSlider = ui.ProgressSlider;
         _volumeSlider = ui.VolumeSlider;
@@ -121,8 +109,6 @@ public sealed partial class PlayerPage : Page
         _trackSummaryText = ui.TrackSummaryText;
         _timeText = ui.TimeText;
         _statusText = ui.StatusText;
-        _osdBadge = ui.OsdBadge;
-        _osdText = ui.OsdText;
         _resumePrompt = ui.ResumePrompt;
         _resumeText = ui.ResumeText;
         _episodePanel = ui.EpisodePanel;
@@ -132,7 +118,6 @@ public sealed partial class PlayerPage : Page
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         _chromeTimer.Tick += OnChromeTimerTick;
-        _osdTimer.Tick += OnOsdTimerTick;
         _saveTimer.Tick += OnSaveTimerTick;
     }
 
@@ -168,22 +153,12 @@ public sealed partial class PlayerPage : Page
         AutomationProperties.SetAutomationId(statusText, "PlayerStatusText");
         root.Children.Add(statusText);
 
-        var centerPlayButton = OverlayButton("暂停", "PlayerCenterPlay");
-        centerPlayButton.MinWidth = 112;
-        centerPlayButton.MinHeight = 52;
-        centerPlayButton.HorizontalAlignment = HorizontalAlignment.Center;
-        centerPlayButton.VerticalAlignment = VerticalAlignment.Center;
-        centerPlayButton.Click += OnPlayPauseClicked;
-        root.Children.Add(centerPlayButton);
-
         var topChrome = new Border
         {
             Margin = new Thickness(16),
-            Padding = new Thickness(12),
-            CornerRadius = new CornerRadius(8),
-            Background = Brush(0x0B, 0x0F, 0x17, 0xDD),
-            BorderBrush = Brush(0xFF, 0xFF, 0xFF, 0x22),
-            BorderThickness = new Thickness(1),
+            Padding = new Thickness(0),
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            BorderThickness = new Thickness(0),
             VerticalAlignment = VerticalAlignment.Top,
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
@@ -226,11 +201,9 @@ public sealed partial class PlayerPage : Page
         var bottomChrome = new Border
         {
             Margin = new Thickness(16),
-            Padding = new Thickness(12),
-            CornerRadius = new CornerRadius(8),
-            Background = Brush(0x05, 0x08, 0x0D, 0xEA),
-            BorderBrush = Brush(0xFF, 0xFF, 0xFF, 0x20),
-            BorderThickness = new Thickness(1),
+            Padding = new Thickness(0),
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            BorderThickness = new Thickness(0),
             VerticalAlignment = VerticalAlignment.Bottom,
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
@@ -331,10 +304,6 @@ public sealed partial class PlayerPage : Page
         episodeButton.Click += OnEpisodeButtonClicked;
         toolbar.Children.Add(episodeButton);
 
-        var theaterButton = OverlayButton("影院", "PlayerTheater");
-        theaterButton.Click += (_, _) => ToggleTheaterMode();
-        toolbar.Children.Add(theaterButton);
-
         var fullScreenButton = OverlayButton("全屏", "PlayerFullScreen");
         fullScreenButton.Click += (_, _) => ToggleFullScreenMode();
         toolbar.Children.Add(fullScreenButton);
@@ -432,28 +401,6 @@ public sealed partial class PlayerPage : Page
         resumePrompt.Child = resumeActions;
         root.Children.Add(resumePrompt);
 
-        var osdText = new TextBlock
-        {
-            Text = "",
-            Foreground = Brush(0xFF, 0xFF, 0xFF),
-            FontSize = 15,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-        };
-        var osdBadge = new Border
-        {
-            Padding = new Thickness(16, 10, 16, 10),
-            CornerRadius = new CornerRadius(8),
-            Background = Brush(0x08, 0x0B, 0x12, 0xE8),
-            BorderBrush = Brush(0xFF, 0xFF, 0xFF, 0x24),
-            BorderThickness = new Thickness(1),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            Visibility = Visibility.Collapsed,
-            Child = osdText,
-        };
-        AutomationProperties.SetAutomationId(osdBadge, "PlayerOsd");
-        root.Children.Add(osdBadge);
-
         Content = root;
         return new PlayerUi(
             root,
@@ -461,12 +408,10 @@ public sealed partial class PlayerPage : Page
             topChrome,
             bottomChrome,
             playPauseButton,
-            centerPlayButton,
             subtitleButton,
             audioButton,
             episodeButton,
             volumeButton,
-            theaterButton,
             fullScreenButton,
             progressSlider,
             volumeSlider,
@@ -475,8 +420,6 @@ public sealed partial class PlayerPage : Page
             trackSummaryText,
             timeText,
             statusText,
-            osdBadge,
-            osdText,
             resumePrompt,
             resumeText,
             episodePanel,
@@ -709,7 +652,6 @@ public sealed partial class PlayerPage : Page
     {
         var playText = state.Paused ? "播放" : "暂停";
         _playPauseButton.Content = playText;
-        _centerPlayButton.Content = playText;
         _volumeButton.Content = _muted ? "取消静音" : "静音";
         _timeText.Text = $"{FormatTime(state.Position)} / {FormatTime(state.Duration)}";
     }
@@ -1028,20 +970,13 @@ public sealed partial class PlayerPage : Page
         _resumePosition = 0;
     }
 
-    private void ToggleTheaterMode()
-    {
-        _theaterMode = !_theaterMode;
-        UpdateImmersiveMode();
-        ShowOsd(_theaterMode ? "影院模式" : "退出影院模式");
-    }
-
     private void ToggleFullScreenMode()
     {
         try
         {
             _fullScreenMode = !_fullScreenMode;
             AppServices.MainWindow?.SetFullScreen(_fullScreenMode);
-            UpdateImmersiveMode();
+            UpdateFullScreenChrome();
             ShowOsd(_fullScreenMode ? "全屏" : "退出全屏");
         }
         catch (Exception ex)
@@ -1052,10 +987,9 @@ public sealed partial class PlayerPage : Page
         }
     }
 
-    private void UpdateImmersiveMode()
+    private void UpdateFullScreenChrome()
     {
-        ShellPage.Current?.SetNavigationChromeVisible(!(_theaterMode || _fullScreenMode));
-        _theaterButton.Content = _theaterMode ? "退出影院" : "影院";
+        ShellPage.Current?.SetNavigationChromeVisible(!_fullScreenMode);
         _fullScreenButton.Content = _fullScreenMode ? "退出全屏" : "全屏";
     }
 
@@ -1090,7 +1024,6 @@ public sealed partial class PlayerPage : Page
         try
         {
             _chromeTimer.Stop();
-            _osdTimer.Stop();
             _saveTimer.Stop();
             RestoreWindowChrome();
             await SaveProgressAsync(true);
@@ -1123,7 +1056,6 @@ public sealed partial class PlayerPage : Page
         }
 
         _fullScreenMode = false;
-        _theaterMode = false;
         ShellPage.Current?.SetNavigationChromeVisible(true);
     }
 
@@ -1163,10 +1095,8 @@ public sealed partial class PlayerPage : Page
         var opacity = visible ? 1 : 0;
         _topChrome.Opacity = opacity;
         _bottomChrome.Opacity = opacity;
-        _centerPlayButton.Opacity = opacity;
         _topChrome.IsHitTestVisible = visible;
         _bottomChrome.IsHitTestVisible = visible;
-        _centerPlayButton.IsHitTestVisible = visible;
     }
 
     private void ScheduleChromeHide()
@@ -1186,17 +1116,16 @@ public sealed partial class PlayerPage : Page
 
     private void ShowOsd(string text)
     {
-        _osdText.Text = text;
-        _osdBadge.Visibility = Visibility.Visible;
-        _osdTimer.Stop();
-        _osdTimer.Start();
-        ShowChrome(true);
-    }
+        try
+        {
+            _ = _player?.ShowTextAsync(text);
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to show native mpv OSD text.");
+        }
 
-    private void OnOsdTimerTick(object? sender, object args)
-    {
-        _osdTimer.Stop();
-        _osdBadge.Visibility = Visibility.Collapsed;
+        ShowChrome(true);
     }
 
     private async void OnKeyDown(object sender, KeyRoutedEventArgs args)
@@ -1232,10 +1161,6 @@ public sealed partial class PlayerPage : Page
                 args.Handled = true;
                 await ToggleMuteAsync();
                 break;
-            case VirtualKey.T:
-                args.Handled = true;
-                ToggleTheaterMode();
-                break;
             case VirtualKey.Escape:
                 args.Handled = true;
                 HandleEscape();
@@ -1258,10 +1183,6 @@ public sealed partial class PlayerPage : Page
             return;
         }
 
-        if (_theaterMode)
-        {
-            ToggleTheaterMode();
-        }
     }
 
     private void SelectSpeedBox(double speed)
@@ -1316,6 +1237,10 @@ public sealed partial class PlayerPage : Page
             Content = text,
             MinHeight = 34,
         }, FluentButtonStyle.Overlay);
+        button.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        button.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        button.Foreground = Brush(0xFF, 0xFF, 0xFF);
+        button.Padding = new Thickness(10, 6, 10, 6);
         AutomationProperties.SetAutomationId(button, automationId);
         return button;
     }
@@ -1430,7 +1355,6 @@ public sealed partial class PlayerPage : Page
         _statusText.Visibility = Visibility.Visible;
         ShowChrome(true);
         _playPauseButton.IsEnabled = false;
-        _centerPlayButton.IsEnabled = false;
         _progressSlider.IsEnabled = false;
         _volumeSlider.IsEnabled = false;
         _speedBox.IsEnabled = false;
