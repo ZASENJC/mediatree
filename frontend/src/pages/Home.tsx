@@ -386,7 +386,7 @@ export default function Home() {
               继续观看
             </button>
           </div>
-          <SortDropdown options={sortOptions} current={sort} onChange={handleSort} />
+          <SortDropdown options={sortOptions} current={sort} onChange={handleSort} variant="menu" />
         </div>
       </div>
 

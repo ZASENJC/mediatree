@@ -49,7 +49,7 @@ export default function Favorites() {
           <p className="mt-1 text-sm text-gray-500">共 {total} 部</p>
         </div>
         <div className="flex items-center gap-1">
-          <SortDropdown options={FAVORITES_SORT_OPTIONS} current={sort} onChange={handleSort} />
+          <SortDropdown options={FAVORITES_SORT_OPTIONS} current={sort} onChange={handleSort} variant="menu" />
         </div>
       </div>
 

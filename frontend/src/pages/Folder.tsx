@@ -427,7 +427,7 @@ export default function FolderPage() {
         </div>
         )}
         <div className="shrink-0">
-          <SortDropdown options={LIBRARY_SORT_OPTIONS} current={sort} onChange={handleSort} />
+          <SortDropdown options={LIBRARY_SORT_OPTIONS} current={sort} onChange={handleSort} variant="menu" />
         </div>
       </div>
 

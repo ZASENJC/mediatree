@@ -173,7 +173,7 @@ export default function Browse() {
             </div>
           </div>
         </div>
-        <SortDropdown options={BROWSE_SORT_OPTIONS} current={sort} onChange={handleSortChange} />
+        <SortDropdown options={BROWSE_SORT_OPTIONS} current={sort} onChange={handleSortChange} variant="menu" />
       </div>
 
       {mobileTreeOpen && (
