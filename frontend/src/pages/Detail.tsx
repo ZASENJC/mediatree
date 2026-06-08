@@ -352,7 +352,7 @@ export default function Detail() {
               <p className="text-[10px] uppercase tracking-[0.24em] text-apple-pink/70">Specials</p>
               <h2 className="mt-0.5 text-lg font-semibold text-white">花絮</h2>
               <p className="mt-1 text-xs text-gray-500">
-                {showSpecials ? `共 ${specialCount} 个花絮，单独播放，不进入选集列表` : `已隐藏 ${specialCount} 个花絮，正片播放列表保持干净`}
+                {showSpecials ? `共 ${specialCount} 个花絮，单独播放，不进入选集列表` : `已隐藏 ${specialCount} 个花絮`}
               </p>
             </div>
             <button
