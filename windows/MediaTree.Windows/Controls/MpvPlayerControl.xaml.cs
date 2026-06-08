@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using WinRT;
 
 namespace MediaTree.Windows.Controls;
 
@@ -14,19 +15,18 @@ public sealed partial class MpvPlayerControl : UserControl
     private readonly TextBlock _statusText;
     private IMpvPlayerService? _player;
     private IntPtr _currentSwapChain;
+    private IntPtr _pendingSwapChain;
+    private bool _isLoaded;
 
     public MpvPlayerControl()
     {
         (_playerSwapChainPanel, _statusText) = BuildContent();
+        Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         SizeChanged += (_, _) =>
         {
-            if (_player is LibMpvPlayerService libMpv)
-            {
-                libMpv.UpdateCompositionSize(ActualWidth, ActualHeight);
-            }
-
-            BindSwapChain(_currentSwapChain);
+            UpdateCompositionSize();
+            BindPendingSwapChain();
         };
     }
 
@@ -65,28 +65,85 @@ public sealed partial class MpvPlayerControl : UserControl
 
         _player = player;
         _player.DisplaySwapchainChanged += OnDisplaySwapchainChanged;
+        UpdateCompositionSize();
+        _ = DispatcherQueue.TryEnqueue(UpdateCompositionSize);
     }
 
     private void OnDisplaySwapchainChanged(object? sender, IntPtr swapChain)
     {
-        DispatcherQueue.TryEnqueue(() => BindSwapChain(swapChain));
+        if (!DispatcherQueue.TryEnqueue(() => QueueSwapChainBind(swapChain)))
+        {
+            ShellLogger.Error("Failed to queue libmpv swapchain binding.");
+        }
     }
 
-    private void BindSwapChain(IntPtr swapChain)
+    private void QueueSwapChainBind(IntPtr swapChain)
     {
-        _currentSwapChain = swapChain;
         if (swapChain == IntPtr.Zero)
         {
             return;
         }
 
-        var native = (ISwapChainPanelNative)(object)_playerSwapChainPanel;
-        native.SetSwapChain(swapChain);
-        _statusText.Visibility = Visibility.Collapsed;
+        _pendingSwapChain = swapChain;
+        BindPendingSwapChain();
+    }
+
+    private void BindPendingSwapChain()
+    {
+        if (!_isLoaded || _pendingSwapChain == IntPtr.Zero || _pendingSwapChain == _currentSwapChain)
+        {
+            return;
+        }
+
+        UpdateCompositionSize();
+        if (!HasCompositionSize())
+        {
+            return;
+        }
+
+        try
+        {
+            var native = _playerSwapChainPanel.As<ISwapChainPanelNative>();
+            native.SetSwapChain(_pendingSwapChain);
+            _currentSwapChain = _pendingSwapChain;
+            _statusText.Visibility = Visibility.Collapsed;
+            ShellLogger.Info($"Bound libmpv display swapchain 0x{_currentSwapChain.ToInt64():X}.");
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to bind libmpv display swapchain.");
+        }
+    }
+
+    private void UpdateCompositionSize()
+    {
+        if (_player is not LibMpvPlayerService libMpv)
+        {
+            return;
+        }
+
+        var width = _playerSwapChainPanel.ActualWidth > 0 ? _playerSwapChainPanel.ActualWidth : ActualWidth;
+        var height = _playerSwapChainPanel.ActualHeight > 0 ? _playerSwapChainPanel.ActualHeight : ActualHeight;
+        libMpv.UpdateCompositionSize(width, height);
+    }
+
+    private bool HasCompositionSize()
+    {
+        var width = _playerSwapChainPanel.ActualWidth > 0 ? _playerSwapChainPanel.ActualWidth : ActualWidth;
+        var height = _playerSwapChainPanel.ActualHeight > 0 ? _playerSwapChainPanel.ActualHeight : ActualHeight;
+        return width > 0 && height > 0;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs args)
+    {
+        _isLoaded = true;
+        UpdateCompositionSize();
+        BindPendingSwapChain();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
+        _isLoaded = false;
         if (_player != null)
         {
             _player.DisplaySwapchainChanged -= OnDisplaySwapchainChanged;
@@ -94,8 +151,10 @@ public sealed partial class MpvPlayerControl : UserControl
 
         try
         {
-            var native = (ISwapChainPanelNative)(object)_playerSwapChainPanel;
+            var native = _playerSwapChainPanel.As<ISwapChainPanelNative>();
             native.SetSwapChain(IntPtr.Zero);
+            _currentSwapChain = IntPtr.Zero;
+            _pendingSwapChain = IntPtr.Zero;
         }
         catch
         {

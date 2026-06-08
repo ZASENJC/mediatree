@@ -274,9 +274,6 @@ function Install-BundledMpv {
   }
   New-Item -ItemType Directory -Force -Path $Destination | Out-Null
   Copy-Item (Join-Path $mpvExe.Directory.FullName "*") $Destination -Recurse -Force
-  if (-not (Test-Path (Join-Path $Destination "mpv.exe"))) {
-    throw "Bundled mpv.exe was not copied to $Destination"
-  }
 
   if (-not $mpvDll) {
     $libArchive = $LibMpvArchivePath
@@ -313,6 +310,7 @@ function Install-BundledMpv {
   if (-not (Test-Path (Join-Path $Destination "mpv-2.dll"))) {
     throw "Bundled mpv-2.dll was not copied to $Destination"
   }
+  Remove-Item (Join-Path $Destination "mpv.exe") -Force -ErrorAction SilentlyContinue
 }
 
 if (-not $Version) {
@@ -420,8 +418,8 @@ try {
   if (-not (Test-Path (Join-Path $ShellOutput "server/mediatree-server.exe"))) {
     throw "WinUI output is missing bundled backend server: $ShellOutput"
   }
-  if (-not (Test-Path (Join-Path $ShellOutput "mpv/mpv.exe"))) {
-    throw "WinUI output is missing bundled mpv.exe: $ShellOutput"
+  if (Test-Path (Join-Path $ShellOutput "mpv/mpv.exe")) {
+    throw "WinUI output must not include bundled mpv.exe because playback is embedded through libmpv: $ShellOutput"
   }
   if (-not (Test-Path (Join-Path $ShellOutput "mpv/mpv-2.dll"))) {
     throw "WinUI output is missing bundled mpv-2.dll: $ShellOutput"

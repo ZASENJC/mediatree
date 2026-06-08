@@ -19,11 +19,6 @@ internal static class MpvNative
 
     public static IntPtr Create()
     {
-        if (string.Equals(Environment.GetEnvironmentVariable("MEDIATREE_WINDOWS_MPV_MODE"), "process", StringComparison.OrdinalIgnoreCase))
-        {
-            ShellLogger.Info("MEDIATREE_WINDOWS_MPV_MODE=process was set; libmpv remains the default player implementation.");
-        }
-
         if (!File.Exists(MpvDllPath))
         {
             throw new FileNotFoundException("Bundled mpv-2.dll was not found. Rebuild the Windows package with bundled mpv.", MpvDllPath);
@@ -42,7 +37,8 @@ internal static class MpvNative
     {
         SetOption(handle, "terminal", "no");
         SetOption(handle, "idle", "yes");
-        SetOption(handle, "force-window", "yes");
+        SetOption(handle, "force-window", "no");
+        SetOption(handle, "vo", "gpu-next");
         SetOption(handle, "gpu-api", "d3d11");
         SetOption(handle, "gpu-context", "d3d11");
         SetOption(handle, "d3d11-output-mode", "composition");

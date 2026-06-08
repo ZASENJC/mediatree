@@ -204,7 +204,14 @@ public sealed partial class PlayerPage : Page
         await _player.SetVolumeAsync(_volumeSlider.Value);
         if (progress.Position > 5)
         {
-            await _player.SeekAsync(progress.Position);
+            try
+            {
+                await _player.SeekAsync(progress.Position);
+            }
+            catch (Exception ex)
+            {
+                ShellLogger.Error(ex, "Failed to resume native playback position.");
+            }
         }
 
         _saveTimer.Start();

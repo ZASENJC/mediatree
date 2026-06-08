@@ -34,7 +34,7 @@
     <None Include="server\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="mpv\**\*">
+    <None Include="mpv\**\*" Exclude="mpv\mpv.exe">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <Content Include="Assets\**\*">

@@ -11,6 +11,8 @@ public sealed class LibMpvPlayerService : IMpvPlayerService
     private IntPtr _handle;
     private Timer? _pollTimer;
     private bool _disposed;
+    private double _compositionWidth;
+    private double _compositionHeight;
     private PlayerStateSnapshot _currentState = new(0, 0, true);
 
     public event EventHandler<IntPtr>? DisplaySwapchainChanged;
@@ -30,6 +32,7 @@ public sealed class LibMpvPlayerService : IMpvPlayerService
     public Task LoadAsync(string source, CancellationToken cancellationToken = default)
     {
         EnsureInitialized();
+        ApplyCompositionSize();
         MpvNative.Command(_handle, "loadfile", source);
         UpdateSwapchain();
         return Task.CompletedTask;
@@ -92,10 +95,18 @@ public sealed class LibMpvPlayerService : IMpvPlayerService
 
     public void UpdateCompositionSize(double width, double height)
     {
-        if (_handle != IntPtr.Zero)
+        if (width <= 0 || height <= 0)
         {
-            MpvNative.SetD3D11CompositionSize(_handle, width, height);
+            return;
         }
+
+        lock (_sync)
+        {
+            _compositionWidth = width;
+            _compositionHeight = height;
+        }
+
+        ApplyCompositionSize();
     }
 
     private void EnsureInitialized()
@@ -112,7 +123,26 @@ public sealed class LibMpvPlayerService : IMpvPlayerService
 
         _handle = MpvNative.Create();
         MpvNative.InitializeForD3D11Composition(_handle);
+        ApplyCompositionSize();
         _pollTimer = new Timer(_ => PollState(), null, TimeSpan.Zero, TimeSpan.FromMilliseconds(750));
+    }
+
+    private void ApplyCompositionSize()
+    {
+        if (_handle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        double width;
+        double height;
+        lock (_sync)
+        {
+            width = _compositionWidth;
+            height = _compositionHeight;
+        }
+
+        MpvNative.SetD3D11CompositionSize(_handle, width, height);
     }
 
     private void PollState()
