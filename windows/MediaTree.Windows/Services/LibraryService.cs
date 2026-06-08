@@ -54,6 +54,12 @@ public sealed class LibraryService
     public Task<MediaRootsResponseDto> GetMediaRootsAsync(CancellationToken cancellationToken = default)
         => _api.GetMediaRootsAsync(cancellationToken);
 
+    public Task<List<LibrarySettingDto>> GetLibrarySettingsAsync(CancellationToken cancellationToken = default)
+        => _api.GetLibrarySettingsAsync(cancellationToken);
+
+    public Task SaveLibrarySettingAsync(LibrarySettingDto setting, CancellationToken cancellationToken = default)
+        => _api.SaveLibrarySettingAsync(setting, cancellationToken);
+
     public Task<FoldersResponseDto> GetFoldersAsync(string mediaRoot, CancellationToken cancellationToken = default)
         => _api.GetFoldersAsync(mediaRoot, cancellationToken);
 

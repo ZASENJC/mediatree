@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
+using MediaTree.Windows.Models;
 using MediaTree.Windows.Services;
 using MediaTree.Windows.Styles;
 using Microsoft.UI.Xaml;
@@ -11,16 +14,32 @@ namespace MediaTree.Windows.Views;
 
 public sealed partial class SettingsPage : Page
 {
+    private sealed record ScraperOption(string Value, string Label, string Description, bool HasKey);
+
+    private sealed record LibrarySettingsRowContext(string MediaRoot, string TmdbKey, ComboBox ScraperBox);
+
+    private static readonly IReadOnlyList<ScraperOption> ScraperOptions =
+    [
+        new("tmdb_movie", "TMDB 电影", "适合电影库；tmdbid 调用 /movie 精确刮削", true),
+        new("tmdb_tv", "TMDB 剧集/番剧", "适合剧集、番剧、电视剧库；tmdbid 调用 /tv 精确刮削", true),
+        new("bangumi", "Bangumi", "适合番剧、动画、二次元条目，数据可能不全", false),
+        new("javdatabase", "Javdatabase", "适合 JAV 番号识别和刮削", false),
+        new("auto", "自动", "自动判断刮削源，但可能效果不好", true),
+        new("none", "不刮削", "只扫描本地文件，不联网刮削元数据", false),
+    ];
+
+    private readonly StackPanel _librarySettingsList;
+    private readonly TextBlock _libraryStatusText;
     private readonly TextBlock _updateStatusText;
     private readonly TextBlock _versionText;
 
     public SettingsPage()
     {
-        (_versionText, _updateStatusText) = BuildContent();
-        Loaded += async (_, _) => await LoadVersionAsync();
+        (_versionText, _updateStatusText, _librarySettingsList, _libraryStatusText) = BuildContent();
+        Loaded += OnLoaded;
     }
 
-    private (TextBlock versionText, TextBlock updateStatusText) BuildContent()
+    private (TextBlock versionText, TextBlock updateStatusText, StackPanel librarySettingsList, TextBlock libraryStatusText) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "SettingsPage");
 
@@ -100,9 +119,45 @@ public sealed partial class SettingsPage : Page
         stack.Children.Add(actions);
         card.Child = stack;
         root.Children.Add(card);
+
+        var libraryStack = new StackPanel { Spacing = 12 };
+        libraryStack.Children.Add(new TextBlock
+        {
+            Text = "刮削器设置",
+            FontSize = 20,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = FluentTheme.TextPrimary,
+        });
+        libraryStack.Children.Add(new TextBlock
+        {
+            Text = "为每个媒体库选择资料来源。保存后重新整理媒体库时会按这里的设置刮削。",
+            Foreground = FluentTheme.TextSecondary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        });
+
+        var librarySettingsList = new StackPanel { Spacing = 10 };
+        AutomationProperties.SetAutomationId(librarySettingsList, "SettingsLibrarySettingsList");
+        libraryStack.Children.Add(librarySettingsList);
+
+        var libraryStatusText = new TextBlock
+        {
+            Text = "正在加载媒体库设置...",
+            Foreground = FluentTheme.TextSecondary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        };
+        AutomationProperties.SetAutomationId(libraryStatusText, "SettingsLibraryStatusText");
+        libraryStack.Children.Add(libraryStatusText);
+
+        root.Children.Add(FluentTheme.Card(libraryStack, new Thickness(22)));
         scrollViewer.Content = root;
         Content = scrollViewer;
-        return (versionText, updateStatusText);
+        return (versionText, updateStatusText, librarySettingsList, libraryStatusText);
+    }
+
+    private async void OnLoaded(object sender, RoutedEventArgs args)
+    {
+        await LoadVersionAsync();
+        await LoadLibrarySettingsAsync();
     }
 
     private async System.Threading.Tasks.Task LoadVersionAsync()
@@ -117,6 +172,205 @@ public sealed partial class SettingsPage : Page
         {
             _versionText.Text = $"暂时无法读取版本信息：{ex.Message}";
         }
+    }
+
+    private async System.Threading.Tasks.Task LoadLibrarySettingsAsync()
+    {
+        try
+        {
+            _libraryStatusText.Foreground = FluentTheme.TextSecondary;
+            _libraryStatusText.Text = "正在加载媒体库设置...";
+            _librarySettingsList.Children.Clear();
+
+            var roots = await AppServices.Library.GetMediaRootsAsync();
+            var settings = await AppServices.Library.GetLibrarySettingsAsync();
+            var settingMap = settings.ToDictionary(s => s.MediaRoot, StringComparer.OrdinalIgnoreCase);
+            var orderedRoots = roots.Items
+                .OrderBy(root => string.IsNullOrWhiteSpace(root.Label) ? root.Path : root.Label, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            if (orderedRoots.Count == 0)
+            {
+                _libraryStatusText.Text = "还没有媒体库。先添加影片文件夹后，再设置刮削器。";
+                return;
+            }
+
+            for (var i = 0; i < orderedRoots.Count; i++)
+            {
+                var root = orderedRoots[i];
+                settingMap.TryGetValue(root.Path, out var setting);
+                _librarySettingsList.Children.Add(CreateLibrarySettingsRow(root, setting, i));
+            }
+
+            _libraryStatusText.Text = "选择刮削器后点击保存。TMDB 相关选项会使用全局 TMDB 配置。";
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to load native library scraper settings.");
+            _librarySettingsList.Children.Clear();
+            _libraryStatusText.Foreground = FluentTheme.Error;
+            _libraryStatusText.Text = $"加载媒体库设置失败：{ex.Message}";
+        }
+    }
+
+    private UIElement CreateLibrarySettingsRow(MediaRootDto root, LibrarySettingDto? setting, int index)
+    {
+        var row = new Border
+        {
+            Padding = new Thickness(14),
+            CornerRadius = new CornerRadius(10),
+            Background = FluentTheme.LayerAlt,
+            BorderBrush = FluentTheme.Border,
+            BorderThickness = new Thickness(1),
+        };
+
+        var grid = new Grid { ColumnSpacing = 12 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var info = new StackPanel { Spacing = 4, MinWidth = 240 };
+        info.Children.Add(new TextBlock
+        {
+            Text = string.IsNullOrWhiteSpace(root.Label) ? root.Path : root.Label,
+            FontSize = 16,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = FluentTheme.TextPrimary,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        info.Children.Add(new TextBlock
+        {
+            Text = root.Path,
+            Foreground = FluentTheme.TextTertiary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        });
+        info.Children.Add(new TextBlock
+        {
+            Text = $"{root.MovieCount} 部",
+            Foreground = FluentTheme.TextSecondary,
+        });
+        grid.Children.Add(info);
+
+        var selectedScraper = NormalizeScraper(setting?.Scraper ?? root.Scraper);
+        var scraperStack = new StackPanel
+        {
+            Spacing = 6,
+            Width = 280,
+        };
+        var scraperBox = new ComboBox
+        {
+            Header = "资料来源",
+            MinWidth = 240,
+        };
+        AutomationProperties.SetAutomationId(scraperBox, $"SettingsLibraryScraper_{index}");
+        foreach (var option in ScraperOptions)
+        {
+            scraperBox.Items.Add(new ComboBoxItem
+            {
+                Content = option.Label,
+                Tag = option.Value,
+            });
+        }
+        SelectScraper(scraperBox, selectedScraper);
+
+        var descriptionText = new TextBlock
+        {
+            Text = GetScraperDescription(GetSelectedScraper(scraperBox)),
+            Foreground = FluentTheme.TextSecondary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        };
+        scraperBox.SelectionChanged += (_, _) =>
+        {
+            descriptionText.Text = GetScraperDescription(GetSelectedScraper(scraperBox));
+        };
+        scraperStack.Children.Add(scraperBox);
+        scraperStack.Children.Add(descriptionText);
+        Grid.SetColumn(scraperStack, 1);
+        grid.Children.Add(scraperStack);
+
+        var saveButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = "保存",
+            VerticalAlignment = VerticalAlignment.Top,
+            Tag = new LibrarySettingsRowContext(root.Path, setting?.TmdbKey ?? "", scraperBox),
+        }, FluentButtonStyle.Accent);
+        AutomationProperties.SetAutomationId(saveButton, $"SettingsSaveLibrary_{index}");
+        saveButton.Click += OnSaveLibrarySettingClicked;
+        Grid.SetColumn(saveButton, 2);
+        grid.Children.Add(saveButton);
+
+        row.Child = grid;
+        return row;
+    }
+
+    private async void OnSaveLibrarySettingClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button button || button.Tag is not LibrarySettingsRowContext context)
+        {
+            return;
+        }
+
+        try
+        {
+            button.IsEnabled = false;
+            _libraryStatusText.Foreground = FluentTheme.TextSecondary;
+            _libraryStatusText.Text = "正在保存媒体库设置...";
+            await AppServices.Library.SaveLibrarySettingAsync(new LibrarySettingDto
+            {
+                MediaRoot = context.MediaRoot,
+                Scraper = GetSelectedScraper(context.ScraperBox),
+                TmdbKey = context.TmdbKey,
+                Enabled = 1,
+            });
+            _libraryStatusText.Foreground = FluentTheme.Accent;
+            _libraryStatusText.Text = "媒体库刮削器设置已保存。";
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to save native library scraper setting.");
+            _libraryStatusText.Foreground = FluentTheme.Error;
+            _libraryStatusText.Text = $"保存媒体库设置失败：{ex.Message}";
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
+    }
+
+    private static string NormalizeScraper(string? scraper)
+    {
+        var value = string.IsNullOrWhiteSpace(scraper) ? "auto" : scraper.Trim().ToLowerInvariant();
+        return value == "tmdb" ? "tmdb_movie" : ScraperOptions.Any(option => option.Value == value) ? value : "auto";
+    }
+
+    private static void SelectScraper(ComboBox scraperBox, string value)
+    {
+        for (var i = 0; i < scraperBox.Items.Count; i++)
+        {
+            if (scraperBox.Items[i] is ComboBoxItem item && item.Tag as string == value)
+            {
+                scraperBox.SelectedIndex = i;
+                return;
+            }
+        }
+
+        scraperBox.SelectedIndex = ScraperOptions.ToList().FindIndex(option => option.Value == "auto");
+    }
+
+    private static string GetSelectedScraper(ComboBox scraperBox)
+    {
+        if (scraperBox.SelectedItem is ComboBoxItem item && item.Tag is string value)
+        {
+            return NormalizeScraper(value);
+        }
+
+        return "auto";
+    }
+
+    private static string GetScraperDescription(string value)
+    {
+        var option = ScraperOptions.FirstOrDefault(item => item.Value == NormalizeScraper(value));
+        return option?.Description ?? "自动判断刮削源，但可能效果不好";
     }
 
     private async void OnCheckUpdatesClicked(object sender, RoutedEventArgs args)

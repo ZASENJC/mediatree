@@ -69,6 +69,9 @@ public sealed class MediaTreeApiClient : IDisposable
     public async Task<MediaRootsResponseDto> GetMediaRootsAsync(CancellationToken cancellationToken = default)
         => await GetAsync<MediaRootsResponseDto>("/media-roots", cancellationToken);
 
+    public async Task<List<LibrarySettingDto>> GetLibrarySettingsAsync(CancellationToken cancellationToken = default)
+        => await GetAsync<List<LibrarySettingDto>>("/library-settings", cancellationToken);
+
     public async Task<FoldersResponseDto> GetFoldersAsync(string mediaRoot, CancellationToken cancellationToken = default)
         => await GetAsync<FoldersResponseDto>($"/folders?media_root={Uri.EscapeDataString(mediaRoot)}", cancellationToken);
 
