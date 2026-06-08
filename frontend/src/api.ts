@@ -221,7 +221,7 @@ function libParam(): string {
   return lib ? `&media_root=${encodeURIComponent(lib)}` : ''
 }
 
-export type ManualScraperName = 'tmdb_movie' | 'tmdb_tv' | 'tmdb_collection' | 'bangumi' | 'javdatabase'
+export type ManualScraperName = 'auto' | 'tmdb_movie' | 'tmdb_tv' | 'tmdb_collection' | 'bangumi' | 'javdatabase'
 export type ScrapeMediaType = 'movie' | 'tv' | 'collection' | (string & {})
 
 export interface ScrapeSearchResult {
@@ -539,7 +539,7 @@ export const api = {
     }),
 
   fetchSearchBackdrops: (results: any[]) =>
-    request<{ backdrops: { source_id: string; source: string; backdrop_url?: string; poster_url?: string }[] }>('/search-backdrops', {
+    request<{ backdrops: { source_id: string; source: string; media_type?: string; backdrop_url?: string; poster_url?: string }[] }>('/search-backdrops', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ results }),

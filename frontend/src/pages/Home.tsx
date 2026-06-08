@@ -29,7 +29,6 @@ function getCoverSrc(cover: string | null | undefined, version?: number): string
 }
 
 type SortMode = 'name' | 'created_desc' | 'created_asc' | 'release_date_desc' | 'release_date_asc' | 'random'
-type ManualScraperSelectValue = '' | ManualScraperName
 
 const sortOptions = [
   { key: 'created_desc', label: '最近添加' },
@@ -102,9 +101,9 @@ export default function Home() {
 
   const [showFolderScrape, setShowFolderScrape] = useState(false)
   const [folderScrapeQuery, setFolderScrapeQuery] = useState('')
-  const [folderScrapeSrc, setFolderScrapeSrc] = useState<ManualScraperSelectValue>('')
+  const [folderScrapeSrc, setFolderScrapeSrc] = useState<ManualScraperName>('auto')
   const [folderScrapeResults, setFolderScrapeResults] = useState<ScrapeSearchResult[]>([])
-  const [folderScrapeBackdrops, setFolderScrapeBackdrops] = useState<{ source_id: string; source: string; backdrop_url?: string; poster_url?: string }[]>([])
+  const [folderScrapeBackdrops, setFolderScrapeBackdrops] = useState<{ source_id: string; source: string; media_type?: string; backdrop_url?: string; poster_url?: string }[]>([])
   const [folderScrapeSearching, setFolderScrapeSearching] = useState(false)
   const [folderScrapeApplying, setFolderScrapeApplying] = useState(false)
 
@@ -207,27 +206,27 @@ export default function Home() {
 
   const handleManualScrapeFolder = useCallback(() => {
     setFolderScrapeQuery(activeFolderName || '')
-    setFolderScrapeSrc('')
+    setFolderScrapeSrc('auto')
     setFolderScrapeResults([])
     setShowFolderScrape(true)
     setFolderMenu(null)
   }, [activeFolderName])
 
   const handleFolderScrapeSearch = useCallback(async () => {
-    if (!folderScrapeQuery.trim()) return
+    const query = folderScrapeQuery.trim()
+    if (!query) return
     try {
       const cfg = await api.getConfig()
-      if (!cfg.tmdb_configured && (!folderScrapeSrc || folderScrapeSrc.startsWith('tmdb'))) {
+      if (!cfg.tmdb_configured && (folderScrapeSrc === 'auto' || folderScrapeSrc.startsWith('tmdb'))) {
         showToast('TMDB API 未配置，刮削可能失败，请在设置中填写 API Key')
       }
     } catch {}
     setFolderScrapeSearching(true)
     try {
-      const data = await api.searchScrape(folderScrapeQuery.trim(), folderScrapeSrc || undefined)
-      const selectedScraper = (folderScrapeSrc || 'tmdb_movie') as ManualScraperName
+      const data = await api.searchScrape(query, folderScrapeSrc)
       const results = (data.results || []).map(result => ({
         ...result,
-        scraper: result.scraper || selectedScraper,
+        scraper: result.scraper || folderScrapeSrc,
       }))
       setFolderScrapeResults(results)
       if (results.length === 0) {
@@ -237,10 +236,12 @@ export default function Home() {
           setFolderScrapeBackdrops(bd.backdrops || [])
         }).catch(() => {})
       }
-    } catch {
+    } catch (err) {
       console.error('Search scrape failed')
+      showToast(`搜索失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
+    } finally {
+      setFolderScrapeSearching(false)
     }
-    setFolderScrapeSearching(false)
   }, [folderScrapeQuery, folderScrapeSrc])
 
   const handleSelectFolderScrapeResult = useCallback(async (result: ScrapeSearchResult) => {
@@ -515,9 +516,9 @@ export default function Home() {
                 onKeyDown={e => { if (e.key === 'Enter') handleFolderScrapeSearch() }}
                 placeholder="搜索关键词" autoFocus
                 className="glass-input flex-1 px-3 py-2 text-sm" />
-              <select value={folderScrapeSrc} onChange={e => setFolderScrapeSrc(e.target.value as ManualScraperSelectValue)}
+              <select value={folderScrapeSrc} onChange={e => setFolderScrapeSrc(e.target.value as ManualScraperName)}
                 className="glass-input px-3 py-2 text-sm text-gray-300">
-                <option value="">自动</option>
+                <option value="auto">自动</option>
                 <option value="tmdb_movie">TMDB 电影</option>
                 <option value="tmdb_tv">TMDB 剧集/番剧</option>
                 <option value="tmdb_collection">TMDB 合集</option>
@@ -534,7 +535,7 @@ export default function Home() {
                 <p className="mb-2 text-xs text-gray-500">共 {folderScrapeResults.length} 个结果，点击应用元数据，长按/右键查看封面和背景图可选</p>
                 <div className="grid max-h-[50vh] grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3">
                   {folderScrapeResults.map((r, i) => {
-                    const bd = folderScrapeBackdrops.find(b => b.source_id === r.source_id && b.source === r.source)
+                    const bd = folderScrapeBackdrops.find(b => b.source_id === r.source_id && b.source === r.source && (b.media_type || '') === (r.media_type || ''))
                     return (
                       <div key={i} className="glass-card overflow-hidden transition-all hover:border-apple-blue/40 hover:shadow-glow">
                         <div className="aspect-[2/3] cursor-pointer bg-white/[0.04]"

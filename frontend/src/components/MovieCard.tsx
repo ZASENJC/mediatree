@@ -20,15 +20,13 @@ interface MovieCardProps {
   adaptiveCover?: boolean
 }
 
-type ManualScraperSelectValue = '' | ManualScraperName
-
 export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = false, adaptiveCover = false }: MovieCardProps) {
   const navigate = useNavigate()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [showEdit, setShowEdit] = useState(false)
   const [showManualSearch, setShowManualSearch] = useState(false)
   const [manualQuery, setManualQuery] = useState('')
-  const [manualScraper, setManualScraper] = useState<ManualScraperSelectValue>('')
+  const [manualScraper, setManualScraper] = useState<ManualScraperName>('auto')
   const [showCoverPicker, setShowCoverPicker] = useState(false)
   const [altCovers, setAltCovers] = useState<{ url: string; source: string; width?: number; height?: number; language?: string; vote_count?: number }[]>([])
   const [searchResults, setSearchResults] = useState<ScrapeSearchResult[]>([])
@@ -92,7 +90,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const checkTmdbConfig = useCallback(async () => {
     try {
       const cfg = await api.getConfig()
-      if (!cfg.tmdb_configured && (!manualScraper || manualScraper.startsWith('tmdb'))) {
+      if (!cfg.tmdb_configured && (manualScraper === 'auto' || manualScraper.startsWith('tmdb'))) {
         showToast('TMDB API 未配置，刮削可能失败，请在设置中填写 API Key')
       }
     } catch {}
@@ -112,24 +110,26 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   }, [movie.id, onUpdated, checkTmdbConfig])
 
   const handleSearch = useCallback(async () => {
-    if (!manualQuery.trim()) return
+    const query = manualQuery.trim()
+    if (!query) return
     await checkTmdbConfig()
     setSearching(true)
     try {
-      const data = await api.searchScrape(manualQuery.trim(), manualScraper || undefined)
-      const selectedScraper = (manualScraper || 'tmdb_movie') as ManualScraperName
+      const data = await api.searchScrape(query, manualScraper)
       setSearchResults((data.results || []).map(result => ({
         ...result,
-        scraper: result.scraper || selectedScraper,
+        scraper: result.scraper || manualScraper,
       })))
       if ((data.results || []).length === 0) {
         showToast('没有找到匹配结果')
       }
-    } catch {
+    } catch (err) {
       console.error('Search scrape failed')
+      showToast(`搜索失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
+    } finally {
+      setSearching(false)
     }
-    setSearching(false)
-  }, [manualQuery, manualScraper])
+  }, [manualQuery, manualScraper, checkTmdbConfig])
 
   const handleSelectSearchResult = useCallback(async (result: ScrapeSearchResult) => {
     if (applying) return
@@ -329,10 +329,10 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
                 className="glass-input flex-1 px-3 py-2 text-sm"
               />
               <select
-                value={manualScraper} onChange={e => setManualScraper(e.target.value as ManualScraperSelectValue)}
+                value={manualScraper} onChange={e => setManualScraper(e.target.value as ManualScraperName)}
                 className="glass-input px-3 py-2 text-sm text-gray-300"
               >
-                <option value="">自动</option>
+                <option value="auto">自动</option>
                 <option value="tmdb_movie">TMDB 电影</option>
                 <option value="tmdb_tv">TMDB 剧集/番剧</option>
                 <option value="tmdb_collection">TMDB 合集</option>

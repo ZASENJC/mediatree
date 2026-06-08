@@ -355,6 +355,21 @@ async def _search_scraper_candidates(scraper_name: str, query: str, media_type: 
         return []
 
 
+_AUTO_MANUAL_SEARCH_CHAIN: tuple[tuple[str, str | None], ...] = (
+    ("tmdb_movie", "movie"),
+    ("tmdb_tv", "tv"),
+    ("tmdb_collection", "collection"),
+    ("bangumi", None),
+    ("javdatabase", "movie"),
+)
+
+
+def _candidate_to_search_result(candidate: ScrapeCandidate, scraper_name: str) -> dict:
+    item = _candidate_to_dict(candidate)
+    item["scraper"] = scraper_name
+    return item
+
+
 async def _fetch_detail_legacy(
     source: str,
     source_id: str,
@@ -1425,19 +1440,25 @@ async def rescrape_folder(folder_levels: str, media_root: str) -> dict:
 
 async def search_for_scrape(query: str, scraper: str = "tmdb", media_root: str = "") -> list[dict]:
     scraper = normalize_scraper_name(scraper)
-    if scraper in {"tmdb_movie", "tmdb_tv"}:
+    if scraper == "auto":
+        results: list[dict] = []
+        for scraper_name, media_type in _AUTO_MANUAL_SEARCH_CHAIN:
+            items = await _search_scraper_candidates(scraper_name, query, media_type=media_type, limit=10)
+            results.extend(_candidate_to_search_result(item, scraper_name) for item in items)
+        return results
+    elif scraper in {"tmdb_movie", "tmdb_tv"}:
         media_type = "tv" if scraper == "tmdb_tv" else "movie"
         items = await _search_scraper_candidates(scraper, query, media_type=media_type, limit=10)
-        return [_candidate_to_dict(item) for item in items]
+        return [_candidate_to_search_result(item, scraper) for item in items]
     elif scraper == "tmdb_collection":
         items = await _search_scraper_candidates("tmdb_collection", query, media_type="collection", limit=10)
-        return [_candidate_to_dict(item) for item in items]
+        return [_candidate_to_search_result(item, "tmdb_collection") for item in items]
     elif scraper == "bangumi":
         items = await _search_scraper_candidates("bangumi", query, limit=10)
-        return [_candidate_to_dict(item) for item in items]
+        return [_candidate_to_search_result(item, "bangumi") for item in items]
     elif scraper == "javdatabase":
         items = await _search_scraper_candidates("javdatabase", query, media_type="movie", limit=10)
-        return [_candidate_to_dict(item) for item in items]
+        return [_candidate_to_search_result(item, "javdatabase") for item in items]
     return []
 
 
@@ -1448,7 +1469,7 @@ async def fetch_search_backdrops(results: list[dict]) -> list[dict]:
         sid = r.get("source_id", "")
         src = r.get("source", "")
         mtype = r.get("media_type", "movie")
-        key = f"{src}:{sid}"
+        key = f"{src}:{mtype}:{sid}"
         if not sid or key in seen:
             continue
         seen.add(key)
@@ -1462,7 +1483,7 @@ async def fetch_search_backdrops(results: list[dict]) -> list[dict]:
         else:
             detail = None
         backdrop = detail.get("backdrop_url") if detail else None
-        backdrops.append({"source_id": sid, "source": src, "backdrop_url": backdrop, "poster_url": r.get("poster_url")})
+        backdrops.append({"source_id": sid, "source": src, "media_type": mtype, "backdrop_url": backdrop, "poster_url": r.get("poster_url")})
     return backdrops
 
 
