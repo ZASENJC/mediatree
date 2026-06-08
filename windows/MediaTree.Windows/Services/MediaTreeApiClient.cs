@@ -66,6 +66,9 @@ public sealed class MediaTreeApiClient : IDisposable
     public async Task SaveConfigAsync(IEnumerable<string> extraMediaRoots, CancellationToken cancellationToken = default)
         => await PostJsonAsync<JsonElement>("/config", new { extra_media_roots = extraMediaRoots }, cancellationToken);
 
+    public async Task SaveTmdbConfigAsync(string accessToken, CancellationToken cancellationToken = default)
+        => await PostJsonAsync<JsonElement>("/config", new { tmdb_access_token = NormalizeTmdbAccessToken(accessToken) }, cancellationToken);
+
     public async Task<MediaRootsResponseDto> GetMediaRootsAsync(CancellationToken cancellationToken = default)
         => await GetAsync<MediaRootsResponseDto>("/media-roots", cancellationToken);
 
@@ -190,6 +193,12 @@ public sealed class MediaTreeApiClient : IDisposable
         using var request = CreateRequest(HttpMethod.Post, path);
         request.Content = JsonContent.Create(body, options: _jsonOptions);
         return await SendAsync<T>(request, cancellationToken);
+    }
+
+    private static string NormalizeTmdbAccessToken(string accessToken)
+    {
+        var value = (accessToken ?? "").Trim();
+        return value.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? value[7..].Trim() : value;
     }
 
     private HttpRequestMessage CreateRequest(HttpMethod method, string path)

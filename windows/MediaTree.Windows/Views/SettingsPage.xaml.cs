@@ -30,16 +30,18 @@ public sealed partial class SettingsPage : Page
 
     private readonly ListView _librarySettingsList;
     private readonly TextBlock _libraryStatusText;
+    private readonly PasswordBox _tmdbTokenBox;
+    private readonly TextBlock _tmdbTokenStatusText;
     private readonly TextBlock _updateStatusText;
     private readonly TextBlock _versionText;
 
     public SettingsPage()
     {
-        (_versionText, _updateStatusText, _librarySettingsList, _libraryStatusText) = BuildContent();
+        (_versionText, _updateStatusText, _tmdbTokenBox, _tmdbTokenStatusText, _librarySettingsList, _libraryStatusText) = BuildContent();
         Loaded += OnLoaded;
     }
 
-    private (TextBlock versionText, TextBlock updateStatusText, ListView librarySettingsList, TextBlock libraryStatusText) BuildContent()
+    private (TextBlock versionText, TextBlock updateStatusText, PasswordBox tmdbTokenBox, TextBlock tmdbTokenStatusText, ListView librarySettingsList, TextBlock libraryStatusText) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "SettingsPage");
 
@@ -135,6 +137,43 @@ public sealed partial class SettingsPage : Page
             TextWrapping = TextWrapping.WrapWholeWords,
         });
 
+        var tmdbConfig = new Grid
+        {
+            ColumnSpacing = 10,
+        };
+        tmdbConfig.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        tmdbConfig.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var tmdbTokenBox = new PasswordBox
+        {
+            Header = "TMDB 读访问令牌（推荐，优先使用）",
+            PlaceholderText = "Bearer Token",
+            MinWidth = 360,
+        };
+        AutomationProperties.SetAutomationId(tmdbTokenBox, "SettingsTmdbAccessToken");
+        tmdbConfig.Children.Add(tmdbTokenBox);
+
+        var saveTmdbButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = "保存令牌",
+            VerticalAlignment = VerticalAlignment.Bottom,
+        }, FluentButtonStyle.Accent);
+        AutomationProperties.SetAutomationId(saveTmdbButton, "SettingsSaveTmdbToken");
+        saveTmdbButton.Click += OnSaveTmdbTokenClicked;
+        Grid.SetColumn(saveTmdbButton, 1);
+        tmdbConfig.Children.Add(saveTmdbButton);
+        libraryStack.Children.Add(tmdbConfig);
+
+        var tmdbTokenStatusText = new TextBlock
+        {
+            Text = "",
+            Visibility = Visibility.Collapsed,
+            Foreground = FluentTheme.TextSecondary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        };
+        AutomationProperties.SetAutomationId(tmdbTokenStatusText, "SettingsTmdbTokenStatusText");
+        libraryStack.Children.Add(tmdbTokenStatusText);
+
         var librarySettingsList = new ListView
         {
             SelectionMode = ListViewSelectionMode.None,
@@ -157,12 +196,13 @@ public sealed partial class SettingsPage : Page
         root.Children.Add(FluentTheme.Card(libraryStack, new Thickness(22)));
         scrollViewer.Content = root;
         Content = scrollViewer;
-        return (versionText, updateStatusText, librarySettingsList, libraryStatusText);
+        return (versionText, updateStatusText, tmdbTokenBox, tmdbTokenStatusText, librarySettingsList, libraryStatusText);
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs args)
     {
         await LoadVersionAsync();
+        await LoadTmdbConfigAsync();
         await LoadLibrarySettingsAsync();
     }
 
@@ -178,6 +218,60 @@ public sealed partial class SettingsPage : Page
         {
             _versionText.Text = $"暂时无法读取版本信息：{ex.Message}";
         }
+    }
+
+    private async System.Threading.Tasks.Task LoadTmdbConfigAsync()
+    {
+        try
+        {
+            var config = await AppServices.Api.GetConfigAsync();
+            _tmdbTokenBox.Password = config.TmdbAccessToken ?? "";
+            if (config.TmdbConfigured)
+            {
+                ShowTmdbStatus("TMDB 已配置。输入新令牌后保存即可替换。", false);
+            }
+            else
+            {
+                ShowTmdbStatus("未配置 TMDB 令牌。选择 TMDB 刮削器前建议先填写。", false);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to load native TMDB config.");
+            ShowTmdbStatus($"读取 TMDB 配置失败：{ex.Message}", true);
+        }
+    }
+
+    private async void OnSaveTmdbTokenClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button button)
+        {
+            return;
+        }
+
+        try
+        {
+            button.IsEnabled = false;
+            ShowTmdbStatus("正在保存 TMDB 令牌...", false);
+            await AppServices.Api.SaveTmdbConfigAsync(_tmdbTokenBox.Password);
+            ShowTmdbStatus("TMDB 令牌已保存。", false);
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to save native TMDB token.");
+            ShowTmdbStatus($"保存 TMDB 令牌失败：{ex.Message}", true);
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
+    }
+
+    private void ShowTmdbStatus(string message, bool isError)
+    {
+        _tmdbTokenStatusText.Text = message;
+        _tmdbTokenStatusText.Foreground = isError ? FluentTheme.Error : FluentTheme.TextSecondary;
+        _tmdbTokenStatusText.Visibility = Visibility.Visible;
     }
 
     private async System.Threading.Tasks.Task LoadLibrarySettingsAsync()

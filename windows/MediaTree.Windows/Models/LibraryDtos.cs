@@ -129,6 +129,12 @@ public sealed class ConfigDto
     [JsonPropertyName("media_root")]
     public string MediaRoot { get; set; } = "";
 
+    [JsonPropertyName("tmdb_access_token")]
+    public string TmdbAccessToken { get; set; } = "";
+
+    [JsonPropertyName("tmdb_configured")]
+    public bool TmdbConfigured { get; set; }
+
     [JsonPropertyName("update_check_enabled")]
     public bool UpdateCheckEnabled { get; set; } = true;
 
