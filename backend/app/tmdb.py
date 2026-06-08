@@ -107,6 +107,107 @@ async def search_tmdb_tv_by_title(query: str, lang: str = "zh-CN") -> list[dict]
     return await search_tmdb(query, lang=lang, media_type="tv")
 
 
+async def search_tmdb_collections(query: str, lang: str = "zh-CN") -> list[dict]:
+    if not _has_tmdb_auth():
+        return []
+    query = (query or "").strip()
+    if not query:
+        return []
+    cache_key = f"tmdb_search:collection:{query}"
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
+    if cache_data is not None:
+        logger.info(f"TMDB cache hit: {cache_key}")
+        return cache_data
+
+    results = []
+    try:
+        logger.info(f"TMDB search endpoint: /search/collection query='{query}'")
+        resp = await _tmdb_get("/search/collection", {"query": query, "language": lang})
+        data = resp.json()
+        for item in data.get("results", [])[:5]:
+            poster = f"{IMAGE_BASE}/w500{item['poster_path']}" if item.get("poster_path") else None
+            backdrop = f"{IMAGE_BASE}/w1280{item['backdrop_path']}" if item.get("backdrop_path") else None
+            results.append({
+                "source": "tmdb_collection",
+                "source_id": str(item.get("id") or ""),
+                "media_type": "collection",
+                "title": item.get("name") or item.get("title") or query,
+                "original_title": item.get("original_name") or "",
+                "overview": item.get("overview", ""),
+                "poster_url": poster,
+                "backdrop_url": backdrop,
+                "release_date": "",
+                "score": None,
+                "raw": item,
+            })
+    except HTTPStatusError as e:
+        logger.warning(f"TMDB collection search HTTP error for '{query}': status={e.response.status_code}")
+    except Exception as e:
+        logger.warning(f"TMDB collection search error for '{query}': {e}")
+
+    await set_scraper_cache("tmdb", cache_key, results)
+    return results
+
+
+async def fetch_tmdb_collection_detail(collection_id: str, lang: str = "zh-CN") -> dict | None:
+    if not _has_tmdb_auth():
+        return None
+    source_id = str(collection_id or "").strip()
+    if not source_id:
+        return None
+    cache_key = f"tmdb_collection:v1:{source_id}"
+    cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
+    if cache_data is not None:
+        logger.info(f"TMDB cache hit: {cache_key}")
+        return cache_data
+
+    try:
+        logger.info(f"TMDB collection detail endpoint: /collection/{source_id}")
+        resp = await _tmdb_get(f"/collection/{source_id}", {"language": lang})
+        data = resp.json()
+        poster = f"{IMAGE_BASE}/w500{data['poster_path']}" if data.get("poster_path") else None
+        backdrop = f"{IMAGE_BASE}/w1280{data['backdrop_path']}" if data.get("backdrop_path") else None
+
+        parts = []
+        for part in data.get("parts", []) or []:
+            if not isinstance(part, dict):
+                continue
+            item = dict(part)
+            if part.get("poster_path"):
+                item["poster_url"] = f"{IMAGE_BASE}/w500{part['poster_path']}"
+            if part.get("backdrop_path"):
+                item["backdrop_url"] = f"{IMAGE_BASE}/w1280{part['backdrop_path']}"
+            parts.append(item)
+
+        part_dates = sorted(
+            str(part.get("release_date") or "")
+            for part in parts
+            if part.get("release_date")
+        )
+        result = {
+            "source": "tmdb_collection",
+            "source_id": source_id,
+            "media_type": "collection",
+            "title": data.get("name") or data.get("title") or "",
+            "original_title": data.get("original_name") or "",
+            "overview": data.get("overview", ""),
+            "poster_url": poster,
+            "backdrop_url": backdrop,
+            "release_date": part_dates[0] if part_dates else "",
+            "parts": parts,
+            "raw": data,
+        }
+        await set_scraper_cache("tmdb", cache_key, result)
+        return result
+    except HTTPStatusError as e:
+        if e.response.status_code != 404:
+            logger.warning(f"TMDB collection detail HTTP error for {source_id}: status={e.response.status_code}")
+        return None
+    except Exception as e:
+        logger.warning(f"TMDB collection detail error for {source_id}: {e}")
+        return None
+
+
 async def fetch_tmdb_detail(source_id: str, media_type: str, lang: str = "zh-CN") -> dict | None:
     if not _has_tmdb_auth():
         return None

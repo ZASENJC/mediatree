@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { api, FolderNode, Movie, resolveMediaUrl } from '../api'
+import { api, FolderNode, Movie, resolveMediaUrl, type ManualScraperName, type ScrapeSearchResult } from '../api'
 import { getExcluded, getUiPrefs } from '../store'
 import { saveScrollPos, restoreScrollPos } from '../scroll'
 import { showToast } from '../toast'
@@ -29,6 +29,7 @@ function getCoverSrc(cover: string | null | undefined, version?: number): string
 }
 
 type SortMode = 'name' | 'created_desc' | 'created_asc' | 'release_date_desc' | 'release_date_asc' | 'random'
+type ManualScraperSelectValue = '' | ManualScraperName
 
 const sortOptions = [
   { key: 'created_desc', label: '最近添加' },
@@ -101,9 +102,9 @@ export default function Home() {
 
   const [showFolderScrape, setShowFolderScrape] = useState(false)
   const [folderScrapeQuery, setFolderScrapeQuery] = useState('')
-  const [folderScrapeSrc, setFolderScrapeSrc] = useState('')
-  const [folderScrapeResults, setFolderScrapeResults] = useState<any[]>([])
-  const [folderScrapeBackdrops, setFolderScrapeBackdrops] = useState<any[]>([])
+  const [folderScrapeSrc, setFolderScrapeSrc] = useState<ManualScraperSelectValue>('')
+  const [folderScrapeResults, setFolderScrapeResults] = useState<ScrapeSearchResult[]>([])
+  const [folderScrapeBackdrops, setFolderScrapeBackdrops] = useState<{ source_id: string; source: string; backdrop_url?: string; poster_url?: string }[]>([])
   const [folderScrapeSearching, setFolderScrapeSearching] = useState(false)
   const [folderScrapeApplying, setFolderScrapeApplying] = useState(false)
 
@@ -223,7 +224,11 @@ export default function Home() {
     setFolderScrapeSearching(true)
     try {
       const data = await api.searchScrape(folderScrapeQuery.trim(), folderScrapeSrc || undefined)
-      const results = data.results || []
+      const selectedScraper = (folderScrapeSrc || 'tmdb_movie') as ManualScraperName
+      const results = (data.results || []).map(result => ({
+        ...result,
+        scraper: result.scraper || selectedScraper,
+      }))
       setFolderScrapeResults(results)
       if (results.length === 0) {
         showToast('没有找到匹配结果')
@@ -238,7 +243,7 @@ export default function Home() {
     setFolderScrapeSearching(false)
   }, [folderScrapeQuery, folderScrapeSrc])
 
-  const handleSelectFolderScrapeResult = useCallback(async (result: any) => {
+  const handleSelectFolderScrapeResult = useCallback(async (result: ScrapeSearchResult) => {
     if (folderScrapeApplying) return
     setFolderScrapeApplying(true)
     showTaskProgress({ status: '正在刮削媒体信息...' })
@@ -510,11 +515,12 @@ export default function Home() {
                 onKeyDown={e => { if (e.key === 'Enter') handleFolderScrapeSearch() }}
                 placeholder="搜索关键词" autoFocus
                 className="glass-input flex-1 px-3 py-2 text-sm" />
-              <select value={folderScrapeSrc} onChange={e => setFolderScrapeSrc(e.target.value)}
+              <select value={folderScrapeSrc} onChange={e => setFolderScrapeSrc(e.target.value as ManualScraperSelectValue)}
                 className="glass-input px-3 py-2 text-sm text-gray-300">
                 <option value="">自动</option>
                 <option value="tmdb_movie">TMDB 电影</option>
                 <option value="tmdb_tv">TMDB 剧集/番剧</option>
+                <option value="tmdb_collection">TMDB 合集</option>
                 <option value="bangumi">Bangumi</option>
                 <option value="javdatabase">Javdatabase</option>
               </select>

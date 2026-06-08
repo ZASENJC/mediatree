@@ -221,6 +221,21 @@ function libParam(): string {
   return lib ? `&media_root=${encodeURIComponent(lib)}` : ''
 }
 
+export type ManualScraperName = 'tmdb_movie' | 'tmdb_tv' | 'tmdb_collection' | 'bangumi' | 'javdatabase'
+export type ScrapeMediaType = 'movie' | 'tv' | 'collection' | (string & {})
+
+export interface ScrapeSearchResult {
+  source: string
+  source_id: string
+  media_type: ScrapeMediaType
+  title: string
+  original_title?: string
+  year?: string
+  poster_url?: string
+  overview?: string
+  scraper?: ManualScraperName
+}
+
 export const api = {
   authStatus: () => request<{ need_auth: boolean; auth_configured: boolean }>('/auth/status'),
 
@@ -503,7 +518,7 @@ export const api = {
     }),
 
   searchScrape: (query: string, scraper?: string) =>
-    request<{ results: { source: string; source_id: string; media_type: string; title: string; original_title: string; year: string; poster_url?: string; overview: string }[] }>('/search-scrape', {
+    request<{ results: ScrapeSearchResult[] }>('/search-scrape', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, scraper: scraper || 'tmdb_movie' }),
@@ -516,7 +531,7 @@ export const api = {
       body: JSON.stringify({ folder, media_root: mediaRoot, query, scraper: scraper || '' }),
     }),
 
-  applyFolderScrape: (folder: string, mediaRoot: string, sourceId: string, source: string, mediaType: string) =>
+  applyFolderScrape: (folder: string, mediaRoot: string, sourceId: string, source: string, mediaType: ScrapeMediaType) =>
     request<{ ok: boolean; source: string; title: string; affected?: number }>('/apply-folder-scrape', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -558,7 +573,7 @@ export const api = {
       body: JSON.stringify({ folder, media_root: mediaRoot }),
     }),
 
-  manualScrapeMovie: (movieId: number, query: string, sourceId?: string, mediaType?: string, scraper?: string) =>
+  manualScrapeMovie: (movieId: number, query: string, sourceId?: string, mediaType?: ScrapeMediaType, scraper?: string) =>
     request<{ ok: boolean; source: string; title: string }>(`/movies/${movieId}/manual-scrape`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

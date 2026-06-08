@@ -319,7 +319,7 @@ def normalize_scraper_name(scraper: str | None) -> str:
     value = (scraper or "auto").strip().lower()
     if value == "tmdb":
         return "tmdb_movie"
-    if value in {"tmdb_movie", "tmdb_tv", "bangumi", "javdatabase", "auto", "none"}:
+    if value in {"tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi", "javdatabase", "auto", "none"}:
         return value
     return "auto"
 
@@ -336,6 +336,8 @@ def build_fallback_chain(preferred: str) -> list[str]:
         return ["tmdb_movie"]
     if preferred == "tmdb_tv":
         return ["tmdb_tv"]
+    if preferred == "tmdb_collection":
+        return []
     if preferred == "bangumi":
         return ["bangumi", "tmdb_tv_search", "tmdb_movie_search"]
     return ["auto"]
@@ -364,6 +366,8 @@ async def _fetch_detail_legacy(
     value = (source or "auto").strip().lower()
     if value in {"tmdb", "tmdb_movie", "tmdb_tv"}:
         scraper_name = "tmdb_tv" if media_type == "tv" or value == "tmdb_tv" else "tmdb_movie"
+    elif value == "tmdb_collection":
+        scraper_name = "tmdb_collection"
     else:
         scraper_name = normalize_scraper_name(value)
     try:
@@ -1185,6 +1189,8 @@ async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: st
         if preferred in {"tmdb_movie", "tmdb_tv"}:
             forced_media_type = "tv" if preferred == "tmdb_tv" else "movie"
             data = await _fetch_detail_legacy("tmdb", source_id, forced_media_type)
+        elif preferred == "tmdb_collection":
+            data = await _fetch_detail_legacy("tmdb_collection", source_id, "collection")
         elif preferred == "bangumi":
             data = await _fetch_detail_legacy("bangumi", source_id, "tv")
         elif preferred == "javdatabase":
@@ -1209,7 +1215,7 @@ async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: st
         else:
             return {"ok": False, "error": f"Failed to fetch detail from {preferred_scraper}"}
 
-    if preferred_scraper and preferred in {"tmdb_movie", "tmdb_tv", "bangumi", "javdatabase", "auto"}:
+    if preferred_scraper and preferred in {"tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi", "javdatabase", "auto"}:
         chain = [preferred]
     else:
         lib_setting = await get_library_settings(media_root)
@@ -1417,11 +1423,14 @@ async def rescrape_folder(folder_levels: str, media_root: str) -> dict:
     return {"ok": True, "rescraped": affected, "total": total, "source": result.get("source"), "title": result.get("title")}
 
 
-async def search_for_scrape(query: str, scraper: str = "tmdb") -> list[dict]:
+async def search_for_scrape(query: str, scraper: str = "tmdb", media_root: str = "") -> list[dict]:
     scraper = normalize_scraper_name(scraper)
     if scraper in {"tmdb_movie", "tmdb_tv"}:
         media_type = "tv" if scraper == "tmdb_tv" else "movie"
         items = await _search_scraper_candidates(scraper, query, media_type=media_type, limit=10)
+        return [_candidate_to_dict(item) for item in items]
+    elif scraper == "tmdb_collection":
+        items = await _search_scraper_candidates("tmdb_collection", query, media_type="collection", limit=10)
         return [_candidate_to_dict(item) for item in items]
     elif scraper == "bangumi":
         items = await _search_scraper_candidates("bangumi", query, limit=10)
@@ -1446,6 +1455,8 @@ async def fetch_search_backdrops(results: list[dict]) -> list[dict]:
         backdrop = None
         if src == "tmdb":
             detail = await _fetch_detail_legacy("tmdb", sid, mtype)
+        elif src == "tmdb_collection":
+            detail = await _fetch_detail_legacy("tmdb_collection", sid, "collection")
         elif src == "bangumi":
             detail = await _fetch_detail_legacy("bangumi", sid, "tv")
         else:
@@ -1487,7 +1498,7 @@ async def rescrape_folder_manual(folder_levels: str, media_root: str, query: str
             search_name = parent_name
 
     preferred = normalize_scraper_name(preferred_scraper)
-    if preferred_scraper and preferred in {"tmdb_movie", "tmdb_tv", "bangumi", "javdatabase", "auto"}:
+    if preferred_scraper and preferred in {"tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi", "javdatabase", "auto"}:
         chain = [preferred]
     else:
         lib_setting = await get_library_settings(media_root)
@@ -1562,6 +1573,8 @@ async def apply_folder_scrape_result(folder_levels: str, media_root: str, source
     data = None
     if source == "tmdb":
         data = await _fetch_detail_legacy("tmdb", source_id, media_type)
+    elif source == "tmdb_collection":
+        data = await _fetch_detail_legacy("tmdb_collection", source_id, "collection")
     elif source == "bangumi":
         data = await _fetch_detail_legacy("bangumi", source_id, "tv")
     elif source == "javdatabase":

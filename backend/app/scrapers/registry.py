@@ -3,6 +3,7 @@ from __future__ import annotations
 from .base import BaseScraper, ScraperInfo
 from .bangumi_scraper import BangumiScraper
 from .javdatabase_scraper import JavdatabaseScraper
+from .tmdb_collection_scraper import TMDBCollectionScraper
 from .tmdb_scraper import TMDBScraper, tmdb_title_search
 
 
@@ -36,6 +37,7 @@ def ensure_builtin_scrapers():
         return
     register_scraper(TMDBScraper("movie"))
     register_scraper(TMDBScraper("tv"))
+    register_scraper(TMDBCollectionScraper())
     register_scraper(BangumiScraper())
     register_scraper(JavdatabaseScraper())
     register_scraper(AutoScraper())

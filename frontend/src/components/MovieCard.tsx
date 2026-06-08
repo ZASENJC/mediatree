@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { api, Movie } from '../api'
+import { api, Movie, type ManualScraperName, type ScrapeSearchResult } from '../api'
 import { saveScrollPos } from '../scroll'
 import { showToast } from '../toast'
 import { showTaskProgress, hideTaskProgress } from '../taskProgress'
@@ -20,16 +20,18 @@ interface MovieCardProps {
   adaptiveCover?: boolean
 }
 
+type ManualScraperSelectValue = '' | ManualScraperName
+
 export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = false, adaptiveCover = false }: MovieCardProps) {
   const navigate = useNavigate()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [showEdit, setShowEdit] = useState(false)
   const [showManualSearch, setShowManualSearch] = useState(false)
   const [manualQuery, setManualQuery] = useState('')
-  const [manualScraper, setManualScraper] = useState('')
+  const [manualScraper, setManualScraper] = useState<ManualScraperSelectValue>('')
   const [showCoverPicker, setShowCoverPicker] = useState(false)
   const [altCovers, setAltCovers] = useState<{ url: string; source: string; width?: number; height?: number; language?: string; vote_count?: number }[]>([])
-  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [searchResults, setSearchResults] = useState<ScrapeSearchResult[]>([])
   const [searching, setSearching] = useState(false)
   const [applying, setApplying] = useState(false)
   const [coverVersion, setCoverVersion] = useState(() => movie.updated_at || '')
@@ -115,7 +117,11 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
     setSearching(true)
     try {
       const data = await api.searchScrape(manualQuery.trim(), manualScraper || undefined)
-      setSearchResults(data.results || [])
+      const selectedScraper = (manualScraper || 'tmdb_movie') as ManualScraperName
+      setSearchResults((data.results || []).map(result => ({
+        ...result,
+        scraper: result.scraper || selectedScraper,
+      })))
       if ((data.results || []).length === 0) {
         showToast('没有找到匹配结果')
       }
@@ -125,12 +131,12 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
     setSearching(false)
   }, [manualQuery, manualScraper])
 
-  const handleSelectSearchResult = useCallback(async (result: any) => {
+  const handleSelectSearchResult = useCallback(async (result: ScrapeSearchResult) => {
     if (applying) return
     setApplying(true)
     showTaskProgress({ status: '正在刮削媒体信息...' })
     try {
-      await api.manualScrapeMovie(movie.id, result.title, result.source_id, result.media_type, result.source)
+      await api.manualScrapeMovie(movie.id, result.title, result.source_id, result.media_type, result.scraper || manualScraper || result.source)
       clearCache()
       setCoverVersion(String(Date.now()))
       setShowManualSearch(false)
@@ -145,7 +151,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
     } finally {
       setApplying(false)
     }
-  }, [movie.id, onUpdated, applying])
+  }, [movie.id, onUpdated, applying, manualScraper])
 
   const handleLoadAltCovers = useCallback(async () => {
     try {
@@ -323,12 +329,13 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
                 className="glass-input flex-1 px-3 py-2 text-sm"
               />
               <select
-                value={manualScraper} onChange={e => setManualScraper(e.target.value)}
+                value={manualScraper} onChange={e => setManualScraper(e.target.value as ManualScraperSelectValue)}
                 className="glass-input px-3 py-2 text-sm text-gray-300"
               >
                 <option value="">自动</option>
                 <option value="tmdb_movie">TMDB 电影</option>
                 <option value="tmdb_tv">TMDB 剧集/番剧</option>
+                <option value="tmdb_collection">TMDB 合集</option>
                 <option value="bangumi">Bangumi</option>
                 <option value="javdatabase">Javdatabase</option>
               </select>

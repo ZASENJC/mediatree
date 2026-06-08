@@ -1,17 +1,8 @@
 import { useState } from 'react'
-import { api } from '../api'
+import { api, type ManualScraperName, type ScrapeSearchResult } from '../api'
 import { showToast } from '../toast'
 
-export interface ScrapeResult {
-  source_id: string
-  source: string
-  media_type: string
-  title: string
-  original_title?: string
-  year?: string
-  poster_url?: string
-  overview?: string
-}
+export type ScrapeResult = ScrapeSearchResult
 
 export interface BackdropResult {
   source_id: string
@@ -32,10 +23,13 @@ interface ManualScrapeModalProps {
   onClose: () => void
 }
 
-const SCRAPER_OPTIONS = [
+type ManualScraperSelectValue = '' | ManualScraperName
+
+const SCRAPER_OPTIONS: { value: ManualScraperSelectValue; label: string }[] = [
   { value: '', label: '自动' },
   { value: 'tmdb_movie', label: 'TMDB 电影' },
   { value: 'tmdb_tv', label: 'TMDB 剧集/番剧' },
+  { value: 'tmdb_collection', label: 'TMDB 合集' },
   { value: 'bangumi', label: 'Bangumi' },
   { value: 'javdatabase', label: 'Javdatabase' },
 ]
@@ -49,7 +43,7 @@ export default function ManualScrapeModal({
   onClose,
 }: ManualScrapeModalProps) {
   const [query, setQuery] = useState(initialQuery)
-  const [scraper, setScraper] = useState('')
+  const [scraper, setScraper] = useState<ManualScraperSelectValue>('')
   const [results, setResults] = useState<ScrapeResult[]>([])
   const [backdrops, setBackdrops] = useState<BackdropResult[]>([])
   const [searching, setSearching] = useState(false)
@@ -60,7 +54,11 @@ export default function ManualScrapeModal({
     setSearching(true)
     try {
       const data = await api.searchScrape(query.trim(), scraper || undefined)
-      const found = (data.results || []) as ScrapeResult[]
+      const selectedScraper = (scraper || 'tmdb_movie') as ManualScraperName
+      const found = (data.results || []).map(result => ({
+        ...result,
+        scraper: result.scraper || selectedScraper,
+      }))
       setResults(found)
       if (found.length === 0) {
         showToast('没有找到匹配结果')
@@ -110,7 +108,7 @@ export default function ManualScrapeModal({
           />
           <select
             value={scraper}
-            onChange={e => setScraper(e.target.value)}
+            onChange={e => setScraper(e.target.value as ManualScraperSelectValue)}
             className="glass-input px-3 py-2 text-sm text-gray-300"
           >
             {SCRAPER_OPTIONS.map(o => (
