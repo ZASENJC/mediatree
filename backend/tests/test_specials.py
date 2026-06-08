@@ -116,6 +116,32 @@ class SpecialDatabaseTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(favorite_result["total"], 0)
         self.assertEqual(recent_result["total"], 0)
 
+    async def test_special_progress_is_not_saved_for_continue_watching(self):
+        special_id = await self._movie(
+            "bonus",
+            path=f"{self.media_root}/Show/sp/bonus.mkv",
+            folder_levels="Show/sp",
+            content_role="special",
+            special_parent_levels="Show",
+        )
+
+        result = await database.save_progress(special_id, position=120, duration=1200)
+        progress = await database.get_progress(special_id)
+        recent_result = await database.get_recent_watched(media_root=self.media_root)
+        db = await database.get_db()
+        cur = await db.execute(
+            "SELECT COUNT(*) FROM user_data WHERE item_id=?",
+            (str(special_id),),
+        )
+        row_count = (await cur.fetchone())[0]
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["ignored"])
+        self.assertEqual(progress["position"], 0)
+        self.assertFalse(progress["played"])
+        self.assertEqual(recent_result["total"], 0)
+        self.assertEqual(row_count, 0)
+
     async def test_folder_tree_counts_main_and_specials_separately(self):
         await self._movie("main")
         await self._movie(

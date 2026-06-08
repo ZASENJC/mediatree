@@ -1469,6 +1469,26 @@ async def save_progress(movie_id: int, position: float, duration: float | None =
     movie = await get_movie_detail(movie_id)
     if not movie:
         return {"ok": False, "error": "Movie not found"}
+    if (movie.get("content_role") or CONTENT_ROLE_MAIN) == CONTENT_ROLE_SPECIAL:
+        await db.execute(
+            """UPDATE user_data
+               SET playback_position_ticks=0,
+                   play_count=0,
+                   played=0,
+                   last_played_date=NULL,
+                   updated_at=datetime('now')
+               WHERE user_id=? AND item_id=?""",
+            (WEB_USER_ID, str(movie_id)),
+        )
+        await db.commit()
+        return {
+            "ok": True,
+            "ignored": True,
+            "played": False,
+            "position": 0,
+            "duration": float(duration or movie.get("duration") or 0),
+            "progress_percent": 0,
+        }
     total = float(duration or movie.get("duration") or 0)
     pos = max(0.0, float(position or 0))
     if total and pos > total and total < 1000:
@@ -1504,6 +1524,9 @@ async def save_progress(movie_id: int, position: float, duration: float | None =
 
 async def get_progress(movie_id: int) -> dict:
     db = await get_db()
+    movie = await get_movie_detail(movie_id)
+    if (movie or {}).get("content_role") == CONTENT_ROLE_SPECIAL:
+        return {"position": 0, "played": False, "progress_percent": 0}
     cur = await db.execute(
         "SELECT playback_position_ticks, played FROM user_data WHERE user_id=? AND item_id=?",
         (WEB_USER_ID, str(movie_id)),
@@ -1511,7 +1534,6 @@ async def get_progress(movie_id: int) -> dict:
     row = await cur.fetchone()
     if not row:
         return {"position": 0, "played": False, "progress_percent": 0}
-    movie = await get_movie_detail(movie_id)
     total = float(movie.get("duration") or 0) if movie else 0
     position = int(row["playback_position_ticks"] or 0) / 10_000_000
     if total and position > total and total < 1000:

@@ -22,7 +22,8 @@ const WATCHED_AFTER = 60
 const WATCHED_RATIO = 0.9
 const SEEK_SMALL = 5
 const POS_SAVE_INTERVAL = 5000
-const BROWSER_UNSUPPORTED_AUDIO = new Set(['eac3', 'truehd', 'dts', 'dca', 'mlp'])
+const AUTO_TRANSCODE_AUDIO = new Set(['ac3'])
+const BROWSER_UNSUPPORTED_AUDIO = new Set([...AUTO_TRANSCODE_AUDIO, 'eac3', 'truehd', 'dts', 'dca', 'mlp'])
 const BUNDLED_CJK_FALLBACK_FONT = '/fonts/SourceHanSansCN-Bold.woff2'
 const CJK_FONT_RE = /source\s*han|noto\s*sans\s*cjk|noto\s*serif\s*cjk|noto.*cjk|wenquanyi|wqy|pingfang|hiragino|yu\s*gothic|meiryo|simhei|simsun|yahei|microsoft\s*yahei|思源|宋体|黑体|微软雅黑|蘋方|苹方|ヒラギノ|游ゴシック|メイリオ/i
 const ASS_CJK_FONT_ALIASES = [
@@ -619,6 +620,7 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
   const lastProgressSaveAtRef = useRef(0)
   const switchUrlSeqRef = useRef(0)
   const lastPosSaveAtRef = useRef(0)
+  const autoTranscodedAudioRef = useRef('')
 
   const [resumePos, setResumePos] = useState(() => getSavedPos(movieId))
   const [showResume, setShowResume] = useState(() => false)
@@ -636,6 +638,7 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
   const [episodeMenuOpen, setEpisodeMenuOpen] = useState(false)
   const [playerChromeVisible, setPlayerChromeVisible] = useState(true)
   const [unsupportedAudio, setUnsupportedAudio] = useState('')
+  const [autoTranscodeAudio, setAutoTranscodeAudio] = useState('')
   const [fontUrls, setFontUrls] = useState<string[]>(() => buildAssFontConfig([]).fonts)
   const [availableFonts, setAvailableFonts] = useState<Record<string, string>>(() => buildAssFontConfig([]).availableFonts)
   const [assFallbackFont, setAssFallbackFont] = useState(() => buildAssFontConfig([]).fallbackFont)
@@ -756,9 +759,12 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
     subtitleVisibleRef.current = true
     lastProgressSaveAtRef.current = 0
     lastPosSaveAtRef.current = 0
+    autoTranscodedAudioRef.current = ''
     setTracks([])
     setActiveTrack(-1)
     setSubtitleVisibleState(true)
+    setAutoTranscodeAudio('')
+    setUnsupportedAudio('')
     setShowResume(false)
     window.clearTimeout(resumeTimerRef.current)
     window.clearTimeout(progressSaveTimerRef.current)
@@ -798,14 +804,18 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
   }, [])
 
   useEffect(() => {
+    let cancelled = false
     api.mediaInfo(movieId).then(info => {
+      if (cancelled) return
       if (info.duration && isFinite(info.duration)) {
         displayDurationRef.current = info.duration
         setMediaDuration(info.duration)
       }
       const audioCodec = (info.audio_codec || '').toLowerCase()
       setUnsupportedAudio(BROWSER_UNSUPPORTED_AUDIO.has(audioCodec) ? (info.audio_codec || 'unknown') : '')
+      setAutoTranscodeAudio(AUTO_TRANSCODE_AUDIO.has(audioCodec) ? audioCodec : '')
     }).catch(() => {})
+    return () => { cancelled = true }
   }, [movieId])
 
   useEffect(() => {
@@ -1012,6 +1022,14 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
     pendingAutoPlay.current = true
     setTranscode(true, mode)
   }, [setTranscode])
+
+  useEffect(() => {
+    if (!autoTranscodeAudio || useTranscodeRef.current) return
+    const autoKey = `${movieId}:${autoTranscodeAudio}`
+    if (autoTranscodedAudioRef.current === autoKey) return
+    autoTranscodedAudioRef.current = autoKey
+    startTranscode('audio')
+  }, [autoTranscodeAudio, movieId, startTranscode])
 
   const setVr = useCallback((mode: VRMode) => {
     setVrMode(mode)
