@@ -33,14 +33,21 @@ export default function Browse() {
   const pageSize = 48
 
   const sortedFolders = useMemo(() => {
+    const toTime = (value?: string) => value ? new Date(value).getTime() || 0 : 0
     const sortNodes = (nodes: FolderNode[]): FolderNode[] => {
       let sorted = [...nodes]
       if (sort === 'random') {
         sorted = sorted.sort(() => Math.random() - 0.5)
-      } else if (sort === 'name' || sort === 'created_asc' || sort === 'release_date_asc') {
-        sorted = sorted.sort((a, b) => a.name.localeCompare(b.name))
+      } else if (sort === 'name') {
+        sorted = sorted.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+      } else if (sort === 'created_asc') {
+        sorted = sorted.sort((a, b) => toTime(a.created_max) - toTime(b.created_max))
+      } else if (sort === 'release_date_asc') {
+        sorted = sorted.sort((a, b) => toTime(a.release_date_max) - toTime(b.release_date_max))
+      } else if (sort === 'release_date_desc') {
+        sorted = sorted.sort((a, b) => toTime(b.release_date_max) - toTime(a.release_date_max))
       } else {
-        sorted = sorted.sort((a, b) => b.name.localeCompare(a.name))
+        sorted = sorted.sort((a, b) => toTime(b.created_max) - toTime(a.created_max))
       }
       return sorted.map(node => ({
         ...node,

@@ -39,6 +39,31 @@ const sortOptions = [
   { key: 'random', label: '随机' },
 ]
 
+function sortMovies(movies: Movie[], sort: SortMode): Movie[] {
+  const sorted = [...movies]
+  const toTime = (value?: string) => value ? new Date(value).getTime() || 0 : 0
+  const titleOf = (movie: Movie) => movie.display_title || movie.clean_title || movie.title || movie.code || ''
+
+  if (sort === 'name') {
+    sorted.sort((a, b) => titleOf(a).localeCompare(titleOf(b), 'zh-CN'))
+  } else if (sort === 'created_desc') {
+    sorted.sort((a, b) => toTime(b.created_at) - toTime(a.created_at))
+  } else if (sort === 'created_asc') {
+    sorted.sort((a, b) => toTime(a.created_at) - toTime(b.created_at))
+  } else if (sort === 'release_date_desc') {
+    sorted.sort((a, b) => toTime(b.release_date) - toTime(a.release_date))
+  } else if (sort === 'release_date_asc') {
+    sorted.sort((a, b) => toTime(a.release_date) - toTime(b.release_date))
+  } else if (sort === 'random') {
+    for (let i = sorted.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [sorted[i], sorted[j]] = [sorted[j], sorted[i]]
+    }
+  }
+
+  return sorted
+}
+
 export default function Home() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -123,10 +148,10 @@ export default function Home() {
   const loadRecent = useCallback(() => {
     setLoading(true)
     api.getRecentWatched(200).then((data) => {
-      setRecentMovies(data.movies)
+      setRecentMovies(sortMovies(data.movies, sort))
       setRecentTotal(data.total)
     }).catch(() => {}).finally(() => setLoading(false))
-  }, [])
+  }, [sort])
 
   useEffect(() => {
     if (tab === 'recent') loadRecent()
