@@ -6,6 +6,21 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## Unreleased
+
+### Library
+
+- Added folder-level specials support for media stored under `sp` directories, hidden from main listings by default and displayed in a separate specials section when enabled
+- Kept specials out of scraping, search, favorites, continue watching, folder movie counts, and player episode lists while preserving original file titles for specials
+- Tightened Javdatabase scraping so explicit JAV code extraction drives scraping and prefix noise is cleaned before code matching
+
+### Playback
+
+- Added AC3 audio auto-transcoding for browser playback compatibility
+- Prevented specials playback progress from appearing in continue watching
+
+---
+
 ## 1.0.12 (2026-06-06)
 
 ### Branding
