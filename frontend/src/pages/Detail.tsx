@@ -4,7 +4,6 @@ import { api, Movie } from '../api'
 import VideoPlayer from '../components/VideoPlayer'
 import Lightbox from '../components/Lightbox'
 import { useTheater } from '../theater'
-import { showToast } from '../toast'
 import { specialMovieTitle } from '../movieTitle'
 
 type ThumbnailImage = { src: string; fallback?: string; alt: string }
@@ -49,8 +48,7 @@ export default function Detail() {
   const [episodes, setEpisodes] = useState<Movie[]>([])
   const [specialMovies, setSpecialMovies] = useState<Movie[]>([])
   const [specialCount, setSpecialCount] = useState(0)
-  const [showSpecials, setShowSpecials] = useState(false)
-  const [specialsToggling, setSpecialsToggling] = useState(false)
+  const [specialsExpanded, setSpecialsExpanded] = useState(false)
   const [lightboxIdx, setLightboxIdx] = useState(-1)
   const [infoExpanded, setInfoExpanded] = useState(false)
 
@@ -72,8 +70,7 @@ export default function Detail() {
     setEpisodes([])
     setSpecialMovies([])
     setSpecialCount(0)
-    setShowSpecials(false)
-    setSpecialsToggling(false)
+    setSpecialsExpanded(false)
     setPosters([])
     setVideos([])
     setReviews([])
@@ -118,14 +115,13 @@ export default function Detail() {
     if (!specialFolder) {
       setSpecialMovies([])
       setSpecialCount(0)
-      setShowSpecials(false)
+      setSpecialsExpanded(false)
       return
     }
     let cancelled = false
-    api.folderSpecials(specialFolder, movie?.media_root || undefined)
+    api.folderSpecials(specialFolder, movie?.media_root || undefined, true)
       .then((data) => {
         if (cancelled) return
-        setShowSpecials(Boolean(data.show_specials))
         setSpecialCount(data.special_count || 0)
         setSpecialMovies(data.movies || [])
       })
@@ -133,7 +129,7 @@ export default function Detail() {
         if (cancelled) return
         setSpecialMovies([])
         setSpecialCount(0)
-        setShowSpecials(false)
+        setSpecialsExpanded(false)
       })
     return () => { cancelled = true }
   }, [movie?.id, movie?.folder_levels, movie?.media_root, movie?.content_role, movie?.special_parent_levels])
@@ -215,25 +211,8 @@ export default function Detail() {
     }
   }
 
-  const toggleSpecials = async () => {
-    if (specialsToggling) return
-    const specialFolder = movie.content_role === 'special'
-      ? (movie.special_parent_levels || parentFolder(movie.folder_levels))
-      : movie.folder_levels
-    if (!specialFolder) return
-    const next = !showSpecials
-    setSpecialsToggling(true)
-    try {
-      const data = await api.setFolderSpecials(specialFolder, movie.media_root || undefined, next)
-      setShowSpecials(Boolean(data.show_specials))
-      setSpecialCount(data.special_count || 0)
-      setSpecialMovies(data.movies || [])
-      showToast(next ? '已显示花絮' : '已隐藏花絮')
-    } catch {
-      showToast('花絮显示设置失败')
-    } finally {
-      setSpecialsToggling(false)
-    }
+  const toggleSpecials = () => {
+    setSpecialsExpanded(v => !v)
   }
 
   const coreMeta = [
@@ -346,24 +325,20 @@ export default function Detail() {
       </section>
 
       {specialCount > 0 && (
-        <section className="rounded-3xl border border-white/10 bg-white/[0.045] p-4 shadow-glass backdrop-blur-2xl sm:p-5">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <section className="rounded-3xl bg-white/[0.04] px-4 py-3 shadow-glass backdrop-blur-2xl sm:px-6 sm:py-4">
+          <button
+            onClick={toggleSpecials}
+            className={`${specialsExpanded ? 'mb-3' : ''} flex w-full items-center justify-between gap-4 text-left`}
+          >
             <div className="min-w-0">
               <p className="text-[10px] uppercase tracking-[0.24em] text-apple-pink/70">Specials</p>
-              <h2 className="mt-0.5 text-lg font-semibold text-white">花絮</h2>
-              <p className="mt-1 text-xs text-gray-500">
-                {showSpecials ? `共 ${specialCount} 个花絮，单独播放，不进入选集列表` : `已隐藏 ${specialCount} 个花絮`}
-              </p>
+              <h2 className="mt-0.5 truncate text-base font-semibold text-white sm:text-lg">花絮</h2>
             </div>
-            <button
-              onClick={toggleSpecials}
-              disabled={specialsToggling}
-              className="rounded-full border border-white/10 bg-white/[0.08] px-4 py-2 text-sm text-gray-300 transition-all hover:border-apple-pink/40 hover:text-apple-pink disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {specialsToggling ? '保存中...' : (showSpecials ? '隐藏花絮' : '显示花絮')}
-            </button>
-          </div>
-          {showSpecials && specialMovies.length > 0 && (
+            <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-3 py-1 text-xs text-gray-300 transition-all hover:border-apple-pink/40 hover:text-apple-pink">
+              {specialsExpanded ? '收起' : '展开'}
+            </span>
+          </button>
+          {specialsExpanded && specialMovies.length > 0 && (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 media-grid">
               {specialMovies.map((item) => (
                 <button

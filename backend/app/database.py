@@ -1172,7 +1172,7 @@ async def set_folder_specials_visibility(folder_levels: str, media_root: str, sh
     return {"ok": True, "show_specials": bool(show_specials)}
 
 
-async def get_folder_specials(folder_levels: str, media_root: str) -> dict:
+async def get_folder_specials(folder_levels: str, media_root: str, include_movies: bool = False) -> dict:
     db = await get_db()
     setting_cur = await db.execute(
         "SELECT show_specials FROM folder_special_settings WHERE media_root=? AND folder_levels=?",
@@ -1188,7 +1188,7 @@ async def get_folder_specials(folder_levels: str, media_root: str) -> dict:
     count_cur = await db.execute(f"SELECT COUNT(*) FROM movies {where}", params)
     special_count = int((await count_cur.fetchone())[0] or 0)
     movies: list[dict] = []
-    if show_specials and special_count:
+    if (show_specials or include_movies) and special_count:
         cur = await db.execute(
             f"""SELECT {MOVIE_RESPONSE_COLUMNS} FROM movies {where}
                 ORDER BY folder_levels ASC, COALESCE(clean_title, title, code) ASC, path ASC""",

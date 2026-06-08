@@ -1404,11 +1404,11 @@ async def api_folder_watched(data: dict):
 # ─── Folder Specials ───
 
 @app.get("/api/folder/specials")
-async def api_folder_specials(folder: str = Query(""), media_root: str = Query("")):
+async def api_folder_specials(folder: str = Query(""), media_root: str = Query(""), include_movies: bool = Query(False)):
     if not folder:
         raise HTTPException(status_code=400, detail="folder required")
     media_root = await _require_enabled_media_root(media_root)
-    return await get_folder_specials(folder, media_root)
+    return await get_folder_specials(folder, media_root, include_movies=include_movies)
 
 
 @app.post("/api/folder/specials")

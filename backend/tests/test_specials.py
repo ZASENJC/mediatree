@@ -182,6 +182,22 @@ class SpecialDatabaseTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(visible["special_count"], 1)
         self.assertEqual([movie["id"] for movie in visible["movies"]], [special_id])
 
+    async def test_get_folder_specials_can_include_movies_without_visibility_setting(self):
+        special_id = await self._movie(
+            "bonus",
+            path=f"{self.media_root}/Show/sp/bonus.mkv",
+            title="Bonus Feature",
+            folder_levels="Show/sp",
+            content_role="special",
+            special_parent_levels="Show",
+        )
+
+        data = await database.get_folder_specials("Show", self.media_root, include_movies=True)
+
+        self.assertFalse(data["show_specials"])
+        self.assertEqual(data["special_count"], 1)
+        self.assertEqual([movie["id"] for movie in data["movies"]], [special_id])
+
     async def test_specials_read_as_file_titles_even_with_legacy_scraped_metadata(self):
         path = f"{self.media_root}/Show/sp/bonus-trailer.mkv"
         special_id = await self._movie(

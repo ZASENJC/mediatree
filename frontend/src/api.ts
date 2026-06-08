@@ -372,10 +372,11 @@ export const api = {
       body: JSON.stringify({ folder, media_root: mediaRoot, watched }),
     }),
 
-  folderSpecials: (folder: string, mediaRoot?: string) => {
+  folderSpecials: (folder: string, mediaRoot?: string, includeMovies = false) => {
     const lib = mediaRoot || getActiveLibrary()
+    const include = includeMovies ? '&include_movies=1' : ''
     return request<FolderSpecialsResponse>(
-      `/folder/specials?folder=${encodeURIComponent(folder)}&media_root=${encodeURIComponent(lib)}`
+      `/folder/specials?folder=${encodeURIComponent(folder)}&media_root=${encodeURIComponent(lib)}${include}`
     )
   },
 
