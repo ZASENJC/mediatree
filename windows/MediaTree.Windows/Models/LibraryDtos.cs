@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace MediaTree.Windows.Models;
@@ -129,17 +131,82 @@ public sealed class ConfigDto
     [JsonPropertyName("media_root")]
     public string MediaRoot { get; set; } = "";
 
+    [JsonPropertyName("javdb_enabled")]
+    public bool JavdbEnabled { get; set; } = true;
+
+    [JsonPropertyName("javdb_cache_hours")]
+    [JsonConverter(typeof(FlexibleIntConverter))]
+    public int JavdbCacheHours { get; set; } = 24;
+
+    [JsonPropertyName("tmdb_cache_hours")]
+    [JsonConverter(typeof(FlexibleIntConverter))]
+    public int TmdbCacheHours { get; set; } = 168;
+
+    [JsonPropertyName("bangumi_cache_hours")]
+    [JsonConverter(typeof(FlexibleIntConverter))]
+    public int BangumiCacheHours { get; set; } = 168;
+
+    [JsonPropertyName("tmdb_api_key")]
+    public string TmdbApiKey { get; set; } = "";
+
     [JsonPropertyName("tmdb_access_token")]
     public string TmdbAccessToken { get; set; } = "";
 
     [JsonPropertyName("tmdb_configured")]
     public bool TmdbConfigured { get; set; }
 
+    [JsonPropertyName("javdb_request_interval")]
+    [JsonConverter(typeof(FlexibleIntConverter))]
+    public int JavdbRequestInterval { get; set; } = 3;
+
     [JsonPropertyName("update_check_enabled")]
     public bool UpdateCheckEnabled { get; set; } = true;
 
     [JsonPropertyName("update_check_interval_hours")]
+    [JsonConverter(typeof(FlexibleIntConverter))]
     public int UpdateCheckIntervalHours { get; set; } = 24;
+}
+
+internal sealed class FlexibleIntConverter : JsonConverter<int>
+{
+    public override int Read(ref Utf8JsonReader reader, System.Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return 0;
+        }
+
+        if (reader.TokenType == JsonTokenType.Number)
+        {
+            if (reader.TryGetInt32(out var intValue))
+            {
+                return intValue;
+            }
+
+            return (int)reader.GetDouble();
+        }
+
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var value = reader.GetString();
+            if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intValue))
+            {
+                return intValue;
+            }
+
+            if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleValue))
+            {
+                return (int)doubleValue;
+            }
+        }
+
+        throw new JsonException($"Cannot convert {reader.TokenType} to int.");
+    }
+
+    public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options)
+    {
+        writer.WriteNumberValue(value);
+    }
 }
 
 public sealed class ScanStatusDto

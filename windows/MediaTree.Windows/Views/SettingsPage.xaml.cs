@@ -9,6 +9,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Windows.Storage.Pickers;
+using WinRT.Interop;
 
 namespace MediaTree.Windows.Views;
 
@@ -16,7 +18,7 @@ public sealed partial class SettingsPage : Page
 {
     private sealed record ScraperOption(string Value, string Label, string Description, bool HasKey);
 
-    private sealed record LibrarySettingsRowContext(string MediaRoot, string TmdbKey, ComboBox ScraperBox);
+    private sealed record LibrarySettingsRowContext(string MediaRoot, string TmdbKey, ComboBox ScraperBox, PasswordBox PasswordBox);
 
     private static readonly IReadOnlyList<ScraperOption> ScraperOptions =
     [
@@ -28,20 +30,57 @@ public sealed partial class SettingsPage : Page
         new("none", "不刮削", "只扫描本地文件，不联网刮削元数据", false),
     ];
 
+    private readonly TextBlock _authStatusText;
+    private readonly TextBlock _globalStatusText;
+    private readonly CheckBox _hideHomeTitleTextBox;
+    private readonly PasswordBox _newPasswordBox;
+    private readonly TextBox _newUsernameBox;
+    private readonly PasswordBox _oldPasswordBox;
+    private readonly TextBox _oldUsernameBox;
+    private readonly CheckBox _showSourceNameBox;
+    private readonly TextBlock _backupStatusText;
+    private readonly TextBox _bangumiCacheHoursBox;
+    private readonly TextBox _javdbCacheHoursBox;
+    private readonly TextBox _javdbRequestIntervalBox;
     private readonly ListView _librarySettingsList;
     private readonly TextBlock _libraryStatusText;
+    private readonly TextBox _tmdbApiKeyBox;
+    private readonly TextBox _tmdbCacheHoursBox;
     private readonly PasswordBox _tmdbTokenBox;
     private readonly TextBlock _tmdbTokenStatusText;
     private readonly TextBlock _updateStatusText;
     private readonly TextBlock _versionText;
+    private ConfigDto _loadedConfig = new();
+    private bool _suppressUiPreferenceSave;
 
     public SettingsPage()
     {
-        (_versionText, _updateStatusText, _tmdbTokenBox, _tmdbTokenStatusText, _librarySettingsList, _libraryStatusText) = BuildContent();
+        (
+            _globalStatusText,
+            _hideHomeTitleTextBox,
+            _showSourceNameBox,
+            _oldUsernameBox,
+            _oldPasswordBox,
+            _newUsernameBox,
+            _newPasswordBox,
+            _authStatusText,
+            _librarySettingsList,
+            _libraryStatusText,
+            _javdbCacheHoursBox,
+            _tmdbCacheHoursBox,
+            _bangumiCacheHoursBox,
+            _javdbRequestIntervalBox,
+            _tmdbApiKeyBox,
+            _tmdbTokenBox,
+            _tmdbTokenStatusText,
+            _backupStatusText,
+            _versionText,
+            _updateStatusText
+        ) = BuildContent();
         Loaded += OnLoaded;
     }
 
-    private (TextBlock versionText, TextBlock updateStatusText, PasswordBox tmdbTokenBox, TextBlock tmdbTokenStatusText, ListView librarySettingsList, TextBlock libraryStatusText) BuildContent()
+    private (TextBlock globalStatusText, CheckBox hideHomeTitleTextBox, CheckBox showSourceNameBox, TextBox oldUsernameBox, PasswordBox oldPasswordBox, TextBox newUsernameBox, PasswordBox newPasswordBox, TextBlock authStatusText, ListView librarySettingsList, TextBlock libraryStatusText, TextBox javdbCacheHoursBox, TextBox tmdbCacheHoursBox, TextBox bangumiCacheHoursBox, TextBox javdbRequestIntervalBox, TextBox tmdbApiKeyBox, PasswordBox tmdbTokenBox, TextBlock tmdbTokenStatusText, TextBlock backupStatusText, TextBlock versionText, TextBlock updateStatusText) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "SettingsPage");
 
@@ -53,127 +92,101 @@ public sealed partial class SettingsPage : Page
             Background = FluentTheme.Canvas,
             RequestedTheme = ElementTheme.Light,
         };
-        root.Children.Add(FluentTheme.Title("设置", 34));
 
-        var card = new Border
+        var headerGrid = new Grid { ColumnSpacing = 16 };
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var titleStack = new StackPanel { Spacing = 4 };
+        titleStack.Children.Add(new TextBlock
         {
-            Padding = new Thickness(22),
-            CornerRadius = new CornerRadius(16),
-            Background = FluentTheme.Layer,
-            BorderBrush = FluentTheme.Border,
-            BorderThickness = new Thickness(1),
-        };
-        var stack = new StackPanel { Spacing = 12 };
-        stack.Children.Add(new TextBlock
-        {
-            Text = "版本与更新",
-            FontSize = 20,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = FluentTheme.TextPrimary,
+            Text = "MediaTree",
+            FontSize = 12,
+            Foreground = FluentTheme.Accent,
         });
+        titleStack.Children.Add(FluentTheme.Title("设置", 34));
+        headerGrid.Children.Add(titleStack);
 
-        var versionText = new TextBlock
+        var saveGlobalButton = FluentTheme.ApplyButton(new Button
         {
-            Foreground = FluentTheme.TextSecondary,
+            Content = "保存全局设置",
+            VerticalAlignment = VerticalAlignment.Center,
+        }, FluentButtonStyle.Accent);
+        AutomationProperties.SetAutomationId(saveGlobalButton, "SettingsSaveGlobal");
+        saveGlobalButton.Click += OnSaveGlobalClicked;
+        Grid.SetColumn(saveGlobalButton, 1);
+        headerGrid.Children.Add(saveGlobalButton);
+        root.Children.Add(FluentTheme.Card(headerGrid, new Thickness(18)));
+
+        var globalStatusText = StatusText("SettingsGlobalStatusText");
+        root.Children.Add(globalStatusText);
+
+        var columns = new Grid { ColumnSpacing = 20 };
+        columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var leftColumn = new StackPanel { Spacing = 20 };
+        var rightColumn = new StackPanel { Spacing = 20 };
+        Grid.SetColumn(rightColumn, 1);
+        columns.Children.Add(leftColumn);
+        columns.Children.Add(rightColumn);
+        root.Children.Add(columns);
+
+        var uiPrefsStack = new StackPanel { Spacing = 12 };
+        uiPrefsStack.Children.Add(SectionTitle("界面偏好", "SettingsUiPrefsCard"));
+        var hideHomeTitleTextBox = new CheckBox
+        {
+            Content = "无字模式：首页仅展示影片封面图，隐藏卡片上的标题文字和目录数量。",
         };
-        AutomationProperties.SetAutomationId(versionText, "SettingsVersion");
-        stack.Children.Add(versionText);
-
-        var updateStatusText = new TextBlock
+        AutomationProperties.SetAutomationId(hideHomeTitleTextBox, "SettingsHideHomeTitleText");
+        hideHomeTitleTextBox.Checked += OnUiPreferenceChanged;
+        hideHomeTitleTextBox.Unchecked += OnUiPreferenceChanged;
+        uiPrefsStack.Children.Add(hideHomeTitleTextBox);
+        var showSourceNameBox = new CheckBox
         {
-            Text = "",
-            Visibility = Visibility.Collapsed,
-            Foreground = FluentTheme.TextSecondary,
-            TextWrapping = TextWrapping.WrapWholeWords,
+            Content = "使用源文件名称：首页媒体库卡片显示源文件夹名称。",
         };
-        AutomationProperties.SetAutomationId(updateStatusText, "SettingsUpdateStatusText");
-        stack.Children.Add(updateStatusText);
+        AutomationProperties.SetAutomationId(showSourceNameBox, "SettingsShowSourceName");
+        showSourceNameBox.Checked += OnUiPreferenceChanged;
+        showSourceNameBox.Unchecked += OnUiPreferenceChanged;
+        uiPrefsStack.Children.Add(showSourceNameBox);
+        leftColumn.Children.Add(SectionCard(uiPrefsStack, "SettingsUiPrefsCard"));
 
-        var actions = new StackPanel
+        var authStack = new StackPanel { Spacing = 12 };
+        authStack.Children.Add(SectionTitle("账号安全", "SettingsAuthCard"));
+        var oldUsernameBox = TextInput("当前用户名", "SettingsOldUsername");
+        var oldPasswordBox = PasswordInput("当前密码", "SettingsOldPassword");
+        var newUsernameBox = TextInput("新用户名", "SettingsNewUsername");
+        var newPasswordBox = PasswordInput("新密码", "SettingsNewPassword");
+        authStack.Children.Add(TwoColumnRow(oldUsernameBox, oldPasswordBox));
+        authStack.Children.Add(TwoColumnRow(newUsernameBox, newPasswordBox));
+        var changePasswordButton = FluentTheme.ApplyButton(new Button
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 10,
-        };
-        var checkButton = FluentTheme.ApplyButton(new Button
-        {
-            Content = "检查更新",
-        });
-        AutomationProperties.SetAutomationId(checkButton, "SettingsCheckUpdates");
-        checkButton.Click += OnCheckUpdatesClicked;
-        actions.Children.Add(checkButton);
+            Content = "修改用户名/密码",
+            HorizontalAlignment = HorizontalAlignment.Left,
+        }, FluentButtonStyle.Accent);
+        AutomationProperties.SetAutomationId(changePasswordButton, "SettingsChangePassword");
+        changePasswordButton.Click += OnChangePasswordClicked;
+        authStack.Children.Add(changePasswordButton);
+        var authStatusText = StatusText("SettingsAuthStatusText");
+        authStack.Children.Add(authStatusText);
+        leftColumn.Children.Add(SectionCard(authStack, "SettingsAuthCard"));
 
-        var logsButton = FluentTheme.ApplyButton(new Button
-        {
-            Content = "打开问题日志",
-        });
-        AutomationProperties.SetAutomationId(logsButton, "SettingsOpenLogs");
-        logsButton.Click += OnOpenLogsClicked;
-        actions.Children.Add(logsButton);
-
+        var libraryStack = new StackPanel { Spacing = 12 };
+        var libraryHeader = new Grid { ColumnSpacing = 12 };
+        libraryHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        libraryHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        libraryHeader.Children.Add(SectionTitle("媒体库", "SettingsLibraryCard"));
         var addLibraryButton = FluentTheme.ApplyButton(new Button
         {
-            Content = "添加影片文件夹",
+            Content = "添加本机目录",
         }, FluentButtonStyle.Accent);
         AutomationProperties.SetAutomationId(addLibraryButton, "SettingsAddLibrary");
         addLibraryButton.Click += OnAddLibraryClicked;
-        actions.Children.Add(addLibraryButton);
-
-        stack.Children.Add(actions);
-        card.Child = stack;
-        root.Children.Add(card);
-
-        var libraryStack = new StackPanel { Spacing = 12 };
-        libraryStack.Children.Add(new TextBlock
-        {
-            Text = "刮削器设置",
-            FontSize = 20,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = FluentTheme.TextPrimary,
-        });
-        libraryStack.Children.Add(new TextBlock
-        {
-            Text = "为每个媒体库选择资料来源。保存后重新整理媒体库时会按这里的设置刮削。",
-            Foreground = FluentTheme.TextSecondary,
-            TextWrapping = TextWrapping.WrapWholeWords,
-        });
-
-        var tmdbConfig = new Grid
-        {
-            ColumnSpacing = 10,
-        };
-        tmdbConfig.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        tmdbConfig.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var tmdbTokenBox = new PasswordBox
-        {
-            Header = "TMDB 读访问令牌（推荐，优先使用）",
-            PlaceholderText = "Bearer Token",
-            MinWidth = 360,
-        };
-        AutomationProperties.SetAutomationId(tmdbTokenBox, "SettingsTmdbAccessToken");
-        tmdbConfig.Children.Add(tmdbTokenBox);
-
-        var saveTmdbButton = FluentTheme.ApplyButton(new Button
-        {
-            Content = "保存令牌",
-            VerticalAlignment = VerticalAlignment.Bottom,
-        }, FluentButtonStyle.Accent);
-        AutomationProperties.SetAutomationId(saveTmdbButton, "SettingsSaveTmdbToken");
-        saveTmdbButton.Click += OnSaveTmdbTokenClicked;
-        Grid.SetColumn(saveTmdbButton, 1);
-        tmdbConfig.Children.Add(saveTmdbButton);
-        libraryStack.Children.Add(tmdbConfig);
-
-        var tmdbTokenStatusText = new TextBlock
-        {
-            Text = "",
-            Visibility = Visibility.Collapsed,
-            Foreground = FluentTheme.TextSecondary,
-            TextWrapping = TextWrapping.WrapWholeWords,
-        };
-        AutomationProperties.SetAutomationId(tmdbTokenStatusText, "SettingsTmdbTokenStatusText");
-        libraryStack.Children.Add(tmdbTokenStatusText);
-
+        Grid.SetColumn(addLibraryButton, 1);
+        libraryHeader.Children.Add(addLibraryButton);
+        libraryStack.Children.Add(libraryHeader);
+        libraryStack.Children.Add(FluentTheme.Body("Windows 桌面版可直接选择本机文件夹作为媒体库。", 13));
         var librarySettingsList = new ListView
         {
             SelectionMode = ListViewSelectionMode.None,
@@ -183,27 +196,132 @@ public sealed partial class SettingsPage : Page
         };
         AutomationProperties.SetAutomationId(librarySettingsList, "SettingsLibrarySettingsList");
         libraryStack.Children.Add(librarySettingsList);
+        var libraryStatusText = StatusText("SettingsLibraryStatusText", visible: true);
+        libraryStatusText.Text = "正在加载媒体库设置...";
+        libraryStack.Children.Add(libraryStatusText);
+        leftColumn.Children.Add(SectionCard(libraryStack, "SettingsLibraryCard"));
 
-        var libraryStatusText = new TextBlock
+        var scraperStack = new StackPanel { Spacing = 12 };
+        scraperStack.Children.Add(SectionTitle("刮削器", "SettingsScraperCard"));
+        var javdbCacheHoursBox = TextInput("Javdatabase 缓存（小时）", "SettingsJavdbCacheHours", "24");
+        var tmdbCacheHoursBox = TextInput("TMDB 缓存（小时）", "SettingsTmdbCacheHours", "168");
+        var bangumiCacheHoursBox = TextInput("Bangumi 缓存（小时）", "SettingsBangumiCacheHours", "168");
+        scraperStack.Children.Add(ThreeColumnRow(javdbCacheHoursBox, tmdbCacheHoursBox, bangumiCacheHoursBox));
+        var javdbRequestIntervalBox = TextInput("请求间隔（秒）", "SettingsJavdbRequestInterval", "3");
+        scraperStack.Children.Add(javdbRequestIntervalBox);
+        var tmdbApiKeyBox = TextInput("TMDB API Key", "SettingsTmdbApiKey");
+        tmdbApiKeyBox.PlaceholderText = "去 themoviedb.org 免费申请";
+        scraperStack.Children.Add(tmdbApiKeyBox);
+        var tmdbTokenBox = PasswordInput("TMDB 读访问令牌（推荐，优先使用）", "SettingsTmdbAccessToken");
+        tmdbTokenBox.PlaceholderText = "Bearer Token";
+        scraperStack.Children.Add(tmdbTokenBox);
+        var tmdbTokenStatusText = StatusText("SettingsTmdbTokenStatusText");
+        scraperStack.Children.Add(tmdbTokenStatusText);
+        scraperStack.Children.Add(ScraperDescriptionGrid());
+        rightColumn.Children.Add(SectionCard(scraperStack, "SettingsScraperCard"));
+
+        var backupStack = new StackPanel { Spacing = 12 };
+        backupStack.Children.Add(SectionTitle("数据备份与恢复", "SettingsBackupCard"));
+        var backupActions = new StackPanel
         {
-            Text = "正在加载媒体库设置...",
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+        };
+        var backupCoreButton = FluentTheme.ApplyButton(new Button { Content = "下载数据库备份" }, FluentButtonStyle.Accent);
+        AutomationProperties.SetAutomationId(backupCoreButton, "SettingsBackupCore");
+        backupCoreButton.Click += (_, _) => OpenBackup("core");
+        backupActions.Children.Add(backupCoreButton);
+        var backupFullButton = FluentTheme.ApplyButton(new Button { Content = "下载完整备份 (含封面图)" }, FluentButtonStyle.Accent);
+        AutomationProperties.SetAutomationId(backupFullButton, "SettingsBackupFull");
+        backupFullButton.Click += (_, _) => OpenBackup("full");
+        backupActions.Children.Add(backupFullButton);
+        var restoreBackupButton = FluentTheme.ApplyButton(new Button { Content = "选择备份恢复" });
+        AutomationProperties.SetAutomationId(restoreBackupButton, "SettingsRestoreBackup");
+        restoreBackupButton.Click += OnRestoreBackupClicked;
+        backupActions.Children.Add(restoreBackupButton);
+        backupStack.Children.Add(backupActions);
+        backupStack.Children.Add(FluentTheme.Body("完整备份包含数据库和所有封面图片缓存。恢复会覆盖当前数据。", 13));
+        var backupStatusText = StatusText("SettingsBackupStatusText");
+        backupStack.Children.Add(backupStatusText);
+        rightColumn.Children.Add(SectionCard(backupStack, "SettingsBackupCard"));
+
+        var updateStack = new StackPanel { Spacing = 12 };
+        var updateHeader = new Grid { ColumnSpacing = 12 };
+        updateHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        updateHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        updateHeader.Children.Add(SectionTitle("更新", "SettingsUpdateCard"));
+        var checkButton = FluentTheme.ApplyButton(new Button { Content = "检查更新" });
+        AutomationProperties.SetAutomationId(checkButton, "SettingsCheckUpdates");
+        checkButton.Click += OnCheckUpdatesClicked;
+        Grid.SetColumn(checkButton, 1);
+        updateHeader.Children.Add(checkButton);
+        updateStack.Children.Add(updateHeader);
+        var versionText = new TextBlock
+        {
             Foreground = FluentTheme.TextSecondary,
             TextWrapping = TextWrapping.WrapWholeWords,
         };
-        AutomationProperties.SetAutomationId(libraryStatusText, "SettingsLibraryStatusText");
-        libraryStack.Children.Add(libraryStatusText);
+        AutomationProperties.SetAutomationId(versionText, "SettingsVersion");
+        updateStack.Children.Add(versionText);
+        var updateStatusText = StatusText("SettingsUpdateStatusText");
+        updateStack.Children.Add(updateStatusText);
+        var logsButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = "打开问题日志",
+            HorizontalAlignment = HorizontalAlignment.Left,
+        });
+        AutomationProperties.SetAutomationId(logsButton, "SettingsOpenLogs");
+        logsButton.Click += OnOpenLogsClicked;
+        updateStack.Children.Add(logsButton);
+        rightColumn.Children.Add(SectionCard(updateStack, "SettingsUpdateCard"));
 
-        root.Children.Add(FluentTheme.Card(libraryStack, new Thickness(22)));
         scrollViewer.Content = root;
         Content = scrollViewer;
-        return (versionText, updateStatusText, tmdbTokenBox, tmdbTokenStatusText, librarySettingsList, libraryStatusText);
+        return (
+            globalStatusText,
+            hideHomeTitleTextBox,
+            showSourceNameBox,
+            oldUsernameBox,
+            oldPasswordBox,
+            newUsernameBox,
+            newPasswordBox,
+            authStatusText,
+            librarySettingsList,
+            libraryStatusText,
+            javdbCacheHoursBox,
+            tmdbCacheHoursBox,
+            bangumiCacheHoursBox,
+            javdbRequestIntervalBox,
+            tmdbApiKeyBox,
+            tmdbTokenBox,
+            tmdbTokenStatusText,
+            backupStatusText,
+            versionText,
+            updateStatusText
+        );
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs args)
     {
+        LoadUiPreferences();
         await LoadVersionAsync();
         await LoadTmdbConfigAsync();
         await LoadLibrarySettingsAsync();
+    }
+
+    private void LoadUiPreferences()
+    {
+        _suppressUiPreferenceSave = true;
+        try
+        {
+            var preferences = UiPreferenceStore.Load();
+            _hideHomeTitleTextBox.IsChecked = preferences.HideHomeTitleText;
+            _showSourceNameBox.IsChecked = preferences.ShowSourceName;
+        }
+        finally
+        {
+            _suppressUiPreferenceSave = false;
+        }
     }
 
     private async System.Threading.Tasks.Task LoadVersionAsync()
@@ -211,8 +329,8 @@ public sealed partial class SettingsPage : Page
         try
         {
             var version = await AppServices.Updates.GetVersionAsync();
-            var source = version.CurrentSource == "app-package" ? "已更新的应用包" : "安装包内置版本";
-            _versionText.Text = $"当前版本：{version.Version}    来源：{source}";
+            var source = version.CurrentSource == "app-package" ? "应用包" : "安装包内置";
+            _versionText.Text = $"当前版本：{version.Version}    运行来源：Windows · {source}    镜像内置版本：{version.BaseVersion}";
         }
         catch (Exception ex)
         {
@@ -225,15 +343,14 @@ public sealed partial class SettingsPage : Page
         try
         {
             var config = await AppServices.Api.GetConfigAsync();
+            _loadedConfig = config;
+            _javdbCacheHoursBox.Text = config.JavdbCacheHours.ToString();
+            _tmdbCacheHoursBox.Text = config.TmdbCacheHours.ToString();
+            _bangumiCacheHoursBox.Text = config.BangumiCacheHours.ToString();
+            _javdbRequestIntervalBox.Text = config.JavdbRequestInterval.ToString();
+            _tmdbApiKeyBox.Text = config.TmdbApiKey ?? "";
             _tmdbTokenBox.Password = config.TmdbAccessToken ?? "";
-            if (config.TmdbConfigured)
-            {
-                ShowTmdbStatus("TMDB 已配置。输入新令牌后保存即可替换。", false);
-            }
-            else
-            {
-                ShowTmdbStatus("未配置 TMDB 令牌。选择 TMDB 刮削器前建议先填写。", false);
-            }
+            ShowTmdbStatus(config.TmdbConfigured ? "TMDB 已配置。保存全局设置即可替换令牌。" : "未配置 TMDB 令牌。选择 TMDB 刮削器前建议先填写。", false);
         }
         catch (Exception ex)
         {
@@ -242,7 +359,7 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private async void OnSaveTmdbTokenClicked(object sender, RoutedEventArgs args)
+    private async void OnSaveGlobalClicked(object sender, RoutedEventArgs args)
     {
         if (sender is not Button button)
         {
@@ -252,14 +369,16 @@ public sealed partial class SettingsPage : Page
         try
         {
             button.IsEnabled = false;
-            ShowTmdbStatus("正在保存 TMDB 令牌...", false);
-            await AppServices.Api.SaveTmdbConfigAsync(_tmdbTokenBox.Password);
-            ShowTmdbStatus("TMDB 令牌已保存。", false);
+            ShowGlobalStatus("正在保存全局设置...", false);
+            SaveUiPreferences();
+            await SaveGlobalConfigAsync();
+            ShowGlobalStatus("已保存", false);
+            ShowTmdbStatus("TMDB 设置已保存。", false);
         }
         catch (Exception ex)
         {
-            ShellLogger.Error(ex, "Failed to save native TMDB token.");
-            ShowTmdbStatus($"保存 TMDB 令牌失败：{ex.Message}", true);
+            ShellLogger.Error(ex, "Failed to save native global settings.");
+            ShowGlobalStatus($"保存失败：{ex.Message}", true);
         }
         finally
         {
@@ -267,11 +386,68 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private void ShowTmdbStatus(string message, bool isError)
+    private async System.Threading.Tasks.Task SaveGlobalConfigAsync()
     {
-        _tmdbTokenStatusText.Text = message;
-        _tmdbTokenStatusText.Foreground = isError ? FluentTheme.Error : FluentTheme.TextSecondary;
-        _tmdbTokenStatusText.Visibility = Visibility.Visible;
+        await AppServices.Api.SaveGlobalConfigAsync(new ConfigDto
+        {
+            JavdbEnabled = _loadedConfig.JavdbEnabled,
+            JavdbCacheHours = ReadInt(_javdbCacheHoursBox.Text, 24),
+            TmdbCacheHours = ReadInt(_tmdbCacheHoursBox.Text, 168),
+            BangumiCacheHours = ReadInt(_bangumiCacheHoursBox.Text, 168),
+            JavdbRequestInterval = ReadInt(_javdbRequestIntervalBox.Text, 3),
+            TmdbApiKey = _tmdbApiKeyBox.Text.Trim(),
+            TmdbAccessToken = _tmdbTokenBox.Password,
+            UpdateCheckEnabled = _loadedConfig.UpdateCheckEnabled,
+            UpdateCheckIntervalHours = _loadedConfig.UpdateCheckIntervalHours,
+        });
+    }
+
+    private void OnUiPreferenceChanged(object sender, RoutedEventArgs args)
+    {
+        if (_suppressUiPreferenceSave)
+        {
+            return;
+        }
+
+        SaveUiPreferences();
+    }
+
+    private void SaveUiPreferences()
+    {
+        UiPreferenceStore.Save(new UiPreferenceState
+        {
+            HideHomeTitleText = _hideHomeTitleTextBox.IsChecked == true,
+            ShowSourceName = _showSourceNameBox.IsChecked == true,
+        });
+    }
+
+    private async void OnChangePasswordClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button button)
+        {
+            return;
+        }
+
+        try
+        {
+            button.IsEnabled = false;
+            ShowAuthStatus("正在更新账号...", false);
+            await AppServices.Api.ChangePasswordAsync(_oldUsernameBox.Text, _oldPasswordBox.Password, _newUsernameBox.Text, _newPasswordBox.Password);
+            _oldUsernameBox.Text = "";
+            _oldPasswordBox.Password = "";
+            _newUsernameBox.Text = "";
+            _newPasswordBox.Password = "";
+            ShowAuthStatus("密码已更新。", false);
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to change native account password.");
+            ShowAuthStatus($"更新失败：{ex.Message}", true);
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
     }
 
     private async System.Threading.Tasks.Task LoadLibrarySettingsAsync()
@@ -302,7 +478,7 @@ public sealed partial class SettingsPage : Page
                 _librarySettingsList.Items.Add(CreateLibrarySettingsRow(root, setting, i));
             }
 
-            _libraryStatusText.Text = "选择刮削器后点击保存。TMDB 相关选项会使用全局 TMDB 配置。";
+            _libraryStatusText.Text = "选择刮削器后点击保存。需要重新整理时可直接重新扫描。";
         }
         catch (Exception ex)
         {
@@ -328,8 +504,9 @@ public sealed partial class SettingsPage : Page
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var info = new StackPanel { Spacing = 4, MinWidth = 240 };
+        var info = new StackPanel { Spacing = 4, MinWidth = 220 };
         info.Children.Add(new TextBlock
         {
             Text = string.IsNullOrWhiteSpace(root.Label) ? root.Path : root.Label,
@@ -355,12 +532,12 @@ public sealed partial class SettingsPage : Page
         var scraperStack = new StackPanel
         {
             Spacing = 6,
-            Width = 280,
+            Width = 230,
         };
         var scraperBox = new ComboBox
         {
             Header = "资料来源",
-            MinWidth = 240,
+            MinWidth = 210,
         };
         AutomationProperties.SetAutomationId(scraperBox, $"SettingsLibraryScraper_{index}");
         foreach (var option in ScraperOptions)
@@ -371,8 +548,8 @@ public sealed partial class SettingsPage : Page
                 Tag = option.Value,
             });
         }
-        SelectScraper(scraperBox, selectedScraper);
 
+        SelectScraper(scraperBox, selectedScraper);
         var descriptionText = new TextBlock
         {
             Text = GetScraperDescription(GetSelectedScraper(scraperBox)),
@@ -388,16 +565,36 @@ public sealed partial class SettingsPage : Page
         Grid.SetColumn(scraperStack, 1);
         grid.Children.Add(scraperStack);
 
+        var passwordBox = new PasswordBox
+        {
+            Header = "密码",
+            PlaceholderText = "可选",
+            Width = 120,
+        };
+        AutomationProperties.SetAutomationId(passwordBox, $"SettingsLibraryPassword_{index}");
+        Grid.SetColumn(passwordBox, 2);
+        grid.Children.Add(passwordBox);
+
+        var actions = new StackPanel { Spacing = 8 };
         var saveButton = FluentTheme.ApplyButton(new Button
         {
             Content = "保存",
-            VerticalAlignment = VerticalAlignment.Top,
-            Tag = new LibrarySettingsRowContext(root.Path, setting?.TmdbKey ?? "", scraperBox),
+            Tag = new LibrarySettingsRowContext(root.Path, setting?.TmdbKey ?? "", scraperBox, passwordBox),
         }, FluentButtonStyle.Accent);
         AutomationProperties.SetAutomationId(saveButton, $"SettingsSaveLibrary_{index}");
         saveButton.Click += OnSaveLibrarySettingClicked;
-        Grid.SetColumn(saveButton, 2);
-        grid.Children.Add(saveButton);
+        actions.Children.Add(saveButton);
+
+        var scanButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = "重新扫描",
+            Tag = root.Path,
+        });
+        AutomationProperties.SetAutomationId(scanButton, $"SettingsScanLibrary_{index}");
+        scanButton.Click += OnScanLibraryClicked;
+        actions.Children.Add(scanButton);
+        Grid.SetColumn(actions, 3);
+        grid.Children.Add(actions);
 
         row.Child = grid;
         return row;
@@ -422,8 +619,14 @@ public sealed partial class SettingsPage : Page
                 TmdbKey = context.TmdbKey,
                 Enabled = 1,
             });
+            if (!string.IsNullOrWhiteSpace(context.PasswordBox.Password))
+            {
+                await AppServices.Library.SetLibraryPasswordAsync(context.MediaRoot, context.PasswordBox.Password);
+                context.PasswordBox.Password = "";
+            }
+
             _libraryStatusText.Foreground = FluentTheme.Accent;
-            _libraryStatusText.Text = "媒体库刮削器设置已保存。";
+            _libraryStatusText.Text = "媒体库设置已保存。";
         }
         catch (Exception ex)
         {
@@ -437,40 +640,94 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private static string NormalizeScraper(string? scraper)
+    private async void OnScanLibraryClicked(object sender, RoutedEventArgs args)
     {
-        var value = string.IsNullOrWhiteSpace(scraper) ? "auto" : scraper.Trim().ToLowerInvariant();
-        return value == "tmdb" ? "tmdb_movie" : ScraperOptions.Any(option => option.Value == value) ? value : "auto";
+        if (sender is not Button { Tag: string mediaRoot } button || string.IsNullOrWhiteSpace(mediaRoot))
+        {
+            return;
+        }
+
+        try
+        {
+            button.IsEnabled = false;
+            _libraryStatusText.Foreground = FluentTheme.TextSecondary;
+            _libraryStatusText.Text = "正在清除旧数据并重新扫描...";
+            await AppServices.Library.ClearLibraryAsync(mediaRoot);
+            await AppServices.Library.ScanAsync(mediaRoot);
+            _libraryStatusText.Foreground = FluentTheme.Accent;
+            _libraryStatusText.Text = "已开始重新扫描。你可以继续使用应用。";
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to rescan native library from settings.");
+            _libraryStatusText.Foreground = FluentTheme.Error;
+            _libraryStatusText.Text = $"重新扫描失败：{ex.Message}";
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
     }
 
-    private static void SelectScraper(ComboBox scraperBox, string value)
+    private void OpenBackup(string backupType)
     {
-        for (var i = 0; i < scraperBox.Items.Count; i++)
+        try
         {
-            if (scraperBox.Items[i] is ComboBoxItem item && item.Tag as string == value)
+            Process.Start(new ProcessStartInfo
             {
-                scraperBox.SelectedIndex = i;
+                FileName = AppServices.Api.BuildBackupUri(backupType).ToString(),
+                UseShellExecute = true,
+            });
+            ShowBackupStatus("已打开备份下载。", false);
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to open native backup URL.");
+            ShowBackupStatus($"打开备份失败：{ex.Message}", true);
+        }
+    }
+
+    private async void OnRestoreBackupClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button button)
+        {
+            return;
+        }
+
+        try
+        {
+            var picker = new FileOpenPicker
+            {
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+            };
+            picker.FileTypeFilter.Add(".db");
+            picker.FileTypeFilter.Add(".gz");
+            if (AppServices.MainWindow is not null)
+            {
+                InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(AppServices.MainWindow));
+            }
+
+            var file = await picker.PickSingleFileAsync();
+            if (file is null)
+            {
+                ShowBackupStatus("已取消选择。", false);
                 return;
             }
+
+            button.IsEnabled = false;
+            ShowBackupStatus("正在恢复备份...", false);
+            await AppServices.Api.RestoreBackupAsync(file.Path);
+            ShowBackupStatus("恢复成功。请重新打开应用查看最新数据。", false);
         }
-
-        scraperBox.SelectedIndex = ScraperOptions.ToList().FindIndex(option => option.Value == "auto");
-    }
-
-    private static string GetSelectedScraper(ComboBox scraperBox)
-    {
-        if (scraperBox.SelectedItem is ComboBoxItem item && item.Tag is string value)
+        catch (Exception ex)
         {
-            return NormalizeScraper(value);
+            ShellLogger.Error(ex, "Failed to restore native backup.");
+            ShowBackupStatus($"恢复失败：{ex.Message}", true);
         }
-
-        return "auto";
-    }
-
-    private static string GetScraperDescription(string value)
-    {
-        var option = ScraperOptions.FirstOrDefault(item => item.Value == NormalizeScraper(value));
-        return option?.Description ?? "自动判断刮削源，但可能效果不好";
+        finally
+        {
+            button.IsEnabled = true;
+        }
     }
 
     private async void OnCheckUpdatesClicked(object sender, RoutedEventArgs args)
@@ -521,6 +778,34 @@ public sealed partial class SettingsPage : Page
         ShellPage.Current?.NavigateToSetup();
     }
 
+    private void ShowGlobalStatus(string message, bool isError)
+    {
+        _globalStatusText.Text = message;
+        _globalStatusText.Foreground = isError ? FluentTheme.Error : FluentTheme.Accent;
+        _globalStatusText.Visibility = Visibility.Visible;
+    }
+
+    private void ShowAuthStatus(string message, bool isError)
+    {
+        _authStatusText.Text = message;
+        _authStatusText.Foreground = isError ? FluentTheme.Error : FluentTheme.Accent;
+        _authStatusText.Visibility = Visibility.Visible;
+    }
+
+    private void ShowTmdbStatus(string message, bool isError)
+    {
+        _tmdbTokenStatusText.Text = message;
+        _tmdbTokenStatusText.Foreground = isError ? FluentTheme.Error : FluentTheme.TextSecondary;
+        _tmdbTokenStatusText.Visibility = Visibility.Visible;
+    }
+
+    private void ShowBackupStatus(string message, bool isError)
+    {
+        _backupStatusText.Text = message;
+        _backupStatusText.Foreground = isError ? FluentTheme.Error : FluentTheme.Accent;
+        _backupStatusText.Visibility = Visibility.Visible;
+    }
+
     private void ShowUpdateStatus(string message, bool isError)
     {
         _updateStatusText.Text = message;
@@ -528,4 +813,175 @@ public sealed partial class SettingsPage : Page
         _updateStatusText.Visibility = Visibility.Visible;
     }
 
+    private static ContentControl SectionCard(UIElement child, string automationId)
+    {
+        var wrapper = new ContentControl
+        {
+            Content = FluentTheme.Card(child, new Thickness(22)),
+            IsTabStop = false,
+        };
+        AutomationProperties.SetAutomationId(wrapper, automationId);
+        return wrapper;
+    }
+
+    private static TextBlock SectionTitle(string text, string automationId = "")
+    {
+        var title = new TextBlock
+        {
+            Text = text,
+            FontSize = 20,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = FluentTheme.TextPrimary,
+        };
+        if (!string.IsNullOrWhiteSpace(automationId))
+        {
+            AutomationProperties.SetAutomationId(title, automationId);
+        }
+
+        return title;
+    }
+
+    private static TextBlock StatusText(string automationId, bool visible = false)
+    {
+        var text = new TextBlock
+        {
+            Text = "",
+            Visibility = visible ? Visibility.Visible : Visibility.Collapsed,
+            Foreground = FluentTheme.TextSecondary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        };
+        AutomationProperties.SetAutomationId(text, automationId);
+        return text;
+    }
+
+    private static TextBox TextInput(string header, string automationId, string value = "")
+    {
+        var box = new TextBox
+        {
+            Header = header,
+            Text = value,
+            MinWidth = 160,
+        };
+        AutomationProperties.SetAutomationId(box, automationId);
+        return box;
+    }
+
+    private static PasswordBox PasswordInput(string header, string automationId)
+    {
+        var box = new PasswordBox
+        {
+            Header = header,
+            MinWidth = 160,
+        };
+        AutomationProperties.SetAutomationId(box, automationId);
+        return box;
+    }
+
+    private static Grid TwoColumnRow(FrameworkElement first, FrameworkElement second)
+    {
+        var row = new Grid { ColumnSpacing = 12 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.Children.Add(first);
+        Grid.SetColumn(second, 1);
+        row.Children.Add(second);
+        return row;
+    }
+
+    private static Grid ThreeColumnRow(FrameworkElement first, FrameworkElement second, FrameworkElement third)
+    {
+        var row = new Grid { ColumnSpacing = 12 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.Children.Add(first);
+        Grid.SetColumn(second, 1);
+        row.Children.Add(second);
+        Grid.SetColumn(third, 2);
+        row.Children.Add(third);
+        return row;
+    }
+
+    private static Grid ScraperDescriptionGrid()
+    {
+        var grid = new Grid
+        {
+            ColumnSpacing = 10,
+            RowSpacing = 10,
+        };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var visibleOptions = ScraperOptions.Where(option => option.Value != "none").ToList();
+        for (var i = 0; i < visibleOptions.Count; i++)
+        {
+            var option = visibleOptions[i];
+            var stack = new StackPanel { Spacing = 4 };
+            stack.Children.Add(new TextBlock
+            {
+                Text = option.Label,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = FluentTheme.TextPrimary,
+            });
+            stack.Children.Add(new TextBlock
+            {
+                Text = option.Description,
+                Foreground = FluentTheme.TextSecondary,
+                TextWrapping = TextWrapping.WrapWholeWords,
+            });
+            var card = FluentTheme.Card(stack, new Thickness(12));
+            Grid.SetColumn(card, i % 3);
+            Grid.SetRow(card, i / 3);
+            if (i % 3 == 0)
+            {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            }
+
+            grid.Children.Add(card);
+        }
+
+        return grid;
+    }
+
+    private static int ReadInt(string value, int fallback)
+    {
+        return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
+    }
+
+    private static string NormalizeScraper(string? scraper)
+    {
+        var value = string.IsNullOrWhiteSpace(scraper) ? "auto" : scraper.Trim().ToLowerInvariant();
+        return value == "tmdb" ? "tmdb_movie" : ScraperOptions.Any(option => option.Value == value) ? value : "auto";
+    }
+
+    private static void SelectScraper(ComboBox scraperBox, string value)
+    {
+        for (var i = 0; i < scraperBox.Items.Count; i++)
+        {
+            if (scraperBox.Items[i] is ComboBoxItem item && item.Tag as string == value)
+            {
+                scraperBox.SelectedIndex = i;
+                return;
+            }
+        }
+
+        scraperBox.SelectedIndex = ScraperOptions.ToList().FindIndex(option => option.Value == "auto");
+    }
+
+    private static string GetSelectedScraper(ComboBox scraperBox)
+    {
+        if (scraperBox.SelectedItem is ComboBoxItem item && item.Tag is string value)
+        {
+            return NormalizeScraper(value);
+        }
+
+        return "auto";
+    }
+
+    private static string GetScraperDescription(string value)
+    {
+        var option = ScraperOptions.FirstOrDefault(item => item.Value == NormalizeScraper(value));
+        return option?.Description ?? "自动判断刮削源，但可能效果不好";
+    }
 }

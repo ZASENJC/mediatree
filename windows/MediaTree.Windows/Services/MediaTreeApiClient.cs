@@ -69,14 +69,45 @@ public sealed class MediaTreeApiClient : IDisposable
     public async Task SaveTmdbConfigAsync(string accessToken, CancellationToken cancellationToken = default)
         => await PostJsonAsync<JsonElement>("/config", new { tmdb_access_token = NormalizeTmdbAccessToken(accessToken) }, cancellationToken);
 
+    public async Task SaveGlobalConfigAsync(ConfigDto config, CancellationToken cancellationToken = default)
+        => await PostJsonAsync<JsonElement>("/config", new
+        {
+            javdb_enabled = config.JavdbEnabled,
+            javdb_cache_hours = config.JavdbCacheHours,
+            tmdb_cache_hours = config.TmdbCacheHours,
+            bangumi_cache_hours = config.BangumiCacheHours,
+            javdb_request_interval = config.JavdbRequestInterval,
+            tmdb_api_key = config.TmdbApiKey,
+            tmdb_access_token = NormalizeTmdbAccessToken(config.TmdbAccessToken),
+            update_check_enabled = config.UpdateCheckEnabled,
+            update_check_interval_hours = config.UpdateCheckIntervalHours,
+        }, cancellationToken);
+
+    public async Task ChangePasswordAsync(
+        string oldUsername,
+        string oldPassword,
+        string newUsername,
+        string newPassword,
+        CancellationToken cancellationToken = default)
+        => await PostJsonAsync<JsonElement>("/auth/change-password", new
+        {
+            old_username = oldUsername,
+            old_password = oldPassword,
+            new_username = newUsername,
+            new_password = newPassword,
+        }, cancellationToken);
+
     public async Task<MediaRootsResponseDto> GetMediaRootsAsync(CancellationToken cancellationToken = default)
         => await GetAsync<MediaRootsResponseDto>("/media-roots", cancellationToken);
 
     public async Task<List<LibrarySettingDto>> GetLibrarySettingsAsync(CancellationToken cancellationToken = default)
         => await GetAsync<List<LibrarySettingDto>>("/library-settings", cancellationToken);
 
-    public async Task<FoldersResponseDto> GetFoldersAsync(string mediaRoot, CancellationToken cancellationToken = default)
-        => await GetAsync<FoldersResponseDto>($"/folders?media_root={Uri.EscapeDataString(mediaRoot)}", cancellationToken);
+    public async Task<FoldersResponseDto> GetFoldersAsync(string mediaRoot = "", CancellationToken cancellationToken = default)
+    {
+        var suffix = string.IsNullOrWhiteSpace(mediaRoot) ? "" : $"?media_root={Uri.EscapeDataString(mediaRoot)}";
+        return await GetAsync<FoldersResponseDto>($"/folders{suffix}", cancellationToken);
+    }
 
     public async Task SaveLibrarySettingAsync(LibrarySettingDto setting, CancellationToken cancellationToken = default)
         => await PostJsonAsync<JsonElement>("/library-settings", new
@@ -87,8 +118,18 @@ public sealed class MediaTreeApiClient : IDisposable
             enabled = setting.Enabled,
         }, cancellationToken);
 
+    public async Task SetLibraryPasswordAsync(string mediaRoot, string password, CancellationToken cancellationToken = default)
+        => await PostJsonAsync<JsonElement>("/library-passwords", new
+        {
+            media_root = mediaRoot,
+            password,
+        }, cancellationToken);
+
     public async Task ScanAsync(string mediaRoot, CancellationToken cancellationToken = default)
         => await GetAsync<JsonElement>($"/scan?media_root={Uri.EscapeDataString(mediaRoot)}", cancellationToken);
+
+    public async Task ClearLibraryAsync(string mediaRoot, CancellationToken cancellationToken = default)
+        => await PostJsonAsync<JsonElement>("/library/clear", new { media_root = mediaRoot }, cancellationToken);
 
     public async Task<ScanStatusDto> GetScanStatusAsync(string mediaRoot, CancellationToken cancellationToken = default)
         => await GetAsync<ScanStatusDto>($"/scan/status?media_root={Uri.EscapeDataString(mediaRoot)}", cancellationToken);
@@ -116,6 +157,12 @@ public sealed class MediaTreeApiClient : IDisposable
     public async Task<MoviesResponseDto> GetRecentWatchedAsync(string mediaRoot, int limit, int offset, CancellationToken cancellationToken = default)
         => await GetAsync<MoviesResponseDto>($"/recent-watched?media_root={Uri.EscapeDataString(mediaRoot)}&limit={limit}&offset={offset}", cancellationToken);
 
+    public async Task<MoviesResponseDto> GetFavoritesAsync(string mediaRoot, string sort, int limit, int offset, CancellationToken cancellationToken = default)
+        => await GetAsync<MoviesResponseDto>($"/favorites?media_root={Uri.EscapeDataString(mediaRoot)}&sort={Uri.EscapeDataString(sort)}&limit={limit}&offset={offset}", cancellationToken);
+
+    public async Task RemoveTagAsync(int movieId, string tag, CancellationToken cancellationToken = default)
+        => await DeleteAsync<JsonElement>($"/movies/{movieId}/tags/{Uri.EscapeDataString(tag)}", cancellationToken);
+
     public async Task<MovieDto> GetMovieDetailAsync(int movieId, CancellationToken cancellationToken = default)
         => await GetAsync<MovieDto>($"/detail/{movieId}", cancellationToken);
 
@@ -130,6 +177,19 @@ public sealed class MediaTreeApiClient : IDisposable
 
     public async Task<UpdateCheckResultDto> CheckForUpdatesAsync(CancellationToken cancellationToken = default)
         => await GetAsync<UpdateCheckResultDto>("/update/check", cancellationToken);
+
+    public Uri BuildBackupUri(string backupType)
+        => new(BackendUri, $"api/backup?backup_type={Uri.EscapeDataString(backupType)}");
+
+    public async Task RestoreBackupAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        await using var stream = File.OpenRead(filePath);
+        using var request = CreateRequest(HttpMethod.Post, "/restore/upload");
+        using var content = new MultipartFormDataContent();
+        content.Add(new StreamContent(stream), "file", Path.GetFileName(filePath));
+        request.Content = content;
+        await SendAsync<JsonElement>(request, cancellationToken);
+    }
 
     public async Task<string> EnsureMediaTokenAsync(CancellationToken cancellationToken = default)
     {
@@ -192,6 +252,12 @@ public sealed class MediaTreeApiClient : IDisposable
     {
         using var request = CreateRequest(HttpMethod.Post, path);
         request.Content = JsonContent.Create(body, options: _jsonOptions);
+        return await SendAsync<T>(request, cancellationToken);
+    }
+
+    private async Task<T> DeleteAsync<T>(string path, CancellationToken cancellationToken)
+    {
+        using var request = CreateRequest(HttpMethod.Delete, path);
         return await SendAsync<T>(request, cancellationToken);
     }
 

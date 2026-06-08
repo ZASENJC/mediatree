@@ -1,5 +1,7 @@
 using MediaTree.Windows.Models;
 using MediaTree.Windows.Services;
+using System;
+using System.IO;
 using System.Text.Json;
 using Xunit;
 
@@ -78,5 +80,54 @@ public sealed class ServiceLogicTests
         var folder = Assert.Single(response!.Tree);
         Assert.Equal(0, folder.ProgressPercent);
         Assert.Equal("S01", folder.BestTitle);
+    }
+
+    [Fact]
+    public void ConfigDtosAcceptIntegerFieldsFromFloatOrStringJson()
+    {
+        var json = """
+            {
+              "javdb_cache_hours": "24",
+              "tmdb_cache_hours": 168.0,
+              "bangumi_cache_hours": null,
+              "javdb_request_interval": 3.0
+            }
+            """;
+
+        var config = JsonSerializer.Deserialize<ConfigDto>(json);
+
+        Assert.Equal(24, config!.JavdbCacheHours);
+        Assert.Equal(168, config.TmdbCacheHours);
+        Assert.Equal(0, config.BangumiCacheHours);
+        Assert.Equal(3, config.JavdbRequestInterval);
+    }
+
+    [Fact]
+    public void UiPreferencesRoundTripWithWebCompatibleJsonNames()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"mediatree-ui-prefs-{Guid.NewGuid():N}.json");
+        try
+        {
+            UiPreferenceStore.Save(new UiPreferenceState
+            {
+                HideHomeTitleText = true,
+                ShowSourceName = true,
+            }, path);
+
+            var json = File.ReadAllText(path);
+            Assert.Contains("hideHomeTitleText", json);
+            Assert.Contains("showSourceName", json);
+
+            var preferences = UiPreferenceStore.Load(path);
+            Assert.True(preferences.HideHomeTitleText);
+            Assert.True(preferences.ShowSourceName);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
     }
 }

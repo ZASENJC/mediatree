@@ -1,0 +1,259 @@
+using System;
+using MediaTree.Windows.Models;
+using MediaTree.Windows.Services;
+using MediaTree.Windows.Styles;
+using MediaTree.Windows.ViewModels;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+
+namespace MediaTree.Windows.Views;
+
+public sealed partial class FavoritesPage : Page
+{
+    private readonly ComboBox _libraryBox;
+    private readonly GridView _moviesGrid;
+    private readonly ComboBox _sortBox;
+    private readonly TextBlock _statusText;
+    private readonly TextBlock _subtitleText;
+    private string _activeMediaRoot = "";
+    private int _loadGeneration;
+    private bool _suppressLibrarySelectionChanged;
+
+    public FavoritesPage()
+    {
+        (_libraryBox, _sortBox, _moviesGrid, _statusText, _subtitleText) = BuildContent();
+        Loaded += async (_, _) => await LoadLibrariesAsync();
+    }
+
+    private (ComboBox libraryBox, ComboBox sortBox, GridView moviesGrid, TextBlock statusText, TextBlock subtitleText) BuildContent()
+    {
+        AutomationProperties.SetAutomationId(this, "FavoritesPage");
+
+        var root = new Grid
+        {
+            Padding = new Thickness(28),
+            RowSpacing = 16,
+            Background = FluentTheme.Canvas,
+            RequestedTheme = ElementTheme.Light,
+        };
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        var header = new Grid { ColumnSpacing = 16 };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var titleStack = new StackPanel { Spacing = 4 };
+        titleStack.Children.Add(new TextBlock
+        {
+            Text = "Library",
+            FontSize = 12,
+            Foreground = FluentTheme.Accent,
+        });
+        titleStack.Children.Add(new TextBlock
+        {
+            Text = "我的收藏",
+            FontSize = 28,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = FluentTheme.TextPrimary,
+        });
+        var subtitleText = new TextBlock
+        {
+            Text = "",
+            Foreground = FluentTheme.TextSecondary,
+        };
+        AutomationProperties.SetAutomationId(subtitleText, "FavoritesHeaderSubtitle");
+        titleStack.Children.Add(subtitleText);
+        header.Children.Add(titleStack);
+
+        var controls = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+            VerticalAlignment = VerticalAlignment.Bottom,
+        };
+        var libraryBox = new ComboBox
+        {
+            Header = "媒体库",
+            MinWidth = 220,
+        };
+        AutomationProperties.SetAutomationId(libraryBox, "FavoritesLibrarySelector");
+        libraryBox.SelectionChanged += OnLibraryChanged;
+        controls.Children.Add(libraryBox);
+
+        var sortBox = new ComboBox
+        {
+            Header = "排序",
+            MinWidth = 160,
+        };
+        AutomationProperties.SetAutomationId(sortBox, "FavoritesSort");
+        BrowsePage.AddSortOptions(sortBox, browseLabels: false);
+        sortBox.SelectedIndex = 0;
+        sortBox.SelectionChanged += OnSortChanged;
+        controls.Children.Add(sortBox);
+
+        Grid.SetColumn(controls, 1);
+        header.Children.Add(controls);
+        root.Children.Add(FluentTheme.Card(header, new Thickness(16)));
+
+        var content = new Grid();
+        Grid.SetRow(content, 1);
+        var moviesGrid = new GridView
+        {
+            IsItemClickEnabled = false,
+            SelectionMode = ListViewSelectionMode.None,
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+        };
+        AutomationProperties.SetAutomationId(moviesGrid, "FavoritesMoviesGrid");
+        content.Children.Add(moviesGrid);
+
+        var statusText = new TextBlock
+        {
+            Text = "",
+            Visibility = Visibility.Collapsed,
+            Foreground = FluentTheme.TextSecondary,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        };
+        AutomationProperties.SetAutomationId(statusText, "FavoritesStatusText");
+        content.Children.Add(statusText);
+        root.Children.Add(content);
+
+        Content = root;
+        return (libraryBox, sortBox, moviesGrid, statusText, subtitleText);
+    }
+
+    private async System.Threading.Tasks.Task LoadLibrariesAsync()
+    {
+        _suppressLibrarySelectionChanged = true;
+        try
+        {
+            _libraryBox.Items.Clear();
+            _libraryBox.Items.Add(new ComboBoxItem { Content = "全部媒体库", Tag = "" });
+            var roots = await AppServices.Library.GetMediaRootsAsync();
+            foreach (var root in roots.Items)
+            {
+                _libraryBox.Items.Add(new ComboBoxItem
+                {
+                    Content = string.IsNullOrWhiteSpace(root.Label) ? root.Path : root.Label,
+                    Tag = root.Path,
+                });
+            }
+
+            _libraryBox.SelectedIndex = 0;
+            _activeMediaRoot = "";
+        }
+        finally
+        {
+            _suppressLibrarySelectionChanged = false;
+        }
+
+        await LoadFavoritesAsync();
+    }
+
+    private async System.Threading.Tasks.Task LoadFavoritesAsync()
+    {
+        var generation = ++_loadGeneration;
+        try
+        {
+            ShowStatus("正在加载...", false);
+            _moviesGrid.Items.Clear();
+            var sort = (_sortBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "created_desc";
+            var response = await AppServices.Movie.GetFavoritesAsync(_activeMediaRoot, sort, 200, 0);
+            if (generation != _loadGeneration)
+            {
+                return;
+            }
+
+            foreach (var movie in response.Movies)
+            {
+                var cover = "";
+                try
+                {
+                    cover = await AppServices.Api.BuildCoverUrlAsync(movie.Id);
+                }
+                catch (Exception ex)
+                {
+                    ShellLogger.Error(ex, $"Failed to build native favorite cover URL for movie {movie.Id}.");
+                }
+
+                _moviesGrid.Items.Add(CreateFavoriteMovieCard(new MovieCardItem(movie, cover)));
+            }
+
+            _subtitleText.Text = $"共 {response.Total} 部";
+            _statusText.Visibility = response.Movies.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            if (response.Movies.Count == 0)
+            {
+                _statusText.Text = "还没有收藏影片";
+            }
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to load native favorites.");
+            ShowStatus($"加载收藏失败：{ex.Message}", true);
+        }
+    }
+
+    private UIElement CreateFavoriteMovieCard(MovieCardItem item)
+    {
+        var card = BrowsePage.CreateMovieCard(item);
+        AutomationProperties.SetAutomationId(card, $"FavoriteMovieCard_{item.Id}");
+
+        var removeButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = "取消收藏",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Margin = new Thickness(6, 0, 6, 6),
+        });
+        AutomationProperties.SetAutomationId(removeButton, $"FavoriteRemove_{item.Id}");
+        removeButton.Click += async (_, _) => await RemoveFavoriteAsync(item.Id);
+
+        var stack = new StackPanel();
+        stack.Children.Add(card);
+        stack.Children.Add(removeButton);
+        return stack;
+    }
+
+    private async System.Threading.Tasks.Task RemoveFavoriteAsync(int movieId)
+    {
+        try
+        {
+            await AppServices.Movie.RemoveTagAsync(movieId, "favorite");
+            await LoadFavoritesAsync();
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, $"Failed to remove native favorite tag for movie {movieId}.");
+            ShowStatus($"取消收藏失败：{ex.Message}", true);
+        }
+    }
+
+    private async void OnLibraryChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (_suppressLibrarySelectionChanged)
+        {
+            return;
+        }
+
+        _activeMediaRoot = (_libraryBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
+        await LoadFavoritesAsync();
+    }
+
+    private async void OnSortChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (IsLoaded)
+        {
+            await LoadFavoritesAsync();
+        }
+    }
+
+    private void ShowStatus(string message, bool isError)
+    {
+        _statusText.Text = message;
+        _statusText.Foreground = isError ? FluentTheme.Error : FluentTheme.TextSecondary;
+        _statusText.Visibility = Visibility.Visible;
+    }
+}

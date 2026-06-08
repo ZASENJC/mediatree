@@ -34,6 +34,8 @@ public sealed partial class LibraryPage : Page
     private string _activeFolderPath = "";
     private string _activeView = "folders";
     private int _movieLoadGeneration;
+    private bool _hideHomeTitleText;
+    private bool _showSourceName;
     private bool _suppressLibrarySelectionChanged;
 
     public LibraryPage()
@@ -238,6 +240,7 @@ public sealed partial class LibraryPage : Page
     {
         try
         {
+            LoadUiPreferences();
             await LoadLibrariesAsync();
         }
         catch (Exception ex)
@@ -250,6 +253,13 @@ public sealed partial class LibraryPage : Page
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
         _scanTimer.Stop();
+    }
+
+    private void LoadUiPreferences()
+    {
+        var preferences = UiPreferenceStore.Load();
+        _hideHomeTitleText = preferences.HideHomeTitleText;
+        _showSourceName = preferences.ShowSourceName;
     }
 
     private async Task LoadLibrariesAsync()
@@ -755,33 +765,39 @@ public sealed partial class LibraryPage : Page
             Padding = new Thickness(12),
             Spacing = 4,
         };
-        textStack.Children.Add(new TextBlock
-        {
-            Text = item.Title,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = FluentTheme.TextPrimary,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        });
-        textStack.Children.Add(new TextBlock
-        {
-            Text = item.Subtitle,
-            FontSize = 12,
-            Foreground = FluentTheme.TextSecondary,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        });
-        if (!string.IsNullOrWhiteSpace(item.ProgressText))
+        if (!_hideHomeTitleText)
         {
             textStack.Children.Add(new TextBlock
             {
-                Text = item.ProgressText,
-                FontSize = 12,
-                Foreground = FluentTheme.Accent,
+                Text = _showSourceName ? item.SourceName : item.Title,
+                FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                Foreground = FluentTheme.TextPrimary,
+                TextTrimming = TextTrimming.CharacterEllipsis,
             });
+            textStack.Children.Add(new TextBlock
+            {
+                Text = item.Subtitle,
+                FontSize = 12,
+                Foreground = FluentTheme.TextSecondary,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            if (!string.IsNullOrWhiteSpace(item.ProgressText))
+            {
+                textStack.Children.Add(new TextBlock
+                {
+                    Text = item.ProgressText,
+                    FontSize = 12,
+                    Foreground = FluentTheme.Accent,
+                });
+            }
         }
 
         var stack = new StackPanel();
         stack.Children.Add(imageHost);
-        stack.Children.Add(textStack);
+        if (!_hideHomeTitleText)
+        {
+            stack.Children.Add(textStack);
+        }
 
         var card = new Button
         {

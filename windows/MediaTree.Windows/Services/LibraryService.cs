@@ -60,7 +60,10 @@ public sealed class LibraryService
     public Task SaveLibrarySettingAsync(LibrarySettingDto setting, CancellationToken cancellationToken = default)
         => _api.SaveLibrarySettingAsync(setting, cancellationToken);
 
-    public Task<FoldersResponseDto> GetFoldersAsync(string mediaRoot, CancellationToken cancellationToken = default)
+    public Task SetLibraryPasswordAsync(string mediaRoot, string password, CancellationToken cancellationToken = default)
+        => _api.SetLibraryPasswordAsync(mediaRoot, password, cancellationToken);
+
+    public Task<FoldersResponseDto> GetFoldersAsync(string mediaRoot = "", CancellationToken cancellationToken = default)
         => _api.GetFoldersAsync(mediaRoot, cancellationToken);
 
     public Task<ScanStatusDto> GetScanStatusAsync(string mediaRoot, CancellationToken cancellationToken = default)
@@ -68,4 +71,7 @@ public sealed class LibraryService
 
     public Task ScanAsync(string mediaRoot, CancellationToken cancellationToken = default)
         => _api.ScanAsync(mediaRoot, cancellationToken);
+
+    public Task ClearLibraryAsync(string mediaRoot, CancellationToken cancellationToken = default)
+        => _api.ClearLibraryAsync(mediaRoot, cancellationToken);
 }

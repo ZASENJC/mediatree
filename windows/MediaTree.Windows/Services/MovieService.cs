@@ -22,9 +22,15 @@ public sealed class MovieService
     public Task<MoviesResponseDto> GetRecentWatchedAsync(string mediaRoot, int limit, int offset, CancellationToken cancellationToken = default)
         => _api.GetRecentWatchedAsync(mediaRoot, limit, offset, cancellationToken);
 
+    public Task<MoviesResponseDto> GetFavoritesAsync(string mediaRoot, string sort, int limit, int offset, CancellationToken cancellationToken = default)
+        => _api.GetFavoritesAsync(mediaRoot, sort, limit, offset, cancellationToken);
+
     public Task<MovieDto> GetMovieDetailAsync(int movieId, CancellationToken cancellationToken = default)
         => _api.GetMovieDetailAsync(movieId, cancellationToken);
 
     public Task<ProgressDto> GetProgressAsync(int movieId, CancellationToken cancellationToken = default)
         => _api.GetProgressAsync(movieId, cancellationToken);
+
+    public Task RemoveTagAsync(int movieId, string tag, CancellationToken cancellationToken = default)
+        => _api.RemoveTagAsync(movieId, tag, cancellationToken);
 }

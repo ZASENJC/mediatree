@@ -13,14 +13,14 @@ public sealed partial class ShellPage : Page
     public static ShellPage? Current { get; private set; }
 
     private readonly Frame _contentFrame;
+    private readonly Button _browseButton;
+    private readonly Button _favoritesButton;
     private readonly Button _homeButton;
-    private readonly Button _libraryButton;
-    private readonly Button _recentButton;
     private readonly Button _settingsButton;
 
     public ShellPage()
     {
-        (_contentFrame, _homeButton, _libraryButton, _recentButton, _settingsButton) = BuildContent();
+        (_contentFrame, _homeButton, _browseButton, _favoritesButton, _settingsButton) = BuildContent();
         Current = this;
         Loaded += OnLoaded;
     }
@@ -34,7 +34,7 @@ public sealed partial class ShellPage : Page
 
     public void NavigateToLibrary()
     {
-        _ = NavigateToLibraryAsync();
+        _ = NavigateToHomeAsync();
     }
 
     public void NavigateToMovie(int movieId)
@@ -58,15 +58,15 @@ public sealed partial class ShellPage : Page
                 return;
             }
 
-            NavigateToPage(typeof(HomePage), _homeButton);
+            await NavigateToHomeAsync();
         }
         catch
         {
-            NavigateToPage(typeof(HomePage), _homeButton);
+            NavigateToPage(typeof(LibraryPage), _homeButton);
         }
     }
 
-    private (Frame contentFrame, Button homeButton, Button libraryButton, Button recentButton, Button settingsButton) BuildContent()
+    private (Frame contentFrame, Button homeButton, Button browseButton, Button favoritesButton, Button settingsButton) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "ShellPage");
 
@@ -105,16 +105,16 @@ public sealed partial class ShellPage : Page
         });
 
         var homeButton = CreateNavigationButton("首页", "NavHome");
-        homeButton.Click += (_, _) => NavigateToPage(typeof(HomePage), homeButton);
+        homeButton.Click += (_, _) => _ = NavigateToHomeAsync();
         navigation.Children.Add(homeButton);
 
-        var libraryButton = CreateNavigationButton("媒体库", "NavLibrary");
-        libraryButton.Click += (_, _) => _ = NavigateToLibraryAsync();
-        navigation.Children.Add(libraryButton);
+        var browseButton = CreateNavigationButton("浏览", "NavBrowse");
+        browseButton.Click += (_, _) => _ = NavigateToBrowseAsync();
+        navigation.Children.Add(browseButton);
 
-        var recentButton = CreateNavigationButton("最近观看", "NavRecent");
-        recentButton.Click += (_, _) => _ = NavigateToRecentAsync();
-        navigation.Children.Add(recentButton);
+        var favoritesButton = CreateNavigationButton("收藏", "NavFavorites");
+        favoritesButton.Click += (_, _) => _ = NavigateToFavoritesAsync();
+        navigation.Children.Add(favoritesButton);
 
         var settingsButton = CreateNavigationButton("设置", "NavSettings");
         settingsButton.Click += (_, _) => NavigateToPage(typeof(SettingsPage), settingsButton);
@@ -129,7 +129,7 @@ public sealed partial class ShellPage : Page
         root.Children.Add(contentFrame);
 
         Content = root;
-        return (contentFrame, homeButton, libraryButton, recentButton, settingsButton);
+        return (contentFrame, homeButton, browseButton, favoritesButton, settingsButton);
     }
 
     private static Button CreateNavigationButton(string label, string automationId)
@@ -152,26 +152,37 @@ public sealed partial class ShellPage : Page
         return button;
     }
 
-    private async System.Threading.Tasks.Task NavigateToLibraryAsync()
+    private async System.Threading.Tasks.Task NavigateToHomeAsync()
     {
         if (!await HasLibraryAsync())
         {
-            NavigateToPage(typeof(SetupRequiredPage), _libraryButton);
+            NavigateToPage(typeof(SetupRequiredPage), _homeButton);
             return;
         }
 
-        NavigateToPage(typeof(LibraryPage), _libraryButton);
+        NavigateToPage(typeof(LibraryPage), _homeButton);
     }
 
-    private async System.Threading.Tasks.Task NavigateToRecentAsync()
+    private async System.Threading.Tasks.Task NavigateToBrowseAsync()
     {
         if (!await HasLibraryAsync())
         {
-            NavigateToPage(typeof(SetupRequiredPage), _recentButton);
+            NavigateToPage(typeof(SetupRequiredPage), _browseButton);
             return;
         }
 
-        NavigateToPage(typeof(RecentPage), _recentButton);
+        NavigateToPage(typeof(BrowsePage), _browseButton);
+    }
+
+    private async System.Threading.Tasks.Task NavigateToFavoritesAsync()
+    {
+        if (!await HasLibraryAsync())
+        {
+            NavigateToPage(typeof(SetupRequiredPage), _favoritesButton);
+            return;
+        }
+
+        NavigateToPage(typeof(FavoritesPage), _favoritesButton);
     }
 
     private static async System.Threading.Tasks.Task<bool> HasLibraryAsync()
@@ -198,7 +209,7 @@ public sealed partial class ShellPage : Page
 
     private void SelectButton(Button selectedButton)
     {
-        foreach (var button in new[] { _homeButton, _libraryButton, _recentButton, _settingsButton })
+        foreach (var button in new[] { _homeButton, _browseButton, _favoritesButton, _settingsButton })
         {
             var selected = button == selectedButton;
             button.Background = selected ? FluentTheme.AccentSoft : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
