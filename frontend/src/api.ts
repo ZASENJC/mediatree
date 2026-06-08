@@ -13,7 +13,7 @@ let memoryMediaTokenExpiresAt = 0
 let mediaTokenPromise: Promise<string> | null = null
 
 function isNativeApp(): boolean {
-  return Capacitor.isNativePlatform() || isWindowsShell()
+  return Capacitor.isNativePlatform()
 }
 
 function normalizeServerUrl(input: string): string {
@@ -24,6 +24,7 @@ function normalizeServerUrl(input: string): string {
 }
 
 function getServerUrl(): string {
+  if (isWindowsShell()) return ''
   try {
     const stored = normalizeServerUrl(localStorage.getItem(SERVER_URL_KEY) || '')
     if (stored) memoryServerUrl = stored
@@ -34,6 +35,7 @@ function getServerUrl(): string {
 }
 
 function setServerUrl(url: string): string {
+  if (isWindowsShell()) return ''
   const normalized = normalizeServerUrl(url)
   if (normalized !== memoryServerUrl) clearMediaToken()
   memoryServerUrl = normalized
@@ -786,6 +788,7 @@ export interface Config {
   tmdb_access_token: string
   tmdb_configured: boolean
   media_root: string
+  extra_media_roots?: string[]
   update_check_enabled: boolean
   update_check_interval_hours: number
 }

@@ -17,30 +17,56 @@ export default function Login({ onLogin }: { onLogin?: () => void }) {
   const setupMode = needAuth && !authConfigured
 
   useEffect(() => {
+    let cancelled = false
+    const finishChecking = () => {
+      if (!cancelled) setChecking(false)
+    }
+    const timeout = window.setTimeout(() => {
+      console.warn('MediaTree auth status check timed out')
+      finishChecking()
+    }, 8000)
+
     if (nativeApp && !getServerUrl()) {
-      setChecking(false)
+      window.clearTimeout(timeout)
+      finishChecking()
       return
     }
     api.authStatus().then(data => {
+      if (cancelled) return
       setNeedAuth(data.need_auth)
       setAuthConfigured(data.auth_configured)
       if (!data.need_auth) {
         if (!loggedOut) {
+          window.clearTimeout(timeout)
           onLogin?.()
           window.location.href = '/'
           return
         }
-        setChecking(false)
+        window.clearTimeout(timeout)
+        finishChecking()
         return
       }
       const tok = getToken()
       if (tok && data.auth_configured) {
+        window.clearTimeout(timeout)
         window.location.href = '/'
         return
       }
-      setChecking(false)
-    }).catch(() => setChecking(false))
-  }, [nativeApp])
+      window.clearTimeout(timeout)
+      finishChecking()
+    }).catch(err => {
+      if (!cancelled) {
+        console.warn('MediaTree auth status check failed', err)
+      }
+      window.clearTimeout(timeout)
+      finishChecking()
+    })
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeout)
+    }
+  }, [nativeApp, loggedOut, onLogin])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

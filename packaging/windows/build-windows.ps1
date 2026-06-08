@@ -3,6 +3,10 @@ param(
   [string]$Version = "",
   [switch]$SkipTests,
   [string]$AppInstallerUri = "https://github.com/ZASENJC/mediatree/releases/latest/download/",
+  [string]$MpvArchiveUrl = "https://github.com/zhongfly/mpv-winbuild/releases/download/2026-06-07-43b14a4c9f/mpv-x86_64-20260607-git-43b14a4c9f.7z",
+  [string]$MpvArchivePath = "",
+  [string]$SevenZipUrl = "https://www.7-zip.org/a/7zr.exe",
+  [switch]$SkipMpvDownload,
   [string]$SigningPfxPath = "",
   [string]$SigningPfxPassword = "",
   [switch]$SkipSigning
@@ -26,31 +30,6 @@ function Invoke-Native {
   if ($LASTEXITCODE -ne 0) {
     throw "$FilePath failed with exit code $LASTEXITCODE"
   }
-}
-
-function Resolve-MSBuild {
-  $programFilesX86 = ${env:ProgramFiles(x86)}
-  if (-not $programFilesX86) {
-    throw "ProgramFiles(x86) is not available."
-  }
-
-  $vswhere = Join-Path $programFilesX86 "Microsoft Visual Studio\Installer\vswhere.exe"
-  if (Test-Path $vswhere) {
-    $installationPath = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
-    if ($LASTEXITCODE -eq 0 -and $installationPath) {
-      $candidate = Join-Path $installationPath "MSBuild\Current\Bin\MSBuild.exe"
-      if (Test-Path $candidate) {
-        return $candidate
-      }
-    }
-  }
-
-  $fallback = Join-Path $programFilesX86 "Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
-  if (Test-Path $fallback) {
-    return $fallback
-  }
-
-  throw "MSBuild.exe was not found. Install Visual Studio 2022 Build Tools with MSBuild and Windows SDK components."
 }
 
 function Resolve-WindowsKitTool {
@@ -80,6 +59,63 @@ function Resolve-WindowsKitTool {
   }
 
   return $candidate.FullName
+}
+
+function Resolve-MSBuild {
+  $programFilesX86 = ${env:ProgramFiles(x86)}
+  if (-not $programFilesX86) {
+    throw "ProgramFiles(x86) is not available."
+  }
+
+  $vswhere = Join-Path $programFilesX86 "Microsoft Visual Studio\Installer\vswhere.exe"
+  if (Test-Path $vswhere) {
+    $installationPath = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
+    if ($LASTEXITCODE -eq 0 -and $installationPath) {
+      $candidate = Join-Path $installationPath "MSBuild\Current\Bin\MSBuild.exe"
+      if (Test-Path $candidate) {
+        return $candidate
+      }
+    }
+  }
+
+  $fallback = Join-Path $programFilesX86 "Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
+  if (Test-Path $fallback) {
+    return $fallback
+  }
+
+  throw "MSBuild.exe was not found. Install Visual Studio 2022 Build Tools with MSBuild and Windows SDK components."
+}
+
+function Resolve-7ZipTool {
+  $commands = @("7z.exe", "7za.exe", "7zr.exe")
+  foreach ($command in $commands) {
+    $resolved = Get-Command $command -ErrorAction SilentlyContinue
+    if ($resolved) {
+      return $resolved.Source
+    }
+  }
+
+  $candidates = @(
+    (Join-Path $env:ProgramFiles "7-Zip\7z.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "7-Zip\7z.exe")
+  )
+  foreach ($candidate in $candidates) {
+    if ($candidate -and (Test-Path $candidate)) {
+      return $candidate
+    }
+  }
+
+  $toolsDir = Join-Path $Root "build/windows/tools"
+  New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
+  $downloaded = Join-Path $toolsDir "7zr.exe"
+  if (-not (Test-Path $downloaded)) {
+    Write-Host "Downloading 7-Zip standalone extractor: $SevenZipUrl"
+    Invoke-WebRequest -Uri $SevenZipUrl -OutFile $downloaded
+  }
+  if (-not (Test-Path $downloaded)) {
+    throw "7-Zip extractor was not available."
+  }
+  return $downloaded
 }
 
 function New-ExpandedAppxManifest {
@@ -169,6 +205,75 @@ function Sign-MsixPackage {
   Invoke-Native $signtool sign /fd SHA256 /f $PfxPath /p $PfxPassword $MsixPath
 }
 
+function Expand-MpvArchive {
+  param(
+    [string]$ArchivePath,
+    [string]$Destination
+  )
+
+  if (Test-Path $Destination) {
+    Remove-Item $Destination -Recurse -Force
+  }
+  New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+  $sevenZip = Resolve-7ZipTool
+  Invoke-Native $sevenZip x $ArchivePath "-o$Destination" -y
+  if (Get-ChildItem -Path $Destination -Recurse -Filter "mpv.exe" -ErrorAction SilentlyContinue | Select-Object -First 1) {
+    return
+  }
+
+  $extractScript = @"
+import sys
+from pathlib import Path
+import py7zr
+
+archive = Path(sys.argv[1])
+destination = Path(sys.argv[2])
+with py7zr.SevenZipFile(archive, mode="r") as z:
+    z.extractall(destination)
+"@
+  $extractScriptPath = Join-Path $Root "build/windows/extract-mpv.py"
+  Set-Content -Path $extractScriptPath -Value $extractScript -Encoding UTF8
+  Invoke-Native python $extractScriptPath $ArchivePath $Destination
+}
+
+function Install-BundledMpv {
+  param(
+    [string]$Destination
+  )
+
+  $cacheDir = Join-Path $Root "build/windows/mpv-cache"
+  $extractDir = Join-Path $Root "build/windows/mpv-extract"
+  New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+  $archive = $MpvArchivePath
+  if (-not $archive) {
+    $archive = Join-Path $cacheDir (Split-Path ([Uri]$MpvArchiveUrl).LocalPath -Leaf)
+  }
+
+  if (-not (Test-Path $archive)) {
+    if ($SkipMpvDownload) {
+      throw "Bundled mpv archive is missing and SkipMpvDownload was set: $archive"
+    }
+    Write-Host "Downloading bundled mpv: $MpvArchiveUrl"
+    Invoke-WebRequest -Uri $MpvArchiveUrl -OutFile $archive
+  }
+
+  Expand-MpvArchive -ArchivePath $archive -Destination $extractDir
+  $mpvExe = Get-ChildItem -Path $extractDir -Recurse -Filter "mpv.exe" -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+  if (-not $mpvExe) {
+    throw "mpv.exe was not found in archive: $archive"
+  }
+
+  if (Test-Path $Destination) {
+    Remove-Item $Destination -Recurse -Force
+  }
+  New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+  Copy-Item (Join-Path $mpvExe.Directory.FullName "*") $Destination -Recurse -Force
+  if (-not (Test-Path (Join-Path $Destination "mpv.exe"))) {
+    throw "Bundled mpv.exe was not copied to $Destination"
+  }
+}
+
 if (-not $Version) {
   $Version = (Get-Content VERSION -TotalCount 1).Trim()
 }
@@ -188,7 +293,7 @@ if (-not ($MsixVersion -match '^\d+\.\d+\.\d+\.\d+$')) {
 
 Invoke-Native python -m pip install --upgrade pip
 Invoke-Native python -m pip install -r backend/requirements.txt -c backend/constraints.txt
-Invoke-Native python -m pip install pyinstaller
+Invoke-Native python -m pip install pyinstaller py7zr
 
 if (-not $SkipTests) {
   Push-Location backend
@@ -209,15 +314,26 @@ try {
   Pop-Location
 }
 
+$ServerDist = Join-Path $Root "dist/windows/server"
+$ServerSource = Join-Path $ServerDist "mediatree-server"
+$ServerWork = Join-Path $Root "build/windows/mediatree-server"
+if (Test-Path $ServerSource) {
+  Remove-Item $ServerSource -Recurse -Force
+}
+if (Test-Path $ServerWork) {
+  Remove-Item $ServerWork -Recurse -Force
+}
 Invoke-Native pyinstaller --noconfirm --distpath dist/windows/server --workpath build/windows packaging/windows/mediatree-server.spec
 
-$ServerSource = Join-Path $Root "dist/windows/server/mediatree-server"
 $ShellServer = Join-Path $Root "windows/MediaTree.Windows/server"
 if (Test-Path $ShellServer) {
   Remove-Item $ShellServer -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path $ShellServer | Out-Null
 Copy-Item (Join-Path $ServerSource "*") $ShellServer -Recurse -Force
+
+$ShellMpv = Join-Path $Root "windows/MediaTree.Windows/mpv"
+Install-BundledMpv -Destination $ShellMpv
 
 $Assets = Join-Path $Root "windows/MediaTree.Windows/Assets"
 New-Item -ItemType Directory -Force -Path $Assets | Out-Null
@@ -233,33 +349,42 @@ Copy-Item $Logo (Join-Path $Assets "Wide310x150Logo.png") -Force
 
 $ManifestPath = Join-Path $Root "windows/MediaTree.Windows/Package.appxmanifest"
 $OriginalManifest = Get-Content $ManifestPath -Raw
-[xml]$Manifest = Get-Content $ManifestPath
-$Manifest.Package.Identity.Version = $MsixVersion
-$Manifest.Save($ManifestPath)
-
+$GeneratedCert = $null
 try {
+  [xml]$Manifest = Get-Content $ManifestPath
+  $Manifest.Package.Identity.Version = $MsixVersion
+  $Manifest.Save($ManifestPath)
+
+  $ShellOutput = Join-Path $Root "dist/windows/publish/MediaTree.Windows"
+  if (Test-Path $ShellOutput) {
+    Remove-Item $ShellOutput -Recurse -Force
+  }
   $MsBuild = Resolve-MSBuild
   Invoke-Native $MsBuild windows/MediaTree.Windows/MediaTree.Windows.csproj `
     /restore `
+    /t:Publish `
     /p:Configuration=$Configuration `
     /p:Platform=x64 `
     /p:RuntimeIdentifier=win-x64 `
-    /p:GenerateAppxPackageOnBuild=true `
-    /p:AppxPackageDir="$Root\dist\windows\msix\" `
-    /p:AppxBundle=Never `
-    /p:AppxIntermediateExtension=.intermediate `
-    /p:UapAppxPackageBuildMode=SideloadOnly `
-    /p:AppxPackageSigningEnabled=false
+    /p:PublishDir="$ShellOutput\" `
+    /p:WindowsAppSDKSelfContained=true `
+    /p:WindowsPackageType=None `
+    /p:SelfContained=true `
+    /p:PublishSingleFile=false `
+    /p:AppxPackage=false
 
-  $ShellOutput = Join-Path $Root "windows/MediaTree.Windows/bin/x64/$Configuration/net8.0-windows10.0.19041.0/win-x64"
   if (-not (Test-Path (Join-Path $ShellOutput "MediaTree.Windows.exe"))) {
     throw "WinUI output is missing MediaTree.Windows.exe: $ShellOutput"
   }
   if (-not (Test-Path (Join-Path $ShellOutput "server/mediatree-server.exe"))) {
     throw "WinUI output is missing bundled backend server: $ShellOutput"
   }
-  if (-not (Test-Path (Join-Path $ShellOutput "resources.pri"))) {
-    throw "WinUI output is missing resources.pri: $ShellOutput"
+  if (-not (Test-Path (Join-Path $ShellOutput "mpv/mpv.exe"))) {
+    throw "WinUI output is missing bundled mpv.exe: $ShellOutput"
+  }
+  $PriFiles = Get-ChildItem -Path $ShellOutput -Filter "*.pri" -File -ErrorAction SilentlyContinue
+  if (-not $PriFiles) {
+    throw "WinUI output is missing PRI resources: $ShellOutput"
   }
 
   $MsixOutDir = Join-Path $Root "dist/windows/msix"
@@ -273,6 +398,12 @@ try {
   New-Item -ItemType Directory -Force -Path $MsixOutDir | Out-Null
   New-Item -ItemType Directory -Force -Path $PackageLayout | Out-Null
 
+  $PortableZipPath = Join-Path $MsixOutDir "MediaTree-Windows-$Version-portable.zip"
+  if (Test-Path $PortableZipPath) {
+    Remove-Item $PortableZipPath -Force
+  }
+  Compress-Archive -Path (Join-Path $ShellOutput "*") -DestinationPath $PortableZipPath -Force
+
   Copy-Item (Join-Path $ShellOutput "*") $PackageLayout -Recurse -Force
   New-ExpandedAppxManifest `
     -SourceManifest $ManifestPath `
@@ -285,7 +416,6 @@ try {
   $MakeAppx = Resolve-WindowsKitTool "makeappx.exe"
   Invoke-Native $MakeAppx pack /d $PackageLayout /p $MsixPath /overwrite
 
-  $GeneratedCert = $null
   if (-not $SkipSigning) {
     $EffectivePfxPath = $SigningPfxPath
     if (-not $EffectivePfxPath -and $env:WINDOWS_SIGNING_PFX) {
@@ -326,6 +456,9 @@ try {
   }
   if (-not (Test-Path $AppInstallerPath)) {
     throw "App installer file was not generated: $AppInstallerPath"
+  }
+  if (-not (Test-Path $PortableZipPath)) {
+    throw "Portable package was not generated: $PortableZipPath"
   }
   if (-not $SkipSigning -and -not $SigningPfxPath -and -not $env:WINDOWS_SIGNING_PFX -and -not (Test-Path $PublicCertPath)) {
     throw "Public signing certificate was not exported: $PublicCertPath"

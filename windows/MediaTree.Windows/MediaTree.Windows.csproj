@@ -11,8 +11,11 @@
     <UseWinUI>true</UseWinUI>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <WindowsPackageType>MSIX</WindowsPackageType>
-    <AppxPackage>true</AppxPackage>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <AppxPackage>false</AppxPackage>
     <GenerateAppInstallerFile>true</GenerateAppInstallerFile>
     <AppInstallerUri>https://github.com/ZASENJC/mediatree/releases/latest/download/</AppInstallerUri>
     <HoursBetweenUpdateChecks>24</HoursBetweenUpdateChecks>
@@ -27,9 +30,12 @@
 
   <ItemGroup>
     <AppxManifest Include="Package.appxmanifest" />
-    <Content Include="server\**\*">
+    <None Include="server\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    </None>
+    <None Include="mpv\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <Content Include="Assets\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

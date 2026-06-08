@@ -13,3 +13,4 @@ build/
 dist/windows/
 windows/MediaTree.Windows/Assets/
 windows/MediaTree.Windows/server/
+windows/MediaTree.Windows/mpv/

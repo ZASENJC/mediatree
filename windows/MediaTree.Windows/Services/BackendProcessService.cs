@@ -40,9 +40,10 @@ public sealed class BackendProcessService : IDisposable
         startInfo.Environment["MEDIATREE_RUNTIME"] = "windows";
         startInfo.Environment["MEDIATREE_UPDATE_PLATFORM"] = "windows";
 
+        ShellLogger.Info($"Starting backend: {AppPaths.ServerExe} {startInfo.Arguments}");
         _process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start backend process.");
-        _ = PipeToFileAsync(_process.StandardOutput, stdoutLog, cancellationToken);
-        _ = PipeToFileAsync(_process.StandardError, stderrLog, cancellationToken);
+        _ = Task.Run(() => PipeToFileAsync(_process.StandardOutput, stdoutLog, cancellationToken), cancellationToken);
+        _ = Task.Run(() => PipeToFileAsync(_process.StandardError, stderrLog, cancellationToken), cancellationToken);
 
         await WaitForHealthAsync(cancellationToken);
         return BackendUri;
@@ -62,6 +63,7 @@ public sealed class BackendProcessService : IDisposable
             cancellationToken.ThrowIfCancellationRequested();
             if (_process?.HasExited == true)
             {
+                ShellLogger.Error($"Backend exited with code {_process.ExitCode}.");
                 throw new InvalidOperationException($"Backend exited with code {_process.ExitCode}.");
             }
 
@@ -70,6 +72,7 @@ public sealed class BackendProcessService : IDisposable
                 using var response = await _httpClient.GetAsync(new Uri(BackendUri, "api/health"), cancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
+                    ShellLogger.Info($"Backend is healthy at {BackendUri}.");
                     return;
                 }
             }
@@ -82,14 +85,19 @@ public sealed class BackendProcessService : IDisposable
         throw new TimeoutException("Backend did not become healthy within 60 seconds.");
     }
 
-    private static async Task PipeToFileAsync(StreamReader reader, string path, CancellationToken cancellationToken)
+    public static async Task PipeToFileAsync(StreamReader reader, string path, CancellationToken cancellationToken = default)
     {
         await using var file = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
         await using var writer = new StreamWriter(file) { AutoFlush = true };
-        while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+        while (!cancellationToken.IsCancellationRequested)
         {
             var line = await reader.ReadLineAsync();
-            if (line is not null)
+            if (line is null)
+            {
+                break;
+            }
+
+            if (line.Length > 0)
             {
                 await writer.WriteLineAsync(line);
             }

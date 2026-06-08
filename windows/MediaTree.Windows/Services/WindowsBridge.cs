@@ -25,6 +25,17 @@ public sealed class WindowsBridge
         return "";
     }
 
+    public void OpenMpv(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return;
+        }
+
+        var player = new MpvPlayerWindow(url);
+        player.Activate();
+    }
+
     public void OpenLogs()
     {
         AppPaths.EnsureLogsDirectory();

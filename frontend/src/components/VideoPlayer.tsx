@@ -7,6 +7,7 @@ import { getUiPrefs, setUiPrefs } from '../store'
 import artplayerPluginAss from './artplayerPluginAss'
 import VRVideoLayer, { VRMode } from './VRVideoLayer'
 import { useTheater } from '../theater'
+import { getWindowsBridge, isWindowsShell } from '../windowsBridge'
 
 interface Props {
   src: string
@@ -1040,13 +1041,30 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
     }
   }, [localPlaybackUrl])
 
-  const openMpv = useCallback(() => {
+  const openMpv = useCallback(async () => {
+    const windowsShell = isWindowsShell()
+    const windowsBridge = getWindowsBridge()
+    if (windowsShell) {
+      if (!windowsBridge?.openMpv) {
+        notice('Windows 内嵌 MPV 不可用，请重启应用。')
+        return
+      }
+      try {
+        await windowsBridge.openMpv(localPlaybackUrl)
+        return
+      } catch (err) {
+        console.error('Windows bundled MPV launch failed', err)
+        notice('Windows 内嵌 MPV 启动失败，请打开日志查看原因。')
+        return
+      }
+    }
+
     const ua = navigator.userAgent || ''
     const href = /Android/i.test(ua)
       ? `intent:${localPlaybackUrl}#Intent;action=android.intent.action.VIEW;type=video/*;package=is.xyz.mpv;end`
       : `mpv://play/${encodeURIComponent(localPlaybackUrl)}`
     window.location.href = href
-  }, [localPlaybackUrl])
+  }, [localPlaybackUrl, notice])
 
   const setSubtitleVisible = useCallback((visible: boolean, art = artRef.current, manual = false) => {
     subtitleVisibleRef.current = visible

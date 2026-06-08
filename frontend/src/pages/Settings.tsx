@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { marked } from 'marked'
 import { api, Config, MediaRoot, LibrarySetting, UpdateCheckResult, UpdateStatus, clearCache, getServerUrl, setServerUrl as saveServerUrl, isNativeApp, resolveApiUrl } from '../api'
 import { getUiPrefs, setUiPrefs, dismissUpdate } from '../store'
-import { isWindowsShell } from '../windowsBridge'
+import { getWindowsBridge, isWindowsShell } from '../windowsBridge'
 
 const SCRAPER_META: Record<string, { label: string; desc: string; hasKey: boolean }> = {
   tmdb_movie: { label: 'TMDB 电影', desc: '适合电影库；tmdbid 调用 /movie 精确刮削', hasKey: true },
@@ -49,6 +49,7 @@ export default function Settings() {
   const [libPasswords, setLibPasswords] = useState<Record<string, string>>({})
   const [libSaving, setLibSaving] = useState<string | null>(null)
   const [libMsg, setLibMsg] = useState('')
+  const [addingLibrary, setAddingLibrary] = useState(false)
 
   const [scanStates, setScanStates] = useState<Record<string, ScanState>>({})
   const [scanLogs, setScanLogs] = useState<Record<string, string[]>>({})
@@ -140,6 +141,19 @@ export default function Settings() {
     }
   }
 
+  const loadLibraries = async () => {
+    const [rootsData, settings] = await Promise.all([api.mediaRoots(), api.librarySettings()])
+    const items = rootsData.items || []
+    const settingMap: Record<string, LibrarySetting> = {}
+    settings.forEach(s => { settingMap[s.media_root] = s })
+    setLibraries(items.map(i => ({ ...i, settings: settingMap[i.path] })))
+    const sp: Record<string, string> = {}
+    items.forEach(i => {
+      sp[i.path] = normalizeScraper(settingMap[i.path]?.scraper)
+    })
+    setLibScraper(sp)
+  }
+
   const startUpdatePolling = (targetVersion: string) => {
     stopUpdatePolling()
     let attempts = 0
@@ -193,17 +207,7 @@ export default function Settings() {
       setReqInterval(d.javdb_request_interval)
     }).catch(() => {})
 
-    Promise.all([api.mediaRoots(), api.librarySettings()]).then(([rootsData, settings]) => {
-      const items = rootsData.items || []
-      const settingMap: Record<string, LibrarySetting> = {}
-      settings.forEach(s => { settingMap[s.media_root] = s })
-      setLibraries(items.map(i => ({ ...i, settings: settingMap[i.path] })))
-      const sp: Record<string, string> = {}
-      items.forEach(i => {
-        sp[i.path] = normalizeScraper(settingMap[i.path]?.scraper)
-      })
-      setLibScraper(sp)
-    }).catch(() => {}).finally(() => setLoading(false))
+    loadLibraries().catch(() => {}).finally(() => setLoading(false))
 
     // 自动检查更新
     api.checkForUpdates().then(result => {
@@ -268,6 +272,37 @@ export default function Settings() {
       setLibMsg('保存失败')
     }
     setLibSaving(null)
+  }
+
+  const addWindowsLibrary = async () => {
+    const bridge = getWindowsBridge()
+    if (!bridge?.pickFolder) {
+      setLibMsg('Windows 文件夹选择器不可用')
+      return
+    }
+
+    setAddingLibrary(true)
+    setLibMsg('')
+    try {
+      const selected = await bridge.pickFolder()
+      if (!selected) {
+        setLibMsg('已取消选择')
+        return
+      }
+      const existing = new Set([...(config?.extra_media_roots || []), ...libraries.map(lib => lib.path)])
+      const nextRoots = Array.from(new Set([...(config?.extra_media_roots || []), selected]))
+      await api.updateConfig({ extra_media_roots: nextRoots })
+      await api.saveLibrarySetting({ media_root: selected, scraper: 'auto' })
+      setConfig(prev => prev ? { ...prev, extra_media_roots: nextRoots } : prev)
+      clearCache()
+      await loadLibraries()
+      setLibMsg(existing.has(selected) ? '该媒体库已存在，已刷新列表' : '已添加媒体库，建议先保存刮削器设置后重新扫描')
+    } catch (err) {
+      console.error('Add Windows library failed', err)
+      setLibMsg('添加媒体库失败')
+    } finally {
+      setAddingLibrary(false)
+    }
   }
 
   const doScan = async (media_root: string) => {
@@ -470,7 +505,24 @@ export default function Settings() {
 
           {/* 媒体库配置 */}
           <div className={cardClass}>
-            <h2 className={sectionTitle}>媒体库</h2>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-lg font-semibold text-white">媒体库</h2>
+                {windowsShell && (
+                  <p className="mt-1 text-xs text-gray-500">Windows 桌面版可直接选择本机文件夹作为媒体库。</p>
+                )}
+              </div>
+              {windowsShell && (
+                <button
+                  type="button"
+                  onClick={addWindowsLibrary}
+                  disabled={addingLibrary}
+                  className={`${btnPrimary} disabled:opacity-50`}
+                >
+                  {addingLibrary ? '选择中...' : '添加本机目录'}
+                </button>
+              )}
+            </div>
             <div className="space-y-2">
             {[...libraries].sort((a, b) => a.label.localeCompare(b.label, 'zh-CN')).map((lib) => {
             const st = scanStates[lib.path]

@@ -47,6 +47,7 @@ def close_file_logging():
 
 class Settings(BaseSettings):
     media_root: str = "/media"
+    extra_media_roots: list[str] = []
     data_dir: str = str(Path(__file__).parent.parent.parent / "data")
 
     javdb_enabled: bool = True
@@ -100,13 +101,32 @@ class Settings(BaseSettings):
         return base64.b64encode(raw.encode()).decode()
 
     def get_all_media_roots(self) -> list[str]:
+        roots = []
+        seen = set()
+        for configured in self.extra_media_roots:
+            try:
+                p = Path(configured)
+                if not p.exists() or not p.is_dir():
+                    continue
+                resolved = str(p.resolve())
+                if resolved not in seen:
+                    roots.append(resolved)
+                    seen.add(resolved)
+            except (OSError, ValueError):
+                continue
+
         base = Path(self.media_root)
         if not base.exists() or not base.is_dir():
-            return []
-        roots = []
+            return roots
         for entry in sorted(base.iterdir()):
             if entry.is_dir() and not entry.name.startswith('.'):
-                roots.append(str(entry))
+                try:
+                    resolved = str(entry.resolve())
+                except (OSError, ValueError):
+                    continue
+                if resolved not in seen:
+                    roots.append(resolved)
+                    seen.add(resolved)
         return roots
 
     def load_persisted_config(self):
@@ -141,6 +161,7 @@ class Settings(BaseSettings):
                 "scraper_http_timeout": self.scraper_http_timeout,
                 "update_check_enabled": self.update_check_enabled,
                 "update_check_interval_hours": self.update_check_interval_hours,
+                "extra_media_roots": self.extra_media_roots,
                 "auth_user": self.auth_user,
                 "auth_password_hash": self.auth_password_hash,
             }

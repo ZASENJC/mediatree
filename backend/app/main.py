@@ -213,6 +213,7 @@ def _safe_image_roots() -> list[Path]:
         Path(settings.covers_dir),
         Path(settings.data_dir) / "stills",
         Path(settings.media_root),
+        *(Path(root) for root in settings.get_all_media_roots()),
     ]
 
 
@@ -893,6 +894,7 @@ async def api_get_config():
         "scraper_api_concurrency": settings.scraper_api_concurrency,
         "scraper_http_timeout": settings.scraper_http_timeout,
         "media_root": settings.media_root,
+        "extra_media_roots": settings.extra_media_roots,
         "update_check_enabled": getattr(settings, 'update_check_enabled', True),
         "update_check_interval_hours": getattr(settings, 'update_check_interval_hours', 24),
     }
@@ -932,6 +934,20 @@ async def api_update_config(data: dict):
         settings.update_check_enabled = bool(data["update_check_enabled"])
     if "update_check_interval_hours" in data:
         settings.update_check_interval_hours = int(data["update_check_interval_hours"])
+    if "extra_media_roots" in data:
+        roots = []
+        seen = set()
+        for item in data.get("extra_media_roots") or []:
+            try:
+                path = Path(str(item)).expanduser().resolve()
+            except (OSError, ValueError):
+                continue
+            if path.exists() and path.is_dir():
+                value = str(path)
+                if value not in seen:
+                    roots.append(value)
+                    seen.add(value)
+        settings.extra_media_roots = roots
     settings.save_config()
     return {"ok": True}
 

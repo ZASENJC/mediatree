@@ -86,7 +86,7 @@ jobs:
           $version = "${{ steps.metadata.outputs.version }}"
           $out = New-Item -ItemType Directory -Force -Path "dist/windows/release"
           $files = Get-ChildItem dist/windows -Recurse -File | Where-Object {
-            $_.Extension -in ".msix", ".appinstaller", ".cer"
+            $_.Extension -in ".msix", ".appinstaller", ".cer", ".zip"
           }
           foreach ($file in $files) {
             Copy-Item $file.FullName -Destination $out.FullName -Force
