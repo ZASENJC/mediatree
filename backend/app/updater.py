@@ -18,6 +18,7 @@ import subprocess
 import tarfile
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from .config import settings, logger
 
@@ -26,6 +27,10 @@ from .config import settings, logger
 GITHUB_REPO = "ZASENJC/mediatree"
 GITHUB_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases"
 DOCKERHUB_TAGS_API = "https://hub.docker.com/v2/repositories/zasenjc/mediatree/tags/?page_size=20"
+DOCKERHUB_LATEST_TAG_API = "https://hub.docker.com/v2/repositories/zasenjc/mediatree/tags/latest"
+DOCKER_REGISTRY_TOKEN_API = "https://auth.docker.io/token"
+DOCKER_REGISTRY_API = "https://registry-1.docker.io/v2/zasenjc/mediatree"
+DOCKER_REPOSITORY = "zasenjc/mediatree"
 
 # VERSION file path — try container path first, then development path
 _VERSION_CONTAINER = Path(__file__).parent.parent / "VERSION"
@@ -54,6 +59,17 @@ _SENSITIVE_ENV_MARKERS = (
     "ACCESS_KEY",
     "PRIVATE_KEY",
     "AUTH",
+)
+_DOCKER_MANIFEST_ACCEPT = ", ".join((
+    "application/vnd.oci.image.index.v1+json",
+    "application/vnd.docker.distribution.manifest.list.v2+json",
+    "application/vnd.oci.image.manifest.v1+json",
+    "application/vnd.docker.distribution.manifest.v2+json",
+))
+_DOCKER_VERSION_LABELS = (
+    "org.opencontainers.image.version",
+    "org.label-schema.version",
+    "mediatree.version",
 )
 
 
@@ -279,6 +295,193 @@ async def fetch_dockerhub_tags(max_count: int = 4) -> list[dict]:
     except Exception as e:
         logger.warning(f"Failed to fetch DockerHub tags: {e}")
         return []
+
+
+def _clean_remote_version(value: str) -> str:
+    version = (value or "").strip()
+    if not version or version.lower() in {"latest", "unknown"}:
+        return ""
+    return version.lstrip("vV")
+
+
+def _extract_version_from_image_config(config: dict) -> str:
+    """Extract the MediaTree version baseline from a Docker image config."""
+    image_config = config.get("config") or {}
+    labels = image_config.get("Labels") or {}
+    for key in _DOCKER_VERSION_LABELS:
+        version = _clean_remote_version(labels.get(key, ""))
+        if version:
+            return version
+
+    for env in image_config.get("Env") or []:
+        if not isinstance(env, str) or "=" not in env:
+            continue
+        key, value = env.split("=", 1)
+        if key == "MEDIATREE_VERSION":
+            version = _clean_remote_version(value)
+            if version:
+                return version
+    return ""
+
+
+def _select_registry_manifest(manifests: list[dict]) -> dict | None:
+    if not manifests:
+        return None
+    for preferred in (("linux", "amd64"), ("linux", "arm64")):
+        for manifest in manifests:
+            platform = manifest.get("platform") or {}
+            if platform.get("os") == preferred[0] and platform.get("architecture") == preferred[1]:
+                return manifest
+    for manifest in manifests:
+        platform = manifest.get("platform") or {}
+        if platform.get("os") == "linux":
+            return manifest
+    return manifests[0]
+
+
+async def _fetch_registry_json(client: httpx.AsyncClient, reference: str, token: str, accept: str) -> dict:
+    resp = await client.get(
+        f"{DOCKER_REGISTRY_API}/{reference}",
+        headers={
+            "Accept": accept,
+            "Authorization": f"Bearer {token}",
+            "User-Agent": "MediaTree-Updater/1.0",
+        },
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def _fetch_docker_registry_token(client: httpx.AsyncClient) -> str:
+    resp = await client.get(
+        DOCKER_REGISTRY_TOKEN_API,
+        params={
+            "service": "registry.docker.io",
+            "scope": f"repository:{DOCKER_REPOSITORY}:pull",
+        },
+        headers={"User-Agent": "MediaTree-Updater/1.0"},
+    )
+    resp.raise_for_status()
+    return resp.json().get("token", "")
+
+
+async def _fetch_dockerhub_latest_tag_metadata(client: httpx.AsyncClient) -> dict:
+    resp = await client.get(DOCKERHUB_LATEST_TAG_API, headers={"User-Agent": "MediaTree-Updater/1.0"})
+    resp.raise_for_status()
+    data = resp.json()
+    return {
+        "published_at": data.get("last_updated", ""),
+        "digest": data.get("digest", ""),
+    }
+
+
+async def _fetch_docker_registry_latest_version(client: httpx.AsyncClient) -> str:
+    token = await _fetch_docker_registry_token(client)
+    if not token:
+        return ""
+
+    manifest = await _fetch_registry_json(client, "manifests/latest", token, _DOCKER_MANIFEST_ACCEPT)
+    if manifest.get("manifests"):
+        selected = _select_registry_manifest(manifest.get("manifests") or [])
+        digest = selected.get("digest", "") if selected else ""
+        if not digest:
+            return ""
+        manifest = await _fetch_registry_json(client, f"manifests/{digest}", token, _DOCKER_MANIFEST_ACCEPT)
+
+    config_digest = (manifest.get("config") or {}).get("digest", "")
+    if not config_digest:
+        return ""
+    config = await _fetch_registry_json(client, f"blobs/{config_digest}", token, "application/octet-stream")
+    return _extract_version_from_image_config(config)
+
+
+async def fetch_dockerhub_latest_baseline() -> dict:
+    """Fetch the version baseline currently published as DockerHub latest."""
+    result = {
+        "version": "",
+        "display_version": "latest",
+        "published_at": "",
+        "html_url": "https://hub.docker.com/r/zasenjc/mediatree/tags?name=latest",
+        "source": "dockerhub-latest",
+        "status": "unknown",
+        "reason": "",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            try:
+                result.update(await _fetch_dockerhub_latest_tag_metadata(client))
+            except Exception as tag_error:
+                result["reason"] = f"DockerHub latest 元数据读取失败: {tag_error}"
+            version = await _fetch_docker_registry_latest_version(client)
+            if version:
+                result["version"] = version
+                result["status"] = "ok"
+            else:
+                result["reason"] = result["reason"] or "DockerHub latest 镜像未提供版本基线 label。"
+    except Exception as e:
+        result["reason"] = f"DockerHub latest 基线读取失败: {e}"
+        logger.warning(result["reason"])
+    return result
+
+
+def _parse_remote_timestamp(value: str) -> datetime | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed
+    except Exception:
+        return None
+
+
+def _is_app_package_release(entry: dict | None) -> bool:
+    if not entry:
+        return False
+    return entry.get("update_type") == "app-package" and not bool(entry.get("requires_image_update"))
+
+
+def _build_latest_sync_warning(latest_entry: dict | None, dockerhub_latest: dict | None) -> dict | None:
+    if not _is_app_package_release(latest_entry) or not dockerhub_latest:
+        return None
+
+    release_version = (latest_entry.get("version") or "").lstrip("vV")
+    release_display = latest_entry.get("display_version") or release_version
+    docker_version = (dockerhub_latest.get("version") or "").lstrip("vV")
+    should_warn = False
+    evidence = "version"
+
+    if release_version and docker_version:
+        should_warn = _normalize_version(release_version) > _normalize_version(docker_version)
+    elif release_version:
+        release_time = _parse_remote_timestamp(latest_entry.get("published_at", ""))
+        docker_time = _parse_remote_timestamp(dockerhub_latest.get("published_at", ""))
+        should_warn = bool(release_time and docker_time and release_time > docker_time)
+        evidence = "timestamp"
+
+    if not should_warn:
+        return None
+
+    docker_display = docker_version or "未知基线"
+    action = f"请维护者在本地执行 scripts/push-docker-release.sh {release_version}，刷新 zasenjc/mediatree:latest。"
+    message = (
+        f"GitHub 最新应用包 release {release_display} 已发布，但 DockerHub latest 仍指向 {docker_display}。"
+        "新安装用户可能还拿不到这个版本。"
+    )
+    return {
+        "type": "dockerhub-latest-outdated",
+        "severity": "warning",
+        "release_version": release_version,
+        "release_display_version": release_display,
+        "release_published_at": latest_entry.get("published_at", ""),
+        "dockerhub_latest_version": docker_version,
+        "dockerhub_latest_updated_at": dockerhub_latest.get("published_at", ""),
+        "evidence": evidence,
+        "message": message,
+        "action": action,
+    }
 
 
 # ─── Fetch full GitHub release body ───
@@ -614,6 +817,12 @@ async def get_available_versions() -> dict:
     entries.sort(key=lambda x: _normalize_version(x["version"]), reverse=True)
     effective_norm = _normalize_version(effective)
     has_update = any(_normalize_version(v["version"]) > effective_norm for v in entries)
+    latest_entry = entries[0] if entries else None
+    dockerhub_latest = None
+    latest_sync_warning = None
+    if _is_app_package_release(latest_entry):
+        dockerhub_latest = await fetch_dockerhub_latest_baseline()
+        latest_sync_warning = _build_latest_sync_warning(latest_entry, dockerhub_latest)
 
     return {
         "current_version": current,
@@ -624,6 +833,8 @@ async def get_available_versions() -> dict:
         "overlay_is_outdated": version_state["overlay_is_outdated"],
         "status_note": version_state["status_note"],
         "has_update": has_update,
+        "dockerhub_latest": dockerhub_latest,
+        "latest_sync_warning": latest_sync_warning,
         "versions": [_public_release_entry(entry) for entry in entries[:4]],
     }
 

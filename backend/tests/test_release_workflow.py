@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "release-tag.yml"
 LOCAL_DOCKER_PUSH = ROOT / "scripts" / "push-docker-release.sh"
+DOCKERFILE = ROOT / "Dockerfile"
 
 
 class ReleaseWorkflowTest(unittest.TestCase):
@@ -51,6 +52,14 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("docker buildx build", script)
         self.assertIn("--platform", script)
         self.assertIn("linux/amd64,linux/arm64", script)
+
+    def test_docker_release_push_labels_latest_with_version_baseline(self):
+        script = LOCAL_DOCKER_PUSH.read_text(encoding="utf-8")
+        dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+
+        self.assertIn('--build-arg "MEDIATREE_VERSION=$VERSION"', script)
+        self.assertIn("ARG MEDIATREE_VERSION=unknown", dockerfile)
+        self.assertIn("org.opencontainers.image.version=$MEDIATREE_VERSION", dockerfile)
 
 
 if __name__ == "__main__":

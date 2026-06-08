@@ -41,7 +41,7 @@ cmd=(docker buildx build)
 if [[ -n "$BUILDER" ]]; then
   cmd+=(--builder "$BUILDER")
 fi
-cmd+=(--platform "$PLATFORMS" --build-arg "PORT=$PORT")
+cmd+=(--platform "$PLATFORMS" --build-arg "PORT=$PORT" --build-arg "MEDIATREE_VERSION=$VERSION")
 
 if [[ "$REQUIRES_IMAGE_UPDATE" == "true" ]]; then
   cmd+=(-t "zasenjc/mediatree:${VERSION}" -t "zasenjc/mediatree:latest")

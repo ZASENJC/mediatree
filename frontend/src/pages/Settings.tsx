@@ -701,6 +701,18 @@ export default function Settings() {
               </p>
             </div>
 
+            {updateResult?.latest_sync_warning && (
+              <div className="mb-3 rounded-2xl border border-apple-yellow/30 bg-apple-yellow/10 px-3 py-2 text-xs text-apple-yellow">
+                <p className="font-medium text-apple-yellow">DockerHub latest 尚未同步</p>
+                <p className="mt-1 text-yellow-100/90">
+                  {updateResult.latest_sync_warning.message}
+                </p>
+                <p className="mt-2 rounded-xl border border-apple-yellow/20 bg-black/20 px-2 py-1 font-mono text-[11px] leading-relaxed text-yellow-100">
+                  {updateResult.latest_sync_warning.action}
+                </p>
+              </div>
+            )}
+
             {updateMsg && (
               <p className={`mb-3 text-xs ${updateMsg.includes('失败') ? 'text-red-400' : updateMsg.includes('最新') ? 'text-apple-mint' : 'text-apple-yellow'}`}>
                 {updateMsg}

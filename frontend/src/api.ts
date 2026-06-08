@@ -841,6 +841,29 @@ export interface VersionEntry {
   reason?: string
 }
 
+export interface DockerHubLatestBaseline {
+  version?: string
+  display_version?: string
+  published_at?: string
+  html_url?: string
+  source?: 'dockerhub-latest' | string
+  status?: 'ok' | 'unknown' | string
+  reason?: string
+}
+
+export interface LatestSyncWarning {
+  type: 'dockerhub-latest-outdated' | string
+  severity: 'warning' | string
+  release_version: string
+  release_display_version?: string
+  release_published_at?: string
+  dockerhub_latest_version?: string
+  dockerhub_latest_updated_at?: string
+  evidence?: 'version' | 'timestamp' | string
+  message: string
+  action: string
+}
+
 export interface UpdateCheckResult {
   current_version: string
   runtime_version?: string
@@ -851,6 +874,8 @@ export interface UpdateCheckResult {
   overlay_is_outdated?: boolean
   status_note?: string
   has_update: boolean
+  dockerhub_latest?: DockerHubLatestBaseline | null
+  latest_sync_warning?: LatestSyncWarning | null
   versions: VersionEntry[]
 }
 
