@@ -10,6 +10,7 @@ import ContextMenu, { ContextMenuItem } from './ContextMenu'
 import EditModal from './EditModal'
 import { clearCache } from '../cache'
 import CoverPickerModal from './CoverPickerModal'
+import { specialMovieTitle } from '../movieTitle'
 
 interface MovieCardProps {
   movie: Movie
@@ -71,12 +72,15 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   }, [movie.id, movie.tags])
 
   const isEpisode = movie.tmdb_type === 'tv' && movie.tmdb_episode != null
+  const isSpecial = movie.content_role === 'special'
   const hasEpisodeStill = !!(isEpisode && movie.episode_still)
   const withVersion = (url: string) => coverVersion ? `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(coverVersion)}` : url
   const coverSrc = (hasEpisodeStill
     ? api.episodeStillUrl(movie.id)
     : api.coverUrl(movie.id))
-  const displayTitle = isEpisode
+  const displayTitle = isSpecial
+    ? specialMovieTitle(movie)
+    : isEpisode
     ? `E${String(movie.tmdb_episode).padStart(2, '0')} ${movie.episode_title || movie.title || movie.code}`
     : (movie.title || movie.code)
   const watched = localWatched !== null ? localWatched : (movie.tags || []).includes('watched')
@@ -200,8 +204,10 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   }, [movie.id, onUpdated])
 
   const menuItems: ContextMenuItem[] = [
-    { label: '重新刮削', onClick: handleRescrape },
-    { label: '手动刮削', onClick: () => setShowManualSearch(true) },
+    ...(!isSpecial ? [
+      { label: '重新刮削', onClick: handleRescrape },
+      { label: '手动刮削', onClick: () => setShowManualSearch(true) },
+    ] : []),
     { label: '更换封面', onClick: handleLoadAltCovers },
     { label: '编辑信息', onClick: () => setShowEdit(true) },
     { label: '删除', danger: true, onClick: handleDelete },
@@ -280,7 +286,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
           )}
           <div className="absolute bottom-0 left-0 right-0 min-w-0 p-3">
             <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-white drop-shadow">{displayTitle}</p>
-            <p className="mt-0.5 truncate text-xs text-gray-400">{movie.code}</p>
+            <p className="mt-0.5 truncate text-xs text-gray-400">{isSpecial ? '花絮' : movie.code}</p>
           </div>
           </>
           )}

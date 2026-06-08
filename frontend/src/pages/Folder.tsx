@@ -7,6 +7,7 @@ import { getCached, setCache } from '../cache'
 import { saveScrollPos, restoreScrollPos } from '../scroll'
 import { MovieCard } from '../components/MovieCard'
 import SortDropdown from '../components/SortDropdown'
+import { showToast } from '../toast'
 
 import { LIBRARY_SORT_OPTIONS } from '../constants/sortOptions'
 
@@ -44,6 +45,11 @@ export default function FolderPage() {
   const [folderDisplayTitle, setFolderDisplayTitle] = useState('')
   const [folderBackdrop, setFolderBackdrop] = useState('')
   const [overviewModal, setOverviewModal] = useState(false)
+  const [specialMovies, setSpecialMovies] = useState<Movie[]>([])
+  const [specialCount, setSpecialCount] = useState(0)
+  const [showSpecials, setShowSpecials] = useState(false)
+  const [specialsLoading, setSpecialsLoading] = useState(false)
+  const [specialsToggling, setSpecialsToggling] = useState(false)
 
   // ─── Backdrop Carousel (powered by folder-scraped TMDB data) ───
   const [backdrops, setBackdrops] = useState<{ url: string; width: number; height: number }[]>([])
@@ -76,6 +82,25 @@ export default function FolderPage() {
   }, [folderPath, sort, mediaRoot])
 
   useEffect(() => { load() }, [load])
+
+  const specialFolderPath = seasonFilter || folderPath
+  const loadSpecials = useCallback(() => {
+    if (!specialFolderPath) return
+    setSpecialsLoading(true)
+    api.folderSpecials(specialFolderPath, mediaRoot || undefined)
+      .then((data) => {
+        setShowSpecials(Boolean(data.show_specials))
+        setSpecialCount(data.special_count || 0)
+        setSpecialMovies(data.movies || [])
+      })
+      .catch(() => {
+        setSpecialCount(0)
+        setSpecialMovies([])
+      })
+      .finally(() => setSpecialsLoading(false))
+  }, [specialFolderPath, mediaRoot])
+
+  useEffect(() => { loadSpecials() }, [loadSpecials])
 
   useEffect(() => {
     api.folders().then(data => {
@@ -221,6 +246,23 @@ export default function FolderPage() {
     if (tabPath) p.set('season', tabPath)
     else p.delete('season')
     setSearchParams(p, { replace: true })
+  }
+
+  const toggleSpecials = async () => {
+    if (specialsToggling) return
+    const next = !showSpecials
+    setSpecialsToggling(true)
+    try {
+      const data = await api.setFolderSpecials(specialFolderPath, mediaRoot || undefined, next)
+      setShowSpecials(Boolean(data.show_specials))
+      setSpecialCount(data.special_count || 0)
+      setSpecialMovies(data.movies || [])
+      showToast(next ? '已显示花絮' : '已隐藏花絮')
+    } catch {
+      showToast('花絮显示设置失败')
+    } finally {
+      setSpecialsToggling(false)
+    }
   }
 
   if (loading) {
@@ -398,6 +440,38 @@ export default function FolderPage() {
             <MovieCard key={movie.id} movie={movie} onUpdated={load} showBadges={false} />
           ))}
         </div>
+      )}
+
+      {specialCount > 0 && (
+        <section className="rounded-3xl border border-white/10 bg-white/[0.045] p-4 shadow-glass backdrop-blur-2xl sm:p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.24em] text-apple-pink/70">Specials</p>
+              <h2 className="mt-0.5 text-lg font-semibold text-white">花絮</h2>
+              <p className="mt-1 text-xs text-gray-500">
+                {showSpecials ? `共 ${specialCount} 个花絮，独立显示，不计入正片排序` : `已隐藏 ${specialCount} 个花絮`}
+              </p>
+            </div>
+            <button
+              onClick={toggleSpecials}
+              disabled={specialsToggling}
+              className="rounded-full border border-white/10 bg-white/[0.08] px-4 py-2 text-sm text-gray-300 transition-all hover:border-apple-pink/40 hover:text-apple-pink disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {specialsToggling ? '保存中...' : (showSpecials ? '隐藏花絮' : '显示花絮')}
+            </button>
+          </div>
+          {showSpecials && (
+            specialsLoading ? (
+              <div className="rounded-2xl border border-white/10 bg-black/15 py-10 text-center text-sm text-gray-500">花絮加载中...</div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 media-grid">
+                {specialMovies.map((movie) => (
+                  <MovieCard key={movie.id} movie={movie} onUpdated={loadSpecials} showBadges={false} />
+                ))}
+              </div>
+            )
+          )}
+        </section>
       )}
     </div>
     </>

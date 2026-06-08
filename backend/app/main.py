@@ -34,6 +34,7 @@ from .database import (
     get_all_library_settings, save_library_settings, has_any_library_setting,
     get_library_settings, save_progress, get_progress,
     get_review_queue, approve_review_item, clear_review_queue,
+    get_folder_specials, set_folder_specials_visibility,
 )
 from .auth import auth_secret, store_auth_credentials, valid_new_auth_credentials, verify_auth_credentials
 from .scanner import scan_media, scrape_for_library, run_scan_for_root, rescrape_movie, rescrape_movie_manual, rescrape_folder, rescrape_folder_manual, search_for_scrape, apply_folder_scrape_result, fetch_search_backdrops, change_folder_cover, change_folder_backdrop, edit_folder_movies, delete_folder_movies, request_cancel_scan, clear_library_scraped_data
@@ -355,27 +356,37 @@ async def health():
     )
 
 
-async def _require_enabled_media_root(media_root: str) -> dict | None:
+async def _require_enabled_media_root(media_root: str) -> str:
     if not media_root:
         raise HTTPException(status_code=400, detail="media_root required")
-    known_roots = set(settings.get_all_media_roots())
-    if known_roots and media_root not in known_roots:
-        logger.warning(f"media_root validation failed: unknown media_root='{media_root}'")
+    known_roots = settings.get_all_media_roots()
+    canonical = settings.canonical_media_root(media_root)
+    if known_roots and not canonical:
+        logger.warning(
+            f"media_root validation failed: unknown media_root='{media_root}' "
+            f"known_roots={known_roots}"
+        )
         raise HTTPException(status_code=404, detail="media_root not found")
-    lib_setting = await get_library_settings(media_root)
+
+    effective_media_root = canonical or media_root
+    if effective_media_root != media_root:
+        logger.info(f"media_root canonicalized: '{media_root}' -> '{effective_media_root}'")
+
+    lib_setting = await get_library_settings(effective_media_root)
     if lib_setting and not bool(lib_setting.get("enabled", 1)):
-        logger.warning(f"media_root validation failed: disabled media_root='{media_root}'")
+        logger.warning(f"media_root validation failed: disabled media_root='{effective_media_root}'")
         raise HTTPException(status_code=400, detail="media_root disabled")
-    return lib_setting
+    return effective_media_root
 
 
 # ─── Scan ───
 
 @app.get("/api/scan")
 async def api_scan(media_root: str = Query("")):
+    effective_media_root = media_root
     if media_root:
-        await _require_enabled_media_root(media_root)
-    roots = [media_root] if media_root else settings.get_all_media_roots()
+        effective_media_root = await _require_enabled_media_root(media_root)
+    roots = [effective_media_root] if media_root else settings.get_all_media_roots()
     results = await asyncio.gather(*(run_scan_for_root(r, trigger="manual") for r in roots))
     total = sum(int(r.get("total") or 0) for r in results)
     return {"total": total, "roots": results, "all_codes_count": total}
@@ -417,7 +428,7 @@ async def api_scan_log(media_root: str = Query(""), lines: int = Query(100)):
 @app.post("/api/library/clear")
 async def api_library_clear(data: dict):
     media_root = data.get("media_root", "")
-    await _require_enabled_media_root(media_root)
+    media_root = await _require_enabled_media_root(media_root)
     from .scanner import clear_library_scraped_data
     await clear_library_scraped_data(media_root)
     return {"ok": True, "message": f"Cleared scraped data for {media_root}"}
@@ -464,6 +475,9 @@ async def api_library_settings():
 async def api_save_library_setting(data: dict):
     if not data.get("media_root"):
         raise HTTPException(status_code=400, detail="media_root required")
+    canonical = settings.canonical_media_root(data["media_root"])
+    if canonical:
+        data = {**data, "media_root": canonical}
     await save_library_settings(data)
 
     # 当用户将刮削器切换为 none 时，立即停止正在进行的刮削并清除已刮削内容
@@ -1232,7 +1246,7 @@ async def api_rescrape_folder(data: dict):
     media_root = data.get("media_root", "")
     if not folder:
         raise HTTPException(status_code=400, detail="folder required")
-    await _require_enabled_media_root(media_root)
+    media_root = await _require_enabled_media_root(media_root)
     logger.info(f"rescrape-folder request: folder='{folder}' media_root='{media_root}'")
     result = await rescrape_folder(folder, media_root)
     if not result.get("ok"):
@@ -1246,9 +1260,15 @@ async def api_rescrape_folder(data: dict):
 async def api_search_scrape(data: dict):
     query = data.get("query", "")
     scraper = data.get("scraper", "tmdb_movie")
+    media_root = data.get("media_root", "")
     if not query:
         raise HTTPException(status_code=400, detail="query required")
-    results = await search_for_scrape(query, scraper)
+    if media_root:
+        media_root = await _require_enabled_media_root(media_root)
+    try:
+        results = await search_for_scrape(query, scraper, media_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return {"results": results}
 
 
@@ -1262,7 +1282,7 @@ async def api_rescrape_folder_manual(data: dict):
     scraper = data.get("scraper", "")
     if not folder or not query:
         raise HTTPException(status_code=400, detail="folder and query required")
-    await _require_enabled_media_root(media_root)
+    media_root = await _require_enabled_media_root(media_root)
     logger.info(
         f"rescrape-folder-manual request: folder='{folder}' media_root='{media_root}' "
         f"scraper='{scraper or 'library-default'}' query='{query}'"
@@ -1285,7 +1305,7 @@ async def api_apply_folder_scrape(data: dict):
     logger.info(f"apply-folder-scrape: folder='{folder}' media_root='{media_root}' source_id='{source_id}' source='{source}' media_type='{media_type}'")
     if not folder or not source_id:
         raise HTTPException(status_code=400, detail="folder and source_id required")
-    await _require_enabled_media_root(media_root)
+    media_root = await _require_enabled_media_root(media_root)
     result = await apply_folder_scrape_result(folder, media_root, source_id, source, media_type)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Apply failed"))
@@ -1312,7 +1332,7 @@ async def api_folder_backdrop(data: dict):
     url = data.get("url", "")
     if not folder:
         raise HTTPException(status_code=400, detail="folder required")
-    await _require_enabled_media_root(media_root)
+    media_root = await _require_enabled_media_root(media_root)
     result = await change_folder_backdrop(folder, media_root, url)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Failed"))
@@ -1328,7 +1348,7 @@ async def api_folder_cover(data: dict):
     cover_url = data.get("url", "")
     if not folder or not cover_url:
         raise HTTPException(status_code=400, detail="folder and url required")
-    await _require_enabled_media_root(media_root)
+    media_root = await _require_enabled_media_root(media_root)
     result = await change_folder_cover(folder, media_root, cover_url)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Cover change failed"))
@@ -1344,7 +1364,7 @@ async def api_folder_edit(data: dict):
     fields = data.get("fields", {})
     if not folder:
         raise HTTPException(status_code=400, detail="folder required")
-    await _require_enabled_media_root(media_root)
+    media_root = await _require_enabled_media_root(media_root)
     result = await edit_folder_movies(folder, media_root, fields)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Edit failed"))
@@ -1359,7 +1379,7 @@ async def api_folder_delete(data: dict):
     media_root = data.get("media_root", "")
     if not folder:
         raise HTTPException(status_code=400, detail="folder required")
-    await _require_enabled_media_root(media_root)
+    media_root = await _require_enabled_media_root(media_root)
     result = await delete_folder_movies(folder, media_root)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Delete failed"))
@@ -1376,9 +1396,31 @@ async def api_folder_watched(data: dict):
     if not path:
         raise HTTPException(status_code=400, detail="folder required")
     if media_root:
-        await _require_enabled_media_root(media_root)
+        media_root = await _require_enabled_media_root(media_root)
     await set_folder_tag(path, "watched", watched, media_root)
     return {"ok": True}
+
+
+# ─── Folder Specials ───
+
+@app.get("/api/folder/specials")
+async def api_folder_specials(folder: str = Query(""), media_root: str = Query("")):
+    if not folder:
+        raise HTTPException(status_code=400, detail="folder required")
+    media_root = await _require_enabled_media_root(media_root)
+    return await get_folder_specials(folder, media_root)
+
+
+@app.post("/api/folder/specials")
+async def api_set_folder_specials(data: dict):
+    folder = data.get("folder", "")
+    media_root = data.get("media_root", "")
+    show_specials = bool(data.get("show_specials", False))
+    if not folder:
+        raise HTTPException(status_code=400, detail="folder required")
+    media_root = await _require_enabled_media_root(media_root)
+    await set_folder_specials_visibility(folder, media_root, show_specials)
+    return await get_folder_specials(folder, media_root)
 
 
 # ─── Alternative Covers ───

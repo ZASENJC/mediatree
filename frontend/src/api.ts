@@ -357,6 +357,23 @@ export const api = {
       body: JSON.stringify({ folder, media_root: mediaRoot, watched }),
     }),
 
+  folderSpecials: (folder: string, mediaRoot?: string) => {
+    const lib = mediaRoot || getActiveLibrary()
+    return request<FolderSpecialsResponse>(
+      `/folder/specials?folder=${encodeURIComponent(folder)}&media_root=${encodeURIComponent(lib)}`
+    )
+  },
+
+  setFolderSpecials: (folder: string, mediaRoot: string | undefined, showSpecials: boolean) =>
+    request<FolderSpecialsResponse>('/folder/specials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder, media_root: mediaRoot || getActiveLibrary(), show_specials: showSpecials }),
+    }).then(result => {
+      clearCache()
+      return result
+    }),
+
   deleteMovie: (movieId: number) =>
     request(`/movies/${movieId}`, { method: 'DELETE' }),
 
@@ -711,6 +728,8 @@ export interface FolderNode {
   progress_percent?: number
   tmdb_id?: number
   tmdb_type?: string
+  special_count?: number
+  show_specials?: boolean
 }
 
 export interface Movie {
@@ -766,6 +785,14 @@ export interface Movie {
   crew?: { name: string; job: string; department?: string; profile_path?: string; person_id?: string; source?: string }[]
   playback_position?: number
   progress_percent?: number
+  content_role?: 'main' | 'special' | string
+  special_parent_levels?: string
+}
+
+export interface FolderSpecialsResponse {
+  show_specials: boolean
+  special_count: number
+  movies: Movie[]
 }
 
 export interface Category {

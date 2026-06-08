@@ -179,9 +179,42 @@ def build_local_metadata(folder: Path, folder_name: str, code: str) -> dict:
     if year: metadata["detected_year"] = year
     return metadata
 
+SPECIAL_DIR_NAMES = {
+    "sp",
+    "sps",
+    "special",
+    "specials",
+    "extra",
+    "extras",
+    "bonus",
+    "bonuses",
+    "featurette",
+    "featurettes",
+    "behind the scenes",
+    "cm",
+    "cms",
+    "menu",
+    "menus",
+    "ncop",
+    "nced",
+    "pv",
+    "pvs",
+    "映像特典",
+    "特典",
+    "花絮",
+}
+
+def detect_special_parent_levels(folder_levels: str) -> str | None:
+    parts = [part.strip() for part in folder_levels.replace("\\", "/").split("/") if part.strip() and part.strip() != "."]
+    for index, part in enumerate(parts):
+        if part.lower() in SPECIAL_DIR_NAMES:
+            return "/".join(parts[:index])
+    return None
+
 def scan_media(root: str = None, javdatabase_roots: set[str] | None = None) -> list[dict]:
     from .covers import find_local_episode_still
     from .subtitles import find_external_audio_tracks
+    from .config import logger
 
     javdatabase_roots = javdatabase_roots or set()
     if root is None:
@@ -197,6 +230,14 @@ def scan_media(root: str = None, javdatabase_roots: set[str] | None = None) -> l
         _set_scan_progress(media_root, status="scanning", done=0, total=0, trigger=trigger)
         for dirpath, dirnames, filenames in os.walk(base):
             folder = Path(dirpath)
+            rel_path = str(folder.relative_to(base))
+            folder_levels = rel_path.replace("\\", "/")
+            special_parent_levels = detect_special_parent_levels(folder_levels)
+            if special_parent_levels == "":
+                dirnames[:] = []
+                if any(Path(f).suffix.lower() in VIDEO_EXTS for f in filenames):
+                    logger.info(f"Scan skip root-level sp folder: media_root='{media_root}' folder='{folder_levels}'")
+                continue
             media_files = sorted({folder / f for f in filenames if Path(f).suffix.lower() in VIDEO_EXTS})
             if not media_files: continue
             detected_code = extract_code(folder.name)
@@ -212,8 +253,6 @@ def scan_media(root: str = None, javdatabase_roots: set[str] | None = None) -> l
                         break
             if not code:
                 code = generate_folder_identifier(folder.name)
-            rel_path = str(folder.relative_to(base))
-            folder_levels = rel_path.replace("\\", "/")
             cover_local = find_cover_recursive(folder, media_root)
             try:
                 folder_mtime = os.path.getmtime(str(folder))
@@ -225,9 +264,12 @@ def scan_media(root: str = None, javdatabase_roots: set[str] | None = None) -> l
             release_date = nfo_data.get("premiered") or None
             duration = nfo_data.get("runtime") or None
             for mf in media_files:
+                content_role = "special" if special_parent_levels is not None else "main"
+                is_special = content_role == "special"
+                file_title = mf.stem
                 anime_info = parse_anime_filename(mf.name)
-                clean_title = anime_info.clean_title or title or ""
-                item_code = code
+                clean_title = file_title if is_special else (anime_info.clean_title or title or "")
+                item_code = file_title if is_special else code
                 if not detected_code and clean_title:
                     item_code = clean_title
                 local_still = find_local_episode_still(str(mf))
@@ -238,15 +280,17 @@ def scan_media(root: str = None, javdatabase_roots: set[str] | None = None) -> l
                     item_meta["jav_code_explicit"] = bool(jav_code)
                 item_meta_json = json.dumps(item_meta, ensure_ascii=False) if item_meta else "{}"
                 item = {
-                    "path": str(mf), "code": item_code, "title": title or clean_title or None,
+                    "path": str(mf), "code": item_code, "title": file_title if is_special else (title or clean_title or None),
                     "folder_levels": folder_levels, "cover_local": cover_local,
                     "media_root": media_root, "local_metadata": item_meta_json,
                     "clean_title": clean_title or None,
-                    "episode_number": anime_info.episode,
-                    "display_title": anime_info.display_title or clean_title or None,
+                    "episode_number": None if is_special else anime_info.episode,
+                    "display_title": file_title if is_special else (anime_info.display_title or clean_title or None),
                     "external_audio_tracks": json.dumps(external_audio_tracks, ensure_ascii=False),
+                    "content_role": content_role,
+                    "special_parent_levels": special_parent_levels,
                 }
-                if anime_info.episode is not None:
+                if not is_special and anime_info.episode is not None:
                     item["tmdb_type"] = "tv"
                     item["tmdb_episode"] = anime_info.episode
                     # Auto-detect season from folder path instead of hardcoding 1
@@ -457,12 +501,16 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
     )
     if media_root:
         cur = await db.execute(
-            f"UPDATE movies SET {set_sql} WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?",
+            f"""UPDATE movies SET {set_sql}
+                WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?
+                AND COALESCE(content_role, 'main') != 'special'""",
             (*values, folder_levels, f"{folder_levels}/%", media_root)
         )
     else:
         cur = await db.execute(
-            f"UPDATE movies SET {set_sql} WHERE (folder_levels=? OR folder_levels LIKE ?)",
+            f"""UPDATE movies SET {set_sql}
+                WHERE (folder_levels=? OR folder_levels LIKE ?)
+                AND COALESCE(content_role, 'main') != 'special'""",
             (*values, folder_levels, f"{folder_levels}/%")
         )
     affected = cur.rowcount
@@ -477,7 +525,8 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
                     """UPDATE movies SET
                        cover_remote=COALESCE(NULLIF(?, ''), cover_remote),
                        updated_at=datetime('now')
-                       WHERE folder_levels LIKE ? AND media_root=?""",
+                       WHERE folder_levels LIKE ? AND media_root=?
+                       AND COALESCE(content_role, 'main') != 'special'""",
                     (data.get("cover_remote", ""), parent + "/%", media_root)
                 )
             else:
@@ -485,19 +534,24 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
                     """UPDATE movies SET
                        cover_remote=COALESCE(NULLIF(?, ''), cover_remote),
                        updated_at=datetime('now')
-                       WHERE folder_levels LIKE ?""",
+                       WHERE folder_levels LIKE ?
+                       AND COALESCE(content_role, 'main') != 'special'""",
                     (data.get("cover_remote", ""), parent + "/%")
                 )
 
     if replace:
         if media_root:
             await db.execute(
-                "UPDATE movies SET cover_local=NULL WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?",
+                """UPDATE movies SET cover_local=NULL
+                   WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?
+                   AND COALESCE(content_role, 'main') != 'special'""",
                 (folder_levels, f"{folder_levels}/%", media_root),
             )
         else:
             await db.execute(
-                "UPDATE movies SET cover_local=NULL WHERE (folder_levels=? OR folder_levels LIKE ?)",
+                """UPDATE movies SET cover_local=NULL
+                   WHERE (folder_levels=? OR folder_levels LIKE ?)
+                   AND COALESCE(content_role, 'main') != 'special'""",
                 (folder_levels, f"{folder_levels}/%"),
             )
     if data.get("cover_remote"):
@@ -508,12 +562,16 @@ async def _apply_scraped_data(folder_levels: str, data: dict, media_root: str = 
             if cached:
                 if media_root:
                     await db.execute(
-                        "UPDATE movies SET cover_local=? WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?",
+                        """UPDATE movies SET cover_local=?
+                           WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?
+                           AND COALESCE(content_role, 'main') != 'special'""",
                         (cache_key, folder_levels, f"{folder_levels}/%", media_root),
                     )
                 else:
                     await db.execute(
-                        "UPDATE movies SET cover_local=? WHERE (folder_levels=? OR folder_levels LIKE ?)",
+                        """UPDATE movies SET cover_local=?
+                           WHERE (folder_levels=? OR folder_levels LIKE ?)
+                           AND COALESCE(content_role, 'main') != 'special'""",
                         (cache_key, folder_levels, f"{folder_levels}/%"),
                     )
         except Exception:
@@ -542,7 +600,7 @@ async def scrape_for_library(media_root: str):
         """SELECT DISTINCT id, code, folder_levels, path, title, cover_local, cover_remote,
                   javdb_url, local_metadata, tmdb_id, tmdb_type, tmdb_season, tmdb_episode,
                   clean_title, episode_number, display_title, source_id, bangumi_id, javdb_id
-           FROM movies WHERE media_root=?""",
+           FROM movies WHERE media_root=? AND COALESCE(content_role, 'main') != 'special'""",
         (media_root,)
     )
     rows = await cur.fetchall()
@@ -929,7 +987,7 @@ async def clear_library_scraped_data(media_root: str):
            episode_title=NULL, episode_overview=NULL, episode_still=NULL, episode_still_local=NULL,
            "cast"='[]', crew='[]',
            updated_at=datetime('now')
-           WHERE media_root=?""",
+           WHERE media_root=? AND COALESCE(content_role, 'main') != 'special'""",
         (media_root,)
     )
     await db.commit()
@@ -954,6 +1012,8 @@ async def rescrape_movie(movie_id: int) -> dict:
         return {"ok": False, "error": "Movie not found"}
 
     movie = dict(row)
+    if (movie.get("content_role") or "main") == "special":
+        return {"ok": False, "error": "Special content does not support scraping"}
     folder_levels = movie.get("folder_levels", "")
     folder_name = Path(folder_levels).name if folder_levels else ""
     code = movie.get("code", "")
@@ -1112,6 +1172,8 @@ async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: st
         return {"ok": False, "error": "Movie not found"}
 
     movie = dict(row)
+    if (movie.get("content_role") or "main") == "special":
+        return {"ok": False, "error": "Special content does not support scraping"}
     folder_levels = movie.get("folder_levels", "")
     code = movie.get("code", "")
     media_root = movie.get("media_root", "")
@@ -1198,7 +1260,10 @@ async def _propagate_to_sibling_subfolders(db, parent_levels: str, media_root: s
 
     # Get scraped data from the first subfolder's movie
     cur = await db.execute(
-        "SELECT * FROM movies WHERE folder_levels=? AND media_root=? ORDER BY id LIMIT 1",
+        """SELECT * FROM movies
+           WHERE folder_levels=? AND media_root=?
+           AND COALESCE(content_role, 'main') != 'special'
+           ORDER BY id LIMIT 1""",
         (first_subfolder, media_root),
     )
     row = await cur.fetchone()
@@ -1210,6 +1275,7 @@ async def _propagate_to_sibling_subfolders(db, parent_levels: str, media_root: s
     cur = await db.execute(
         "SELECT DISTINCT folder_levels FROM movies "
         "WHERE folder_levels LIKE ? || '/%' AND media_root=? AND folder_levels != ? "
+        "AND COALESCE(content_role, 'main') != 'special' "
         "ORDER BY folder_levels",
         (parent_levels, media_root, first_subfolder),
     )
@@ -1266,7 +1332,9 @@ async def rescrape_folder(folder_levels: str, media_root: str) -> dict:
     db = await get_db()
     # Try exact match first, then subfolders (parent folder case)
     cur = await db.execute(
-        "SELECT COUNT(*) AS total FROM movies WHERE folder_levels=? AND media_root=?",
+        """SELECT COUNT(*) AS total FROM movies
+           WHERE folder_levels=? AND media_root=?
+           AND COALESCE(content_role, 'main') != 'special'""",
         (folder_levels, media_root),
     )
     count_row = await cur.fetchone()
@@ -1275,7 +1343,9 @@ async def rescrape_folder(folder_levels: str, media_root: str) -> dict:
     if total <= 0:
         # Check subfolders (e.g. parent folder "ShowName" with movies in "ShowName/S01")
         cur = await db.execute(
-            "SELECT COUNT(*) AS total FROM movies WHERE folder_levels LIKE ? || '/%' AND media_root=?",
+            """SELECT COUNT(*) AS total FROM movies
+               WHERE folder_levels LIKE ? || '/%' AND media_root=?
+               AND COALESCE(content_role, 'main') != 'special'""",
             (folder_levels, media_root),
         )
         count_row = await cur.fetchone()
@@ -1284,7 +1354,10 @@ async def rescrape_folder(folder_levels: str, media_root: str) -> dict:
             return {"ok": False, "error": "No movies found in folder"}
         # Find representative movie from first subfolder
         cur = await db.execute(
-            "SELECT id, folder_levels FROM movies WHERE folder_levels LIKE ? || '/%' AND media_root=? ORDER BY folder_levels, id LIMIT 1",
+            """SELECT id, folder_levels FROM movies
+               WHERE folder_levels LIKE ? || '/%' AND media_root=?
+               AND COALESCE(content_role, 'main') != 'special'
+               ORDER BY folder_levels, id LIMIT 1""",
             (folder_levels, media_root),
         )
         row = await cur.fetchone()
@@ -1314,7 +1387,10 @@ async def rescrape_folder(folder_levels: str, media_root: str) -> dict:
                 "source": result.get("source"), "title": result.get("title")}
 
     cur = await db.execute(
-        "SELECT id FROM movies WHERE folder_levels=? AND media_root=? ORDER BY id LIMIT 1",
+        """SELECT id FROM movies
+           WHERE folder_levels=? AND media_root=?
+           AND COALESCE(content_role, 'main') != 'special'
+           ORDER BY id LIMIT 1""",
         (folder_levels, media_root),
     )
     row = await cur.fetchone()
@@ -1418,9 +1494,19 @@ async def rescrape_folder_manual(folder_levels: str, media_root: str, query: str
         scraper = lib_setting.get("scraper", "auto") if lib_setting else "auto"
         chain = build_fallback_chain(scraper) if scraper != "none" else ["tmdb_movie", "bangumi"]
 
-    cur = await db.execute("SELECT code FROM movies WHERE folder_levels=? AND media_root=? LIMIT 1", (folder_levels, media_root))
+    cur = await db.execute(
+        """SELECT code FROM movies
+           WHERE media_root=?
+           AND (folder_levels=? OR folder_levels LIKE ?)
+           AND COALESCE(content_role, 'main') != 'special'
+           ORDER BY CASE WHEN folder_levels=? THEN 0 ELSE 1 END, folder_levels, id
+           LIMIT 1""",
+        (media_root, folder_levels, f"{folder_levels}/%", folder_levels),
+    )
     row = await cur.fetchone()
-    code = row["code"] if row else ""
+    if not row:
+        return {"ok": False, "error": "No movies found in folder"}
+    code = row["code"] or ""
 
     for sb in chain:
         try:
@@ -1433,7 +1519,18 @@ async def rescrape_folder_manual(folder_levels: str, media_root: str, query: str
             else:
                 scraper_obj = get_scraper(sb)
                 if sb == "javdatabase":
-                    data = await scraper_obj.full_scrape(query, code=code or query)
+                    cur_meta = await db.execute(
+                        """SELECT local_metadata FROM movies
+                           WHERE media_root=?
+                           AND (folder_levels=? OR folder_levels LIKE ?)
+                           AND COALESCE(content_role, 'main') != 'special'
+                           ORDER BY CASE WHEN folder_levels=? THEN 0 ELSE 1 END, folder_levels, id
+                           LIMIT 1""",
+                        (media_root, folder_levels, f"{folder_levels}/%", folder_levels),
+                    )
+                    meta_row = await cur_meta.fetchone()
+                    movie_meta = {"local_metadata": meta_row["local_metadata"]} if meta_row else {}
+                    data = await scraper_obj.full_scrape(query, code=code or query, movie=movie_meta)
                 else:
                     data = await scraper_obj.full_scrape(query, code=code or query, candidate_names=[folder_name, search_name, query, code or ""], movie={})
             if not data or not data.get("title"):

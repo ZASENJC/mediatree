@@ -53,6 +53,8 @@ export default function Home() {
   const [activeFolderPath, setActiveFolderPath] = useState('')
   const [activeMediaRoot, setActiveMediaRoot] = useState('')
   const [activeFolderName, setActiveFolderName] = useState('')
+  const [activeFolderSpecialCount, setActiveFolderSpecialCount] = useState(0)
+  const [activeFolderShowSpecials, setActiveFolderShowSpecials] = useState(false)
   const hideHomeTitleText = getUiPrefs().hideHomeTitleText
   const showSourceName = getUiPrefs().showSourceName
 
@@ -153,6 +155,8 @@ export default function Home() {
     setActiveFolderPath(node.path)
     setActiveMediaRoot(node.media_root || '')
     setActiveFolderName(node.name)
+    setActiveFolderSpecialCount(node.special_count || 0)
+    setActiveFolderShowSpecials(Boolean(node.show_specials))
     setFolderMenu({
       x: e.clientX, y: e.clientY,
       mediaRoot: node.media_root || '', folderPath: node.path, folderName: node.name,
@@ -325,11 +329,29 @@ export default function Home() {
     }
   }, [activeFolderName, activeFolderPath, activeMediaRoot, load])
 
+  const handleToggleFolderSpecials = useCallback(async () => {
+    if (!activeFolderSpecialCount) return
+    const next = !activeFolderShowSpecials
+    try {
+      await api.setFolderSpecials(activeFolderPath, activeMediaRoot, next)
+      setActiveFolderShowSpecials(next)
+      setFolderMenu(null)
+      showToast(next ? '已显示花絮' : '已隐藏花絮')
+      await load()
+    } catch {
+      showToast('花絮显示设置失败')
+    }
+  }, [activeFolderPath, activeMediaRoot, activeFolderShowSpecials, activeFolderSpecialCount, load])
+
   const folderMenuItems: ContextMenuItem[] = [
     { label: '重新刮削', onClick: handleRescanFolder },
     { label: '手动刮削', onClick: handleManualScrapeFolder },
     { label: '更换封面', onClick: handleChangeFolderCover },
     { label: '编辑信息', onClick: handleEditFolder },
+    ...(activeFolderSpecialCount > 0 ? [{
+      label: activeFolderShowSpecials ? `隐藏花絮 (${activeFolderSpecialCount})` : `显示花絮 (${activeFolderSpecialCount})`,
+      onClick: handleToggleFolderSpecials,
+    }] : []),
     { label: '删除', danger: true, onClick: handleDeleteFolder },
   ]
 
@@ -434,7 +456,9 @@ export default function Home() {
                     )}
                     <div className="absolute bottom-0 left-0 right-0 min-w-0 p-3">
                       <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-white drop-shadow">{showSourceName ? node.name : (node.display_title || node.name)}</p>
-                      <p className="mt-1 text-xs text-gray-400">{node.movie_count} 部</p>
+                      <p className="mt-1 text-xs text-gray-400">
+                        {node.movie_count} 部{node.special_count ? ` · ${node.special_count} 花絮` : ''}
+                      </p>
                     </div>
                     </>
                     )}

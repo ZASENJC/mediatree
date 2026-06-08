@@ -8,6 +8,39 @@ _db_pool = None
 WEB_USER_ID = "web"
 WATCHED_THRESHOLD = 0.9
 CONTINUE_WATCHING_MIN_SECONDS = 60
+CONTENT_ROLE_MAIN = "main"
+CONTENT_ROLE_SPECIAL = "special"
+MAIN_CONTENT_WHERE = "COALESCE(content_role, 'main') != 'special'"
+MAIN_CONTENT_WHERE_M = "COALESCE(m.content_role, 'main') != 'special'"
+
+MOVIE_RESPONSE_COLUMNS = (
+    "id, path, code, title, original_title, overview, actress, release_date, duration, "
+    "cover_local, cover_remote, javdb_score, javdb_likes, folder_levels, created_at, updated_at, "
+    "media_root, tmdb_id, tmdb_type, tmdb_season, tmdb_episode, episode_title, episode_overview, "
+    "episode_still, episode_still_local, clean_title, episode_number, display_title, "
+    "external_audio_tracks, genre, content_rating, \"cast\", crew, content_role, special_parent_levels"
+)
+
+MOVIE_RESPONSE_COLUMNS_M = (
+    "m.id, m.path, m.code, m.title, m.original_title, m.overview, m.actress, m.release_date, m.duration, "
+    "m.cover_local, m.cover_remote, m.javdb_score, m.javdb_likes, m.folder_levels, m.created_at, m.updated_at, "
+    "m.media_root, m.tmdb_id, m.tmdb_type, m.tmdb_season, m.tmdb_episode, m.episode_title, m.episode_overview, "
+    "m.episode_still, m.episode_still_local, m.clean_title, m.episode_number, m.display_title, "
+    "m.external_audio_tracks, m.genre, m.content_rating, m.\"cast\", m.crew, m.content_role, m.special_parent_levels"
+)
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _folder_descendant_like(folder_levels: str) -> str:
+    return f"{_escape_like(folder_levels)}/%"
+
+
+def _file_title_from_path(path: str | None) -> str:
+    name = str(path or "").replace("\\", "/").rsplit("/", 1)[-1]
+    return Path(name).stem or name
 
 
 async def get_db_pool():
@@ -82,6 +115,8 @@ async def init_db():
         "ALTER TABLE movies ADD COLUMN tagline TEXT",
         "ALTER TABLE movies ADD COLUMN status TEXT",
         "ALTER TABLE movies ADD COLUMN content_rating TEXT",
+        "ALTER TABLE movies ADD COLUMN content_role TEXT DEFAULT 'main'",
+        "ALTER TABLE movies ADD COLUMN special_parent_levels TEXT",
     ]
     for mig in migrations:
         try:
@@ -149,6 +184,8 @@ async def init_db():
             tagline TEXT,
             status TEXT,
             content_rating TEXT,
+            content_role TEXT DEFAULT 'main',
+            special_parent_levels TEXT,
             media_root TEXT DEFAULT '',
             created_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now'))
@@ -158,6 +195,8 @@ async def init_db():
         CREATE INDEX IF NOT EXISTS idx_movies_path ON movies(path);
         CREATE INDEX IF NOT EXISTS idx_movies_folder ON movies(folder_levels);
         CREATE INDEX IF NOT EXISTS idx_movies_media_root ON movies(media_root);
+        CREATE INDEX IF NOT EXISTS idx_movies_content_role ON movies(content_role);
+        CREATE INDEX IF NOT EXISTS idx_movies_special_parent ON movies(media_root, special_parent_levels);
 
         CREATE TABLE IF NOT EXISTS javdb_cache (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -204,6 +243,14 @@ async def init_db():
             enabled INTEGER DEFAULT 1
         );
 
+        CREATE TABLE IF NOT EXISTS folder_special_settings (
+            media_root TEXT NOT NULL,
+            folder_levels TEXT NOT NULL,
+            show_specials INTEGER DEFAULT 0,
+            updated_at TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (media_root, folder_levels)
+        );
+
         CREATE TABLE IF NOT EXISTS scraper_cache (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             source TEXT NOT NULL,
@@ -239,41 +286,125 @@ def _valid_scraper(scraper: str | None) -> str:
     return value if value in {"auto", "javdatabase", "tmdb_movie", "tmdb_tv", "bangumi", "none"} else "auto"
 
 
+def _normalize_special_movie_data(data: dict) -> dict:
+    if (data.get("content_role") or CONTENT_ROLE_MAIN) != CONTENT_ROLE_SPECIAL:
+        return data
+    normalized = dict(data)
+    file_title = (
+        _file_title_from_path(normalized.get("path"))
+        or normalized.get("display_title")
+        or normalized.get("clean_title")
+        or normalized.get("title")
+    )
+    normalized.update({
+        "code": file_title,
+        "title": file_title,
+        "original_title": None,
+        "overview": None,
+        "actress": None,
+        "release_date": None,
+        "cover_remote": None,
+        "fanart_local": None,
+        "backdrop_url": None,
+        "javdb_url": None,
+        "javdb_score": None,
+        "javdb_likes": None,
+        "javdb_thumbnails": None,
+        "tmdb_id": None,
+        "tmdb_type": None,
+        "tmdb_season": None,
+        "tmdb_episode": None,
+        "episode_title": None,
+        "episode_overview": None,
+        "episode_still": None,
+        "episode_still_local": None,
+        "clean_title": file_title,
+        "episode_number": None,
+        "display_title": file_title,
+        "cast": "[]",
+        "crew": "[]",
+        "scraper_source": None,
+        "source_id": None,
+        "bangumi_id": None,
+        "javdb_id": None,
+        "scraper_raw": None,
+        "pending_review": 0,
+        "review_candidates": None,
+        "genre": None,
+        "keywords": None,
+        "studios": None,
+        "tagline": None,
+        "status": None,
+        "content_rating": None,
+    })
+    return normalized
+
+
 async def upsert_movie(data: dict) -> int:
+    data = _normalize_special_movie_data(data)
     db = await get_db()
     cur = await db.execute("SELECT id FROM movies WHERE path = ?", (data["path"],))
     existing = await cur.fetchone()
     if existing:
-        await db.execute("""
-            UPDATE movies SET code=?,
-            title=COALESCE(NULLIF(title, ''), ?), actress=COALESCE(?, actress), release_date=COALESCE(?, release_date),
-            duration=COALESCE(?, duration), cover_local=COALESCE(?, cover_local),
-            cover_remote=COALESCE(?, cover_remote), fanart_local=COALESCE(?, fanart_local),
-            javdb_url=COALESCE(?, javdb_url), javdb_score=COALESCE(?, javdb_score),
-            javdb_likes=COALESCE(?, javdb_likes), javdb_thumbnails=COALESCE(?, javdb_thumbnails),
-            folder_levels=?, local_metadata=?, media_root=?,
-            tmdb_type=COALESCE(tmdb_type, ?), tmdb_season=COALESCE(tmdb_season, ?),
-            tmdb_episode=COALESCE(tmdb_episode, ?), episode_title=COALESCE(?, episode_title),
-            episode_still=COALESCE(?, episode_still), episode_still_local=COALESCE(?, episode_still_local),
-            clean_title=COALESCE(?, clean_title), episode_number=COALESCE(?, episode_number),
-            display_title=COALESCE(?, display_title), external_audio_tracks=COALESCE(?, external_audio_tracks),
-            updated_at=datetime('now')
-            WHERE path=?
-        """, (
-            data.get("code"), data.get("title"), data.get("actress"),
-            data.get("release_date"), data.get("duration"),
-            data.get("cover_local"), data.get("cover_remote"),
-            data.get("fanart_local") or data.get("backdrop_url"),
-            data.get("javdb_url"), data.get("javdb_score"),
-            data.get("javdb_likes"), data.get("javdb_thumbnails"),
-            data.get("folder_levels"), data.get("local_metadata", "{}"),
-            data.get("media_root", ""),
-            data.get("tmdb_type"), data.get("tmdb_season"), data.get("tmdb_episode"),
-            data.get("episode_title"), data.get("episode_still"), data.get("episode_still_local"),
-            data.get("clean_title"), data.get("episode_number"), data.get("display_title"),
-            data.get("external_audio_tracks"),
-            data["path"]
-        ))
+        if (data.get("content_role") or CONTENT_ROLE_MAIN) == CONTENT_ROLE_SPECIAL:
+            await db.execute("""
+                UPDATE movies SET code=?, title=?, original_title=NULL, overview=NULL,
+                actress=NULL, release_date=NULL, duration=COALESCE(?, duration),
+                cover_local=COALESCE(?, cover_local), cover_remote=NULL, fanart_local=NULL,
+                javdb_url=NULL, javdb_score=NULL, javdb_likes=NULL, javdb_thumbnails=NULL,
+                folder_levels=?, local_metadata=?, media_root=?,
+                tmdb_id=NULL, tmdb_type=NULL, tmdb_season=NULL, tmdb_episode=NULL,
+                episode_title=NULL, episode_overview=NULL, episode_still=NULL, episode_still_local=NULL,
+                clean_title=?, episode_number=NULL, display_title=?,
+                external_audio_tracks=COALESCE(?, external_audio_tracks),
+                "cast"='[]', crew='[]', scraper_source=NULL, source_id=NULL,
+                bangumi_id=NULL, javdb_id=NULL, scraper_raw=NULL,
+                pending_review=0, review_candidates=NULL,
+                genre=NULL, keywords=NULL, studios=NULL, tagline=NULL, status=NULL, content_rating=NULL,
+                content_role=?, special_parent_levels=?,
+                updated_at=datetime('now')
+                WHERE path=?
+            """, (
+                data.get("code"), data.get("title"), data.get("duration"),
+                data.get("cover_local"), data.get("folder_levels"), data.get("local_metadata", "{}"),
+                data.get("media_root", ""), data.get("clean_title"), data.get("display_title"),
+                data.get("external_audio_tracks"), CONTENT_ROLE_SPECIAL, data.get("special_parent_levels"),
+                data["path"]
+            ))
+        else:
+            await db.execute("""
+                UPDATE movies SET code=?,
+                title=COALESCE(NULLIF(title, ''), ?), actress=COALESCE(?, actress), release_date=COALESCE(?, release_date),
+                duration=COALESCE(?, duration), cover_local=COALESCE(?, cover_local),
+                cover_remote=COALESCE(?, cover_remote), fanart_local=COALESCE(?, fanart_local),
+                javdb_url=COALESCE(?, javdb_url), javdb_score=COALESCE(?, javdb_score),
+                javdb_likes=COALESCE(?, javdb_likes), javdb_thumbnails=COALESCE(?, javdb_thumbnails),
+                folder_levels=?, local_metadata=?, media_root=?,
+                tmdb_type=COALESCE(tmdb_type, ?), tmdb_season=COALESCE(tmdb_season, ?),
+                tmdb_episode=COALESCE(tmdb_episode, ?), episode_title=COALESCE(?, episode_title),
+                episode_still=COALESCE(?, episode_still), episode_still_local=COALESCE(?, episode_still_local),
+                clean_title=COALESCE(?, clean_title), episode_number=COALESCE(?, episode_number),
+                display_title=COALESCE(?, display_title), external_audio_tracks=COALESCE(?, external_audio_tracks),
+                content_role=?, special_parent_levels=?,
+                updated_at=datetime('now')
+                WHERE path=?
+            """, (
+                data.get("code"), data.get("title"), data.get("actress"),
+                data.get("release_date"), data.get("duration"),
+                data.get("cover_local"), data.get("cover_remote"),
+                data.get("fanart_local") or data.get("backdrop_url"),
+                data.get("javdb_url"), data.get("javdb_score"),
+                data.get("javdb_likes"), data.get("javdb_thumbnails"),
+                data.get("folder_levels"), data.get("local_metadata", "{}"),
+                data.get("media_root", ""),
+                data.get("tmdb_type"), data.get("tmdb_season"), data.get("tmdb_episode"),
+                data.get("episode_title"), data.get("episode_still"), data.get("episode_still_local"),
+                data.get("clean_title"), data.get("episode_number"), data.get("display_title"),
+                data.get("external_audio_tracks"),
+                data.get("content_role") or CONTENT_ROLE_MAIN,
+                data.get("special_parent_levels"),
+                data["path"]
+            ))
         if data.get("created_at"):
             await db.execute("UPDATE movies SET created_at=? WHERE path=?",
                              (data["created_at"], data["path"]))
@@ -284,8 +415,9 @@ async def upsert_movie(data: dict) -> int:
             duration, cover_local, cover_remote, fanart_local, javdb_url,
             javdb_score, javdb_likes, javdb_thumbnails, folder_levels, local_metadata, media_root,
             tmdb_type, tmdb_season, tmdb_episode, episode_title, episode_still, episode_still_local,
-            clean_title, episode_number, display_title, external_audio_tracks, created_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            clean_title, episode_number, display_title, external_audio_tracks,
+            content_role, special_parent_levels, created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             data["path"], data.get("code"), data.get("title"),
             data.get("actress"), data.get("release_date"),
@@ -300,6 +432,8 @@ async def upsert_movie(data: dict) -> int:
             data.get("episode_title"), data.get("episode_still"), data.get("episode_still_local"),
             data.get("clean_title"), data.get("episode_number"), data.get("display_title"),
             data.get("external_audio_tracks", "[]"),
+            data.get("content_role") or CONTENT_ROLE_MAIN,
+            data.get("special_parent_levels"),
             data.get("created_at", None)
         ))
         movie_id = cur.lastrowid
@@ -312,15 +446,15 @@ async def get_movies(folder: str = "", tag: str = "", code: str = "",
                      category_id: int = 0, limit: int = 50, offset: int = 0,
                      sort: str = "created_desc"):
     db = await get_db()
-    where = " WHERE 1=1"
+    where = f" WHERE {MAIN_CONTENT_WHERE}"
     params = []
     if tag:
         where += " AND id IN (SELECT movie_id FROM tags WHERE tag = ?)"
         params.append(tag)
     if folder:
-        where += " AND (folder_levels = ? OR folder_levels LIKE ?)"
+        where += " AND (folder_levels = ? OR folder_levels LIKE ? ESCAPE '\\')"
         params.append(folder)
-        params.append(f"{folder}/%")
+        params.append(_folder_descendant_like(folder))
     if code:
         safe_code = code.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         where += " AND code LIKE ? ESCAPE '\\'"
@@ -367,7 +501,7 @@ async def get_movies(folder: str = "", tag: str = "", code: str = "",
     if folder and sort == "created_desc":
         order = f"ORDER BY {episode_order}, created_at DESC"
 
-    cols = "id, path, code, title, original_title, overview, actress, release_date, duration, cover_local, cover_remote, javdb_score, javdb_likes, folder_levels, created_at, updated_at, media_root, tmdb_id, tmdb_type, tmdb_season, tmdb_episode, episode_title, episode_overview, episode_still, episode_still_local, clean_title, episode_number, display_title, external_audio_tracks, genre, content_rating, \"cast\", crew"
+    cols = MOVIE_RESPONSE_COLUMNS
     query = f"SELECT {cols} FROM movies{where} {order} LIMIT ? OFFSET ?"
     params.extend([limit, offset])
     cur = await db.execute(query, params)
@@ -443,6 +577,54 @@ def _decode_json_list(value) -> list:
         except (json.JSONDecodeError, TypeError):
             return []
     return []
+
+
+def _decorate_special_movie_fields(movies: list[dict]):
+    for m in movies:
+        if (m.get("content_role") or CONTENT_ROLE_MAIN) != CONTENT_ROLE_SPECIAL:
+            continue
+        file_title = (
+            _file_title_from_path(m.get("path"))
+            or m.get("display_title")
+            or m.get("title")
+            or m.get("clean_title")
+            or m.get("code")
+            or ""
+        )
+        m.update({
+            "code": file_title,
+            "title": file_title,
+            "original_title": None,
+            "overview": None,
+            "actress": None,
+            "release_date": None,
+            "javdb_score": None,
+            "javdb_likes": None,
+            "tmdb_id": None,
+            "tmdb_type": None,
+            "tmdb_season": None,
+            "tmdb_episode": None,
+            "episode_title": None,
+            "episode_overview": None,
+            "episode_still": None,
+            "episode_still_local": None,
+            "clean_title": file_title,
+            "episode_number": None,
+            "display_title": file_title,
+            "genre": None,
+            "content_rating": None,
+            "cast": [],
+            "crew": [],
+        })
+        for key in (
+            "scraper_source", "source_id", "bangumi_id", "javdb_id",
+            "scraper_raw", "review_candidates", "keywords", "studios",
+            "tagline", "status",
+        ):
+            if key in m:
+                m[key] = None
+        if "pending_review" in m:
+            m["pending_review"] = 0
 
 
 def _decorate_local_episode_fields(movies: list[dict]):
@@ -543,8 +725,8 @@ async def _fetch_continue_rows(db, cols: str, where: str, params: list) -> list[
 async def get_recent_watched(media_root: str = "", limit: int = 200, offset: int = 0):
     db = await get_db()
     min_continue_ticks = CONTINUE_WATCHING_MIN_SECONDS * 10_000_000
-    cols = "m.id, m.path, m.code, m.title, m.original_title, m.overview, m.actress, m.release_date, m.duration, m.cover_local, m.cover_remote, m.javdb_score, m.javdb_likes, m.folder_levels, m.created_at, m.updated_at, m.media_root, m.tmdb_id, m.tmdb_type, m.tmdb_season, m.tmdb_episode, m.episode_title, m.episode_overview, m.episode_still, m.episode_still_local, m.clean_title, m.episode_number, m.display_title, m.external_audio_tracks, m.genre, m.content_rating, m.\"cast\", m.crew"
-    activity_where = "WHERE (ud.playback_position_ticks>? OR ud.played=1 OR watched_tags.movie_id IS NOT NULL)"
+    cols = MOVIE_RESPONSE_COLUMNS_M
+    activity_where = f"WHERE {MAIN_CONTENT_WHERE_M} AND (ud.playback_position_ticks>? OR ud.played=1 OR watched_tags.movie_id IS NOT NULL)"
     activity_params: list = [min_continue_ticks]
     if media_root:
         activity_where += " AND m.media_root=?"
@@ -565,16 +747,16 @@ async def get_recent_watched(media_root: str = "", limit: int = 200, offset: int
         key_type = season_key[0]
         if key_type == "tmdb":
             _kind, key_media_root, tmdb_id, tmdb_season = season_key
-            siblings_where = "WHERE m.media_root=? AND m.tmdb_id=? AND m.tmdb_season=?"
+            siblings_where = f"WHERE {MAIN_CONTENT_WHERE_M} AND m.media_root=? AND m.tmdb_id=? AND m.tmdb_season=?"
             siblings_params = [key_media_root, tmdb_id, tmdb_season]
         elif key_type == "folder":
             _kind, key_media_root, folder = season_key
-            siblings_where = "WHERE m.media_root=? AND m.folder_levels=?"
+            siblings_where = f"WHERE {MAIN_CONTENT_WHERE_M} AND m.media_root=? AND m.folder_levels=?"
             siblings_params = [key_media_root, folder]
         elif key_type == "path":
             _kind, key_media_root, parent_path = season_key
-            siblings_where = "WHERE m.media_root=? AND m.path LIKE ?"
-            siblings_params = [key_media_root, f"{parent_path}/%"]
+            siblings_where = f"WHERE {MAIN_CONTENT_WHERE_M} AND m.media_root=? AND m.path LIKE ? ESCAPE '\\'"
+            siblings_params = [key_media_root, _folder_descendant_like(parent_path)]
         else:
             continue
         for movie in await _fetch_continue_rows(db, cols, siblings_where, siblings_params):
@@ -663,17 +845,17 @@ async def search_movies(q: str, media_root: str = "", limit: int = 100, offset: 
     safe_q = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     like = f"%{safe_q}%"
     if field == "staff":
-        where = " WHERE (actress LIKE ? ESCAPE '\\' OR \"cast\" LIKE ? ESCAPE '\\' OR crew LIKE ? ESCAPE '\\')"
+        where = f" WHERE {MAIN_CONTENT_WHERE} AND (actress LIKE ? ESCAPE '\\' OR \"cast\" LIKE ? ESCAPE '\\' OR crew LIKE ? ESCAPE '\\')"
         params = [like, like, like]
     else:
-        where = " WHERE (code LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' OR clean_title LIKE ? ESCAPE '\\' OR display_title LIKE ? ESCAPE '\\' OR actress LIKE ? ESCAPE '\\')"
+        where = f" WHERE {MAIN_CONTENT_WHERE} AND (code LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' OR clean_title LIKE ? ESCAPE '\\' OR display_title LIKE ? ESCAPE '\\' OR actress LIKE ? ESCAPE '\\')"
         params = [like, like, like, like, like]
     if media_root:
         where += " AND media_root = ?"
         params.append(media_root)
     count_cur = await db.execute(f"SELECT COUNT(*) FROM movies{where}", params)
     total = (await count_cur.fetchone())[0]
-    cols = "id, path, code, title, original_title, overview, actress, release_date, duration, cover_local, cover_remote, javdb_score, javdb_likes, folder_levels, created_at, updated_at, media_root, tmdb_id, tmdb_type, tmdb_season, tmdb_episode, episode_title, episode_overview, episode_still, episode_still_local, clean_title, episode_number, display_title, external_audio_tracks, genre, content_rating, \"cast\", crew"
+    cols = MOVIE_RESPONSE_COLUMNS
     cur = await db.execute(
         f"SELECT {cols} FROM movies{where} ORDER BY updated_at DESC LIMIT ? OFFSET ?",
         params + [limit, offset]
@@ -748,10 +930,10 @@ def _normalize_cover_path(cover: str) -> str:
 async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
     import random
     db = await get_db()
-    where = ""
+    where = f" WHERE {MAIN_CONTENT_WHERE}"
     params = []
     if media_root:
-        where = " WHERE media_root = ?"
+        where += " AND media_root = ?"
         params.append(media_root)
     cur = await db.execute(
         f"""SELECT folder_levels, MAX(cover_local) as cover_local, MAX(cover_remote) as cover_remote,
@@ -792,6 +974,8 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                     "_watched_count": 0,
                     "_tmdb_id": None,
                     "_tmdb_type": None,
+                    "_special_count": 0,
+                    "_show_specials": False,
                 }
             node[part]["_total_count"] += r["movie_count"]
             node[part]["_watched_count"] += r["watched_count"] or 0
@@ -818,6 +1002,53 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                     node[part]["_tmdb_type"] = r["tmdb_type"]
             node = node[part]["_children"]
 
+    def find_node_info(path: str) -> dict | None:
+        node = tree
+        info = None
+        for part in [p for p in path.split("/") if p]:
+            info = node.get(part)
+            if info is None:
+                return None
+            node = info["_children"]
+        return info
+
+    special_where = (
+        " WHERE COALESCE(content_role, 'main') = 'special' "
+        "AND special_parent_levels IS NOT NULL AND special_parent_levels != ''"
+    )
+    special_params: list = []
+    if media_root:
+        special_where += " AND media_root = ?"
+        special_params.append(media_root)
+    special_cur = await db.execute(
+        f"""SELECT media_root, special_parent_levels, COUNT(*) AS special_count
+            FROM movies{special_where}
+            GROUP BY media_root, special_parent_levels""",
+        special_params,
+    )
+    for row in await special_cur.fetchall():
+        parent = row["special_parent_levels"] or ""
+        count = int(row["special_count"] or 0)
+        parts = [p for p in parent.split("/") if p]
+        for idx in range(1, len(parts) + 1):
+            info = find_node_info("/".join(parts[:idx]))
+            if info is not None:
+                info["_special_count"] += count
+
+    settings_where = ""
+    settings_params: list = []
+    if media_root:
+        settings_where = " WHERE media_root = ?"
+        settings_params.append(media_root)
+    settings_cur = await db.execute(
+        f"SELECT media_root, folder_levels, show_specials FROM folder_special_settings{settings_where}",
+        settings_params,
+    )
+    for row in await settings_cur.fetchall():
+        info = find_node_info(row["folder_levels"] or "")
+        if info is not None:
+            info["_show_specials"] = bool(row["show_specials"])
+
     def flatten(node_dict: dict[str, dict]) -> list[dict]:
         result = []
         for name, info in node_dict.items():
@@ -839,6 +1070,8 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                 "progress_percent": round((info["_watched_count"] / info["_total_count"]) * 100) if info["_total_count"] else 0,
                 "tmdb_id": info.get("_tmdb_id"),
                 "tmdb_type": info.get("_tmdb_type"),
+                "special_count": info.get("_special_count", 0),
+                "show_specials": bool(info.get("_show_specials")),
             }
             if children:
                 all_covers = [c.get("random_cover") or c.get("cover") for c in children if c.get("random_cover") or c.get("cover")]
@@ -861,6 +1094,7 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
         title_cur = await db.execute(
             """SELECT folder_levels, title FROM movies
                WHERE media_root=? AND title IS NOT NULL AND title != '' AND title != code
+                 AND COALESCE(content_role, 'main') != 'special'
                  AND (tmdb_episode IS NULL OR episode_title IS NULL OR title != episode_title)
                ORDER BY folder_levels""",
             (media_root,)
@@ -869,6 +1103,7 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
         title_cur = await db.execute(
             """SELECT folder_levels, title FROM movies
                WHERE title IS NOT NULL AND title != '' AND title != code
+                 AND COALESCE(content_role, 'main') != 'special'
                  AND (tmdb_episode IS NULL OR episode_title IS NULL OR title != episode_title)
                ORDER BY folder_levels"""
         )
@@ -902,6 +1137,74 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
     return tree_result
 
 
+async def _attach_tags_and_progress(movies: list[dict]):
+    if not movies:
+        return
+    db = await get_db()
+    movie_ids = [m["id"] for m in movies]
+    placeholders = ",".join("?" * len(movie_ids))
+    tag_cur = await db.execute(
+        f"SELECT movie_id, tag FROM tags WHERE movie_id IN ({placeholders})",
+        movie_ids
+    )
+    tag_map: dict[int, list[str]] = {}
+    for t in await tag_cur.fetchall():
+        mid = t["movie_id"]
+        if mid not in tag_map:
+            tag_map[mid] = []
+        tag_map[mid].append(t["tag"])
+    for m in movies:
+        m["tags"] = tag_map.get(m["id"], [])
+    await _attach_progress(movies)
+
+
+async def set_folder_specials_visibility(folder_levels: str, media_root: str, show_specials: bool) -> dict:
+    db = await get_db()
+    await db.execute(
+        """INSERT INTO folder_special_settings (media_root, folder_levels, show_specials, updated_at)
+           VALUES (?,?,?,datetime('now'))
+           ON CONFLICT(media_root, folder_levels) DO UPDATE SET
+             show_specials=excluded.show_specials,
+             updated_at=datetime('now')""",
+        (media_root, folder_levels, 1 if show_specials else 0),
+    )
+    await db.commit()
+    return {"ok": True, "show_specials": bool(show_specials)}
+
+
+async def get_folder_specials(folder_levels: str, media_root: str) -> dict:
+    db = await get_db()
+    setting_cur = await db.execute(
+        "SELECT show_specials FROM folder_special_settings WHERE media_root=? AND folder_levels=?",
+        (media_root, folder_levels),
+    )
+    setting = await setting_cur.fetchone()
+    show_specials = bool(setting["show_specials"]) if setting else False
+    where = (
+        "WHERE media_root=? AND COALESCE(content_role, 'main') = 'special' "
+        "AND (special_parent_levels=? OR special_parent_levels LIKE ? ESCAPE '\\')"
+    )
+    params = [media_root, folder_levels, _folder_descendant_like(folder_levels)]
+    count_cur = await db.execute(f"SELECT COUNT(*) FROM movies {where}", params)
+    special_count = int((await count_cur.fetchone())[0] or 0)
+    movies: list[dict] = []
+    if show_specials and special_count:
+        cur = await db.execute(
+            f"""SELECT {MOVIE_RESPONSE_COLUMNS} FROM movies {where}
+                ORDER BY folder_levels ASC, COALESCE(clean_title, title, code) ASC, path ASC""",
+            params,
+        )
+        movies = [dict(row) for row in await cur.fetchall()]
+        _decorate_special_movie_fields(movies)
+        _decorate_local_episode_fields(movies)
+        await _attach_tags_and_progress(movies)
+    return {
+        "show_specials": show_specials,
+        "special_count": special_count,
+        "movies": movies,
+    }
+
+
 async def get_movie_detail(movie_id: int):
     db = await get_db()
     cur = await db.execute("SELECT * FROM movies WHERE id=?", (movie_id,))
@@ -909,6 +1212,7 @@ async def get_movie_detail(movie_id: int):
     if not row:
         return None
     movie = dict(row)
+    _decorate_special_movie_fields([movie])
     _decorate_local_episode_fields([movie])
     tc = await db.execute("SELECT tag FROM tags WHERE movie_id=?", (movie_id,))
     movie["tags"] = [t["tag"] for t in await tc.fetchall()]
@@ -1029,30 +1333,34 @@ async def set_folder_tag(folder_levels: str, tag: str, add: bool, media_root: st
             await db.execute(
                 "INSERT OR IGNORE INTO tags (movie_id, tag, created_at) "
                 "SELECT id, ?, datetime('now') FROM movies "
-                "WHERE (folder_levels = ? OR folder_levels LIKE ?) AND media_root = ?",
-                (tag, folder_levels, f"{folder_levels}/%", media_root)
+                "WHERE (folder_levels = ? OR folder_levels LIKE ? ESCAPE '\\') AND media_root = ? "
+                "AND COALESCE(content_role, 'main') != 'special'",
+                (tag, folder_levels, _folder_descendant_like(folder_levels), media_root)
             )
         else:
             await db.execute(
                 "DELETE FROM tags WHERE tag = ? AND movie_id IN ("
-                "SELECT id FROM movies WHERE (folder_levels = ? OR folder_levels LIKE ?) AND media_root = ?"
+                "SELECT id FROM movies WHERE (folder_levels = ? OR folder_levels LIKE ? ESCAPE '\\') AND media_root = ? "
+                "AND COALESCE(content_role, 'main') != 'special'"
                 ")",
-                (tag, folder_levels, f"{folder_levels}/%", media_root)
+                (tag, folder_levels, _folder_descendant_like(folder_levels), media_root)
             )
     else:
         if add:
             await db.execute(
                 "INSERT OR IGNORE INTO tags (movie_id, tag, created_at) "
                 "SELECT id, ?, datetime('now') FROM movies "
-                "WHERE folder_levels = ? OR folder_levels LIKE ?",
-                (tag, folder_levels, f"{folder_levels}/%")
+                "WHERE (folder_levels = ? OR folder_levels LIKE ? ESCAPE '\\') "
+                "AND COALESCE(content_role, 'main') != 'special'",
+                (tag, folder_levels, _folder_descendant_like(folder_levels))
             )
         else:
             await db.execute(
                 "DELETE FROM tags WHERE tag = ? AND movie_id IN ("
-                "SELECT id FROM movies WHERE folder_levels = ? OR folder_levels LIKE ?"
+                "SELECT id FROM movies WHERE (folder_levels = ? OR folder_levels LIKE ? ESCAPE '\\') "
+                "AND COALESCE(content_role, 'main') != 'special'"
                 ")",
-                (tag, folder_levels, f"{folder_levels}/%")
+                (tag, folder_levels, _folder_descendant_like(folder_levels))
             )
     await db.commit()
 
@@ -1066,7 +1374,9 @@ async def delete_movie(movie_id: int):
 async def get_media_roots() -> list[dict]:
     db = await get_db()
     cur = await db.execute(
-        "SELECT media_root, COUNT(*) as cnt FROM movies WHERE media_root != '' GROUP BY media_root"
+        "SELECT media_root, COUNT(*) as cnt FROM movies "
+        "WHERE media_root != '' AND COALESCE(content_role, 'main') != 'special' "
+        "GROUP BY media_root"
     )
     rows = await cur.fetchall()
     results = []

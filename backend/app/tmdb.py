@@ -463,7 +463,9 @@ async def match_episodes_in_folder(
 
     db = await get_db()
     cur = await db.execute(
-        "SELECT id, path, code FROM movies WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?",
+        """SELECT id, path, code FROM movies
+           WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?
+           AND COALESCE(content_role, 'main') != 'special'""",
         (folder_levels, f"{folder_levels}/%", media_root)
     )
     movies = await cur.fetchall()
@@ -565,6 +567,7 @@ async def _try_season_merge_auto(
     cur = await db.execute(
         "SELECT DISTINCT folder_levels FROM movies "
         "WHERE folder_levels LIKE ? AND media_root=? "
+        "AND COALESCE(content_role, 'main') != 'special' "
         "ORDER BY folder_levels",
         (f"{parent_levels}/%", media_root),
     )
@@ -602,7 +605,8 @@ async def _try_season_merge_auto(
         cnt_cur = await db.execute(
             "SELECT COUNT(*) AS cnt FROM movies "
             "WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=? "
-            "AND tmdb_episode IS NOT NULL",
+            "AND tmdb_episode IS NOT NULL "
+            "AND COALESCE(content_role, 'main') != 'special'",
             (sib, f"{sib}/%", media_root),
         )
         cnt_row = await cnt_cur.fetchone()
@@ -616,7 +620,8 @@ async def _try_season_merge_auto(
                 s_cur = await db.execute(
                     "SELECT tmdb_season FROM movies "
                     "WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=? "
-                    "AND tmdb_season IS NOT NULL LIMIT 1",
+                    "AND tmdb_season IS NOT NULL "
+                    "AND COALESCE(content_role, 'main') != 'special' LIMIT 1",
                     (sib, f"{sib}/%", media_root),
                 )
                 s_row = await s_cur.fetchone()
@@ -634,7 +639,8 @@ async def _try_season_merge_auto(
     # 6. Get local movies in the current (unmatched) folder
     cur = await db.execute(
         "SELECT id, path, code FROM movies "
-        "WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=?",
+        "WHERE (folder_levels=? OR folder_levels LIKE ?) AND media_root=? "
+        "AND COALESCE(content_role, 'main') != 'special'",
         (folder_levels, f"{folder_levels}/%", media_root),
     )
     movies = await cur.fetchall()
