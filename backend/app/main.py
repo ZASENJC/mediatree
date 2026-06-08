@@ -1604,6 +1604,7 @@ async def api_verify_library(data: dict):
 
 @app.post("/api/javdb/fetch")
 async def api_javdb_fetch(code: str = Query(...), media_root: str = Query("")):
+    media_root = await _require_enabled_media_root(media_root)
     if not await ensure_javdatabase_allowed(media_root):
         raise HTTPException(status_code=400, detail="Javdatabase is only available for libraries using the javdatabase scraper")
     data = await search_javdb(code)

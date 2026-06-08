@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import AsyncMock
 
 from app import scanner
 from app.scrapers.base import ScrapeCandidate
@@ -7,11 +8,13 @@ from app.scrapers.base import ScrapeCandidate
 class ManualAutoScrapeSearchTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.orig_search_candidates = scanner._search_scraper_candidates
+        self.orig_ensure_javdatabase_allowed = scanner.ensure_javdatabase_allowed
 
     async def asyncTearDown(self):
         scanner._search_scraper_candidates = self.orig_search_candidates
+        scanner.ensure_javdatabase_allowed = self.orig_ensure_javdatabase_allowed
 
-    async def test_auto_search_returns_candidates_from_full_manual_chain(self):
+    async def test_auto_search_returns_candidates_from_full_manual_chain_for_javdatabase_library(self):
         calls = []
 
         async def search_candidates(scraper_name, query, media_type=None, limit=10):
@@ -26,8 +29,9 @@ class ManualAutoScrapeSearchTest(unittest.IsolatedAsyncioTestCase):
             ]
 
         scanner._search_scraper_candidates = search_candidates
+        scanner.ensure_javdatabase_allowed = AsyncMock(return_value=True)
 
-        results = await scanner.search_for_scrape("Alien", "auto")
+        results = await scanner.search_for_scrape("Alien", "auto", "/media/jav")
 
         self.assertEqual(
             calls,
@@ -50,6 +54,39 @@ class ManualAutoScrapeSearchTest(unittest.IsolatedAsyncioTestCase):
             "bangumi result",
             "javdatabase result",
         ])
+
+    async def test_auto_search_skips_javdatabase_for_non_javdatabase_library(self):
+        calls = []
+
+        async def search_candidates(scraper_name, query, media_type=None, limit=10):
+            calls.append((scraper_name, media_type))
+            return [
+                ScrapeCandidate(
+                    source="tmdb" if scraper_name in {"tmdb_movie", "tmdb_tv"} else scraper_name,
+                    source_id=f"{scraper_name}-1",
+                    title=f"{scraper_name} result",
+                    media_type=media_type or "tv",
+                )
+            ]
+
+        scanner._search_scraper_candidates = search_candidates
+        scanner.ensure_javdatabase_allowed = AsyncMock(return_value=False)
+
+        results = await scanner.search_for_scrape("Alien", "auto", "/media/movies")
+
+        self.assertEqual(
+            calls,
+            [
+                ("tmdb_movie", "movie"),
+                ("tmdb_tv", "tv"),
+                ("tmdb_collection", "collection"),
+                ("bangumi", None),
+            ],
+        )
+        self.assertEqual(
+            [item["scraper"] for item in results],
+            ["tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi"],
+        )
 
     async def test_explicit_scraper_search_marks_result_with_selected_scraper(self):
         async def search_candidates(scraper_name, query, media_type=None, limit=10):

@@ -359,7 +359,7 @@ async def ensure_javdatabase_allowed(media_root: str) -> bool:
 
     lib_setting = await get_library_settings(media_root)
     scraper = normalize_scraper_name(lib_setting.get("scraper") if lib_setting else "auto")
-    return scraper == "javdatabase"
+    return scraper == "javdatabase" and bool(lib_setting.get("enabled", 1))
 
 
 # ── Thin wrappers for rescrape/manual scrape compat ─────────────────────────
@@ -1464,7 +1464,10 @@ async def search_for_scrape(query: str, scraper: str = "tmdb", media_root: str =
     scraper = normalize_scraper_name(scraper)
     if scraper == "auto":
         results: list[dict] = []
+        allow_javdatabase = await ensure_javdatabase_allowed(media_root)
         for scraper_name, media_type in _AUTO_MANUAL_SEARCH_CHAIN:
+            if scraper_name == "javdatabase" and not allow_javdatabase:
+                continue
             items = await _search_scraper_candidates(scraper_name, query, media_type=media_type, limit=10)
             results.extend(_candidate_to_search_result(item, scraper_name) for item in items)
         return results

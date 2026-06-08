@@ -39,7 +39,7 @@ export default function ManualScrapeModal({
   title,
   initialQuery = '',
   mediaRoot,
-  allowJavdatabase = true,
+  allowJavdatabase = false,
   showBackdropButton = false,
   onSelectBackdrop,
   onApply,
