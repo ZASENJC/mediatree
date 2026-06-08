@@ -13,22 +13,39 @@ namespace MediaTree.Windows.Views;
 
 public sealed partial class SetupPage : Page
 {
+    private sealed record SetupScraperOption(string Value, string Label, string Description, string AutomationId);
+
+    private static readonly IReadOnlyList<SetupScraperOption> ScraperOptions =
+    [
+        new("tmdb_movie", "TMDB 电影", "电影库；tmdbid 调用 /movie 精确刮削", "SetupScraperTmdbMovie"),
+        new("tmdb_tv", "TMDB 剧集/番剧", "剧集、番剧、电视剧库；tmdbid 调用 /tv 精确刮削", "SetupScraperTmdbTv"),
+        new("bangumi", "Bangumi", "番剧、动画、二次元条目", "SetupScraperBangumi"),
+        new("javdatabase", "Javdatabase", "JAV 番号识别和刮削", "SetupScraperJavdatabase"),
+        new("auto", "自动", "自动判断，可能效果不好", "SetupScraperAuto"),
+        new("none", "不刮削", "只扫描本地文件", "SetupScraperNone"),
+    ];
+
     private readonly List<(Button Button, string Value)> _scraperButtons = [];
     private readonly Button _addLibraryButton;
+    private readonly PasswordBox _libraryPasswordBox;
     private readonly TextBlock _selectedFolderText;
     private readonly TextBlock _statusText;
+    private readonly PasswordBox _tmdbTokenBox;
+    private readonly StackPanel _tmdbTokenSection;
     private string _selectedScraper = "auto";
     private string _selectedFolder = "";
 
     public SetupPage()
     {
-        (_addLibraryButton, _selectedFolderText, _statusText) = BuildContent();
+        (_addLibraryButton, _selectedFolderText, _statusText, _tmdbTokenSection, _tmdbTokenBox, _libraryPasswordBox) = BuildContent();
+        UpdateScraperSelection();
     }
 
-    private (Button addLibraryButton, TextBlock selectedFolderText, TextBlock statusText) BuildContent()
+    private (Button addLibraryButton, TextBlock selectedFolderText, TextBlock statusText, StackPanel tmdbTokenSection, PasswordBox tmdbTokenBox, PasswordBox libraryPasswordBox) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "SetupPage");
 
+        var scrollViewer = new ScrollViewer();
         var root = new Grid
         {
             Padding = new Thickness(40),
@@ -76,17 +93,49 @@ public sealed partial class SetupPage : Page
             Foreground = FluentTheme.TextPrimary,
         });
 
-        var scraperButtons = new StackPanel
+        var scraperButtons = new Grid
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
+            ColumnSpacing = 10,
+            RowSpacing = 10,
         };
-        scraperButtons.Children.Add(CreateScraperButton("自动识别（推荐）", "auto", "SetupScraperAuto"));
-        scraperButtons.Children.Add(CreateScraperButton("TMDB", "tmdb", "SetupScraperTmdb"));
-        scraperButtons.Children.Add(CreateScraperButton("Bangumi", "bangumi", "SetupScraperBangumi"));
-        scraperButtons.Children.Add(CreateScraperButton("先不识别资料", "none", "SetupScraperNone"));
+        scraperButtons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        scraperButtons.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        for (var i = 0; i < ScraperOptions.Count; i++)
+        {
+            if (i % 2 == 0)
+            {
+                scraperButtons.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            }
+
+            var option = ScraperOptions[i];
+            var button = CreateScraperButton(option);
+            Grid.SetRow(button, i / 2);
+            Grid.SetColumn(button, i % 2);
+            scraperButtons.Children.Add(button);
+        }
+
         form.Children.Add(scraperButtons);
-        UpdateScraperSelection();
+
+        var tmdbTokenSection = new StackPanel { Spacing = 6 };
+        var tmdbTokenBox = new PasswordBox
+        {
+            Header = "TMDB 读访问令牌（可选）",
+            PlaceholderText = "以 eyJ 开头的 Read Access Token",
+            MinWidth = 360,
+        };
+        AutomationProperties.SetAutomationId(tmdbTokenBox, "SetupTmdbAccessToken");
+        tmdbTokenSection.Children.Add(tmdbTokenBox);
+        tmdbTokenSection.Children.Add(FluentTheme.Body("选择 TMDB 电影、TMDB 剧集/番剧或自动时可填写；也可以之后在设置页补充。", 13));
+        form.Children.Add(tmdbTokenSection);
+
+        var libraryPasswordBox = new PasswordBox
+        {
+            Header = "媒体库密码（可选）",
+            PlaceholderText = "留空则不设密码",
+            MinWidth = 360,
+        };
+        AutomationProperties.SetAutomationId(libraryPasswordBox, "SetupLibraryPassword");
+        form.Children.Add(libraryPasswordBox);
 
         var statusText = new TextBlock
         {
@@ -117,8 +166,9 @@ public sealed partial class SetupPage : Page
         Grid.SetRow(backButton, 2);
         root.Children.Add(backButton);
 
-        Content = root;
-        return (addLibraryButton, selectedFolderText, statusText);
+        scrollViewer.Content = root;
+        Content = scrollViewer;
+        return (addLibraryButton, selectedFolderText, statusText, tmdbTokenSection, tmdbTokenBox, libraryPasswordBox);
     }
 
     private async void OnPickFolderClicked(object sender, RoutedEventArgs args)
@@ -166,7 +216,11 @@ public sealed partial class SetupPage : Page
             _statusText.Foreground = FluentTheme.TextSecondary;
             _statusText.Text = "正在添加文件夹并开始整理，请稍候...";
 
-            await AppServices.Library.AddLibraryAsync(_selectedFolder, _selectedScraper);
+            await AppServices.Library.AddLibraryAsync(
+                _selectedFolder,
+                _selectedScraper,
+                _libraryPasswordBox.Password,
+                _tmdbTokenBox.Password);
 
             _statusText.Foreground = FluentTheme.Accent;
             _statusText.Text = "文件夹已添加，MediaTree 正在整理里面的视频。";
@@ -188,24 +242,43 @@ public sealed partial class SetupPage : Page
         ShellPage.Current?.NavigateToLibrary();
     }
 
-    private Button CreateScraperButton(string label, string value, string automationId)
+    private Button CreateScraperButton(SetupScraperOption option)
     {
+        var content = new StackPanel { Spacing = 4 };
+        content.Children.Add(new TextBlock
+        {
+            Text = option.Label,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = FluentTheme.TextPrimary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        });
+        content.Children.Add(new TextBlock
+        {
+            Text = option.Description,
+            Foreground = FluentTheme.TextSecondary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        });
+
         var button = FluentTheme.ApplyButton(new Button
         {
-            Content = label,
+            Content = content,
+            MinHeight = 76,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
         }, FluentButtonStyle.Subtle);
-        AutomationProperties.SetAutomationId(button, automationId);
+        AutomationProperties.SetAutomationId(button, option.AutomationId);
         button.Click += (_, _) =>
         {
-            _selectedScraper = value;
+            _selectedScraper = option.Value;
             UpdateScraperSelection();
         };
-        _scraperButtons.Add((button, value));
+        _scraperButtons.Add((button, option.Value));
         return button;
     }
 
     private void UpdateScraperSelection()
     {
+        _tmdbTokenSection.Visibility = RequiresTmdbToken(_selectedScraper) ? Visibility.Visible : Visibility.Collapsed;
         foreach (var (button, value) in _scraperButtons)
         {
             var selected = value == _selectedScraper;
@@ -213,4 +286,7 @@ public sealed partial class SetupPage : Page
             button.BorderBrush = selected ? FluentTheme.AccentSoft : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         }
     }
+
+    private static bool RequiresTmdbToken(string scraper)
+        => scraper is "tmdb_movie" or "tmdb_tv" or "auto";
 }

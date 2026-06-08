@@ -17,7 +17,12 @@ public sealed class LibraryService
         _api = api;
     }
 
-    public async Task AddLibraryAsync(string folderPath, string scraper, CancellationToken cancellationToken = default)
+    public async Task AddLibraryAsync(
+        string folderPath,
+        string scraper,
+        string password = "",
+        string tmdbAccessToken = "",
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(folderPath))
         {
@@ -38,13 +43,23 @@ public sealed class LibraryService
             await _api.SaveConfigAsync(roots, cancellationToken);
         }
 
+        if (!string.IsNullOrWhiteSpace(tmdbAccessToken))
+        {
+            await _api.SaveTmdbConfigAsync(tmdbAccessToken, cancellationToken);
+        }
+
         await _api.SaveLibrarySettingAsync(new LibrarySettingDto
         {
             MediaRoot = normalized,
-            Scraper = string.IsNullOrWhiteSpace(scraper) ? "auto" : scraper,
+            Scraper = NormalizeScraper(scraper),
             TmdbKey = "",
             Enabled = 1,
         }, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(password))
+        {
+            await _api.SetLibraryPasswordAsync(normalized, password, cancellationToken);
+        }
+
         await _api.ScanAsync(normalized, cancellationToken);
     }
 
@@ -74,4 +89,16 @@ public sealed class LibraryService
 
     public Task ClearLibraryAsync(string mediaRoot, CancellationToken cancellationToken = default)
         => _api.ClearLibraryAsync(mediaRoot, cancellationToken);
+
+    private static string NormalizeScraper(string scraper)
+    {
+        var value = (scraper ?? "").Trim().ToLowerInvariant();
+        return value switch
+        {
+            "" => "auto",
+            "tmdb" => "tmdb_movie",
+            "tmdb_movie" or "tmdb_tv" or "bangumi" or "javdatabase" or "auto" or "none" => value,
+            _ => "auto",
+        };
+    }
 }

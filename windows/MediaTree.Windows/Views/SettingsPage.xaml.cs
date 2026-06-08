@@ -588,7 +588,7 @@ public sealed partial class SettingsPage : Page
         var scanButton = FluentTheme.ApplyButton(new Button
         {
             Content = "重新扫描",
-            Tag = root.Path,
+            Tag = new LibrarySettingsRowContext(root.Path, setting?.TmdbKey ?? "", scraperBox, passwordBox),
         });
         AutomationProperties.SetAutomationId(scanButton, $"SettingsScanLibrary_{index}");
         scanButton.Click += OnScanLibraryClicked;
@@ -612,18 +612,7 @@ public sealed partial class SettingsPage : Page
             button.IsEnabled = false;
             _libraryStatusText.Foreground = FluentTheme.TextSecondary;
             _libraryStatusText.Text = "正在保存媒体库设置...";
-            await AppServices.Library.SaveLibrarySettingAsync(new LibrarySettingDto
-            {
-                MediaRoot = context.MediaRoot,
-                Scraper = GetSelectedScraper(context.ScraperBox),
-                TmdbKey = context.TmdbKey,
-                Enabled = 1,
-            });
-            if (!string.IsNullOrWhiteSpace(context.PasswordBox.Password))
-            {
-                await AppServices.Library.SetLibraryPasswordAsync(context.MediaRoot, context.PasswordBox.Password);
-                context.PasswordBox.Password = "";
-            }
+            await SaveLibrarySettingAsync(context);
 
             _libraryStatusText.Foreground = FluentTheme.Accent;
             _libraryStatusText.Text = "媒体库设置已保存。";
@@ -642,7 +631,7 @@ public sealed partial class SettingsPage : Page
 
     private async void OnScanLibraryClicked(object sender, RoutedEventArgs args)
     {
-        if (sender is not Button { Tag: string mediaRoot } button || string.IsNullOrWhiteSpace(mediaRoot))
+        if (sender is not Button button || button.Tag is not LibrarySettingsRowContext context || string.IsNullOrWhiteSpace(context.MediaRoot))
         {
             return;
         }
@@ -651,9 +640,10 @@ public sealed partial class SettingsPage : Page
         {
             button.IsEnabled = false;
             _libraryStatusText.Foreground = FluentTheme.TextSecondary;
-            _libraryStatusText.Text = "正在清除旧数据并重新扫描...";
-            await AppServices.Library.ClearLibraryAsync(mediaRoot);
-            await AppServices.Library.ScanAsync(mediaRoot);
+            _libraryStatusText.Text = "正在保存刮削器设置并重新扫描...";
+            await SaveLibrarySettingAsync(context);
+            await AppServices.Library.ClearLibraryAsync(context.MediaRoot);
+            await AppServices.Library.ScanAsync(context.MediaRoot);
             _libraryStatusText.Foreground = FluentTheme.Accent;
             _libraryStatusText.Text = "已开始重新扫描。你可以继续使用应用。";
         }
@@ -666,6 +656,22 @@ public sealed partial class SettingsPage : Page
         finally
         {
             button.IsEnabled = true;
+        }
+    }
+
+    private async System.Threading.Tasks.Task SaveLibrarySettingAsync(LibrarySettingsRowContext context)
+    {
+        await AppServices.Library.SaveLibrarySettingAsync(new LibrarySettingDto
+        {
+            MediaRoot = context.MediaRoot,
+            Scraper = GetSelectedScraper(context.ScraperBox),
+            TmdbKey = context.TmdbKey,
+            Enabled = 1,
+        });
+        if (!string.IsNullOrWhiteSpace(context.PasswordBox.Password))
+        {
+            await AppServices.Library.SetLibraryPasswordAsync(context.MediaRoot, context.PasswordBox.Password);
+            context.PasswordBox.Password = "";
         }
     }
 
