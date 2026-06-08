@@ -248,17 +248,7 @@ public sealed partial class BrowsePage : Page
 
             foreach (var movie in response.Movies)
             {
-                var cover = "";
-                try
-                {
-                    cover = await AppServices.Api.BuildCoverUrlAsync(movie.Id);
-                }
-                catch (Exception ex)
-                {
-                    ShellLogger.Error(ex, $"Failed to build native browse cover URL for movie {movie.Id}.");
-                }
-
-                _moviesGrid.Items.Add(CreateMovieCard(new MovieCardItem(movie, cover)));
+                _moviesGrid.Items.Add(CreateMovieCard(await CreateMovieCardItemAsync(movie, "browse")));
             }
 
             _titleText.Text = string.IsNullOrWhiteSpace(_activeFolderPath) ? "全部影片" : $"浏览: {_activeFolderPath}";
@@ -383,13 +373,14 @@ public sealed partial class BrowsePage : Page
     {
         var imageHost = new Grid
         {
-            Height = 252,
+            Height = item.HasEpisodeStill ? 100 : 252,
             Background = FluentTheme.LayerAlt,
         };
         try
         {
             if (Uri.TryCreate(item.CoverUrl, UriKind.Absolute, out var coverUri))
             {
+                var triedFallback = false;
                 var image = new Image
                 {
                     Source = new BitmapImage(coverUri),
@@ -397,7 +388,14 @@ public sealed partial class BrowsePage : Page
                 };
                 image.ImageFailed += (_, _) =>
                 {
-                    imageHost.Children.Clear();
+                    if (item.HasEpisodeStill && !triedFallback && Uri.TryCreate(item.FallbackCoverUrl, UriKind.Absolute, out var fallbackUri))
+                    {
+                        triedFallback = true;
+                        image.Source = new BitmapImage(fallbackUri);
+                        return;
+                    }
+
+                    image.Visibility = Visibility.Collapsed;
                     AddCoverFallback(imageHost);
                 };
                 imageHost.Children.Add(image);
@@ -411,6 +409,26 @@ public sealed partial class BrowsePage : Page
         {
             ShellLogger.Error(ex, $"Failed to create native browse cover image for movie {item.Id}.");
             AddCoverFallback(imageHost);
+        }
+
+        if (item.IsEpisode)
+        {
+            imageHost.Children.Add(new Border
+            {
+                Margin = new Thickness(8),
+                Padding = new Thickness(8, 3, 8, 3),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top,
+                CornerRadius = new CornerRadius(12),
+                Background = FluentTheme.Accent,
+                Child = new TextBlock
+                {
+                    Text = $"S{item.Movie.TmdbSeason?.ToString() ?? "-"}·E{item.Movie.TmdbEpisode?.ToString() ?? "-"}",
+                    FontSize = 11,
+                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
+                },
+            });
         }
 
         var textStack = new StackPanel
@@ -465,8 +483,37 @@ public sealed partial class BrowsePage : Page
         return card;
     }
 
+    internal static async Task<MovieCardItem> CreateMovieCardItemAsync(MovieDto movie, string logContext)
+    {
+        var cover = "";
+        var fallbackCover = "";
+        try
+        {
+            fallbackCover = await AppServices.Api.BuildCoverUrlAsync(movie.Id);
+            var isEpisode = string.Equals(movie.TmdbType, "tv", StringComparison.OrdinalIgnoreCase) && movie.TmdbEpisode.HasValue;
+            cover = isEpisode && !string.IsNullOrWhiteSpace(movie.EpisodeStill)
+                ? await AppServices.Api.BuildEpisodeStillUrlAsync(movie.Id)
+                : fallbackCover;
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, $"Failed to build native {logContext} cover URL for movie {movie.Id}.");
+            cover = fallbackCover;
+        }
+
+        return new MovieCardItem(movie, cover)
+        {
+            FallbackCoverUrl = fallbackCover,
+        };
+    }
+
     private static void AddCoverFallback(Grid imageHost)
     {
+        if (imageHost.Children.OfType<TextBlock>().Any(text => text.Text == "无封面"))
+        {
+            return;
+        }
+
         imageHost.Children.Add(new TextBlock
         {
             Text = "无封面",

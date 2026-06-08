@@ -56,6 +56,9 @@ public sealed class MovieDto
     [JsonPropertyName("folder_levels")]
     public string FolderLevels { get; set; } = "";
 
+    [JsonPropertyName("tmdb_type")]
+    public string TmdbType { get; set; } = "";
+
     [JsonPropertyName("tmdb_season")]
     [JsonConverter(typeof(NullToNullableIntConverter))]
     public int? TmdbSeason { get; set; }
@@ -70,6 +73,9 @@ public sealed class MovieDto
 
     [JsonPropertyName("episode_title")]
     public string EpisodeTitle { get; set; } = "";
+
+    [JsonPropertyName("episode_still")]
+    public string EpisodeStill { get; set; } = "";
 
     [JsonPropertyName("playback_position")]
     [JsonConverter(typeof(NullToZeroDoubleConverter))]

@@ -211,6 +211,12 @@ public sealed class MediaTreeApiClient : IDisposable
         return new Uri(BackendUri, $"api/cover/{movieId}?token={Uri.EscapeDataString(token)}").ToString();
     }
 
+    public async Task<string> BuildEpisodeStillUrlAsync(int movieId, CancellationToken cancellationToken = default)
+    {
+        var token = await EnsureMediaTokenAsync(cancellationToken);
+        return new Uri(BackendUri, $"api/episode-still/{movieId}?token={Uri.EscapeDataString(token)}").ToString();
+    }
+
     public async Task<string> BuildMediaAssetUrlAsync(string source, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(source))

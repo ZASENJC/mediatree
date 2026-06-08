@@ -5,7 +5,6 @@ using System.Text.RegularExpressions;
 using MediaTree.Windows.Models;
 using MediaTree.Windows.Services;
 using MediaTree.Windows.Styles;
-using MediaTree.Windows.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -287,7 +286,7 @@ public sealed partial class FolderPage : Page
         var placeholder = new TextBlock
         {
             Text = "正在加载封面...",
-            Height = 252,
+            Height = HasEpisodeStill(movie) ? 100 : 252,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = FluentTheme.TextTertiary,
@@ -301,17 +300,7 @@ public sealed partial class FolderPage : Page
 
     private async System.Threading.Tasks.Task LoadEpisodeCardAsync(MovieDto movie, Grid cardHost)
     {
-        var cover = "";
-        try
-        {
-            cover = await AppServices.Api.BuildCoverUrlAsync(movie.Id);
-        }
-        catch (Exception ex)
-        {
-            ShellLogger.Error(ex, $"Failed to build native folder cover URL for movie {movie.Id}.");
-        }
-
-        var card = BrowsePage.CreateMovieCard(new MovieCardItem(movie, cover));
+        var card = BrowsePage.CreateMovieCard(await BrowsePage.CreateMovieCardItemAsync(movie, "folder"));
         AutomationProperties.SetAutomationId(card, $"FolderMovieCard_{movie.Id}");
         cardHost.Children.Clear();
         cardHost.Children.Add(card);
@@ -356,6 +345,11 @@ public sealed partial class FolderPage : Page
         return string.Equals(levels, seasonPath, StringComparison.OrdinalIgnoreCase)
             || levels.StartsWith(seasonPath + "/", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool HasEpisodeStill(MovieDto movie)
+        => string.Equals(movie.TmdbType, "tv", StringComparison.OrdinalIgnoreCase)
+            && movie.TmdbEpisode.HasValue
+            && !string.IsNullOrWhiteSpace(movie.EpisodeStill);
 
     private IEnumerable<MovieDto> SortMovies(IEnumerable<MovieDto> movies, string sort)
         => sort switch
