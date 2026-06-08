@@ -28,7 +28,7 @@ public sealed partial class SettingsPage : Page
         new("none", "不刮削", "只扫描本地文件，不联网刮削元数据", false),
     ];
 
-    private readonly StackPanel _librarySettingsList;
+    private readonly ListView _librarySettingsList;
     private readonly TextBlock _libraryStatusText;
     private readonly TextBlock _updateStatusText;
     private readonly TextBlock _versionText;
@@ -39,7 +39,7 @@ public sealed partial class SettingsPage : Page
         Loaded += OnLoaded;
     }
 
-    private (TextBlock versionText, TextBlock updateStatusText, StackPanel librarySettingsList, TextBlock libraryStatusText) BuildContent()
+    private (TextBlock versionText, TextBlock updateStatusText, ListView librarySettingsList, TextBlock libraryStatusText) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "SettingsPage");
 
@@ -135,7 +135,13 @@ public sealed partial class SettingsPage : Page
             TextWrapping = TextWrapping.WrapWholeWords,
         });
 
-        var librarySettingsList = new StackPanel { Spacing = 10 };
+        var librarySettingsList = new ListView
+        {
+            SelectionMode = ListViewSelectionMode.None,
+            IsItemClickEnabled = false,
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            Padding = new Thickness(0),
+        };
         AutomationProperties.SetAutomationId(librarySettingsList, "SettingsLibrarySettingsList");
         libraryStack.Children.Add(librarySettingsList);
 
@@ -180,7 +186,7 @@ public sealed partial class SettingsPage : Page
         {
             _libraryStatusText.Foreground = FluentTheme.TextSecondary;
             _libraryStatusText.Text = "正在加载媒体库设置...";
-            _librarySettingsList.Children.Clear();
+            _librarySettingsList.Items.Clear();
 
             var roots = await AppServices.Library.GetMediaRootsAsync();
             var settings = await AppServices.Library.GetLibrarySettingsAsync();
@@ -199,7 +205,7 @@ public sealed partial class SettingsPage : Page
             {
                 var root = orderedRoots[i];
                 settingMap.TryGetValue(root.Path, out var setting);
-                _librarySettingsList.Children.Add(CreateLibrarySettingsRow(root, setting, i));
+                _librarySettingsList.Items.Add(CreateLibrarySettingsRow(root, setting, i));
             }
 
             _libraryStatusText.Text = "选择刮削器后点击保存。TMDB 相关选项会使用全局 TMDB 配置。";
@@ -207,7 +213,7 @@ public sealed partial class SettingsPage : Page
         catch (Exception ex)
         {
             ShellLogger.Error(ex, "Failed to load native library scraper settings.");
-            _librarySettingsList.Children.Clear();
+            _librarySettingsList.Items.Clear();
             _libraryStatusText.Foreground = FluentTheme.Error;
             _libraryStatusText.Text = $"加载媒体库设置失败：{ex.Message}";
         }
