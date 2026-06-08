@@ -32,9 +32,9 @@ public sealed partial class LoginPage : Page
 
         var stack = new StackPanel
         {
-            Width = 420,
+            MaxWidth = 420,
             Spacing = 18,
-            HorizontalAlignment = HorizontalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Center,
         };
 
@@ -42,10 +42,12 @@ public sealed partial class LoginPage : Page
         stack.Children.Add(FluentTheme.Body("这台电脑上的 MediaTree 已经设置过账号。输入一次用户名和密码后，桌面版会把登录状态安全保存到当前 Windows 用户里，下次会自动进入。", 14));
 
         _usernameBox.Header = "用户名";
+        _usernameBox.KeyDown += OnLoginFieldKeyDown;
         AutomationProperties.SetAutomationId(_usernameBox, "LoginUsername");
         stack.Children.Add(_usernameBox);
 
         _passwordBox.Header = "密码";
+        _passwordBox.KeyDown += OnLoginFieldKeyDown;
         AutomationProperties.SetAutomationId(_passwordBox, "LoginPassword");
         stack.Children.Add(_passwordBox);
 
@@ -58,15 +60,28 @@ public sealed partial class LoginPage : Page
         _loginButton.Content = "登录并记住这台电脑";
         FluentTheme.ApplyButton(_loginButton, FluentButtonStyle.Accent);
         _loginButton.MinWidth = 120;
-        _loginButton.Click += OnLoginClicked;
+        _loginButton.Click += async (_, _) => await SubmitLoginAsync();
         AutomationProperties.SetAutomationId(_loginButton, "LoginSubmit");
         stack.Children.Add(_loginButton);
 
+        root.SizeChanged += (_, args) => root.Padding = FluentTheme.SpaciousPagePadding(args.NewSize.Width);
+        Loaded += (_, _) => _usernameBox.Focus(FocusState.Programmatic);
         root.Children.Add(stack);
         Content = root;
     }
 
-    private async void OnLoginClicked(object sender, RoutedEventArgs args)
+    private async void OnLoginFieldKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs args)
+    {
+        if (args.Key != global::Windows.System.VirtualKey.Enter)
+        {
+            return;
+        }
+
+        args.Handled = true;
+        await SubmitLoginAsync();
+    }
+
+    private async System.Threading.Tasks.Task SubmitLoginAsync()
     {
         try
         {

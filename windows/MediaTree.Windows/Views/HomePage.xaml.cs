@@ -32,9 +32,11 @@ public sealed partial class HomePage : Page
         header.Children.Add(FluentTheme.Body("把电脑里的影片和剧集整理成一个本地媒体库。", 16));
         root.Children.Add(header);
 
-        var cards = new Grid { ColumnSpacing = 16 };
+        var cards = new Grid { ColumnSpacing = 16, RowSpacing = 16 };
         cards.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         cards.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        cards.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        cards.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Grid.SetRow(cards, 1);
 
         var openLibrary = CreateActionButton("打开媒体库", "查看已经整理好的影片和剧集", "HomeOpenLibrary");
@@ -45,6 +47,15 @@ public sealed partial class HomePage : Page
         addLibrary.Click += OnAddLibraryClicked;
         Grid.SetColumn(addLibrary, 1);
         cards.Children.Add(addLibrary);
+
+        root.SizeChanged += (_, args) =>
+        {
+            var compact = args.NewSize.Width < FluentTheme.CompactBreakpoint;
+            root.Padding = FluentTheme.SpaciousPagePadding(args.NewSize.Width);
+            cards.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+            Grid.SetColumn(addLibrary, compact ? 0 : 1);
+            Grid.SetRow(addLibrary, compact ? 1 : 0);
+        };
 
         root.Children.Add(cards);
         Content = root;
@@ -59,11 +70,13 @@ public sealed partial class HomePage : Page
             FontSize = 20,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = FluentTheme.TextPrimary,
+            TextWrapping = TextWrapping.WrapWholeWords,
         });
         content.Children.Add(new TextBlock
         {
             Text = subtitle,
             Foreground = FluentTheme.TextSecondary,
+            TextWrapping = TextWrapping.WrapWholeWords,
         });
 
         var button = FluentTheme.ApplyButton(new Button

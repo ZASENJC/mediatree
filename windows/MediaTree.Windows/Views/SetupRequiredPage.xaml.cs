@@ -22,6 +22,7 @@ public sealed partial class SetupRequiredPage : Page
             Background = FluentTheme.Canvas,
             RequestedTheme = ElementTheme.Light,
         };
+        root.SizeChanged += (_, args) => root.Padding = FluentTheme.SpaciousPagePadding(args.NewSize.Width);
 
         var stack = new StackPanel
         {

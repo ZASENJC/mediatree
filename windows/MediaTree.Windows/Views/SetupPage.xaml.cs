@@ -113,6 +113,7 @@ public sealed partial class SetupPage : Page
             Grid.SetColumn(button, i % 2);
             scraperButtons.Children.Add(button);
         }
+        scraperButtons.SizeChanged += (_, args) => ApplyScraperButtonsLayout(scraperButtons, args.NewSize.Width);
 
         form.Children.Add(scraperButtons);
 
@@ -121,7 +122,7 @@ public sealed partial class SetupPage : Page
         {
             Header = "TMDB 读访问令牌（可选）",
             PlaceholderText = "以 eyJ 开头的 Read Access Token",
-            MinWidth = 360,
+            MinWidth = 0,
         };
         AutomationProperties.SetAutomationId(tmdbTokenBox, "SetupTmdbAccessToken");
         tmdbTokenSection.Children.Add(tmdbTokenBox);
@@ -132,7 +133,7 @@ public sealed partial class SetupPage : Page
         {
             Header = "媒体库密码（可选）",
             PlaceholderText = "留空则不设密码",
-            MinWidth = 360,
+            MinWidth = 0,
         };
         AutomationProperties.SetAutomationId(libraryPasswordBox, "SetupLibraryPassword");
         form.Children.Add(libraryPasswordBox);
@@ -166,9 +167,31 @@ public sealed partial class SetupPage : Page
         Grid.SetRow(backButton, 2);
         root.Children.Add(backButton);
 
+        root.SizeChanged += (_, args) => root.Padding = FluentTheme.SpaciousPagePadding(args.NewSize.Width);
         scrollViewer.Content = root;
         Content = scrollViewer;
         return (addLibraryButton, selectedFolderText, statusText, tmdbTokenSection, tmdbTokenBox, libraryPasswordBox);
+    }
+
+    private static void ApplyScraperButtonsLayout(Grid scraperButtons, double width)
+    {
+        var compact = width < 560;
+        var columns = compact ? 1 : 2;
+        scraperButtons.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        var rowsNeeded = (int)Math.Ceiling(scraperButtons.Children.Count / (double)columns);
+        while (scraperButtons.RowDefinitions.Count < rowsNeeded)
+        {
+            scraperButtons.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        }
+
+        for (var i = 0; i < scraperButtons.Children.Count; i++)
+        {
+            if (scraperButtons.Children[i] is FrameworkElement child)
+            {
+                Grid.SetColumn(child, i % columns);
+                Grid.SetRow(child, i / columns);
+            }
+        }
     }
 
     private async void OnPickFolderClicked(object sender, RoutedEventArgs args)
@@ -191,6 +214,14 @@ public sealed partial class SetupPage : Page
             _statusText.Foreground = FluentTheme.TextSecondary;
             _statusText.Text = string.IsNullOrWhiteSpace(_selectedFolder) ? "选择文件夹后，就可以开始建立媒体库。" : "文件夹已选择，可以开始建立媒体库。";
             _addLibraryButton.IsEnabled = !string.IsNullOrWhiteSpace(_selectedFolder);
+            if (_addLibraryButton.IsEnabled)
+            {
+                _addLibraryButton.Focus(FocusState.Programmatic);
+            }
+            else if (sender is Button button)
+            {
+                button.Focus(FocusState.Programmatic);
+            }
         }
         catch (Exception ex)
         {
@@ -200,6 +231,10 @@ public sealed partial class SetupPage : Page
             _statusText.Foreground = FluentTheme.Error;
             _statusText.Text = $"选择文件夹失败：{ex.Message}";
             _addLibraryButton.IsEnabled = false;
+            if (sender is Button button)
+            {
+                button.Focus(FocusState.Programmatic);
+            }
         }
     }
 

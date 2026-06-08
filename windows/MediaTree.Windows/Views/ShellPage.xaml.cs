@@ -19,6 +19,8 @@ public sealed partial class ShellPage : Page
     private readonly Border _navigationHost;
     private readonly ColumnDefinition _navigationColumn;
     private readonly Button _settingsButton;
+    private bool _isCompactNavigation;
+    private bool _navigationChromeVisible = true;
 
     public ShellPage()
     {
@@ -69,8 +71,9 @@ public sealed partial class ShellPage : Page
 
     public void SetNavigationChromeVisible(bool visible)
     {
+        _navigationChromeVisible = visible;
         _navigationHost.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        _navigationColumn.Width = visible ? new GridLength(248) : new GridLength(0);
+        _navigationColumn.Width = visible ? new GridLength(_isCompactNavigation ? 88 : 248) : new GridLength(0);
     }
 
     private void RemoveTopPlayerPagesFromBackStack()
@@ -168,6 +171,16 @@ public sealed partial class ShellPage : Page
         AutomationProperties.SetAutomationId(contentFrame, "ContentFrame");
         Grid.SetColumn(contentFrame, 1);
         root.Children.Add(contentFrame);
+
+        root.SizeChanged += (_, args) =>
+        {
+            _isCompactNavigation = args.NewSize.Width < 900;
+            navigationHost.Padding = _isCompactNavigation ? new Thickness(10, 18, 10, 14) : new Thickness(18, 22, 18, 18);
+            if (_navigationChromeVisible)
+            {
+                navigationColumn.Width = new GridLength(_isCompactNavigation ? 88 : 248);
+            }
+        };
 
         Content = root;
         return (contentFrame, homeButton, browseButton, favoritesButton, settingsButton, navigationHost, navigationColumn);

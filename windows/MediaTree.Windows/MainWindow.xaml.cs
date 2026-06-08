@@ -132,6 +132,7 @@ public sealed partial class MainWindow : Window
             TextWrapping = TextWrapping.WrapWholeWords,
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
+        AutomationProperties.SetAutomationId(statusText, "StartupStatusText");
         stack.Children.Add(statusText);
 
         var startupActions = new StackPanel
@@ -212,6 +213,7 @@ public sealed partial class MainWindow : Window
             Content = "再试一次",
             MinWidth = 92,
         }, FluentButtonStyle.Accent);
+        AutomationProperties.SetAutomationId(restartButton, "StartupRetryButton");
         restartButton.Click += (_, _) =>
         {
             _startupActions.Visibility = Visibility.Collapsed;
@@ -224,6 +226,7 @@ public sealed partial class MainWindow : Window
             Content = "查看日志",
             MinWidth = 92,
         });
+        AutomationProperties.SetAutomationId(logsButton, "StartupOpenLogs");
         logsButton.Click += (_, _) => OpenLogsDirectory();
 
         _startupActions.Children.Add(restartButton);

@@ -56,6 +56,12 @@ public sealed partial class RecentPage : Page
         refreshButton.Click += OnRefreshClicked;
         header.Children.Add(refreshButton);
         root.Children.Add(header);
+        root.SizeChanged += (_, args) =>
+        {
+            var compact = args.NewSize.Width < FluentTheme.CompactBreakpoint;
+            root.Padding = FluentTheme.PagePadding(args.NewSize.Width);
+            header.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
+        };
 
         var recentGrid = new GridView
         {
@@ -140,7 +146,7 @@ public sealed partial class RecentPage : Page
         {
             Width = 178,
             Margin = new Thickness(6),
-            CornerRadius = new CornerRadius(14),
+            CornerRadius = FluentTheme.MediaCornerRadius,
             Background = FluentTheme.Layer,
             BorderBrush = FluentTheme.Border,
             BorderThickness = new Thickness(1),

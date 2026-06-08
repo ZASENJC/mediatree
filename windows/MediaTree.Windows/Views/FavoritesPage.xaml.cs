@@ -41,9 +41,11 @@ public sealed partial class FavoritesPage : Page
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        var header = new Grid { ColumnSpacing = 16 };
+        var header = new Grid { ColumnSpacing = 16, RowSpacing = 12 };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        header.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
 
         var titleStack = new StackPanel { Spacing = 4 };
         titleStack.Children.Add(new TextBlock
@@ -72,6 +74,7 @@ public sealed partial class FavoritesPage : Page
         {
             Orientation = Orientation.Horizontal,
             Spacing = 10,
+            HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Bottom,
         };
         var libraryBox = new ComboBox
@@ -97,6 +100,14 @@ public sealed partial class FavoritesPage : Page
         Grid.SetColumn(controls, 1);
         header.Children.Add(controls);
         root.Children.Add(FluentTheme.Card(header, new Thickness(16)));
+
+        root.SizeChanged += (_, args) => ApplyFavoritesResponsiveLayout(
+            args.NewSize.Width,
+            root,
+            header,
+            controls,
+            libraryBox,
+            sortBox);
 
         var content = new Grid();
         Grid.SetRow(content, 1);
@@ -124,6 +135,28 @@ public sealed partial class FavoritesPage : Page
 
         Content = root;
         return (libraryBox, sortBox, moviesGrid, statusText, subtitleText);
+    }
+
+    private static void ApplyFavoritesResponsiveLayout(
+        double width,
+        Grid root,
+        Grid header,
+        StackPanel controls,
+        ComboBox libraryBox,
+        ComboBox sortBox)
+    {
+        var compact = width < FluentTheme.CompactBreakpoint;
+        root.Padding = FluentTheme.PagePadding(width);
+        header.ColumnDefinitions[1].Width = compact ? new GridLength(0) : GridLength.Auto;
+        header.RowDefinitions[1].Height = compact ? GridLength.Auto : new GridLength(0);
+        Grid.SetColumn(controls, compact ? 0 : 1);
+        Grid.SetRow(controls, compact ? 1 : 0);
+        controls.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
+        controls.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
+        libraryBox.MinWidth = compact ? 0 : 220;
+        sortBox.MinWidth = compact ? 0 : 160;
+        libraryBox.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        sortBox.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
     }
 
     private async System.Threading.Tasks.Task LoadLibrariesAsync()

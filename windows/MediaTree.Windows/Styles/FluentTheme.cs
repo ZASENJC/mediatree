@@ -6,6 +6,9 @@ namespace MediaTree.Windows.Styles;
 
 public static class FluentTheme
 {
+    public const double CompactBreakpoint = 760;
+    public const double MediumBreakpoint = 980;
+
     public static SolidColorBrush Canvas => Brush(0xF3, 0xF3, 0xF3);
     public static SolidColorBrush Layer => Brush(0xFF, 0xFF, 0xFF);
     public static SolidColorBrush LayerAlt => Brush(0xF9, 0xFA, 0xFB);
@@ -21,7 +24,9 @@ public static class FluentTheme
     public static SolidColorBrush OverlayControl => Brush(0x2B, 0x2F, 0x36, 0xE8);
     public static SolidColorBrush Success => Brush(0x0F, 0x7B, 0x0F);
     public static SolidColorBrush Error => Brush(0xB3, 0x26, 0x1E);
-    public static CornerRadius ControlCornerRadius => new(6);
+    public static CornerRadius ControlCornerRadius => new(8);
+    public static CornerRadius CardCornerRadius => new(8);
+    public static CornerRadius MediaCornerRadius => new(8);
 
     public static SolidColorBrush Brush(byte r, byte g, byte b, byte a = 0xFF)
     {
@@ -56,10 +61,11 @@ public static class FluentTheme
         return new Border
         {
             Padding = padding ?? new Thickness(20),
-            CornerRadius = new CornerRadius(12),
+            CornerRadius = CardCornerRadius,
             Background = Layer,
             BorderBrush = Border,
             BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             Child = child,
         };
     }
@@ -69,7 +75,7 @@ public static class FluentTheme
         return new Border
         {
             Padding = padding ?? new Thickness(24),
-            CornerRadius = new CornerRadius(12),
+            CornerRadius = CardCornerRadius,
             Background = Layer,
             BorderBrush = Border,
             BorderThickness = new Thickness(1),
@@ -113,6 +119,12 @@ public static class FluentTheme
 
         return button;
     }
+
+    public static Thickness PagePadding(double width)
+        => width < CompactBreakpoint ? new Thickness(18) : new Thickness(28);
+
+    public static Thickness SpaciousPagePadding(double width)
+        => width < CompactBreakpoint ? new Thickness(20) : new Thickness(40);
 }
 
 public enum FluentButtonStyle

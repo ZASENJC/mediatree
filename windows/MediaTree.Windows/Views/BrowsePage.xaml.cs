@@ -50,9 +50,11 @@ public sealed partial class BrowsePage : Page
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        var header = new Grid { ColumnSpacing = 16 };
+        var header = new Grid { ColumnSpacing = 16, RowSpacing = 12 };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        header.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
 
         var titleStack = new StackPanel { Spacing = 4 };
         titleStack.Children.Add(new TextBlock
@@ -85,6 +87,7 @@ public sealed partial class BrowsePage : Page
         {
             Orientation = Orientation.Horizontal,
             Spacing = 10,
+            HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Bottom,
         };
         var libraryBox = new ComboBox
@@ -133,6 +136,8 @@ public sealed partial class BrowsePage : Page
         var content = new Grid { ColumnSpacing = 16 };
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(260) });
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
         Grid.SetRow(content, 1);
 
         var folderStack = new StackPanel { Spacing = 10 };
@@ -151,7 +156,8 @@ public sealed partial class BrowsePage : Page
         };
         AutomationProperties.SetAutomationId(folderList, "BrowseFoldersList");
         folderStack.Children.Add(folderList);
-        content.Children.Add(FluentTheme.Card(folderStack, new Thickness(14)));
+        var folderHost = FluentTheme.Card(folderStack, new Thickness(14));
+        content.Children.Add(folderHost);
 
         var moviesHost = new Grid();
         Grid.SetColumn(moviesHost, 1);
@@ -177,9 +183,64 @@ public sealed partial class BrowsePage : Page
         moviesHost.Children.Add(statusText);
         content.Children.Add(moviesHost);
 
+        root.SizeChanged += (_, args) => ApplyBrowseResponsiveLayout(
+            args.NewSize.Width,
+            root,
+            header,
+            controls,
+            content,
+            folderHost,
+            moviesHost,
+            libraryBox,
+            searchBox,
+            sortBox,
+            searchButton);
+
         root.Children.Add(content);
         Content = root;
         return (libraryBox, folderList, moviesGrid, statusText, searchBox, sortBox, titleText, subtitleText);
+    }
+
+    private static void ApplyBrowseResponsiveLayout(
+        double width,
+        Grid root,
+        Grid header,
+        StackPanel controls,
+        Grid content,
+        Border folderHost,
+        Grid moviesHost,
+        ComboBox libraryBox,
+        TextBox searchBox,
+        ComboBox sortBox,
+        Button searchButton)
+    {
+        var compact = width < FluentTheme.MediumBreakpoint;
+        root.Padding = FluentTheme.PagePadding(width);
+
+        header.ColumnDefinitions[1].Width = compact ? new GridLength(0) : GridLength.Auto;
+        header.RowDefinitions[1].Height = compact ? GridLength.Auto : new GridLength(0);
+        Grid.SetColumn(controls, compact ? 0 : 1);
+        Grid.SetRow(controls, compact ? 1 : 0);
+        controls.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
+        controls.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
+
+        libraryBox.MinWidth = compact ? 0 : 220;
+        searchBox.MinWidth = compact ? 0 : 240;
+        sortBox.MinWidth = compact ? 0 : 160;
+        foreach (var control in new FrameworkElement[] { libraryBox, searchBox, sortBox, searchButton })
+        {
+            control.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        }
+
+        content.RowSpacing = compact ? 16 : 0;
+        content.ColumnDefinitions[0].Width = compact ? new GridLength(1, GridUnitType.Star) : new GridLength(260);
+        content.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        content.RowDefinitions[0].Height = compact ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
+        content.RowDefinitions[1].Height = compact ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        Grid.SetColumn(folderHost, 0);
+        Grid.SetRow(folderHost, 0);
+        Grid.SetColumn(moviesHost, compact ? 0 : 1);
+        Grid.SetRow(moviesHost, compact ? 1 : 0);
     }
 
     private async Task LoadLibrariesAsync()
@@ -284,7 +345,7 @@ public sealed partial class BrowsePage : Page
         var text = new TextBlock
         {
             Text = label,
-            Margin = new Thickness(depth * 14, 0, 0, 0),
+            Margin = new Thickness(Math.Min(depth, 4) * 14, 0, 0, 0),
             TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = FluentTheme.TextPrimary,
         };
@@ -295,7 +356,7 @@ public sealed partial class BrowsePage : Page
             HorizontalContentAlignment = HorizontalAlignment.Left,
             Tag = path,
         }, FluentButtonStyle.Subtle);
-        AutomationProperties.SetAutomationId(button, string.IsNullOrWhiteSpace(path) ? "BrowseFolder_All" : $"BrowseFolder_{path.Replace("\\", "_").Replace("/", "_")}");
+        AutomationProperties.SetAutomationId(button, string.IsNullOrWhiteSpace(path) ? "BrowseFolder_All" : $"BrowseFolder_{SanitizeAutomationId(path)}");
         button.Click += async (_, _) =>
         {
             _activeFolderPath = path;
@@ -419,7 +480,7 @@ public sealed partial class BrowsePage : Page
                 Padding = new Thickness(8, 3, 8, 3),
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Top,
-                CornerRadius = new CornerRadius(12),
+                CornerRadius = FluentTheme.ControlCornerRadius,
                 Background = FluentTheme.Accent,
                 Child = new TextBlock
                 {
@@ -468,7 +529,7 @@ public sealed partial class BrowsePage : Page
         {
             Width = 178,
             Margin = new Thickness(6),
-            CornerRadius = new CornerRadius(14),
+            CornerRadius = FluentTheme.MediaCornerRadius,
             Background = FluentTheme.Layer,
             BorderBrush = FluentTheme.Border,
             BorderThickness = new Thickness(1),
@@ -522,4 +583,7 @@ public sealed partial class BrowsePage : Page
             Foreground = FluentTheme.TextTertiary,
         });
     }
+
+    private static string SanitizeAutomationId(string value)
+        => value.Replace("\\", "_").Replace("/", "_").Replace(":", "_");
 }

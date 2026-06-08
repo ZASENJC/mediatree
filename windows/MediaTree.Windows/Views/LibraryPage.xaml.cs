@@ -62,9 +62,11 @@ public sealed partial class LibraryPage : Page
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
         var headerStack = new StackPanel { Spacing = 14 };
-        var header = new Grid { ColumnSpacing = 16 };
+        var header = new Grid { ColumnSpacing = 16, RowSpacing = 12 };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        header.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
 
         var titleStack = new StackPanel { Spacing = 4 };
         titleStack.Children.Add(new TextBlock
@@ -117,6 +119,10 @@ public sealed partial class LibraryPage : Page
         toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        for (var i = 0; i < 6; i++)
+        {
+            toolbar.RowDefinitions.Add(new RowDefinition { Height = i == 0 ? GridLength.Auto : new GridLength(0) });
+        }
 
         var moviesBackButton = FluentTheme.ApplyButton(new Button
         {
@@ -231,9 +237,69 @@ public sealed partial class LibraryPage : Page
         AutomationProperties.SetAutomationId(loadingText, "LibraryLoadingText");
         content.Children.Add(loadingText);
 
+        root.SizeChanged += (_, args) => ApplyLibraryResponsiveLayout(
+            args.NewSize.Width,
+            root,
+            header,
+            tabs,
+            toolbar,
+            moviesBackButton,
+            libraryBox,
+            searchBox,
+            sortBox,
+            scanButton,
+            addButton);
+
         root.Children.Add(content);
         Content = root;
         return (libraryBox, searchBox, sortBox, scanInfoText, loadingText, folderGrid, moviesGrid, headerTitleText, headerSubtitleText, folderTabButton, recentTabButton, moviesBackButton);
+    }
+
+    private static void ApplyLibraryResponsiveLayout(
+        double width,
+        Grid root,
+        Grid header,
+        StackPanel tabs,
+        Grid toolbar,
+        Button moviesBackButton,
+        ComboBox libraryBox,
+        TextBox searchBox,
+        ComboBox sortBox,
+        Button scanButton,
+        Button addButton)
+    {
+        var compactHeader = width < FluentTheme.CompactBreakpoint;
+        var compactToolbar = width < FluentTheme.MediumBreakpoint;
+        root.Padding = FluentTheme.PagePadding(width);
+
+        header.ColumnDefinitions[1].Width = compactHeader ? new GridLength(0) : GridLength.Auto;
+        header.RowDefinitions[1].Height = compactHeader ? GridLength.Auto : new GridLength(0);
+        Grid.SetColumn(tabs, compactHeader ? 0 : 1);
+        Grid.SetRow(tabs, compactHeader ? 1 : 0);
+        tabs.HorizontalAlignment = compactHeader ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+
+        toolbar.RowSpacing = compactToolbar ? 10 : 0;
+        toolbar.ColumnDefinitions[0].Width = compactToolbar ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+        toolbar.ColumnDefinitions[1].Width = compactToolbar ? new GridLength(0) : new GridLength(2, GridUnitType.Star);
+        toolbar.ColumnDefinitions[2].Width = compactToolbar ? new GridLength(0) : new GridLength(3, GridUnitType.Star);
+        toolbar.ColumnDefinitions[3].Width = compactToolbar ? new GridLength(0) : GridLength.Auto;
+        toolbar.ColumnDefinitions[4].Width = compactToolbar ? new GridLength(0) : GridLength.Auto;
+        toolbar.ColumnDefinitions[5].Width = compactToolbar ? new GridLength(0) : GridLength.Auto;
+        for (var i = 1; i < toolbar.RowDefinitions.Count; i++)
+        {
+            toolbar.RowDefinitions[i].Height = compactToolbar ? GridLength.Auto : new GridLength(0);
+        }
+
+        var controls = new FrameworkElement[] { moviesBackButton, libraryBox, searchBox, sortBox, scanButton, addButton };
+        for (var i = 0; i < controls.Length; i++)
+        {
+            Grid.SetColumn(controls[i], compactToolbar ? 0 : i);
+            Grid.SetRow(controls[i], compactToolbar ? i : 0);
+            controls[i].HorizontalAlignment = compactToolbar ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        }
+
+        libraryBox.MinWidth = compactToolbar ? 0 : 240;
+        sortBox.MinWidth = compactToolbar ? 0 : 160;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs args)
@@ -803,7 +869,7 @@ public sealed partial class LibraryPage : Page
         {
             Width = 178,
             Margin = new Thickness(6),
-            CornerRadius = new CornerRadius(14),
+            CornerRadius = FluentTheme.MediaCornerRadius,
             Background = FluentTheme.Layer,
             BorderBrush = FluentTheme.Border,
             BorderThickness = new Thickness(1),
@@ -813,7 +879,7 @@ public sealed partial class LibraryPage : Page
             VerticalContentAlignment = VerticalAlignment.Stretch,
             Tag = item,
         };
-        AutomationProperties.SetAutomationId(card, $"FolderCard_{item.Path.Replace("\\", "_").Replace("/", "_")}");
+        AutomationProperties.SetAutomationId(card, $"FolderCard_{SanitizeAutomationId(item.Path)}");
         card.Click += (_, _) => OpenFolderItem(item);
         return card;
     }
@@ -886,7 +952,7 @@ public sealed partial class LibraryPage : Page
         {
             Width = 178,
             Margin = new Thickness(6),
-            CornerRadius = new CornerRadius(14),
+            CornerRadius = FluentTheme.MediaCornerRadius,
             Background = FluentTheme.Layer,
             BorderBrush = FluentTheme.Border,
             BorderThickness = new Thickness(1),
@@ -922,6 +988,9 @@ public sealed partial class LibraryPage : Page
             Foreground = FluentTheme.TextTertiary,
         });
     }
+
+    private static string SanitizeAutomationId(string value)
+        => value.Replace("\\", "_").Replace("/", "_").Replace(":", "_");
 
     private static string FormatScanStatus(ScanStatusDto status)
     {

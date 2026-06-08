@@ -93,9 +93,11 @@ public sealed partial class SettingsPage : Page
             RequestedTheme = ElementTheme.Light,
         };
 
-        var headerGrid = new Grid { ColumnSpacing = 16 };
+        var headerGrid = new Grid { ColumnSpacing = 16, RowSpacing = 12 };
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        headerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        headerGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
 
         var titleStack = new StackPanel { Spacing = 4 };
         titleStack.Children.Add(new TextBlock
@@ -116,14 +118,17 @@ public sealed partial class SettingsPage : Page
         saveGlobalButton.Click += OnSaveGlobalClicked;
         Grid.SetColumn(saveGlobalButton, 1);
         headerGrid.Children.Add(saveGlobalButton);
+        headerGrid.SizeChanged += (_, args) => ApplyHeaderActionLayout(args.NewSize.Width, headerGrid, saveGlobalButton);
         root.Children.Add(FluentTheme.Card(headerGrid, new Thickness(18)));
 
         var globalStatusText = StatusText("SettingsGlobalStatusText");
         root.Children.Add(globalStatusText);
 
-        var columns = new Grid { ColumnSpacing = 20 };
+        var columns = new Grid { ColumnSpacing = 20, RowSpacing = 20 };
         columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        columns.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        columns.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
 
         var leftColumn = new StackPanel { Spacing = 20 };
         var rightColumn = new StackPanel { Spacing = 20 };
@@ -173,9 +178,11 @@ public sealed partial class SettingsPage : Page
         leftColumn.Children.Add(SectionCard(authStack, "SettingsAuthCard"));
 
         var libraryStack = new StackPanel { Spacing = 12 };
-        var libraryHeader = new Grid { ColumnSpacing = 12 };
+        var libraryHeader = new Grid { ColumnSpacing = 12, RowSpacing = 10 };
         libraryHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         libraryHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        libraryHeader.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        libraryHeader.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
         libraryHeader.Children.Add(SectionTitle("媒体库", "SettingsLibraryCard"));
         var addLibraryButton = FluentTheme.ApplyButton(new Button
         {
@@ -185,6 +192,7 @@ public sealed partial class SettingsPage : Page
         addLibraryButton.Click += OnAddLibraryClicked;
         Grid.SetColumn(addLibraryButton, 1);
         libraryHeader.Children.Add(addLibraryButton);
+        libraryHeader.SizeChanged += (_, args) => ApplyHeaderActionLayout(args.NewSize.Width, libraryHeader, addLibraryButton);
         libraryStack.Children.Add(libraryHeader);
         libraryStack.Children.Add(FluentTheme.Body("Windows 桌面版可直接选择本机文件夹作为媒体库。", 13));
         var librarySettingsList = new ListView
@@ -239,6 +247,7 @@ public sealed partial class SettingsPage : Page
         AutomationProperties.SetAutomationId(restoreBackupButton, "SettingsRestoreBackup");
         restoreBackupButton.Click += OnRestoreBackupClicked;
         backupActions.Children.Add(restoreBackupButton);
+        backupActions.SizeChanged += (_, args) => ApplyActionStackLayout(args.NewSize.Width, backupActions);
         backupStack.Children.Add(backupActions);
         backupStack.Children.Add(FluentTheme.Body("完整备份包含数据库和所有封面图片缓存。恢复会覆盖当前数据。", 13));
         var backupStatusText = StatusText("SettingsBackupStatusText");
@@ -246,15 +255,18 @@ public sealed partial class SettingsPage : Page
         rightColumn.Children.Add(SectionCard(backupStack, "SettingsBackupCard"));
 
         var updateStack = new StackPanel { Spacing = 12 };
-        var updateHeader = new Grid { ColumnSpacing = 12 };
+        var updateHeader = new Grid { ColumnSpacing = 12, RowSpacing = 10 };
         updateHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         updateHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        updateHeader.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        updateHeader.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
         updateHeader.Children.Add(SectionTitle("更新", "SettingsUpdateCard"));
         var checkButton = FluentTheme.ApplyButton(new Button { Content = "检查更新" });
         AutomationProperties.SetAutomationId(checkButton, "SettingsCheckUpdates");
         checkButton.Click += OnCheckUpdatesClicked;
         Grid.SetColumn(checkButton, 1);
         updateHeader.Children.Add(checkButton);
+        updateHeader.SizeChanged += (_, args) => ApplyHeaderActionLayout(args.NewSize.Width, updateHeader, checkButton);
         updateStack.Children.Add(updateHeader);
         var versionText = new TextBlock
         {
@@ -274,6 +286,12 @@ public sealed partial class SettingsPage : Page
         logsButton.Click += OnOpenLogsClicked;
         updateStack.Children.Add(logsButton);
         rightColumn.Children.Add(SectionCard(updateStack, "SettingsUpdateCard"));
+
+        root.SizeChanged += (_, args) => ApplySettingsResponsiveLayout(
+            args.NewSize.Width,
+            root,
+            columns,
+            rightColumn);
 
         scrollViewer.Content = root;
         Content = scrollViewer;
@@ -494,7 +512,7 @@ public sealed partial class SettingsPage : Page
         var row = new Border
         {
             Padding = new Thickness(14),
-            CornerRadius = new CornerRadius(10),
+            CornerRadius = FluentTheme.CardCornerRadius,
             Background = FluentTheme.LayerAlt,
             BorderBrush = FluentTheme.Border,
             BorderThickness = new Thickness(1),
@@ -505,6 +523,10 @@ public sealed partial class SettingsPage : Page
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
 
         var info = new StackPanel { Spacing = 4, MinWidth = 220 };
         info.Children.Add(new TextBlock
@@ -595,6 +617,14 @@ public sealed partial class SettingsPage : Page
         actions.Children.Add(scanButton);
         Grid.SetColumn(actions, 3);
         grid.Children.Add(actions);
+
+        row.SizeChanged += (_, args) => ApplyLibrarySettingsRowLayout(
+            args.NewSize.Width,
+            grid,
+            info,
+            scraperStack,
+            passwordBox,
+            actions);
 
         row.Child = grid;
         return row;
@@ -830,6 +860,75 @@ public sealed partial class SettingsPage : Page
         return wrapper;
     }
 
+    private static void ApplySettingsResponsiveLayout(double width, StackPanel root, Grid columns, StackPanel rightColumn)
+    {
+        var compact = width < FluentTheme.MediumBreakpoint;
+        root.Padding = FluentTheme.SpaciousPagePadding(width);
+        columns.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        columns.RowDefinitions[1].Height = compact ? GridLength.Auto : new GridLength(0);
+        Grid.SetColumn(rightColumn, compact ? 0 : 1);
+        Grid.SetRow(rightColumn, compact ? 1 : 0);
+    }
+
+    private static void ApplyHeaderActionLayout(double width, Grid header, FrameworkElement action)
+    {
+        var compact = width < 560;
+        header.ColumnDefinitions[1].Width = compact ? new GridLength(0) : GridLength.Auto;
+        header.RowDefinitions[1].Height = compact ? GridLength.Auto : new GridLength(0);
+        Grid.SetColumn(action, compact ? 0 : 1);
+        Grid.SetRow(action, compact ? 1 : 0);
+        action.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+    }
+
+    private static void ApplyActionStackLayout(double width, StackPanel actions)
+    {
+        var compact = width < 640;
+        actions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
+        foreach (var child in actions.Children.OfType<FrameworkElement>())
+        {
+            child.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        }
+    }
+
+    private static void ApplyLibrarySettingsRowLayout(
+        double width,
+        Grid grid,
+        FrameworkElement info,
+        StackPanel scraperStack,
+        PasswordBox passwordBox,
+        StackPanel actions)
+    {
+        var compact = width < 720;
+        grid.RowSpacing = compact ? 12 : 0;
+        grid.ColumnDefinitions[1].Width = compact ? new GridLength(0) : GridLength.Auto;
+        grid.ColumnDefinitions[2].Width = compact ? new GridLength(0) : GridLength.Auto;
+        grid.ColumnDefinitions[3].Width = compact ? new GridLength(0) : GridLength.Auto;
+        for (var i = 1; i < grid.RowDefinitions.Count; i++)
+        {
+            grid.RowDefinitions[i].Height = compact ? GridLength.Auto : new GridLength(0);
+        }
+
+        Grid.SetColumn(info, 0);
+        Grid.SetRow(info, 0);
+        Grid.SetColumn(scraperStack, compact ? 0 : 1);
+        Grid.SetRow(scraperStack, compact ? 1 : 0);
+        Grid.SetColumn(passwordBox, compact ? 0 : 2);
+        Grid.SetRow(passwordBox, compact ? 2 : 0);
+        Grid.SetColumn(actions, compact ? 0 : 3);
+        Grid.SetRow(actions, compact ? 3 : 0);
+
+        info.MinWidth = compact ? 0 : 220;
+        scraperStack.Width = compact ? double.NaN : 230;
+        passwordBox.Width = compact ? double.NaN : 120;
+        scraperStack.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        passwordBox.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        actions.Orientation = compact && width >= 520 ? Orientation.Horizontal : Orientation.Vertical;
+        foreach (var button in actions.Children.OfType<FrameworkElement>())
+        {
+            button.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        }
+    }
+
     private static TextBlock SectionTitle(string text, string automationId = "")
     {
         var title = new TextBlock
@@ -888,9 +987,20 @@ public sealed partial class SettingsPage : Page
         var row = new Grid { ColumnSpacing = 12 };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        row.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
         row.Children.Add(first);
         Grid.SetColumn(second, 1);
         row.Children.Add(second);
+        row.SizeChanged += (_, args) =>
+        {
+            var compact = args.NewSize.Width < 560;
+            row.RowSpacing = compact ? 12 : 0;
+            row.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+            row.RowDefinitions[1].Height = compact ? GridLength.Auto : new GridLength(0);
+            Grid.SetColumn(second, compact ? 0 : 1);
+            Grid.SetRow(second, compact ? 1 : 0);
+        };
         return row;
     }
 
@@ -900,11 +1010,27 @@ public sealed partial class SettingsPage : Page
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        row.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
+        row.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
         row.Children.Add(first);
         Grid.SetColumn(second, 1);
         row.Children.Add(second);
         Grid.SetColumn(third, 2);
         row.Children.Add(third);
+        row.SizeChanged += (_, args) =>
+        {
+            var compact = args.NewSize.Width < 720;
+            row.RowSpacing = compact ? 12 : 0;
+            row.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+            row.ColumnDefinitions[2].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+            row.RowDefinitions[1].Height = compact ? GridLength.Auto : new GridLength(0);
+            row.RowDefinitions[2].Height = compact ? GridLength.Auto : new GridLength(0);
+            Grid.SetColumn(second, compact ? 0 : 1);
+            Grid.SetRow(second, compact ? 1 : 0);
+            Grid.SetColumn(third, compact ? 0 : 2);
+            Grid.SetRow(third, compact ? 2 : 0);
+        };
         return row;
     }
 
@@ -947,7 +1073,30 @@ public sealed partial class SettingsPage : Page
             grid.Children.Add(card);
         }
 
+        grid.SizeChanged += (_, args) => ApplyScraperDescriptionLayout(grid, args.NewSize.Width);
         return grid;
+    }
+
+    private static void ApplyScraperDescriptionLayout(Grid grid, double width)
+    {
+        var compact = width < 640;
+        var columns = compact ? 1 : 3;
+        grid.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        grid.ColumnDefinitions[2].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        var rowsNeeded = (int)Math.Ceiling(grid.Children.Count / (double)columns);
+        while (grid.RowDefinitions.Count < rowsNeeded)
+        {
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        }
+
+        for (var i = 0; i < grid.Children.Count; i++)
+        {
+            if (grid.Children[i] is FrameworkElement child)
+            {
+                Grid.SetColumn(child, i % columns);
+                Grid.SetRow(child, i / columns);
+            }
+        }
     }
 
     private static int ReadInt(string value, int fallback)

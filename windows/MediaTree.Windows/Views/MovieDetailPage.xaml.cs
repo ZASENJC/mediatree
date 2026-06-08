@@ -42,13 +42,15 @@ public sealed partial class MovieDetailPage : Page
         };
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(280) });
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
 
         var posterImage = new Image { Stretch = Stretch.UniformToFill };
         posterImage.ImageFailed += (_, _) => posterImage.Source = null;
         AutomationProperties.SetAutomationId(posterImage, "DetailPoster");
         var posterCard = new Border
         {
-            CornerRadius = new CornerRadius(18),
+            CornerRadius = FluentTheme.MediaCornerRadius,
             Background = FluentTheme.LayerAlt,
             BorderBrush = FluentTheme.Border,
             BorderThickness = new Thickness(1),
@@ -143,9 +145,29 @@ public sealed partial class MovieDetailPage : Page
         detail.Children.Add(pathText);
 
         root.Children.Add(detail);
+        root.SizeChanged += (_, args) => ApplyDetailResponsiveLayout(args.NewSize.Width, root, posterCard, detail);
         scrollViewer.Content = root;
         Content = scrollViewer;
         return (posterImage, titleText, metaText, progressText, playButton, statusText, overviewText, pathText);
+    }
+
+    private static void ApplyDetailResponsiveLayout(double width, Grid root, Border posterCard, StackPanel detail)
+    {
+        var compact = width < FluentTheme.CompactBreakpoint;
+        root.Padding = FluentTheme.PagePadding(width);
+        root.RowSpacing = compact ? 20 : 0;
+        root.ColumnDefinitions[0].Width = compact ? new GridLength(1, GridUnitType.Star) : new GridLength(280);
+        root.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        root.RowDefinitions[1].Height = compact ? GridLength.Auto : new GridLength(0);
+
+        Grid.SetColumn(posterCard, 0);
+        Grid.SetRow(posterCard, 0);
+        Grid.SetColumn(detail, compact ? 0 : 1);
+        Grid.SetRow(detail, compact ? 1 : 0);
+
+        posterCard.Height = compact ? Math.Min(420, Math.Max(260, width * 1.05)) : 420;
+        posterCard.MaxWidth = compact ? 340 : double.PositiveInfinity;
+        posterCard.HorizontalAlignment = compact ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
     }
 
     protected override async void OnNavigatedTo(NavigationEventArgs args)

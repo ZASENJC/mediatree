@@ -433,6 +433,15 @@ public sealed partial class PlayerPage : Page
         resumePrompt.Child = resumeActions;
         root.Children.Add(resumePrompt);
 
+        root.SizeChanged += (_, args) => ApplyPlayerResponsiveLayout(
+            args.NewSize.Width,
+            topChrome,
+            bottomChrome,
+            volumeSlider,
+            timeText,
+            episodePanel,
+            resumePrompt);
+
         Content = root;
         return new PlayerUi(
             root,
@@ -457,6 +466,25 @@ public sealed partial class PlayerPage : Page
             episodePanel,
             episodeCountText,
             episodeItems);
+    }
+
+    private static void ApplyPlayerResponsiveLayout(
+        double width,
+        Border topChrome,
+        Border bottomChrome,
+        Slider volumeSlider,
+        TextBlock timeText,
+        Border episodePanel,
+        Border resumePrompt)
+    {
+        var compact = width < FluentTheme.CompactBreakpoint;
+        topChrome.Margin = compact ? new Thickness(10) : new Thickness(16);
+        bottomChrome.Margin = compact ? new Thickness(10, 0, 10, 10) : new Thickness(16, 0, 16, 16);
+        volumeSlider.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        timeText.MinWidth = compact ? 96 : 128;
+        episodePanel.Width = Math.Min(332, Math.Max(220, width - 32));
+        episodePanel.Margin = compact ? new Thickness(0, 0, 10, 0) : new Thickness(0, 0, 16, 0);
+        resumePrompt.Margin = compact ? new Thickness(10, 0, 10, 104) : new Thickness(0, 0, 0, 132);
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs args)

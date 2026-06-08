@@ -52,10 +52,13 @@ public sealed partial class FolderPage : Page
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
         var headerStack = new StackPanel { Spacing = 14 };
-        var header = new Grid { ColumnSpacing = 16 };
+        var header = new Grid { ColumnSpacing = 16, RowSpacing = 12 };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        header.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
+        header.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
 
         var backButton = FluentTheme.ApplyButton(new Button
         {
@@ -126,6 +129,14 @@ public sealed partial class FolderPage : Page
 
         root.Children.Add(FluentTheme.Card(headerStack, new Thickness(16)));
 
+        root.SizeChanged += (_, args) => ApplyFolderResponsiveLayout(
+            args.NewSize.Width,
+            root,
+            header,
+            backButton,
+            titleStack,
+            sortBox);
+
         var statusText = new TextBlock
         {
             Text = "",
@@ -163,6 +174,33 @@ public sealed partial class FolderPage : Page
 
         Content = root;
         return (headerTitleText, headerSubtitleText, seasonTabs, sortBox, moviesGrid, loadingText, statusText);
+    }
+
+    private static void ApplyFolderResponsiveLayout(
+        double width,
+        Grid root,
+        Grid header,
+        Button backButton,
+        StackPanel titleStack,
+        ComboBox sortBox)
+    {
+        var compact = width < FluentTheme.CompactBreakpoint;
+        root.Padding = FluentTheme.PagePadding(width);
+        header.ColumnDefinitions[0].Width = compact ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+        header.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        header.ColumnDefinitions[2].Width = compact ? new GridLength(0) : GridLength.Auto;
+        header.RowDefinitions[1].Height = compact ? GridLength.Auto : new GridLength(0);
+        header.RowDefinitions[2].Height = compact ? GridLength.Auto : new GridLength(0);
+
+        Grid.SetColumn(backButton, 0);
+        Grid.SetRow(backButton, 0);
+        Grid.SetColumn(titleStack, compact ? 0 : 1);
+        Grid.SetRow(titleStack, compact ? 1 : 0);
+        Grid.SetColumn(sortBox, compact ? 0 : 2);
+        Grid.SetRow(sortBox, compact ? 2 : 0);
+        backButton.HorizontalAlignment = compact ? HorizontalAlignment.Left : HorizontalAlignment.Left;
+        sortBox.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        sortBox.MinWidth = compact ? 0 : 160;
     }
 
     protected override async void OnNavigatedTo(NavigationEventArgs args)
