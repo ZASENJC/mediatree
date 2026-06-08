@@ -172,6 +172,7 @@ public sealed partial class PlayerPage : Page
         topChrome.Child = topGrid;
 
         var backButton = OverlayButton("返回", "PlayerBackButton");
+        AttachPlaybackKeyHandler(backButton);
         backButton.Click += OnBackClicked;
         topGrid.Children.Add(backButton);
 
@@ -228,23 +229,28 @@ public sealed partial class PlayerPage : Page
         AddSpeedOption(speedBox, "1.5x", 1.5);
         AddSpeedOption(speedBox, "2.0x", 2);
         speedBox.SelectedIndex = 2;
+        AttachPlaybackKeyHandler(speedBox);
         speedBox.SelectionChanged += OnSpeedChanged;
         toolbar.Children.Add(speedBox);
 
         var subtitleButton = OverlayButton("字幕", "PlayerSubtitle");
+        AttachPlaybackKeyHandler(subtitleButton);
         subtitleButton.Click += OnSubtitleClicked;
         toolbar.Children.Add(subtitleButton);
 
         var audioButton = OverlayButton("音轨", "PlayerAudio");
+        AttachPlaybackKeyHandler(audioButton);
         audioButton.Click += OnAudioClicked;
         toolbar.Children.Add(audioButton);
 
         var episodeButton = OverlayButton("选集", "PlayerEpisodes");
         episodeButton.Visibility = Visibility.Collapsed;
+        AttachPlaybackKeyHandler(episodeButton);
         episodeButton.Click += OnEpisodeButtonClicked;
         toolbar.Children.Add(episodeButton);
 
         var fullScreenButton = OverlayButton("全屏", "PlayerFullScreen");
+        AttachPlaybackKeyHandler(fullScreenButton);
         fullScreenButton.Click += (_, _) => ToggleFullScreenMode();
         toolbar.Children.Add(fullScreenButton);
 
@@ -275,6 +281,7 @@ public sealed partial class PlayerPage : Page
             MinHeight = 28,
         };
         AutomationProperties.SetAutomationId(progressSlider, "PlayerProgressSlider");
+        AttachPlaybackKeyHandler(progressSlider);
         progressSlider.ValueChanged += OnProgressSliderChanged;
         bottomStack.Children.Add(progressSlider);
 
@@ -288,17 +295,10 @@ public sealed partial class PlayerPage : Page
             Spacing = 8,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        var skipBackButton = OverlayButton("-5s", "PlayerSkipBack");
-        skipBackButton.Click += async (_, _) => await SeekRelativeAsync(-SeekStepSeconds);
-        playbackControls.Children.Add(skipBackButton);
-
         var playPauseButton = OverlayButton("暂停", "PlayerPlayPause");
+        AttachPlaybackKeyHandler(playPauseButton);
         playPauseButton.Click += OnPlayPauseClicked;
         playbackControls.Children.Add(playPauseButton);
-
-        var skipForwardButton = OverlayButton("+5s", "PlayerSkipForward");
-        skipForwardButton.Click += async (_, _) => await SeekRelativeAsync(SeekStepSeconds);
-        playbackControls.Children.Add(skipForwardButton);
 
         var timeText = new TextBlock
         {
@@ -320,6 +320,7 @@ public sealed partial class PlayerPage : Page
             HorizontalAlignment = HorizontalAlignment.Right,
         };
         var volumeButton = OverlayButton("静音", "PlayerMute");
+        AttachPlaybackKeyHandler(volumeButton);
         volumeButton.Click += async (_, _) => await ToggleMuteAsync();
         volumeControls.Children.Add(volumeButton);
 
@@ -332,6 +333,7 @@ public sealed partial class PlayerPage : Page
             VerticalAlignment = VerticalAlignment.Center,
         };
         AutomationProperties.SetAutomationId(volumeSlider, "PlayerVolumeSlider");
+        AttachPlaybackKeyHandler(volumeSlider);
         volumeSlider.ValueChanged += OnVolumeChanged;
         volumeControls.Children.Add(volumeSlider);
         Grid.SetColumn(volumeControls, 1);
@@ -415,6 +417,7 @@ public sealed partial class PlayerPage : Page
             MinHeight = 36,
         }, FluentButtonStyle.Overlay);
         AutomationProperties.SetAutomationId(resumeButton, "PlayerResumeButton");
+        AttachPlaybackKeyHandler(resumeButton);
         resumeButton.Click += OnResumeClicked;
         resumeActions.Children.Add(resumeButton);
 
@@ -424,6 +427,7 @@ public sealed partial class PlayerPage : Page
             MinHeight = 36,
         }, FluentButtonStyle.Overlay);
         AutomationProperties.SetAutomationId(closeResumeButton, "PlayerResumeClose");
+        AttachPlaybackKeyHandler(closeResumeButton);
         closeResumeButton.Click += (_, _) => HideResumePrompt();
         resumeActions.Children.Add(closeResumeButton);
         resumePrompt.Child = resumeActions;
@@ -579,6 +583,7 @@ public sealed partial class PlayerPage : Page
             Padding = new Thickness(10, 8, 10, 8),
         }, active ? FluentButtonStyle.Accent : FluentButtonStyle.Overlay);
         AutomationProperties.SetAutomationId(button, $"PlayerEpisode_{episode.Id}");
+        AttachPlaybackKeyHandler(button);
         button.Click += async (_, _) =>
         {
             if (episode.Id == _movieId)
@@ -1155,6 +1160,31 @@ public sealed partial class PlayerPage : Page
         ShowChrome(true);
     }
 
+    private void AttachPlaybackKeyHandler(UIElement element)
+    {
+        element.KeyDown += OnPlayerControlKeyDown;
+        element.KeyUp += OnPlayerControlKeyUp;
+    }
+
+    private async void OnPlayerControlKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (!IsPlayPauseKey(args.Key))
+        {
+            return;
+        }
+
+        args.Handled = true;
+        await TogglePlayPauseAsync();
+    }
+
+    private void OnPlayerControlKeyUp(object sender, KeyRoutedEventArgs args)
+    {
+        if (IsPlayPauseKey(args.Key))
+        {
+            args.Handled = true;
+        }
+    }
+
     private async void OnKeyDown(object sender, KeyRoutedEventArgs args)
     {
         switch (args.Key)
@@ -1194,6 +1224,9 @@ public sealed partial class PlayerPage : Page
                 break;
         }
     }
+
+    private static bool IsPlayPauseKey(VirtualKey key)
+        => key == VirtualKey.Space || key == VirtualKey.K;
 
     private void HandleEscape()
     {
