@@ -12,6 +12,7 @@ using MediaTree.Windows.Styles;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
@@ -27,13 +28,19 @@ public sealed partial class PlayerPage : Page
         Grid Root,
         MpvPlayerControl PlayerHost,
         Border TopChrome,
+        Border BottomChrome,
+        Button PlayPauseButton,
         Button SubtitleButton,
         Button AudioButton,
         Button EpisodeButton,
+        Button VolumeButton,
         Button FullScreenButton,
+        Slider ProgressSlider,
+        Slider VolumeSlider,
         ComboBox SpeedBox,
         TextBlock TitleText,
         TextBlock TrackSummaryText,
+        TextBlock TimeText,
         TextBlock StatusText,
         Border ResumePrompt,
         TextBlock ResumeText,
@@ -44,21 +51,27 @@ public sealed partial class PlayerPage : Page
     private readonly DispatcherTimer _chromeTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     private readonly Button _audioButton;
+    private readonly Border _bottomChrome;
     private readonly Button _episodeButton;
     private readonly TextBlock _episodeCountText;
     private readonly StackPanel _episodeItems;
     private readonly Border _episodePanel;
     private readonly Button _fullScreenButton;
+    private readonly Button _playPauseButton;
     private readonly MpvPlayerControl _playerHost;
+    private readonly Slider _progressSlider;
     private readonly TextBlock _resumeText;
     private readonly Border _resumePrompt;
     private readonly Grid _root;
     private readonly ComboBox _speedBox;
     private readonly TextBlock _statusText;
     private readonly Button _subtitleButton;
+    private readonly TextBlock _timeText;
     private readonly TextBlock _titleText;
     private readonly Border _topChrome;
     private readonly TextBlock _trackSummaryText;
+    private readonly Button _volumeButton;
+    private readonly Slider _volumeSlider;
     private readonly List<MovieDto> _episodes = [];
     private IMpvPlayerService? _player;
     private MovieDto? _movie;
@@ -67,7 +80,9 @@ public sealed partial class PlayerPage : Page
     private bool _controlsVisible = true;
     private bool _episodePanelOpen;
     private bool _fullScreenMode;
+    private bool _ignoreProgress;
     private bool _ignoreSpeed;
+    private bool _ignoreVolume;
     private bool _muted;
     private bool _playbackStarted;
     private double _duration;
@@ -80,13 +95,19 @@ public sealed partial class PlayerPage : Page
         _root = ui.Root;
         _playerHost = ui.PlayerHost;
         _topChrome = ui.TopChrome;
+        _bottomChrome = ui.BottomChrome;
+        _playPauseButton = ui.PlayPauseButton;
         _subtitleButton = ui.SubtitleButton;
         _audioButton = ui.AudioButton;
         _episodeButton = ui.EpisodeButton;
+        _volumeButton = ui.VolumeButton;
         _fullScreenButton = ui.FullScreenButton;
+        _progressSlider = ui.ProgressSlider;
+        _volumeSlider = ui.VolumeSlider;
         _speedBox = ui.SpeedBox;
         _titleText = ui.TitleText;
         _trackSummaryText = ui.TrackSummaryText;
+        _timeText = ui.TimeText;
         _statusText = ui.StatusText;
         _resumePrompt = ui.ResumePrompt;
         _resumeText = ui.ResumeText;
@@ -140,6 +161,7 @@ public sealed partial class PlayerPage : Page
             BorderThickness = new Thickness(0),
             VerticalAlignment = VerticalAlignment.Top,
             HorizontalAlignment = HorizontalAlignment.Stretch,
+            RequestedTheme = ElementTheme.Dark,
         };
         AutomationProperties.SetAutomationId(topChrome, "PlayerTopChrome");
 
@@ -229,6 +251,93 @@ public sealed partial class PlayerPage : Page
         Grid.SetColumn(toolbarScroll, 2);
         topGrid.Children.Add(toolbarScroll);
         root.Children.Add(topChrome);
+
+        var bottomChrome = new Border
+        {
+            Margin = new Thickness(16, 0, 16, 16),
+            Padding = new Thickness(0),
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            BorderThickness = new Thickness(0),
+            VerticalAlignment = VerticalAlignment.Bottom,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            RequestedTheme = ElementTheme.Dark,
+        };
+        AutomationProperties.SetAutomationId(bottomChrome, "PlayerBottomChrome");
+
+        var bottomStack = new StackPanel { Spacing = 6 };
+        bottomChrome.Child = bottomStack;
+
+        var progressSlider = new Slider
+        {
+            Minimum = 0,
+            Maximum = 1,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            MinHeight = 28,
+        };
+        AutomationProperties.SetAutomationId(progressSlider, "PlayerProgressSlider");
+        progressSlider.ValueChanged += OnProgressSliderChanged;
+        bottomStack.Children.Add(progressSlider);
+
+        var controlGrid = new Grid { ColumnSpacing = 12 };
+        controlGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        controlGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var playbackControls = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var skipBackButton = OverlayButton("-5s", "PlayerSkipBack");
+        skipBackButton.Click += async (_, _) => await SeekRelativeAsync(-SeekStepSeconds);
+        playbackControls.Children.Add(skipBackButton);
+
+        var playPauseButton = OverlayButton("暂停", "PlayerPlayPause");
+        playPauseButton.Click += OnPlayPauseClicked;
+        playbackControls.Children.Add(playPauseButton);
+
+        var skipForwardButton = OverlayButton("+5s", "PlayerSkipForward");
+        skipForwardButton.Click += async (_, _) => await SeekRelativeAsync(SeekStepSeconds);
+        playbackControls.Children.Add(skipForwardButton);
+
+        var timeText = new TextBlock
+        {
+            Text = "0:00 / 0:00",
+            Foreground = Brush(0xFF, 0xFF, 0xFF),
+            FontSize = 13,
+            MinWidth = 128,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        AutomationProperties.SetAutomationId(timeText, "PlayerTime");
+        playbackControls.Children.Add(timeText);
+        controlGrid.Children.Add(playbackControls);
+
+        var volumeControls = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+        var volumeButton = OverlayButton("静音", "PlayerMute");
+        volumeButton.Click += async (_, _) => await ToggleMuteAsync();
+        volumeControls.Children.Add(volumeButton);
+
+        var volumeSlider = new Slider
+        {
+            Minimum = 0,
+            Maximum = 100,
+            Value = 80,
+            Width = 128,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        AutomationProperties.SetAutomationId(volumeSlider, "PlayerVolumeSlider");
+        volumeSlider.ValueChanged += OnVolumeChanged;
+        volumeControls.Children.Add(volumeSlider);
+        Grid.SetColumn(volumeControls, 1);
+        controlGrid.Children.Add(volumeControls);
+        bottomStack.Children.Add(controlGrid);
+        root.Children.Add(bottomChrome);
 
         var episodePanel = new Border
         {
@@ -325,13 +434,19 @@ public sealed partial class PlayerPage : Page
             root,
             playerHost,
             topChrome,
+            bottomChrome,
+            playPauseButton,
             subtitleButton,
             audioButton,
             episodeButton,
+            volumeButton,
             fullScreenButton,
+            progressSlider,
+            volumeSlider,
             speedBox,
             titleText,
             trackSummaryText,
+            timeText,
             statusText,
             resumePrompt,
             resumeText,
@@ -387,7 +502,7 @@ public sealed partial class PlayerPage : Page
 
         var source = File.Exists(movie.Path) ? movie.Path : await AppServices.Api.BuildStreamUrlAsync(movie.Id);
         await _player.LoadAsync(source);
-        await SetVolumeAsync(_lastKnownVolume, showOsd: false);
+        await SetVolumeAsync(_volumeSlider.Value, showOsd: false);
 
         if (progress.Position > 5)
         {
@@ -524,6 +639,17 @@ public sealed partial class PlayerPage : Page
         {
             _state = state;
             _duration = state.Duration;
+            _ignoreProgress = true;
+            _progressSlider.Maximum = Math.Max(1, state.Duration);
+            _progressSlider.Value = Math.Clamp(state.Position, 0, _progressSlider.Maximum);
+            _ignoreProgress = false;
+
+            if (!_ignoreVolume)
+            {
+                _ignoreVolume = true;
+                _volumeSlider.Value = Math.Clamp(state.Volume, 0, 100);
+                _ignoreVolume = false;
+            }
 
             if (state.Volume > 0)
             {
@@ -536,6 +662,7 @@ public sealed partial class PlayerPage : Page
             }
 
             SelectSpeedBox(state.Speed);
+            UpdatePlaybackLabels(state);
             UpdateTrackLabels(state);
 
             if (state.Paused)
@@ -547,6 +674,13 @@ public sealed partial class PlayerPage : Page
                 ScheduleChromeHide();
             }
         });
+    }
+
+    private void UpdatePlaybackLabels(PlayerStateSnapshot state)
+    {
+        _playPauseButton.Content = state.Paused ? "播放" : "暂停";
+        _volumeButton.Content = _muted ? "取消静音" : "静音";
+        _timeText.Text = $"{FormatTime(state.Position)} / {FormatTime(state.Duration)}";
     }
 
     private void UpdateTrackLabels(PlayerStateSnapshot state)
@@ -619,11 +753,46 @@ public sealed partial class PlayerPage : Page
         }
     }
 
+    private async void OnProgressSliderChanged(object sender, RangeBaseValueChangedEventArgs args)
+    {
+        if (_ignoreProgress || _player is null || Math.Abs(args.NewValue - _state.Position) < 1)
+        {
+            return;
+        }
+
+        try
+        {
+            var target = Math.Clamp(args.NewValue, 0, Math.Max(1, _duration));
+            var delta = target - _state.Position;
+            await _player.SeekAsync(target);
+            ShowSeekOsd(delta, target);
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to seek native playback.");
+            ShowPlaybackError($"跳转失败：{ex.Message}");
+        }
+    }
+
+    private async void OnVolumeChanged(object sender, RangeBaseValueChangedEventArgs args)
+    {
+        if (_ignoreVolume)
+        {
+            return;
+        }
+
+        await SetVolumeAsync(args.NewValue, showOsd: true);
+    }
+
     private async Task SetVolumeAsync(double volume, bool showOsd)
     {
         try
         {
             var value = Math.Clamp(volume, 0, 100);
+            _ignoreVolume = true;
+            _volumeSlider.Value = value;
+            _ignoreVolume = false;
+
             _muted = value <= 0;
             if (value > 0)
             {
@@ -635,6 +804,7 @@ public sealed partial class PlayerPage : Page
                 await _player.SetVolumeAsync(value);
             }
 
+            _volumeButton.Content = _muted ? "取消静音" : "静音";
             if (showOsd)
             {
                 ShowOsd($"音量 {Math.Round(value)}%");
@@ -654,7 +824,7 @@ public sealed partial class PlayerPage : Page
 
     private async Task ChangeVolumeAsync(double delta)
     {
-        await SetVolumeAsync(Math.Clamp(_state.Volume + delta, 0, 100), showOsd: true);
+        await SetVolumeAsync(Math.Clamp(_volumeSlider.Value + delta, 0, 100), showOsd: true);
     }
 
     private async void OnSpeedChanged(object sender, SelectionChangedEventArgs args)
@@ -951,7 +1121,9 @@ public sealed partial class PlayerPage : Page
         _controlsVisible = visible;
         var opacity = visible ? 1 : 0;
         _topChrome.Opacity = opacity;
+        _bottomChrome.Opacity = opacity;
         _topChrome.IsHitTestVisible = visible;
+        _bottomChrome.IsHitTestVisible = visible;
     }
 
     private void ScheduleChromeHide()
@@ -1211,6 +1383,9 @@ public sealed partial class PlayerPage : Page
         _statusText.Text = message;
         _statusText.Visibility = Visibility.Visible;
         ShowChrome(true);
+        _playPauseButton.IsEnabled = false;
+        _progressSlider.IsEnabled = false;
+        _volumeSlider.IsEnabled = false;
         _speedBox.IsEnabled = false;
         _subtitleButton.IsEnabled = false;
         _audioButton.IsEnabled = false;
