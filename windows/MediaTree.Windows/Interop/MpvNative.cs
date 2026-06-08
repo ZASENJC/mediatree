@@ -88,9 +88,32 @@ internal static class MpvNative
         return mpv_get_property_double(handle, name, MpvFormat.Double, out var value) >= 0 ? value : 0;
     }
 
+    public static long GetInt64(IntPtr handle, string name)
+    {
+        return mpv_get_property_int64(handle, name, MpvFormat.Int64, out var value) >= 0 ? value : 0;
+    }
+
     public static bool GetFlag(IntPtr handle, string name)
     {
         return mpv_get_property_flag(handle, name, MpvFormat.Flag, out var value) >= 0 && value != 0;
+    }
+
+    public static string GetString(IntPtr handle, string name)
+    {
+        var result = mpv_get_property_string(handle, name, MpvFormat.String, out var value);
+        if (result < 0 || value == IntPtr.Zero)
+        {
+            return "";
+        }
+
+        try
+        {
+            return Marshal.PtrToStringUTF8(value) ?? "";
+        }
+        finally
+        {
+            mpv_free(value);
+        }
     }
 
     public static IntPtr GetDisplaySwapchain(IntPtr handle)
@@ -166,11 +189,17 @@ internal static class MpvNative
     [DllImport(MpvLibrary, EntryPoint = "mpv_get_property", CallingConvention = CallingConvention.Cdecl)]
     private static extern int mpv_get_property_int64(IntPtr handle, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, MpvFormat format, out long data);
 
+    [DllImport(MpvLibrary, EntryPoint = "mpv_get_property", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int mpv_get_property_string(IntPtr handle, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, MpvFormat format, out IntPtr data);
+
     [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
     private static extern int mpv_observe_property(IntPtr handle, ulong replyUserData, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, MpvFormat format);
 
     [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
     private static extern IntPtr mpv_wait_event(IntPtr handle, double timeout);
+
+    [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
+    private static extern void mpv_free(IntPtr data);
 
     [DllImport(MpvLibrary, CallingConvention = CallingConvention.Cdecl)]
     private static extern void mpv_terminate_destroy(IntPtr handle);

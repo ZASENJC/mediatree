@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaTree.Windows.Interop;
@@ -49,7 +51,7 @@ public sealed class LibMpvPlayerService : IMpvPlayerService
     public Task SeekAsync(double seconds, CancellationToken cancellationToken = default)
     {
         EnsureInitialized();
-        MpvNative.Command(_handle, "seek", seconds.ToString(System.Globalization.CultureInfo.InvariantCulture), "absolute");
+        MpvNative.Command(_handle, "seek", seconds.ToString(CultureInfo.InvariantCulture), "absolute");
         PollState();
         return Task.CompletedTask;
     }
@@ -57,28 +59,32 @@ public sealed class LibMpvPlayerService : IMpvPlayerService
     public Task SetVolumeAsync(double volume, CancellationToken cancellationToken = default)
     {
         EnsureInitialized();
-        MpvNative.Command(_handle, "set", "volume", Math.Clamp(volume, 0, 100).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        MpvNative.Command(_handle, "set", "volume", Math.Clamp(volume, 0, 100).ToString(CultureInfo.InvariantCulture));
+        PollState();
         return Task.CompletedTask;
     }
 
     public Task SetSpeedAsync(double speed, CancellationToken cancellationToken = default)
     {
         EnsureInitialized();
-        MpvNative.Command(_handle, "set", "speed", Math.Clamp(speed, 0.25, 4).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        MpvNative.Command(_handle, "set", "speed", Math.Clamp(speed, 0.25, 4).ToString(CultureInfo.InvariantCulture));
+        PollState();
         return Task.CompletedTask;
     }
 
     public Task SelectSubtitleAsync(int subtitleId, CancellationToken cancellationToken = default)
     {
         EnsureInitialized();
-        MpvNative.Command(_handle, "set", "sid", subtitleId <= 0 ? "no" : subtitleId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        MpvNative.Command(_handle, "set", "sid", subtitleId <= 0 ? "no" : subtitleId.ToString(CultureInfo.InvariantCulture));
+        PollState();
         return Task.CompletedTask;
     }
 
     public Task SelectAudioAsync(int audioId, CancellationToken cancellationToken = default)
     {
         EnsureInitialized();
-        MpvNative.Command(_handle, "set", "aid", audioId <= 0 ? "auto" : audioId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        MpvNative.Command(_handle, "set", "aid", audioId <= 0 ? "auto" : audioId.ToString(CultureInfo.InvariantCulture));
+        PollState();
         return Task.CompletedTask;
     }
 
@@ -154,10 +160,7 @@ public sealed class LibMpvPlayerService : IMpvPlayerService
                 return;
             }
 
-            var next = new PlayerStateSnapshot(
-                MpvNative.GetDouble(_handle, "time-pos"),
-                MpvNative.GetDouble(_handle, "duration"),
-                MpvNative.GetFlag(_handle, "pause"));
+            var next = BuildSnapshot(_handle);
             lock (_sync)
             {
                 _currentState = next;
@@ -171,6 +174,62 @@ public sealed class LibMpvPlayerService : IMpvPlayerService
         {
             ShellLogger.Error(ex, "Failed to poll libmpv state.");
         }
+    }
+
+    private static PlayerStateSnapshot BuildSnapshot(IntPtr handle)
+    {
+        var speed = MpvNative.GetDouble(handle, "speed");
+        if (speed <= 0)
+        {
+            speed = 1;
+        }
+
+        return new PlayerStateSnapshot(
+            MpvNative.GetDouble(handle, "time-pos"),
+            MpvNative.GetDouble(handle, "duration"),
+            MpvNative.GetFlag(handle, "pause"),
+            Math.Clamp(MpvNative.GetDouble(handle, "volume"), 0, 100),
+            speed,
+            ReadSelectedTrackId(handle, "sid"),
+            ReadSelectedTrackId(handle, "aid"),
+            ReadTracks(handle));
+    }
+
+    private static IReadOnlyList<PlayerTrack> ReadTracks(IntPtr handle)
+    {
+        var count = (int)Math.Clamp(MpvNative.GetInt64(handle, "track-list/count"), 0, 256);
+        if (count == 0)
+        {
+            return Array.Empty<PlayerTrack>();
+        }
+
+        var tracks = new List<PlayerTrack>(count);
+        for (var index = 0; index < count; index++)
+        {
+            var prefix = $"track-list/{index}";
+            var id = (int)MpvNative.GetInt64(handle, $"{prefix}/id");
+            var type = MpvNative.GetString(handle, $"{prefix}/type");
+            if (id <= 0 || string.IsNullOrWhiteSpace(type))
+            {
+                continue;
+            }
+
+            tracks.Add(new PlayerTrack(
+                id,
+                type,
+                MpvNative.GetString(handle, $"{prefix}/title"),
+                MpvNative.GetString(handle, $"{prefix}/lang"),
+                MpvNative.GetString(handle, $"{prefix}/codec"),
+                MpvNative.GetFlag(handle, $"{prefix}/external")));
+        }
+
+        return tracks;
+    }
+
+    private static int ReadSelectedTrackId(IntPtr handle, string propertyName)
+    {
+        var value = MpvNative.GetString(handle, propertyName);
+        return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id) ? id : 0;
     }
 
     private void UpdateSwapchain()

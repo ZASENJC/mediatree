@@ -20,6 +20,19 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void PlayerStateSnapshotCarriesTrackMetadataWithSafeDefaults()
+    {
+        var snapshot = new PlayerStateSnapshot(1, 2, false);
+        var track = new PlayerTrack(3, "audio", "Japanese", "jpn", "aac", true);
+
+        Assert.Empty(snapshot.Tracks);
+        Assert.Contains("Japanese", track.DisplayName);
+        Assert.Contains("JPN", track.DisplayName);
+        Assert.Contains("AAC", track.DisplayName);
+        Assert.Contains("外部", track.DisplayName);
+    }
+
+    [Fact]
     public void DtoDefaultsMatchWindowsFirstRunExpectations()
     {
         var root = new MediaRootDto();

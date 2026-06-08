@@ -16,11 +16,13 @@ public sealed partial class ShellPage : Page
     private readonly Button _browseButton;
     private readonly Button _favoritesButton;
     private readonly Button _homeButton;
+    private readonly Border _navigationHost;
+    private readonly ColumnDefinition _navigationColumn;
     private readonly Button _settingsButton;
 
     public ShellPage()
     {
-        (_contentFrame, _homeButton, _browseButton, _favoritesButton, _settingsButton) = BuildContent();
+        (_contentFrame, _homeButton, _browseButton, _favoritesButton, _settingsButton, _navigationHost, _navigationColumn) = BuildContent();
         Current = this;
         Loaded += OnLoaded;
     }
@@ -65,6 +67,12 @@ public sealed partial class ShellPage : Page
         NavigateToLibrary();
     }
 
+    public void SetNavigationChromeVisible(bool visible)
+    {
+        _navigationHost.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        _navigationColumn.Width = visible ? new GridLength(248) : new GridLength(0);
+    }
+
     private void RemoveTopPlayerPagesFromBackStack()
     {
         while (_contentFrame.BackStack.Count > 0)
@@ -98,7 +106,7 @@ public sealed partial class ShellPage : Page
         }
     }
 
-    private (Frame contentFrame, Button homeButton, Button browseButton, Button favoritesButton, Button settingsButton) BuildContent()
+    private (Frame contentFrame, Button homeButton, Button browseButton, Button favoritesButton, Button settingsButton, Border navigationHost, ColumnDefinition navigationColumn) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "ShellPage");
 
@@ -107,7 +115,8 @@ public sealed partial class ShellPage : Page
             Background = FluentTheme.Canvas,
             RequestedTheme = ElementTheme.Light,
         };
-        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(248) });
+        var navigationColumn = new ColumnDefinition { Width = new GridLength(248) };
+        root.ColumnDefinitions.Add(navigationColumn);
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
         var navigationHost = new Border
@@ -161,7 +170,7 @@ public sealed partial class ShellPage : Page
         root.Children.Add(contentFrame);
 
         Content = root;
-        return (contentFrame, homeButton, browseButton, favoritesButton, settingsButton);
+        return (contentFrame, homeButton, browseButton, favoritesButton, settingsButton, navigationHost, navigationColumn);
     }
 
     private static Button CreateNavigationButton(string label, string automationId)

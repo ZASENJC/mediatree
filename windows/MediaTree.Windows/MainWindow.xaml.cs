@@ -5,6 +5,8 @@ using MediaTree.Windows.Models;
 using MediaTree.Windows.Services;
 using MediaTree.Windows.Styles;
 using MediaTree.Windows.Views;
+using Microsoft.UI;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -20,6 +22,8 @@ public sealed partial class MainWindow : Window
     private readonly Grid _loadingOverlay;
     private readonly TextBlock _statusText;
     private readonly StackPanel _startupActions;
+    private AppWindow? _appWindow;
+    private bool _isFullScreen;
     private bool _startupStarted;
 
     public MainWindow()
@@ -53,6 +57,31 @@ public sealed partial class MainWindow : Window
         _loadingOverlay.Visibility = Visibility.Collapsed;
         _rootFrame.Navigate(typeof(LoginPage));
         ShellLogger.Info("Native login page navigation requested.");
+    }
+
+    public void SetFullScreen(bool enabled)
+    {
+        var appWindow = GetAppWindow();
+        if (enabled == _isFullScreen)
+        {
+            return;
+        }
+
+        appWindow.SetPresenter(enabled ? AppWindowPresenterKind.FullScreen : AppWindowPresenterKind.Overlapped);
+        _isFullScreen = enabled;
+    }
+
+    private AppWindow GetAppWindow()
+    {
+        if (_appWindow is not null)
+        {
+            return _appWindow;
+        }
+
+        var hwnd = WindowNative.GetWindowHandle(this);
+        var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
+        _appWindow = AppWindow.GetFromWindowId(windowId);
+        return _appWindow;
     }
 
     private (Frame rootFrame, Grid loadingOverlay, TextBlock statusText, StackPanel startupActions) BuildContent()
