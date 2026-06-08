@@ -457,7 +457,7 @@ export default function Home() {
                     <div className="absolute bottom-0 left-0 right-0 min-w-0 p-3">
                       <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-white drop-shadow">{showSourceName ? node.name : (node.display_title || node.name)}</p>
                       <p className="mt-1 text-xs text-gray-400">
-                        {node.movie_count} 部{node.special_count ? ` · ${node.special_count} 花絮` : ''}
+                        {node.movie_count} 项{node.special_count ? ` · ${node.special_count} 花絮` : ''}
                       </p>
                     </div>
                     </>
