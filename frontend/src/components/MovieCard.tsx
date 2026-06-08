@@ -87,10 +87,11 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const progressPercent = Math.max(0, Math.min(100, movie.progress_percent || 0))
   const showProgress = !watched && progressPercent > 0 && progressPercent < 90
 
-  const checkTmdbConfig = useCallback(async () => {
+  const checkTmdbConfig = useCallback(async (scraperName: string = manualScraper) => {
     try {
       const cfg = await api.getConfig()
-      if (!cfg.tmdb_configured && (manualScraper === 'auto' || manualScraper.startsWith('tmdb'))) {
+      const normalizedScraper = scraperName === 'tmdb' ? 'tmdb_movie' : (scraperName || 'auto')
+      if (!cfg.tmdb_configured && (normalizedScraper === 'auto' || normalizedScraper.startsWith('tmdb'))) {
         showToast('TMDB API 未配置，刮削可能失败，请在设置中填写 API Key')
       }
     } catch {}
@@ -98,7 +99,9 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
 
   const handleRescrape = useCallback(async () => {
     try {
-      await checkTmdbConfig()
+      const librarySettings = await api.librarySettings().catch(() => [])
+      const libraryScraper = librarySettings.find(item => item.media_root === movie.media_root)?.scraper || 'auto'
+      await checkTmdbConfig(libraryScraper)
       await api.rescrapeMovie(movie.id)
       clearCache()
       setCoverVersion(String(Date.now()))
@@ -107,7 +110,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       console.error('Rescrape failed for movie', movie.id, err)
       showToast(`刮削失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
     }
-  }, [movie.id, onUpdated, checkTmdbConfig])
+  }, [movie.id, movie.media_root, onUpdated, checkTmdbConfig])
 
   const handleSearch = useCallback(async () => {
     const query = manualQuery.trim()

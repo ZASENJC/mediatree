@@ -343,6 +343,15 @@ def build_fallback_chain(preferred: str) -> list[str]:
     return ["auto"]
 
 
+def build_configured_rescrape_chain(preferred: str) -> list[str]:
+    preferred = normalize_scraper_name(preferred)
+    if preferred == "none":
+        return []
+    if preferred in {"auto", "tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi", "javdatabase"}:
+        return [preferred]
+    return ["auto"]
+
+
 # ── Thin wrappers for rescrape/manual scrape compat ─────────────────────────
 
 async def _search_scraper_candidates(scraper_name: str, query: str, media_type: str | None = None, limit: int = 10) -> list[ScrapeCandidate]:
@@ -1046,7 +1055,7 @@ async def rescrape_movie(movie_id: int) -> dict:
     if scraper == "none":
         return {"ok": False, "error": "Scraper not configured for this library"}
 
-    chain = build_fallback_chain(scraper)
+    chain = build_configured_rescrape_chain(scraper)
 
     row_clean_title = (movie.get("clean_title") or "").strip()
     search_name = folder_name

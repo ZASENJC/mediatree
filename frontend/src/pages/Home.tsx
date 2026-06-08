@@ -39,6 +39,11 @@ const sortOptions = [
   { key: 'random', label: '随机' },
 ]
 
+function scraperMayNeedTmdb(scraper?: string): boolean {
+  const normalized = scraper === 'tmdb' ? 'tmdb_movie' : (scraper || 'auto')
+  return normalized === 'auto' || normalized.startsWith('tmdb')
+}
+
 function sortMovies(movies: Movie[], sort: SortMode): Movie[] {
   const sorted = [...movies]
   const toTime = (value?: string) => value ? new Date(value).getTime() || 0 : 0
@@ -191,8 +196,12 @@ export default function Home() {
   const handleRescanFolder = useCallback(async () => {
     clearCache()
     try {
-      const cfg = await api.getConfig()
-      if (!cfg.tmdb_configured) {
+      const [cfg, librarySettings] = await Promise.all([
+        api.getConfig(),
+        api.librarySettings().catch(() => []),
+      ])
+      const libraryScraper = librarySettings.find(item => item.media_root === activeMediaRoot)?.scraper || 'auto'
+      if (!cfg.tmdb_configured && scraperMayNeedTmdb(libraryScraper)) {
         showToast('TMDB API 未配置，刮削可能失败，请在设置中填写 API Key')
       }
       await api.rescrapeFolder(activeFolderPath, activeMediaRoot)
