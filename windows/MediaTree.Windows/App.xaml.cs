@@ -11,6 +11,7 @@ public partial class App : Application
     public App()
     {
         UnhandledException += OnUnhandledException;
+        RequestedTheme = ApplicationTheme.Light;
         InitializeComponent();
     }
 
@@ -32,5 +33,6 @@ public partial class App : Application
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs args)
     {
         ShellLogger.Error(args.Exception, "Unhandled WinUI exception.");
+        args.Handled = true;
     }
 }

@@ -49,10 +49,10 @@ public sealed class BackendProcessService : IDisposable
         return BackendUri;
     }
 
-    public async Task RestartAsync()
+    public async Task<Uri> RestartAsync()
     {
         Stop();
-        await StartAsync();
+        return await StartAsync();
     }
 
     private async Task WaitForHealthAsync(CancellationToken cancellationToken)

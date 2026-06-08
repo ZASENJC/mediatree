@@ -6,6 +6,12 @@
     "windows_reason": "应用包级更新；不需要更新 Windows 桌面版基础运行时。"
   },
   "versions": {
+    "1.0.12": {
+      "requires_image_update": false,
+      "requires_windows_base_update": true,
+      "reason": "应用包级更新；不需要完整 Docker 镜像更新。",
+      "windows_reason": "Windows 桌面版主界面改为 WinUI 3 原生客户端并接入 libmpv，需要安装新版 Windows 包。"
+    },
     "1.0.10": {
       "requires_image_update": true,
       "requires_windows_base_update": false,

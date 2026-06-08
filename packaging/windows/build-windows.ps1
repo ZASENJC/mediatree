@@ -4,7 +4,9 @@ param(
   [switch]$SkipTests,
   [string]$AppInstallerUri = "https://github.com/ZASENJC/mediatree/releases/latest/download/",
   [string]$MpvArchiveUrl = "https://github.com/zhongfly/mpv-winbuild/releases/download/2026-06-07-43b14a4c9f/mpv-x86_64-20260607-git-43b14a4c9f.7z",
+  [string]$LibMpvArchiveUrl = "https://github.com/zhongfly/mpv-winbuild/releases/download/2026-06-07-43b14a4c9f/mpv-dev-x86_64-20260607-git-43b14a4c9f.7z",
   [string]$MpvArchivePath = "",
+  [string]$LibMpvArchivePath = "",
   [string]$SevenZipUrl = "https://www.7-zip.org/a/7zr.exe",
   [switch]$SkipMpvDownload,
   [string]$SigningPfxPath = "",
@@ -217,7 +219,7 @@ function Expand-MpvArchive {
   New-Item -ItemType Directory -Force -Path $Destination | Out-Null
   $sevenZip = Resolve-7ZipTool
   Invoke-Native $sevenZip x $ArchivePath "-o$Destination" -y
-  if (Get-ChildItem -Path $Destination -Recurse -Filter "mpv.exe" -ErrorAction SilentlyContinue | Select-Object -First 1) {
+  if (Get-ChildItem -Path $Destination -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1) {
     return
   }
 
@@ -243,6 +245,7 @@ function Install-BundledMpv {
 
   $cacheDir = Join-Path $Root "build/windows/mpv-cache"
   $extractDir = Join-Path $Root "build/windows/mpv-extract"
+  $libExtractDir = Join-Path $Root "build/windows/libmpv-extract"
   New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
   $archive = $MpvArchivePath
   if (-not $archive) {
@@ -263,6 +266,8 @@ function Install-BundledMpv {
   if (-not $mpvExe) {
     throw "mpv.exe was not found in archive: $archive"
   }
+  $mpvDll = Get-ChildItem -Path $mpvExe.Directory.FullName -Filter "mpv-2.dll" -ErrorAction SilentlyContinue |
+    Select-Object -First 1
 
   if (Test-Path $Destination) {
     Remove-Item $Destination -Recurse -Force
@@ -271,6 +276,42 @@ function Install-BundledMpv {
   Copy-Item (Join-Path $mpvExe.Directory.FullName "*") $Destination -Recurse -Force
   if (-not (Test-Path (Join-Path $Destination "mpv.exe"))) {
     throw "Bundled mpv.exe was not copied to $Destination"
+  }
+
+  if (-not $mpvDll) {
+    $libArchive = $LibMpvArchivePath
+    if (-not $libArchive) {
+      $libArchive = Join-Path $cacheDir (Split-Path ([Uri]$LibMpvArchiveUrl).LocalPath -Leaf)
+    }
+
+    if (-not (Test-Path $libArchive)) {
+      if ($SkipMpvDownload) {
+        throw "Bundled libmpv archive is missing and SkipMpvDownload was set: $libArchive"
+      }
+      Write-Host "Downloading bundled libmpv: $LibMpvArchiveUrl"
+      Invoke-WebRequest -Uri $LibMpvArchiveUrl -OutFile $libArchive
+    }
+
+    Expand-MpvArchive -ArchivePath $libArchive -Destination $libExtractDir
+    $mpvDll = Get-ChildItem -Path $libExtractDir -Recurse -Filter "mpv-2.dll" -ErrorAction SilentlyContinue |
+      Select-Object -First 1
+    if (-not $mpvDll) {
+      $mpvDll = Get-ChildItem -Path $libExtractDir -Recurse -Filter "libmpv-2.dll" -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    }
+  }
+
+  if (-not $mpvDll) {
+    throw "mpv-2.dll/libmpv-2.dll was not found in bundled mpv archives."
+  }
+
+  Copy-Item (Join-Path $mpvDll.Directory.FullName "*") $Destination -Recurse -Force
+  if ($mpvDll.Name -ieq "libmpv-2.dll") {
+    Copy-Item $mpvDll.FullName (Join-Path $Destination "mpv-2.dll") -Force
+  }
+
+  if (-not (Test-Path (Join-Path $Destination "mpv-2.dll"))) {
+    throw "Bundled mpv-2.dll was not copied to $Destination"
   }
 }
 
@@ -381,6 +422,9 @@ try {
   }
   if (-not (Test-Path (Join-Path $ShellOutput "mpv/mpv.exe"))) {
     throw "WinUI output is missing bundled mpv.exe: $ShellOutput"
+  }
+  if (-not (Test-Path (Join-Path $ShellOutput "mpv/mpv-2.dll"))) {
+    throw "WinUI output is missing bundled mpv-2.dll: $ShellOutput"
   }
   $PriFiles = Get-ChildItem -Path $ShellOutput -Filter "*.pri" -File -ErrorAction SilentlyContinue
   if (-not $PriFiles) {

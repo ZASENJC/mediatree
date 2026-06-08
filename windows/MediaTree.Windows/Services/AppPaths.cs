@@ -22,16 +22,17 @@ public static class AppPaths
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "MediaTree",
         "logs");
-    public static string WebView2Directory => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+    public static string WindowsStateDirectory => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "MediaTree",
-        "webview2");
+        "windows");
+    public static string WindowsSessionFile => Path.Combine(WindowsStateDirectory, "session.dpapi.json");
 
     public static void EnsureRuntimeDirectories()
     {
         Directory.CreateDirectory(DataDirectory);
         Directory.CreateDirectory(MediaDirectory);
-        Directory.CreateDirectory(WebView2Directory);
+        Directory.CreateDirectory(WindowsStateDirectory);
         EnsureLogsDirectory();
     }
 

@@ -10,7 +10,10 @@ All notable changes to MediaTree are documented here.
 
 ### Windows Desktop
 
-- Added the Windows desktop V1 build path with a WinUI 3 shell, WebView2, local PyInstaller onedir backend, and MSIX/.appinstaller packaging
+- Rebuilt the Windows desktop app as a WinUI 3 native client with local FastAPI runtime reuse, native library setup, media grid, detail view, and in-window libmpv playback
+- Added DPAPI-protected Windows local session recovery so first-run desktop users do not need to see the web login flow after the app owns the local backend session
+- Marked Windows native UI and libmpv runtime changes as `requires_windows_base_update`, while keeping ordinary FastAPI/React app-package updates on the existing release path
+- Replaced the previous Windows WebView2 shell direction with a native WinUI 3 desktop client while keeping the local PyInstaller backend and MSIX/.appinstaller packaging path
 - The Windows desktop runtime reuses the existing app-package updater, so routine FastAPI/React changes continue to ship through `mediatree-app-<version>.tar.gz`
 - Release manifests now include `requires_windows_base_update` and `windows_reason`, so only Windows runtime changes require a new desktop package
 
@@ -20,7 +23,7 @@ All notable changes to MediaTree are documented here.
 
 ### Release Type
 
-- App-package update; no full Docker image update is required; no Windows desktop base update is required
+- App-package update for Docker/Web; Windows desktop native UI and libmpv changes require a Windows desktop base package update
 
 ---
 

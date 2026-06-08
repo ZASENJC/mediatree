@@ -1,0 +1,232 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Linq;
+using MediaTree.Windows.Models;
+
+namespace MediaTree.Windows.Services;
+
+public sealed class MediaTreeApiClient : IDisposable
+{
+    private readonly HttpClient _httpClient;
+    private readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+    private string _token = "";
+    private string _mediaToken = "";
+    private long _mediaTokenExpiresAt;
+
+    public MediaTreeApiClient(Uri backendUri)
+    {
+        BackendUri = backendUri;
+        _httpClient = new HttpClient
+        {
+            BaseAddress = new Uri(backendUri, "api/"),
+            Timeout = TimeSpan.FromSeconds(30),
+        };
+    }
+
+    public Uri BackendUri { get; private set; }
+
+    public void SetBackendUri(Uri backendUri)
+    {
+        BackendUri = backendUri;
+        _httpClient.BaseAddress = new Uri(backendUri, "api/");
+    }
+
+    public void SetBearerToken(string token)
+    {
+        _token = token ?? "";
+        _mediaToken = "";
+        _mediaTokenExpiresAt = 0;
+    }
+
+    public async Task<AuthStatusDto> GetAuthStatusAsync(CancellationToken cancellationToken = default)
+        => await GetAsync<AuthStatusDto>("/auth/status", cancellationToken);
+
+    public async Task<AuthResponseDto> LoginAsync(string username, string password, CancellationToken cancellationToken = default)
+        => await PostJsonAsync<AuthResponseDto>("/auth/login", new { username, password }, cancellationToken);
+
+    public async Task<AuthResponseDto> SetupAuthAsync(string username, string password, CancellationToken cancellationToken = default)
+        => await PostJsonAsync<AuthResponseDto>("/auth/setup", new { username, password }, cancellationToken);
+
+    public async Task<SetupStatusDto> GetSetupStatusAsync(CancellationToken cancellationToken = default)
+        => await GetAsync<SetupStatusDto>("/setup/status", cancellationToken);
+
+    public async Task<ConfigDto> GetConfigAsync(CancellationToken cancellationToken = default)
+        => await GetAsync<ConfigDto>("/config", cancellationToken);
+
+    public async Task SaveConfigAsync(IEnumerable<string> extraMediaRoots, CancellationToken cancellationToken = default)
+        => await PostJsonAsync<JsonElement>("/config", new { extra_media_roots = extraMediaRoots }, cancellationToken);
+
+    public async Task<MediaRootsResponseDto> GetMediaRootsAsync(CancellationToken cancellationToken = default)
+        => await GetAsync<MediaRootsResponseDto>("/media-roots", cancellationToken);
+
+    public async Task<FoldersResponseDto> GetFoldersAsync(string mediaRoot, CancellationToken cancellationToken = default)
+        => await GetAsync<FoldersResponseDto>($"/folders?media_root={Uri.EscapeDataString(mediaRoot)}", cancellationToken);
+
+    public async Task SaveLibrarySettingAsync(LibrarySettingDto setting, CancellationToken cancellationToken = default)
+        => await PostJsonAsync<JsonElement>("/library-settings", new
+        {
+            media_root = setting.MediaRoot,
+            scraper = setting.Scraper,
+            tmdb_key = setting.TmdbKey,
+            enabled = setting.Enabled,
+        }, cancellationToken);
+
+    public async Task ScanAsync(string mediaRoot, CancellationToken cancellationToken = default)
+        => await GetAsync<JsonElement>($"/scan?media_root={Uri.EscapeDataString(mediaRoot)}", cancellationToken);
+
+    public async Task<ScanStatusDto> GetScanStatusAsync(string mediaRoot, CancellationToken cancellationToken = default)
+        => await GetAsync<ScanStatusDto>($"/scan/status?media_root={Uri.EscapeDataString(mediaRoot)}", cancellationToken);
+
+    public async Task<MoviesResponseDto> GetMoviesAsync(
+        string mediaRoot,
+        string folder,
+        string search,
+        string sort,
+        int limit,
+        int offset,
+        CancellationToken cancellationToken = default)
+    {
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var searchPath = $"/search?q={Uri.EscapeDataString(search)}&media_root={Uri.EscapeDataString(mediaRoot)}&limit={limit}&offset={offset}";
+            return await GetAsync<MoviesResponseDto>(searchPath, cancellationToken);
+        }
+
+        var folderQuery = string.IsNullOrWhiteSpace(folder) ? "" : $"&folder={Uri.EscapeDataString(folder)}";
+        var path = $"/movies?media_root={Uri.EscapeDataString(mediaRoot)}{folderQuery}&sort={Uri.EscapeDataString(sort)}&limit={limit}&offset={offset}";
+        return await GetAsync<MoviesResponseDto>(path, cancellationToken);
+    }
+
+    public async Task<MoviesResponseDto> GetRecentWatchedAsync(string mediaRoot, int limit, int offset, CancellationToken cancellationToken = default)
+        => await GetAsync<MoviesResponseDto>($"/recent-watched?media_root={Uri.EscapeDataString(mediaRoot)}&limit={limit}&offset={offset}", cancellationToken);
+
+    public async Task<MovieDto> GetMovieDetailAsync(int movieId, CancellationToken cancellationToken = default)
+        => await GetAsync<MovieDto>($"/detail/{movieId}", cancellationToken);
+
+    public async Task<ProgressDto> GetProgressAsync(int movieId, CancellationToken cancellationToken = default)
+        => await GetAsync<ProgressDto>($"/progress/{movieId}", cancellationToken);
+
+    public async Task<ProgressDto> SaveProgressAsync(int movieId, double position, double? duration, bool stopped, CancellationToken cancellationToken = default)
+        => await PostJsonAsync<ProgressDto>($"/progress/{movieId}", new { position, duration, stopped }, cancellationToken);
+
+    public async Task<VersionInfoDto> GetVersionAsync(CancellationToken cancellationToken = default)
+        => await GetAsync<VersionInfoDto>("/version", cancellationToken);
+
+    public async Task<UpdateCheckResultDto> CheckForUpdatesAsync(CancellationToken cancellationToken = default)
+        => await GetAsync<UpdateCheckResultDto>("/update/check", cancellationToken);
+
+    public async Task<string> EnsureMediaTokenAsync(CancellationToken cancellationToken = default)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        if (!string.IsNullOrWhiteSpace(_mediaToken) && _mediaTokenExpiresAt > now + 60)
+        {
+            return _mediaToken;
+        }
+
+        var response = await PostJsonAsync<MediaTokenResponseDto>("/media-token", new { }, cancellationToken);
+        _mediaToken = response.Token;
+        _mediaTokenExpiresAt = response.ExpiresAt;
+        return _mediaToken;
+    }
+
+    public async Task<string> BuildCoverUrlAsync(int movieId, CancellationToken cancellationToken = default)
+    {
+        var token = await EnsureMediaTokenAsync(cancellationToken);
+        return new Uri(BackendUri, $"api/cover/{movieId}?token={Uri.EscapeDataString(token)}").ToString();
+    }
+
+    public async Task<string> BuildMediaAssetUrlAsync(string source, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return "";
+        }
+
+        if (Uri.TryCreate(source, UriKind.Absolute, out var absoluteUri))
+        {
+            return absoluteUri.ToString();
+        }
+
+        if (source.StartsWith("/api/", StringComparison.OrdinalIgnoreCase))
+        {
+            var token = await EnsureMediaTokenAsync(cancellationToken);
+            var separator = source.Contains('?') ? "&" : "?";
+            return new Uri(BackendUri, $"{source.TrimStart('/')}{separator}token={Uri.EscapeDataString(token)}").ToString();
+        }
+
+        var tokenForMedia = await EnsureMediaTokenAsync(cancellationToken);
+        var normalized = source.Replace("\\", "/").TrimStart('/');
+        var encoded = string.Join("/", normalized.Split('/').Select(Uri.EscapeDataString));
+        return new Uri(BackendUri, $"api/media/{encoded}?token={Uri.EscapeDataString(tokenForMedia)}").ToString();
+    }
+
+    public async Task<string> BuildStreamUrlAsync(int movieId, CancellationToken cancellationToken = default)
+    {
+        var token = await EnsureMediaTokenAsync(cancellationToken);
+        return new Uri(BackendUri, $"api/stream/{movieId}?token={Uri.EscapeDataString(token)}").ToString();
+    }
+
+    private async Task<T> GetAsync<T>(string path, CancellationToken cancellationToken)
+    {
+        using var request = CreateRequest(HttpMethod.Get, path);
+        return await SendAsync<T>(request, cancellationToken);
+    }
+
+    private async Task<T> PostJsonAsync<T>(string path, object body, CancellationToken cancellationToken)
+    {
+        using var request = CreateRequest(HttpMethod.Post, path);
+        request.Content = JsonContent.Create(body, options: _jsonOptions);
+        return await SendAsync<T>(request, cancellationToken);
+    }
+
+    private HttpRequestMessage CreateRequest(HttpMethod method, string path)
+    {
+        var normalized = path.TrimStart('/');
+        var request = new HttpRequestMessage(method, normalized);
+        if (!string.IsNullOrWhiteSpace(_token))
+        {
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
+        }
+
+        return request;
+    }
+
+    private async Task<T> SendAsync<T>(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            throw new UnauthorizedAccessException("MediaTree session is not authorized.");
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException($"MediaTree API failed ({(int)response.StatusCode}): {body}");
+        }
+
+        if (typeof(T) == typeof(JsonElement))
+        {
+            var element = await response.Content.ReadFromJsonAsync<JsonElement>(_jsonOptions, cancellationToken);
+            return (T)(object)element;
+        }
+
+        var result = await response.Content.ReadFromJsonAsync<T>(_jsonOptions, cancellationToken);
+        return result ?? throw new InvalidDataException($"MediaTree API returned an empty {typeof(T).Name} response.");
+    }
+
+    public void Dispose()
+    {
+        _httpClient.Dispose();
+    }
+}

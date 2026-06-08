@@ -1,25 +1,4 @@
 <Window
     x:Class="MediaTree.Windows.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="MediaTree">
-    <Grid Background="#FF101318">
-        <Grid x:Name="BrowserHost" />
-        <Grid x:Name="LoadingOverlay"
-              Background="#FF101318"
-              Visibility="Visible">
-            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16">
-                <ProgressRing IsActive="True" Width="42" Height="42" />
-                <TextBlock Text="正在启动 MediaTree..."
-                           Foreground="White"
-                           FontSize="16"
-                           HorizontalAlignment="Center" />
-                <TextBlock x:Name="StatusText"
-                           Text="准备本地后端"
-                           Foreground="#B8C7D9"
-                           FontSize="12"
-                           HorizontalAlignment="Center" />
-            </StackPanel>
-        </Grid>
-    </Grid>
-</Window>
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" />

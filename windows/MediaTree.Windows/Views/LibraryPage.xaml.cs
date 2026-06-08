@@ -1,0 +1,934 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using MediaTree.Windows.Models;
+using MediaTree.Windows.Services;
+using MediaTree.Windows.Styles;
+using MediaTree.Windows.ViewModels;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
+
+namespace MediaTree.Windows.Views;
+
+public sealed partial class LibraryPage : Page
+{
+    private readonly ComboBox _libraryBox;
+    private readonly Button _folderTabButton;
+    private readonly GridView _folderGrid;
+    private readonly TextBlock _headerSubtitleText;
+    private readonly TextBlock _headerTitleText;
+    private readonly TextBlock _loadingText;
+    private readonly Button _moviesBackButton;
+    private readonly GridView _moviesGrid;
+    private readonly Button _recentTabButton;
+    private readonly TextBox _searchBox;
+    private readonly TextBlock _scanInfoText;
+    private readonly ComboBox _sortBox;
+    private readonly DispatcherTimer _scanTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private string _activeMediaRoot = "";
+    private string _activeFolderPath = "";
+    private string _activeView = "folders";
+    private int _movieLoadGeneration;
+    private bool _suppressLibrarySelectionChanged;
+
+    public LibraryPage()
+    {
+        (_libraryBox, _searchBox, _sortBox, _scanInfoText, _loadingText, _folderGrid, _moviesGrid, _headerTitleText, _headerSubtitleText, _folderTabButton, _recentTabButton, _moviesBackButton) = BuildContent();
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+        _scanTimer.Tick += OnScanTimerTick;
+    }
+
+    private (ComboBox libraryBox, TextBox searchBox, ComboBox sortBox, TextBlock scanInfoText, TextBlock loadingText, GridView folderGrid, GridView moviesGrid, TextBlock headerTitleText, TextBlock headerSubtitleText, Button folderTabButton, Button recentTabButton, Button moviesBackButton) BuildContent()
+    {
+        AutomationProperties.SetAutomationId(this, "LibraryPage");
+
+        var root = new Grid
+        {
+            Padding = new Thickness(28),
+            RowSpacing = 16,
+            Background = FluentTheme.Canvas,
+            RequestedTheme = ElementTheme.Light,
+        };
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        var headerStack = new StackPanel { Spacing = 14 };
+        var header = new Grid { ColumnSpacing = 16 };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var titleStack = new StackPanel { Spacing = 4 };
+        titleStack.Children.Add(new TextBlock
+        {
+            Text = "Library",
+            FontSize = 12,
+            Foreground = FluentTheme.Accent,
+        });
+        var headerTitleText = new TextBlock
+        {
+            Text = "我的媒体库",
+            FontSize = 28,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = FluentTheme.TextPrimary,
+        };
+        AutomationProperties.SetAutomationId(headerTitleText, "LibraryHeaderTitle");
+        titleStack.Children.Add(headerTitleText);
+        var headerSubtitleText = new TextBlock
+        {
+            Text = "",
+            Foreground = FluentTheme.TextSecondary,
+        };
+        AutomationProperties.SetAutomationId(headerSubtitleText, "LibraryHeaderSubtitle");
+        titleStack.Children.Add(headerSubtitleText);
+        header.Children.Add(titleStack);
+
+        var tabs = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var folderTabButton = FluentTheme.ApplyButton(new Button { Content = "媒体库" }, FluentButtonStyle.Accent);
+        AutomationProperties.SetAutomationId(folderTabButton, "LibraryFolderTab");
+        folderTabButton.Click += OnFolderTabClicked;
+        tabs.Children.Add(folderTabButton);
+
+        var recentTabButton = FluentTheme.ApplyButton(new Button { Content = "继续观看" });
+        AutomationProperties.SetAutomationId(recentTabButton, "LibraryRecentTab");
+        recentTabButton.Click += OnRecentTabClicked;
+        tabs.Children.Add(recentTabButton);
+        Grid.SetColumn(tabs, 1);
+        header.Children.Add(tabs);
+        headerStack.Children.Add(header);
+
+        var toolbar = new Grid { ColumnSpacing = 12 };
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var moviesBackButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = "返回媒体库",
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Visibility = Visibility.Collapsed,
+        });
+        AutomationProperties.SetAutomationId(moviesBackButton, "LibraryBackToFolders");
+        moviesBackButton.Click += OnBackToFoldersClicked;
+        toolbar.Children.Add(moviesBackButton);
+
+        var libraryBox = new ComboBox
+        {
+            Header = "文件夹",
+            MinWidth = 240,
+        };
+        AutomationProperties.SetAutomationId(libraryBox, "LibrarySelector");
+        libraryBox.SelectionChanged += OnLibraryChanged;
+        Grid.SetColumn(libraryBox, 1);
+        toolbar.Children.Add(libraryBox);
+
+        var searchBox = new TextBox
+        {
+            Header = "搜索影片",
+            PlaceholderText = "输入标题或关键字",
+        };
+        AutomationProperties.SetAutomationId(searchBox, "LibrarySearchBox");
+        searchBox.KeyDown += OnSearchKeyDown;
+        Grid.SetColumn(searchBox, 2);
+        toolbar.Children.Add(searchBox);
+
+        var sortBox = new ComboBox
+        {
+            Header = "排序",
+        };
+        AutomationProperties.SetAutomationId(sortBox, "LibrarySort");
+        sortBox.Items.Add(new ComboBoxItem { Content = "最近加入", Tag = "created_desc" });
+        sortBox.Items.Add(new ComboBoxItem { Content = "名称", Tag = "name" });
+        sortBox.Items.Add(new ComboBoxItem { Content = "发布日期", Tag = "release_date_desc" });
+        sortBox.SelectedIndex = 0;
+        sortBox.SelectionChanged += OnSortChanged;
+        Grid.SetColumn(sortBox, 3);
+        toolbar.Children.Add(sortBox);
+
+        var scanButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = "重新整理",
+            VerticalAlignment = VerticalAlignment.Bottom,
+        });
+        AutomationProperties.SetAutomationId(scanButton, "LibraryScanButton");
+        scanButton.Click += OnScanClicked;
+        Grid.SetColumn(scanButton, 4);
+        toolbar.Children.Add(scanButton);
+
+        var addButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = "添加文件夹",
+            VerticalAlignment = VerticalAlignment.Bottom,
+        }, FluentButtonStyle.Accent);
+        AutomationProperties.SetAutomationId(addButton, "LibraryAddFolderButton");
+        addButton.Click += OnAddLibraryClicked;
+        Grid.SetColumn(addButton, 5);
+        toolbar.Children.Add(addButton);
+
+        headerStack.Children.Add(toolbar);
+        root.Children.Add(FluentTheme.Card(headerStack, new Thickness(16)));
+
+        var scanInfoText = new TextBlock
+        {
+            Text = "",
+            Visibility = Visibility.Collapsed,
+            TextWrapping = TextWrapping.WrapWholeWords,
+            Foreground = FluentTheme.TextSecondary,
+        };
+        AutomationProperties.SetAutomationId(scanInfoText, "LibraryScanInfoText");
+        Grid.SetRow(scanInfoText, 1);
+        root.Children.Add(scanInfoText);
+
+        var content = new Grid();
+        Grid.SetRow(content, 2);
+
+        var folderGrid = new GridView
+        {
+            IsItemClickEnabled = true,
+            SelectionMode = ListViewSelectionMode.None,
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+        };
+        AutomationProperties.SetAutomationId(folderGrid, "FolderGrid");
+        folderGrid.ItemClick += OnFolderItemClick;
+        content.Children.Add(folderGrid);
+
+        var moviesGrid = new GridView
+        {
+            IsItemClickEnabled = true,
+            SelectionMode = ListViewSelectionMode.None,
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            Visibility = Visibility.Collapsed,
+        };
+        AutomationProperties.SetAutomationId(moviesGrid, "MoviesGrid");
+        moviesGrid.ItemClick += OnMovieItemClick;
+        content.Children.Add(moviesGrid);
+
+        var loadingText = new TextBlock
+        {
+            Text = "正在加载...",
+            Visibility = Visibility.Collapsed,
+            Margin = new Thickness(12),
+            Foreground = FluentTheme.TextSecondary,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        AutomationProperties.SetAutomationId(loadingText, "LibraryLoadingText");
+        content.Children.Add(loadingText);
+
+        root.Children.Add(content);
+        Content = root;
+        return (libraryBox, searchBox, sortBox, scanInfoText, loadingText, folderGrid, moviesGrid, headerTitleText, headerSubtitleText, folderTabButton, recentTabButton, moviesBackButton);
+    }
+
+    private async void OnLoaded(object sender, RoutedEventArgs args)
+    {
+        try
+        {
+            await LoadLibrariesAsync();
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Unhandled native library page load failure.");
+            ShowInfo($"加载媒体库失败：{ex.Message}", InfoBarSeverity.Error);
+        }
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs args)
+    {
+        _scanTimer.Stop();
+    }
+
+    private async Task LoadLibrariesAsync()
+    {
+        SetLoading(true);
+        try
+        {
+            var setup = await AppServices.Library.GetSetupStatusAsync();
+            if (setup.NeedsSetup)
+            {
+                ShellPage.Current?.NavigateToSetup();
+                return;
+            }
+
+            var roots = await AppServices.Library.GetMediaRootsAsync();
+            _suppressLibrarySelectionChanged = true;
+            try
+            {
+                _libraryBox.Items.Clear();
+                foreach (var root in roots.Items)
+                {
+                    _libraryBox.Items.Add(CreateLibraryItem(root));
+                }
+
+                _libraryBox.SelectedIndex = roots.Items.Count > 0 ? 0 : -1;
+            }
+            finally
+            {
+                _suppressLibrarySelectionChanged = false;
+            }
+
+            if (roots.Items.Count > 0)
+            {
+                _activeMediaRoot = roots.Items[0].Path;
+                await LoadFoldersAsync();
+                _scanTimer.Start();
+            }
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to load native media roots.");
+            ShowInfo($"加载媒体文件夹失败：{ex.Message}", InfoBarSeverity.Error);
+        }
+        finally
+        {
+            SetLoading(false);
+        }
+    }
+
+    private async Task LoadFoldersAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_activeMediaRoot))
+        {
+            return;
+        }
+
+        var mediaRoot = _activeMediaRoot;
+        var generation = ++_movieLoadGeneration;
+        try
+        {
+            SetLoading(true);
+            _activeView = "folders";
+            _activeFolderPath = "";
+            ShowFoldersView();
+            _folderGrid.Items.Clear();
+            _moviesGrid.Items.Clear();
+
+            var response = await AppServices.Library.GetFoldersAsync(mediaRoot);
+            if (generation != _movieLoadGeneration || mediaRoot != _activeMediaRoot)
+            {
+                return;
+            }
+
+            var folders = SortFolders(response.Tree).Where(folder => folder.MovieCount > 0).ToList();
+            var cards = new List<Button>();
+            foreach (var folder in folders)
+            {
+                var cover = await BuildFolderCoverUrlAsync(folder);
+                cards.Add(CreateFolderCard(new FolderCardItem(folder, cover)));
+            }
+
+            if (generation != _movieLoadGeneration || mediaRoot != _activeMediaRoot)
+            {
+                return;
+            }
+
+            _folderGrid.Items.Clear();
+            foreach (var card in cards)
+            {
+                _folderGrid.Items.Add(card);
+            }
+
+            _headerTitleText.Text = "我的媒体库";
+            _headerSubtitleText.Text = $"共 {folders.Count} 个目录";
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to load native library folders.");
+            ShowInfo($"加载媒体库目录失败：{ex.Message}", InfoBarSeverity.Error);
+        }
+        finally
+        {
+            if (generation == _movieLoadGeneration)
+            {
+                SetLoading(false);
+            }
+        }
+    }
+
+    private async Task LoadMoviesAsync(string folderPath = "", bool recent = false)
+    {
+        if (string.IsNullOrWhiteSpace(_activeMediaRoot))
+        {
+            return;
+        }
+
+        var mediaRoot = _activeMediaRoot;
+        var generation = ++_movieLoadGeneration;
+        try
+        {
+            SetLoading(true);
+            _activeView = recent ? "recent" : "movies";
+            if (!recent)
+            {
+                _activeFolderPath = folderPath;
+            }
+
+            ShowMoviesView(recent);
+            _moviesGrid.Items.Clear();
+            _folderGrid.Items.Clear();
+            var sort = (_sortBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "created_desc";
+            var response = recent
+                ? await AppServices.Movie.GetRecentWatchedAsync(mediaRoot, 80, 0)
+                : await AppServices.Movie.GetMoviesAsync(mediaRoot, folderPath, _searchBox.Text.Trim(), sort, 80, 0);
+            if (generation != _movieLoadGeneration || mediaRoot != _activeMediaRoot)
+            {
+                return;
+            }
+
+            var cards = new List<Button>();
+            foreach (var movie in response.Movies)
+            {
+                var cover = "";
+                try
+                {
+                    cover = await AppServices.Api.BuildCoverUrlAsync(movie.Id);
+                }
+                catch (Exception ex)
+                {
+                    ShellLogger.Error(ex, $"Failed to build native cover URL for movie {movie.Id}.");
+                }
+
+                cards.Add(CreateMovieCard(new MovieCardItem(movie, cover)));
+            }
+
+            if (generation != _movieLoadGeneration || mediaRoot != _activeMediaRoot)
+            {
+                return;
+            }
+
+            _moviesGrid.Items.Clear();
+            foreach (var card in cards)
+            {
+                _moviesGrid.Items.Add(card);
+            }
+
+            _headerTitleText.Text = recent ? "继续观看" : (string.IsNullOrWhiteSpace(folderPath) ? "搜索结果" : FolderTitleFromPath(folderPath));
+            _headerSubtitleText.Text = recent ? $"共 {response.Movies.Count} 部" : $"共 {response.Movies.Count} 部影片";
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to load native library movies.");
+            ShowInfo($"加载媒体库失败：{ex.Message}", InfoBarSeverity.Error);
+        }
+        finally
+        {
+            if (generation == _movieLoadGeneration)
+            {
+                SetLoading(false);
+            }
+        }
+    }
+
+    private async void OnLibraryChanged(object sender, SelectionChangedEventArgs args)
+    {
+        if (_suppressLibrarySelectionChanged)
+        {
+            return;
+        }
+
+        if (_libraryBox.SelectedItem is not ComboBoxItem { Tag: MediaRootDto root })
+        {
+            return;
+        }
+
+        try
+        {
+            _activeMediaRoot = root.Path;
+            _searchBox.Text = "";
+            if (_activeView == "recent")
+            {
+                await LoadMoviesAsync("", true);
+            }
+            else
+            {
+                await LoadFoldersAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to change native library selection.");
+            ShowInfo($"切换媒体文件夹失败：{ex.Message}", InfoBarSeverity.Error);
+        }
+    }
+
+    private async void OnSortChanged(object sender, SelectionChangedEventArgs args)
+    {
+        try
+        {
+            if (IsLoaded)
+            {
+                if (_activeView == "folders")
+                {
+                    await LoadFoldersAsync();
+                }
+                else
+                {
+                    await LoadMoviesAsync(_activeFolderPath, _activeView == "recent");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to sort native library movies.");
+            ShowInfo($"排序失败：{ex.Message}", InfoBarSeverity.Error);
+        }
+    }
+
+    private async void OnSearchKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        try
+        {
+            if (args.Key == global::Windows.System.VirtualKey.Enter)
+            {
+                if (string.IsNullOrWhiteSpace(_searchBox.Text) && _activeView != "movies")
+                {
+                    await LoadFoldersAsync();
+                    return;
+                }
+
+                await LoadMoviesAsync(_activeFolderPath, false);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to search native library movies.");
+            ShowInfo($"搜索失败：{ex.Message}", InfoBarSeverity.Error);
+        }
+    }
+
+    private async void OnScanClicked(object sender, RoutedEventArgs args)
+    {
+        if (string.IsNullOrWhiteSpace(_activeMediaRoot))
+        {
+            return;
+        }
+
+        try
+        {
+            await AppServices.Library.ScanAsync(_activeMediaRoot);
+            ShowInfo("已开始整理这个文件夹。你可以继续浏览，整理完成后列表会自动刷新。", InfoBarSeverity.Informational);
+            _scanTimer.Start();
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to start native library scan.");
+            ShowInfo($"整理启动失败：{ex.Message}", InfoBarSeverity.Error);
+        }
+    }
+
+    private void OnAddLibraryClicked(object sender, RoutedEventArgs args)
+    {
+        ShellPage.Current?.NavigateToSetup();
+    }
+
+    private async void OnFolderTabClicked(object sender, RoutedEventArgs args)
+    {
+        try
+        {
+            _searchBox.Text = "";
+            await LoadFoldersAsync();
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to switch native library folder tab.");
+            ShowInfo($"切换媒体库失败：{ex.Message}", InfoBarSeverity.Error);
+        }
+    }
+
+    private async void OnRecentTabClicked(object sender, RoutedEventArgs args)
+    {
+        try
+        {
+            _searchBox.Text = "";
+            await LoadMoviesAsync("", true);
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to switch native library recent tab.");
+            ShowInfo($"切换继续观看失败：{ex.Message}", InfoBarSeverity.Error);
+        }
+    }
+
+    private async void OnBackToFoldersClicked(object sender, RoutedEventArgs args)
+    {
+        try
+        {
+            _searchBox.Text = "";
+            await LoadFoldersAsync();
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to return native library folder grid.");
+            ShowInfo($"返回媒体库失败：{ex.Message}", InfoBarSeverity.Error);
+        }
+    }
+
+    private async void OnFolderItemClick(object sender, ItemClickEventArgs args)
+    {
+        if (args.ClickedItem is not FrameworkElement { Tag: FolderCardItem item })
+        {
+            return;
+        }
+
+        await OpenFolderItemAsync(item);
+    }
+
+    private void OnMovieItemClick(object sender, ItemClickEventArgs args)
+    {
+        if (args.ClickedItem is FrameworkElement { Tag: MovieCardItem item })
+        {
+            ShellPage.Current?.NavigateToMovie(item.Id);
+        }
+    }
+
+    private async Task OpenFolderItemAsync(FolderCardItem item)
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(item.MediaRoot))
+            {
+                _activeMediaRoot = item.MediaRoot;
+            }
+
+            _searchBox.Text = "";
+            await LoadMoviesAsync(item.Path);
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to open native library folder.");
+            ShowInfo($"打开目录失败：{ex.Message}", InfoBarSeverity.Error);
+        }
+    }
+
+    private async void OnScanTimerTick(object? sender, object args)
+    {
+        if (string.IsNullOrWhiteSpace(_activeMediaRoot))
+        {
+            return;
+        }
+
+        try
+        {
+            var status = await AppServices.Library.GetScanStatusAsync(_activeMediaRoot);
+            if (string.IsNullOrWhiteSpace(status.Status) || status.Status == "idle")
+            {
+                return;
+            }
+
+            ShowInfo(FormatScanStatus(status), InfoBarSeverity.Informational);
+            if (status.Status is "done" or "disabled" or "cancelled")
+            {
+                _scanTimer.Stop();
+                if (_activeView == "folders")
+                {
+                    await LoadFoldersAsync();
+                }
+                else
+                {
+                    await LoadMoviesAsync(_activeFolderPath, _activeView == "recent");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to poll native library scan status.");
+            _scanTimer.Stop();
+        }
+    }
+
+    private void ShowInfo(string message, InfoBarSeverity severity)
+    {
+        _scanInfoText.Text = message;
+        _scanInfoText.Foreground = severity == InfoBarSeverity.Error ? FluentTheme.Error : FluentTheme.TextSecondary;
+        _scanInfoText.Visibility = Visibility.Visible;
+    }
+
+    private void SetLoading(bool isLoading)
+    {
+        _loadingText.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private async Task<string> BuildFolderCoverUrlAsync(FolderNodeDto folder)
+    {
+        var cover = string.IsNullOrWhiteSpace(folder.RandomCover) ? folder.Cover : folder.RandomCover;
+        if (string.IsNullOrWhiteSpace(cover))
+        {
+            return "";
+        }
+
+        try
+        {
+            return await AppServices.Api.BuildMediaAssetUrlAsync(cover);
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, $"Failed to build native folder cover URL for {folder.Path}.");
+            return "";
+        }
+    }
+
+    private IEnumerable<FolderNodeDto> SortFolders(IEnumerable<FolderNodeDto> folders)
+    {
+        var sort = (_sortBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "created_desc";
+        return sort switch
+        {
+            "name" => folders.OrderBy(folder => folder.BestTitle, StringComparer.CurrentCultureIgnoreCase),
+            "release_date_desc" => folders.OrderByDescending(folder => folder.ReleaseDateMax ?? ""),
+            _ => folders.OrderByDescending(folder => folder.CreatedMax ?? ""),
+        };
+    }
+
+    private void ShowFoldersView()
+    {
+        _folderGrid.Visibility = Visibility.Visible;
+        _moviesGrid.Visibility = Visibility.Collapsed;
+        _moviesBackButton.Visibility = Visibility.Collapsed;
+        _activeView = "folders";
+        ApplyTabStyles();
+    }
+
+    private void ShowMoviesView(bool recent)
+    {
+        _folderGrid.Visibility = Visibility.Collapsed;
+        _moviesGrid.Visibility = Visibility.Visible;
+        _moviesBackButton.Visibility = recent ? Visibility.Collapsed : Visibility.Visible;
+        _activeView = recent ? "recent" : "movies";
+        ApplyTabStyles();
+    }
+
+    private void ApplyTabStyles()
+    {
+        FluentTheme.ApplyButton(_folderTabButton, _activeView == "recent" ? FluentButtonStyle.Standard : FluentButtonStyle.Accent);
+        FluentTheme.ApplyButton(_recentTabButton, _activeView == "recent" ? FluentButtonStyle.Accent : FluentButtonStyle.Standard);
+    }
+
+    private Button CreateFolderCard(FolderCardItem item)
+    {
+        var imageHost = new Grid
+        {
+            Height = 252,
+            Background = FluentTheme.LayerAlt,
+        };
+        try
+        {
+            if (Uri.TryCreate(item.CoverUrl, UriKind.Absolute, out var coverUri))
+            {
+                var image = new Image
+                {
+                    Source = new BitmapImage(coverUri),
+                    Stretch = Stretch.UniformToFill,
+                };
+                image.ImageFailed += (_, _) =>
+                {
+                    imageHost.Children.Clear();
+                    AddCoverFallback(imageHost);
+                };
+                imageHost.Children.Add(image);
+            }
+            else
+            {
+                AddCoverFallback(imageHost);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, $"Failed to create native folder cover image for {item.Path}.");
+            AddCoverFallback(imageHost);
+        }
+
+        var textStack = new StackPanel
+        {
+            Padding = new Thickness(12),
+            Spacing = 4,
+        };
+        textStack.Children.Add(new TextBlock
+        {
+            Text = item.Title,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = FluentTheme.TextPrimary,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        textStack.Children.Add(new TextBlock
+        {
+            Text = item.Subtitle,
+            FontSize = 12,
+            Foreground = FluentTheme.TextSecondary,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        if (!string.IsNullOrWhiteSpace(item.ProgressText))
+        {
+            textStack.Children.Add(new TextBlock
+            {
+                Text = item.ProgressText,
+                FontSize = 12,
+                Foreground = FluentTheme.Accent,
+            });
+        }
+
+        var stack = new StackPanel();
+        stack.Children.Add(imageHost);
+        stack.Children.Add(textStack);
+
+        var card = new Button
+        {
+            Width = 178,
+            Margin = new Thickness(6),
+            CornerRadius = new CornerRadius(14),
+            Background = FluentTheme.Layer,
+            BorderBrush = FluentTheme.Border,
+            BorderThickness = new Thickness(1),
+            Content = stack,
+            Padding = new Thickness(0),
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Stretch,
+            Tag = item,
+        };
+        AutomationProperties.SetAutomationId(card, $"FolderCard_{item.Path.Replace("\\", "_").Replace("/", "_")}");
+        card.Click += async (_, _) => await OpenFolderItemAsync(item);
+        return card;
+    }
+
+    private static Button CreateMovieCard(MovieCardItem item)
+    {
+        var imageHost = new Grid
+        {
+            Height = 252,
+            Background = FluentTheme.LayerAlt,
+        };
+        try
+        {
+            if (Uri.TryCreate(item.CoverUrl, UriKind.Absolute, out var coverUri))
+            {
+                var image = new Image
+                {
+                    Source = new BitmapImage(coverUri),
+                    Stretch = Stretch.UniformToFill,
+                };
+                image.ImageFailed += (_, _) =>
+                {
+                    imageHost.Children.Clear();
+                    AddCoverFallback(imageHost);
+                };
+                imageHost.Children.Add(image);
+            }
+            else
+            {
+                AddCoverFallback(imageHost);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, $"Failed to create native cover image for movie {item.Id}.");
+            AddCoverFallback(imageHost);
+        }
+
+        var textStack = new StackPanel
+        {
+            Padding = new Thickness(12),
+            Spacing = 4,
+        };
+        textStack.Children.Add(new TextBlock
+        {
+            Text = item.Title,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = FluentTheme.TextPrimary,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        textStack.Children.Add(new TextBlock
+        {
+            Text = item.Subtitle,
+            FontSize = 12,
+            Foreground = FluentTheme.TextSecondary,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        textStack.Children.Add(new TextBlock
+        {
+            Text = item.ProgressText,
+            FontSize = 12,
+            Foreground = FluentTheme.Accent,
+        });
+
+        var stack = new StackPanel();
+        stack.Children.Add(imageHost);
+        stack.Children.Add(textStack);
+
+        var card = new Button
+        {
+            Width = 178,
+            Margin = new Thickness(6),
+            CornerRadius = new CornerRadius(14),
+            Background = FluentTheme.Layer,
+            BorderBrush = FluentTheme.Border,
+            BorderThickness = new Thickness(1),
+            Content = stack,
+            Padding = new Thickness(0),
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Stretch,
+            Tag = item,
+        };
+        AutomationProperties.SetAutomationId(card, $"MovieCard_{item.Id}");
+        card.Click += (_, _) => ShellPage.Current?.NavigateToMovie(item.Id);
+        return card;
+    }
+
+    private static ComboBoxItem CreateLibraryItem(MediaRootDto root)
+    {
+        var label = string.IsNullOrWhiteSpace(root.Label) ? root.Path : root.Label;
+        var count = root.MovieCount > 0 ? $" · {root.MovieCount}" : "";
+        return new ComboBoxItem
+        {
+            Content = $"{label}{count}",
+            Tag = root,
+        };
+    }
+
+    private static void AddCoverFallback(Grid imageHost)
+    {
+        imageHost.Children.Add(new TextBlock
+        {
+            Text = "无封面",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = FluentTheme.TextTertiary,
+        });
+    }
+
+    private static string FormatScanStatus(ScanStatusDto status)
+    {
+        var progress = status.Total > 0 ? $"（{status.Done}/{status.Total}）" : "";
+        return status.Status switch
+        {
+            "done" => "整理完成，媒体库已更新。",
+            "cancelled" => "整理已取消。",
+            "disabled" => "这个文件夹暂未启用整理。",
+            "running" or "scanning" => $"正在整理文件夹 {progress}",
+            _ => $"正在整理文件夹 {progress}".Trim(),
+        };
+    }
+
+    private static string FolderTitleFromPath(string folderPath)
+    {
+        if (string.IsNullOrWhiteSpace(folderPath))
+        {
+            return "影片";
+        }
+
+        var normalized = folderPath.Replace("\\", "/").TrimEnd('/');
+        var index = normalized.LastIndexOf("/", StringComparison.Ordinal);
+        return index >= 0 ? normalized[(index + 1)..] : normalized;
+    }
+}
