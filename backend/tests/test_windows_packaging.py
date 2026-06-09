@@ -361,6 +361,25 @@ class WindowsPackagingTest(unittest.TestCase):
         self.assertIn("OnResumePromptTimerTick", player_page_cs)
         self.assertIn("BorderThickness = new Thickness(0)", player_page_cs)
         self.assertIn("Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent)", player_page_cs)
+        self.assertIn("_chromeTimer = new() { Interval = TimeSpan.FromSeconds(5) }", player_page_cs)
+        self.assertIn("PlayerPointerExitHideDelaySeconds = 2", player_page_cs)
+        self.assertIn("root.PointerExited += OnUserPointerExited", player_page_cs)
+        self.assertIn("ScheduleChromeHide(PlayerPointerExitHideDelaySeconds)", player_page_cs)
+        self.assertIn("AnimateChromeOpacity", player_page_cs)
+        self.assertIn("Storyboard.SetTarget", player_page_cs)
+        self.assertIn("DoubleAnimation", player_page_cs)
+        state_changed_body = player_page_cs[
+            player_page_cs.index("private void OnPlayerStateChanged") :
+            player_page_cs.index("private void UpdatePlaybackLabels")
+        ]
+        self.assertNotIn("ShowChrome(true);", state_changed_body)
+        self.assertNotIn("ScheduleChromeHide();", state_changed_body)
+        toggle_play_pause_body = player_page_cs[
+            player_page_cs.index("private async Task TogglePlayPauseAsync") :
+            player_page_cs.index("private async Task SeekRelativeAsync")
+        ]
+        self.assertIn("ShowChrome(true);", toggle_play_pause_body)
+        self.assertIn("ScheduleChromeHide();", toggle_play_pause_body)
         self.assertIn("PlayerVolume", player_page_cs)
         self.assertIn("PlayerVolumePanel", player_page_cs)
         self.assertIn("PlayerVolumeSlider", player_page_cs)
@@ -371,8 +390,14 @@ class WindowsPackagingTest(unittest.TestCase):
         self.assertIn("OnUserPointerMoved", player_page_cs)
         self.assertIn("OnUserPointerPressed", player_page_cs)
         self.assertIn("CloseEpisodePanel", player_page_cs)
-        self.assertIn("AddPlaybackKeyboardAccelerators", player_page_cs)
-        self.assertIn("KeyboardAccelerator", player_page_cs)
+        self.assertIn("HideTransientPlayerChrome", player_page_cs)
+        self.assertIn("CloseEpisodePanel(scheduleHide: false)", player_page_cs)
+        self.assertIn("CloseVolumePanel(scheduleHide: false)", player_page_cs)
+        self.assertIn("WhenNotPlaybackShortcut", player_page_cs)
+        self.assertIn("HandlePlaybackShortcutAsync", player_page_cs)
+        self.assertIn("_playbackShortcutClickGuard", player_page_cs)
+        self.assertNotIn("AddPlaybackKeyboardAccelerators", player_page_cs)
+        self.assertNotIn("KeyboardAccelerator", player_page_cs)
         self.assertIn("VirtualKey.Space", player_page_cs)
         self.assertIn("TogglePlayPauseAsync", player_page_cs)
         self.assertIn('topToolbar.Children.Add(episodeButton)', player_page_cs)

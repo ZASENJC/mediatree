@@ -16,6 +16,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.System;
@@ -24,6 +25,8 @@ namespace MediaTree.Windows.Views;
 
 public sealed partial class PlayerPage : Page
 {
+    private const double PlayerDefaultHideDelaySeconds = 5;
+    private const double PlayerPointerExitHideDelaySeconds = 2;
     private const double SeekStepSeconds = 5;
 
     private sealed record PlayerUi(
@@ -79,7 +82,8 @@ public sealed partial class PlayerPage : Page
         TextBlock ThumbnailsTitleText,
         GridView ThumbnailsGrid);
 
-    private readonly DispatcherTimer _chromeTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private readonly DispatcherTimer _chromeTimer = new() { Interval = TimeSpan.FromSeconds(5) };
+    private readonly DispatcherTimer _playbackShortcutClickGuardTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly DispatcherTimer _resumePromptTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     private readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     private readonly Button _audioButton;
@@ -146,6 +150,7 @@ public sealed partial class PlayerPage : Page
     private bool _ignoreVolume;
     private bool _muted;
     private bool _playbackStarted;
+    private bool _playbackShortcutClickGuard;
     private bool _resumePromptAutoHideScheduled;
     private bool _specialsExpanded;
     private bool _volumePanelOpen;
@@ -210,6 +215,7 @@ public sealed partial class PlayerPage : Page
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         _chromeTimer.Tick += OnChromeTimerTick;
+        _playbackShortcutClickGuardTimer.Tick += OnPlaybackShortcutClickGuardTimerTick;
         _resumePromptTimer.Tick += OnResumePromptTimerTick;
         _saveTimer.Tick += OnSaveTimerTick;
     }
@@ -223,8 +229,8 @@ public sealed partial class PlayerPage : Page
             Background = Brush(0, 0, 0),
             IsTabStop = true,
         };
-        AddPlaybackKeyboardAccelerators(root);
         root.PointerMoved += OnUserPointerMoved;
+        root.PointerExited += OnUserPointerExited;
         root.PointerPressed += OnUserPointerPressed;
         root.KeyDown += OnKeyDown;
 
@@ -267,7 +273,7 @@ public sealed partial class PlayerPage : Page
 
         var backButton = OverlayButton("返回", "PlayerBackButton");
         AttachPlaybackKeyHandler(backButton);
-        backButton.Click += OnBackClicked;
+        backButton.Click += WhenNotPlaybackShortcut(OnBackClicked);
         topGrid.Children.Add(backButton);
 
         var titleStack = new StackPanel { Spacing = 2 };
@@ -329,21 +335,21 @@ public sealed partial class PlayerPage : Page
 
         var subtitleButton = OverlayButton("字幕", "PlayerSubtitle");
         AttachPlaybackKeyHandler(subtitleButton);
-        subtitleButton.Click += OnSubtitleClicked;
+        subtitleButton.Click += WhenNotPlaybackShortcut(OnSubtitleClicked);
 
         var audioButton = OverlayButton("音轨", "PlayerAudio");
         AttachPlaybackKeyHandler(audioButton);
-        audioButton.Click += OnAudioClicked;
+        audioButton.Click += WhenNotPlaybackShortcut(OnAudioClicked);
 
         var episodeButton = OverlayButton("选集", "PlayerEpisodes");
         episodeButton.Visibility = Visibility.Collapsed;
         AttachPlaybackKeyHandler(episodeButton);
-        episodeButton.Click += OnEpisodeButtonClicked;
+        episodeButton.Click += WhenNotPlaybackShortcut(OnEpisodeButtonClicked);
         topToolbar.Children.Add(episodeButton);
 
         var fullScreenButton = OverlayButton("全屏", "PlayerFullScreen");
         AttachPlaybackKeyHandler(fullScreenButton);
-        fullScreenButton.Click += (_, _) => ToggleFullScreenMode();
+        fullScreenButton.Click += WhenNotPlaybackShortcut((_, _) => ToggleFullScreenMode());
 
         Grid.SetColumn(toolbarScroll, 2);
         topGrid.Children.Add(toolbarScroll);
@@ -388,7 +394,7 @@ public sealed partial class PlayerPage : Page
         };
         var playPauseButton = OverlayButton("暂停", "PlayerPlayPause");
         AttachPlaybackKeyHandler(playPauseButton);
-        playPauseButton.Click += OnPlayPauseClicked;
+        playPauseButton.Click += WhenNotPlaybackShortcut(OnPlayPauseClicked);
         playbackControls.Children.Add(playPauseButton);
 
         var timeText = new TextBlock
@@ -426,7 +432,7 @@ public sealed partial class PlayerPage : Page
 
         var volumeButton = OverlayButton("音量", "PlayerVolume");
         AttachPlaybackKeyHandler(volumeButton);
-        volumeButton.Click += OnVolumeButtonClicked;
+        volumeButton.Click += WhenNotPlaybackShortcut(OnVolumeButtonClicked);
         bottomControls.Children.Add(volumeButton);
         bottomControls.Children.Add(fullScreenButton);
 
@@ -467,7 +473,7 @@ public sealed partial class PlayerPage : Page
         volumeMuteButton.HorizontalAlignment = HorizontalAlignment.Stretch;
         volumeMuteButton.MaxWidth = double.PositiveInfinity;
         AttachPlaybackKeyHandler(volumeMuteButton);
-        volumeMuteButton.Click += async (_, _) => await ToggleMuteAsync();
+        volumeMuteButton.Click += WhenNotPlaybackShortcut(async (_, _) => await ToggleMuteAsync());
         volumePanelStack.Children.Add(volumeMuteButton);
         volumePanelStack.PointerPressed += (_, args) => args.Handled = true;
 
@@ -564,7 +570,7 @@ public sealed partial class PlayerPage : Page
         }, FluentButtonStyle.Overlay);
         AutomationProperties.SetAutomationId(resumeButton, "PlayerResumeButton");
         AttachPlaybackKeyHandler(resumeButton);
-        resumeButton.Click += OnResumeClicked;
+        resumeButton.Click += WhenNotPlaybackShortcut(OnResumeClicked);
         resumeActions.Children.Add(resumeButton);
 
         var closeResumeButton = FluentTheme.ApplyButton(new Button
@@ -574,7 +580,7 @@ public sealed partial class PlayerPage : Page
         }, FluentButtonStyle.Overlay);
         AutomationProperties.SetAutomationId(closeResumeButton, "PlayerResumeClose");
         AttachPlaybackKeyHandler(closeResumeButton);
-        closeResumeButton.Click += (_, _) => HideResumePrompt();
+        closeResumeButton.Click += WhenNotPlaybackShortcut((_, _) => HideResumePrompt());
         resumeActions.Children.Add(closeResumeButton);
         resumePrompt.Child = resumeActions;
         root.Children.Add(resumePrompt);
@@ -660,19 +666,19 @@ public sealed partial class PlayerPage : Page
         Grid.SetColumn(detailActions, 1);
 
         var favoriteButton = DetailActionButton("收藏", "PlayerDetailFavorite");
-        favoriteButton.Click += async (_, _) => await ToggleTagAsync("favorite");
+        favoriteButton.Click += WhenNotPlaybackShortcut(async (_, _) => await ToggleTagAsync("favorite"));
         detailActions.Children.Add(favoriteButton);
 
         var wantButton = DetailActionButton("想看", "PlayerDetailWant");
-        wantButton.Click += async (_, _) => await ToggleTagAsync("want_to_watch");
+        wantButton.Click += WhenNotPlaybackShortcut(async (_, _) => await ToggleTagAsync("want_to_watch"));
         detailActions.Children.Add(wantButton);
 
         var watchedButton = DetailActionButton("标为已看", "PlayerDetailWatched");
-        watchedButton.Click += async (_, _) => await ToggleTagAsync("watched");
+        watchedButton.Click += WhenNotPlaybackShortcut(async (_, _) => await ToggleTagAsync("watched"));
         detailActions.Children.Add(watchedButton);
 
         var detailMoreButton = DetailActionButton("更多", "PlayerDetailMore");
-        detailMoreButton.Click += OnDetailMoreClicked;
+        detailMoreButton.Click += WhenNotPlaybackShortcut(OnDetailMoreClicked);
         detailActions.Children.Add(detailMoreButton);
         detailHeader.Children.Add(detailActions);
 
@@ -708,7 +714,7 @@ public sealed partial class PlayerPage : Page
         });
         AutomationProperties.SetAutomationId(specialsToggleButton, "PlayerDetailSpecialsToggle");
         AttachPlaybackKeyHandler(specialsToggleButton);
-        specialsToggleButton.Click += OnSpecialsToggleClicked;
+        specialsToggleButton.Click += WhenNotPlaybackShortcut(OnSpecialsToggleClicked);
         var specialsStack = SectionStack(specialsTitleText, specialsGrid, specialsToggleButton);
         specialsGrid.Visibility = Visibility.Collapsed;
         var specialsCard = FluentTheme.Card(specialsStack, new Thickness(16));
@@ -1088,7 +1094,7 @@ public sealed partial class PlayerPage : Page
         }, active ? FluentButtonStyle.Accent : FluentButtonStyle.Overlay);
         AutomationProperties.SetAutomationId(button, $"PlayerEpisode_{episode.Id}");
         AttachPlaybackKeyHandler(button);
-        button.Click += async (_, _) =>
+        button.Click += WhenNotPlaybackShortcut(async (_, _) =>
         {
             if (episode.Id == _movieId)
             {
@@ -1105,7 +1111,7 @@ public sealed partial class PlayerPage : Page
             }
 
             ShellPage.Current?.NavigateToPlayer(episode.Id);
-        };
+        });
 
         var row = new Grid { ColumnSpacing = 10 };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -1519,7 +1525,7 @@ public sealed partial class PlayerPage : Page
         var item = await BrowsePage.CreateMovieCardItemAsync(movie, logContext);
         var card = CreateDetailMovieCard(item);
         AutomationProperties.SetAutomationId(card, $"PlayerDetailMovieCard_{movie.Id}");
-        card.Click += async (_, _) =>
+        card.Click += WhenNotPlaybackShortcut(async (_, _) =>
         {
             if (movie.Id == _movieId)
             {
@@ -1536,7 +1542,7 @@ public sealed partial class PlayerPage : Page
             }
 
             ShellPage.Current?.NavigateToPlayer(movie.Id);
-        };
+        });
         return card;
     }
 
@@ -1697,15 +1703,6 @@ public sealed partial class PlayerPage : Page
             UpdatePlaybackLabels(state);
             UpdateTrackLabels(state);
             ScheduleResumePromptAutoHide(state);
-
-            if (state.Paused)
-            {
-                ShowChrome(true);
-            }
-            else
-            {
-                ScheduleChromeHide();
-            }
         });
     }
 
@@ -1757,6 +1754,7 @@ public sealed partial class PlayerPage : Page
             {
                 await _player.PlayPauseAsync();
                 ShowChrome(true);
+                ScheduleChromeHide();
             }
         }
         catch (Exception ex)
@@ -1831,6 +1829,7 @@ public sealed partial class PlayerPage : Page
         }
 
         ShowChrome(true);
+        ScheduleChromeHide();
     }
 
     private void UpdateVolumePanelVisibility()
@@ -1838,7 +1837,7 @@ public sealed partial class PlayerPage : Page
         ScheduleChromeHide();
     }
 
-    private void CloseVolumePanel()
+    private void CloseVolumePanel(bool scheduleHide = true)
     {
         if (!_volumePanelOpen)
         {
@@ -1847,7 +1846,10 @@ public sealed partial class PlayerPage : Page
 
         _volumePanelOpen = false;
         _volumeFlyout.Hide();
-        ScheduleChromeHide();
+        if (scheduleHide)
+        {
+            ScheduleChromeHide();
+        }
     }
 
     private async Task SetVolumeAsync(double volume, bool showOsd)
@@ -2028,7 +2030,7 @@ public sealed partial class PlayerPage : Page
         ScheduleChromeHide();
     }
 
-    private void CloseEpisodePanel()
+    private void CloseEpisodePanel(bool scheduleHide = true)
     {
         if (!_episodePanelOpen)
         {
@@ -2036,7 +2038,16 @@ public sealed partial class PlayerPage : Page
         }
 
         _episodePanelOpen = false;
-        UpdateEpisodePanelVisibility();
+        UpdateEpisodePanelVisibility(scheduleHide);
+    }
+
+    private void UpdateEpisodePanelVisibility(bool scheduleHide)
+    {
+        _episodePanel.Visibility = _episodePanelOpen && _episodes.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+        if (scheduleHide)
+        {
+            ScheduleChromeHide();
+        }
     }
 
     private async void OnResumeClicked(object sender, RoutedEventArgs args)
@@ -2156,6 +2167,7 @@ public sealed partial class PlayerPage : Page
         try
         {
             _chromeTimer.Stop();
+            _playbackShortcutClickGuardTimer.Stop();
             _resumePromptTimer.Stop();
             _saveTimer.Stop();
             RestoreWindowChrome();
@@ -2216,6 +2228,11 @@ public sealed partial class PlayerPage : Page
         ScheduleChromeHide();
     }
 
+    private void OnUserPointerExited(object sender, PointerRoutedEventArgs args)
+    {
+        ScheduleChromeHide(PlayerPointerExitHideDelaySeconds);
+    }
+
     private void OnUserPointerPressed(object sender, PointerRoutedEventArgs args)
     {
         if (args.OriginalSource is DependencyObject source)
@@ -2242,24 +2259,45 @@ public sealed partial class PlayerPage : Page
 
     private void OnChromeTimerTick(object? sender, object args)
     {
-        if (!_state.Paused && !_episodePanelOpen && !_volumePanelOpen)
-        {
-            ShowChrome(false);
-        }
+        HideTransientPlayerChrome();
     }
 
     private void ShowChrome(bool visible)
     {
+        var targetOpacity = visible ? 1 : 0;
         _controlsVisible = visible;
-        var opacity = visible ? 1 : 0;
-        _topChrome.Opacity = opacity;
-        _bottomChrome.Opacity = opacity;
         _topChrome.IsHitTestVisible = visible;
         _bottomChrome.IsHitTestVisible = visible;
+        AnimateChromeOpacity(_topChrome, targetOpacity);
+        AnimateChromeOpacity(_bottomChrome, targetOpacity);
         if (!visible)
         {
-            CloseVolumePanel();
+            _chromeTimer.Stop();
+            CloseVolumePanel(scheduleHide: false);
         }
+    }
+
+    private void HideTransientPlayerChrome()
+    {
+        CloseEpisodePanel(scheduleHide: false);
+        CloseVolumePanel(scheduleHide: false);
+        ShowChrome(false);
+    }
+
+    private static void AnimateChromeOpacity(UIElement element, double opacity)
+    {
+        var animation = new DoubleAnimation
+        {
+            To = opacity,
+            Duration = new Duration(TimeSpan.FromMilliseconds(160)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+        Storyboard.SetTarget(animation, element);
+        Storyboard.SetTargetProperty(animation, "Opacity");
+
+        var storyboard = new Storyboard();
+        storyboard.Children.Add(animation);
+        storyboard.Begin();
     }
 
     private static bool IsDescendantOf(DependencyObject source, DependencyObject parent)
@@ -2275,11 +2313,12 @@ public sealed partial class PlayerPage : Page
         return false;
     }
 
-    private void ScheduleChromeHide()
+    private void ScheduleChromeHide(double delaySeconds = PlayerDefaultHideDelaySeconds)
     {
         _chromeTimer.Stop();
-        if (_controlsVisible && !_state.Paused && !_episodePanelOpen && !_volumePanelOpen)
+        if (_controlsVisible)
         {
+            _chromeTimer.Interval = TimeSpan.FromSeconds(delaySeconds);
             _chromeTimer.Start();
         }
     }
@@ -2302,6 +2341,7 @@ public sealed partial class PlayerPage : Page
         }
 
         ShowChrome(true);
+        ScheduleChromeHide();
     }
 
     private void AttachPlaybackKeyHandler(UIElement element)
@@ -2310,32 +2350,12 @@ public sealed partial class PlayerPage : Page
         element.KeyUp += OnPlayerControlKeyUp;
     }
 
-    private void AddPlaybackKeyboardAccelerators(UIElement element)
-    {
-        AddPlaybackKeyboardAccelerator(element, VirtualKey.Space, TogglePlayPauseAsync);
-        AddPlaybackKeyboardAccelerator(element, VirtualKey.K, TogglePlayPauseAsync);
-    }
-
-    private static void AddPlaybackKeyboardAccelerator(UIElement element, VirtualKey key, Func<Task> action)
-    {
-        var accelerator = new KeyboardAccelerator { Key = key };
-        accelerator.Invoked += async (_, args) =>
-        {
-            args.Handled = true;
-            await action();
-        };
-        element.KeyboardAccelerators.Add(accelerator);
-    }
-
     private async void OnPlayerControlKeyDown(object sender, KeyRoutedEventArgs args)
     {
-        if (!IsPlayPauseKey(args.Key))
+        if (IsPlayPauseKey(args.Key))
         {
-            return;
+            await HandlePlaybackShortcutAsync(args);
         }
-
-        args.Handled = true;
-        await TogglePlayPauseAsync();
     }
 
     private void OnPlayerControlKeyUp(object sender, KeyRoutedEventArgs args)
@@ -2348,12 +2368,16 @@ public sealed partial class PlayerPage : Page
 
     private async void OnKeyDown(object sender, KeyRoutedEventArgs args)
     {
+        if (args.Handled)
+        {
+            return;
+        }
+
         switch (args.Key)
         {
             case VirtualKey.Space:
             case VirtualKey.K:
-                args.Handled = true;
-                await TogglePlayPauseAsync();
+                await HandlePlaybackShortcutAsync(args);
                 break;
             case VirtualKey.Left:
                 args.Handled = true;
@@ -2388,6 +2412,34 @@ public sealed partial class PlayerPage : Page
 
     private static bool IsPlayPauseKey(VirtualKey key)
         => key == VirtualKey.Space || key == VirtualKey.K;
+
+    private async Task HandlePlaybackShortcutAsync(KeyRoutedEventArgs args)
+    {
+        args.Handled = true;
+        _playbackShortcutClickGuard = true;
+        _playbackShortcutClickGuardTimer.Stop();
+        _playbackShortcutClickGuardTimer.Start();
+        await TogglePlayPauseAsync();
+    }
+
+    private void OnPlaybackShortcutClickGuardTimerTick(object? sender, object args)
+    {
+        _playbackShortcutClickGuardTimer.Stop();
+        _playbackShortcutClickGuard = false;
+    }
+
+    private RoutedEventHandler WhenNotPlaybackShortcut(RoutedEventHandler handler)
+    {
+        return (sender, args) =>
+        {
+            if (_playbackShortcutClickGuard)
+            {
+                return;
+            }
+
+            handler(sender, args);
+        };
+    }
 
     private void HandleEscape()
     {
