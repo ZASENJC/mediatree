@@ -120,6 +120,17 @@ export default function Settings() {
   }
 
   const normalizeVersion = (version?: string) => (version || '').replace(/^v/i, '')
+  const compareVersions = (a?: string, b?: string) => {
+    const left = normalizeVersion(a).split(/[.-]/).map(part => Number.parseInt(part, 10))
+    const right = normalizeVersion(b).split(/[.-]/).map(part => Number.parseInt(part, 10))
+    const length = Math.max(left.length, right.length)
+    for (let i = 0; i < length; i++) {
+      const leftPart = Number.isFinite(left[i]) ? left[i] : 0
+      const rightPart = Number.isFinite(right[i]) ? right[i] : 0
+      if (leftPart !== rightPart) return leftPart > rightPart ? 1 : -1
+    }
+    return 0
+  }
   const isDockerSetupError = (message?: string) => {
     const text = message || ''
     return text.includes('Docker CLI') || text.includes('Docker socket') || text.includes('/var/run/docker.sock')
@@ -721,7 +732,10 @@ export default function Settings() {
                   const versionKey = normalizeVersion(v.version)
                   const dockerTargetVersion = v.required_image_version || v.version
                   const dockerTargetKey = normalizeVersion(dockerTargetVersion)
-                  const isCurrent = versionKey === normalizeVersion(result.current_version)
+                  const currentVersion = result.effective_version || result.current_version
+                  const versionPosition = compareVersions(versionKey, currentVersion)
+                  const isCurrent = versionPosition === 0
+                  const isOlderVersion = versionPosition < 0
                   const activeUpdate = updateProgress
                     && !isCurrent
                     && (
@@ -798,7 +812,7 @@ export default function Settings() {
                                   version: v.version,
                                   downloaded: 0,
                                   total: 0,
-                                  message: '正在切换到上一应用版本...',
+                                  message: '正在回滚到此版本...',
                                   update_type: 'app-package',
                                 })
                                 try {
@@ -814,12 +828,12 @@ export default function Settings() {
                               disabled={isBusy}
                               className={`${btnDark} text-xs px-2 py-1 disabled:opacity-50`}
                             >
-                              {updatePerforming === v.version ? '回滚中...' : '回滚到此版本'}
+                              {updatePerforming === v.version ? '回滚中...' : '回滚此版本'}
                             </button>
                           ) : !isCurrent && !v.requires_image_update ? (
                             <button
                               onClick={async () => {
-                                if (!confirm(`确定要切换到 ${v.display_version || v.version} 吗？容器将自动重启。`)) return
+                                if (!confirm(`确定要${isOlderVersion ? '回滚到' : '切换到'} ${v.display_version || v.version} 吗？容器将自动重启。`)) return
                                 setUpdatePerforming(v.version)
                                 setUpdateMsg('')
                                 setUpdateProgress({
@@ -827,24 +841,26 @@ export default function Settings() {
                                   version: v.version,
                                   downloaded: 0,
                                   total: 0,
-                                  message: '正在发起应用包更新...',
+                                  message: isOlderVersion ? '正在发起版本回滚...' : '正在发起应用包更新...',
                                   update_type: 'app-package',
                                 })
                                 startUpdatePolling(v.version)
                                 try {
                                   const res = await api.performUpdate(v.version, 'app-package')
-                                  if (res.ok === false) throw new Error(res.error || '更新失败')
-                                  setUpdateMsg(res.message || '更新已触发')
+                                  if (res.ok === false) throw new Error(res.error || (isOlderVersion ? '回滚失败' : '更新失败'))
+                                  setUpdateMsg(res.message || (isOlderVersion ? '回滚已触发' : '更新已触发'))
                                   dismissUpdate(v.version)
                                 } catch (e: any) {
-                                  setUpdateMsg(`更新失败: ${e.message || '未知错误'}`)
+                                  setUpdateMsg(`${isOlderVersion ? '回滚' : '更新'}失败: ${e.message || '未知错误'}`)
                                 }
                                 setUpdatePerforming(null)
                               }}
                               disabled={isBusy}
                               className={`${btnPrimary} text-xs px-2 py-1 disabled:opacity-50`}
                             >
-                              {updatePerforming === v.version ? '更新中...' : '下载并更新'}
+                              {updatePerforming === v.version
+                                ? (isOlderVersion ? '回滚中...' : '更新中...')
+                                : (isOlderVersion ? '回滚此版本' : '下载并更新')}
                             </button>
                           ) : !isCurrent && v.requires_image_update ? (
                             <button
