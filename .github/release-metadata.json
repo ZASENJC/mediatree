@@ -4,6 +4,10 @@
     "reason": "应用包级更新；不需要完整 Docker 镜像更新。"
   },
   "versions": {
+    "1.0.14": {
+      "requires_image_update": false,
+      "reason": "应用包级更新；本版本只包含前端播放页标题和更新卡片文案调整，不需要完整 Docker 镜像更新。"
+    },
     "1.0.13": {
       "requires_image_update": true,
       "reason": "本版本包含 Dockerfile、基础运行时版本标记和更新发布链调整；请在宿主机执行 docker compose pull && docker compose up -d 拉取完整 Docker 镜像更新。"

@@ -135,7 +135,7 @@ In production, the backend serves the built frontend at `/`. In development, run
 - `GET /api/update/changelog?version=0.0.00` — fetch full GitHub release body for CHANGELOG modal
 - `GET /api/update/status` — return current app-package update status
 - Frontend auto-checks every 15 minutes in `App.tsx`, shows red dot on Settings nav when update available
-- Settings page update panel: version list with "更新日志" (modal) and "更新到此版本" buttons
+- Settings page update panel: version list with "更新日志" (modal), app-package "下载并更新", old-version "回滚此版本", and full-image "完整镜像更新" actions
 - CHANGELOG modal: full-screen darkened backdrop (`bg-black/60 backdrop-blur-sm`), centered `glass-modal` panel
 - Docker self-upgrade requires `docker.sock` access and a Docker-CLI-capable image; app-package mode does not require Docker socket access
 - Update comparisons must use the higher of the app-package version and image base version as the effective baseline, so image/package releases do not drift into separate version tracks
@@ -219,7 +219,7 @@ scan_media(root)
 - New scraper: create in `backend/app/scrapers/`, subclass `BaseScraper`, register in `registry.py`
 - Scan logic: `scanner.py` `scan_media()` / `scrape_for_library()`
 - Cover handling: `scanner.py:_apply_scraped_data()` + `database.py:_normalize_cover_path()`
-- Player/subtitles: `VideoPlayer.tsx` + `artplayerPluginAss.ts`
+- Player/subtitles: `VideoPlayer.tsx` + `artplayerPluginAss.ts`; playback pages update `document.title` with `▶` / `⏸` plus the current title until the user leaves the page
 - Jellyfin compat: `jellyfin_compat.py` (routes) + `jellyfin_mappers.py` (data mapping)
 - File watching: `watcher.py`
 - Update / self-upgrade: `updater.py` + `main.py` (`/api/update/*` routes) + `Settings.tsx` (update panel). App-package mode (default) does not require Docker socket; Docker image mode requires `docker.sock` mount.

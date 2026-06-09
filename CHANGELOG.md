@@ -6,6 +6,25 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## 1.0.14 (2026-06-10)
+
+### Playback
+
+- Updated the browser tab title on the detail playback page to reflect playback state: `▶ <title> - MediaTree` while playing and `⏸ <title> - MediaTree` while paused or ended
+- Kept the playback title active while staying on the playback page and restored the original site title only after leaving the page
+- Preferred the active episode label for the tab title when series episode data is available
+
+### Updates
+
+- Changed Settings update cards so older app-package versions show `回滚此版本`, while newer app-package versions show `下载并更新`
+- Aligned confirmation, progress, and error wording with rollback vs update actions
+
+### Release Type
+
+- App-package update; no full Docker image update is required
+
+---
+
 ## 1.0.13 (2026-06-09)
 
 ### Library
