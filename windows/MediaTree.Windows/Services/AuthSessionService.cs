@@ -119,4 +119,3 @@ public sealed class AuthSessionService
 
     private sealed record CredentialEnvelope(string Payload);
 }
-

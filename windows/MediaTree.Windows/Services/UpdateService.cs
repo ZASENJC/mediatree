@@ -18,5 +18,16 @@ public sealed class UpdateService
 
     public Task<UpdateCheckResultDto> CheckForUpdatesAsync(CancellationToken cancellationToken = default)
         => _api.CheckForUpdatesAsync(cancellationToken);
-}
 
+    public Task<UpdateStatusDto> GetStatusAsync(CancellationToken cancellationToken = default)
+        => _api.GetUpdateStatusAsync(cancellationToken);
+
+    public Task<UpdateActionResultDto> PerformUpdateAsync(string version, string mode = "app-package", CancellationToken cancellationToken = default)
+        => _api.PerformUpdateAsync(version, mode, cancellationToken);
+
+    public Task<UpdateActionResultDto> RollbackAsync(CancellationToken cancellationToken = default)
+        => _api.RollbackUpdateAsync(cancellationToken);
+
+    public Task<ChangelogDto> GetChangelogAsync(string version, CancellationToken cancellationToken = default)
+        => _api.GetChangelogAsync(version, cancellationToken);
+}

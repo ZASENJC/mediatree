@@ -29,7 +29,7 @@ public sealed class MediaTreeApiClient : IDisposable
         _httpClient = new HttpClient
         {
             BaseAddress = new Uri(backendUri, "api/"),
-            Timeout = TimeSpan.FromSeconds(30),
+            Timeout = TimeSpan.FromMinutes(10),
         };
     }
 
@@ -134,6 +134,9 @@ public sealed class MediaTreeApiClient : IDisposable
     public async Task<ScanStatusDto> GetScanStatusAsync(string mediaRoot, CancellationToken cancellationToken = default)
         => await GetAsync<ScanStatusDto>($"/scan/status?media_root={Uri.EscapeDataString(mediaRoot)}", cancellationToken);
 
+    public async Task<ScanLogDto> GetScanLogAsync(string mediaRoot, int lines = 80, CancellationToken cancellationToken = default)
+        => await GetAsync<ScanLogDto>($"/scan/log?media_root={Uri.EscapeDataString(mediaRoot)}&lines={lines}", cancellationToken);
+
     public async Task<MoviesResponseDto> GetMoviesAsync(
         string mediaRoot,
         string folder,
@@ -178,8 +181,38 @@ public sealed class MediaTreeApiClient : IDisposable
     public async Task<UpdateCheckResultDto> CheckForUpdatesAsync(CancellationToken cancellationToken = default)
         => await GetAsync<UpdateCheckResultDto>("/update/check", cancellationToken);
 
+    public async Task<UpdateStatusDto> GetUpdateStatusAsync(CancellationToken cancellationToken = default)
+        => await GetAsync<UpdateStatusDto>("/update/status", cancellationToken);
+
+    public async Task<UpdateActionResultDto> PerformUpdateAsync(string version, string mode = "app-package", CancellationToken cancellationToken = default)
+        => await PostJsonAsync<UpdateActionResultDto>("/update/perform", new { version, mode }, cancellationToken);
+
+    public async Task<UpdateActionResultDto> RollbackUpdateAsync(CancellationToken cancellationToken = default)
+        => await PostJsonAsync<UpdateActionResultDto>("/update/rollback", new { }, cancellationToken);
+
+    public async Task<ChangelogDto> GetChangelogAsync(string version, CancellationToken cancellationToken = default)
+        => await GetAsync<ChangelogDto>($"/update/changelog?version={Uri.EscapeDataString(version)}", cancellationToken);
+
     public Uri BuildBackupUri(string backupType)
         => new(BackendUri, $"api/backup?backup_type={Uri.EscapeDataString(backupType)}");
+
+    public async Task<byte[]> DownloadBackupAsync(string backupType, CancellationToken cancellationToken = default)
+    {
+        using var request = CreateRequest(HttpMethod.Get, $"/backup?backup_type={Uri.EscapeDataString(backupType)}");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            throw new UnauthorizedAccessException("MediaTree session is not authorized.");
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException($"MediaTree API failed ({(int)response.StatusCode}): {body}");
+        }
+
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken);
+    }
 
     public async Task RestoreBackupAsync(string filePath, CancellationToken cancellationToken = default)
     {

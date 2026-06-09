@@ -63,6 +63,39 @@ public sealed class LibraryService
         await _api.ScanAsync(normalized, cancellationToken);
     }
 
+    public async Task<bool> AddLibraryRootAsync(string folderPath, string scraper = "auto", CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(folderPath))
+        {
+            throw new ArgumentException("folderPath is required.", nameof(folderPath));
+        }
+
+        var normalized = Path.GetFullPath(folderPath);
+        if (!Directory.Exists(normalized))
+        {
+            throw new DirectoryNotFoundException(normalized);
+        }
+
+        var config = await _api.GetConfigAsync(cancellationToken);
+        var roots = new List<string>(config.ExtraMediaRoots ?? []);
+        var alreadyExists = roots.Any(root => string.Equals(Path.GetFullPath(root), normalized, StringComparison.OrdinalIgnoreCase));
+        if (!alreadyExists)
+        {
+            roots.Add(normalized);
+            await _api.SaveConfigAsync(roots, cancellationToken);
+        }
+
+        await _api.SaveLibrarySettingAsync(new LibrarySettingDto
+        {
+            MediaRoot = normalized,
+            Scraper = NormalizeScraper(scraper),
+            TmdbKey = "",
+            Enabled = 1,
+        }, cancellationToken);
+
+        return !alreadyExists;
+    }
+
     public Task<SetupStatusDto> GetSetupStatusAsync(CancellationToken cancellationToken = default)
         => _api.GetSetupStatusAsync(cancellationToken);
 
@@ -83,6 +116,9 @@ public sealed class LibraryService
 
     public Task<ScanStatusDto> GetScanStatusAsync(string mediaRoot, CancellationToken cancellationToken = default)
         => _api.GetScanStatusAsync(mediaRoot, cancellationToken);
+
+    public Task<ScanLogDto> GetScanLogAsync(string mediaRoot, int lines = 80, CancellationToken cancellationToken = default)
+        => _api.GetScanLogAsync(mediaRoot, lines, cancellationToken);
 
     public Task ScanAsync(string mediaRoot, CancellationToken cancellationToken = default)
         => _api.ScanAsync(mediaRoot, cancellationToken);

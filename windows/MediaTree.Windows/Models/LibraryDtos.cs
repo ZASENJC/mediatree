@@ -224,6 +224,15 @@ public sealed class ScanStatusDto
     public int Total { get; set; }
 }
 
+public sealed class ScanLogDto
+{
+    [JsonPropertyName("lines")]
+    public List<string> Lines { get; set; } = [];
+
+    [JsonPropertyName("total")]
+    public int Total { get; set; }
+}
+
 public sealed class ScanResultDto
 {
     [JsonPropertyName("media_root")]

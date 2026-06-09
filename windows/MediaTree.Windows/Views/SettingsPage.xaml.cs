@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Windows.Storage;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -21,7 +22,9 @@ public sealed partial class SettingsPage : Page
 
     private sealed record ScraperOption(string Value, string Label, string Description, bool HasKey);
 
-    private sealed record LibrarySettingsRowContext(string MediaRoot, string TmdbKey, ComboBox ScraperBox, PasswordBox PasswordBox);
+    private sealed record LibrarySettingsRowContext(string MediaRoot, string TmdbKey, ComboBox ScraperBox, PasswordBox PasswordBox, TextBlock StatusText, TextBlock LogText);
+
+    private sealed record LibraryScanRowUi(TextBlock StatusText, TextBlock LogText, Button ScanButton);
 
     private static readonly IReadOnlyList<ScraperOption> ScraperOptions =
     [
@@ -51,10 +54,19 @@ public sealed partial class SettingsPage : Page
     private readonly TextBox _tmdbCacheHoursBox;
     private readonly PasswordBox _tmdbTokenBox;
     private readonly TextBlock _tmdbTokenStatusText;
+    private readonly DispatcherTimer _scanStatusTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private readonly Dictionary<string, int> _scanPollCounts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, LibraryScanRowUi> _scanRows = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _activeScanRoots = new(StringComparer.OrdinalIgnoreCase);
+    private readonly DispatcherTimer _updateStatusTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private readonly TextBlock _updateProgressText;
     private readonly TextBlock _updateStatusText;
+    private readonly StackPanel _updateVersionsStack;
     private readonly TextBlock _versionText;
     private double _settingsColumnWidth;
     private ConfigDto _loadedConfig = new();
+    private UpdateCheckResultDto? _lastUpdateResult;
+    private UpdateStatusDto? _lastUpdateStatus;
     private bool _suppressUiPreferenceSave;
 
     public SettingsPage()
@@ -79,12 +91,17 @@ public sealed partial class SettingsPage : Page
             _tmdbTokenStatusText,
             _backupStatusText,
             _versionText,
-            _updateStatusText
+            _updateProgressText,
+            _updateStatusText,
+            _updateVersionsStack
         ) = BuildContent();
+        _scanStatusTimer.Tick += OnScanStatusTimerTick;
+        _updateStatusTimer.Tick += OnUpdateStatusTimerTick;
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
-    private (TextBlock globalStatusText, CheckBox hideHomeTitleTextBox, CheckBox showSourceNameBox, TextBox oldUsernameBox, PasswordBox oldPasswordBox, TextBox newUsernameBox, PasswordBox newPasswordBox, TextBlock authStatusText, ListView librarySettingsList, TextBlock libraryStatusText, TextBox javdbCacheHoursBox, TextBox tmdbCacheHoursBox, TextBox bangumiCacheHoursBox, TextBox javdbRequestIntervalBox, TextBox tmdbApiKeyBox, PasswordBox tmdbTokenBox, TextBlock tmdbTokenStatusText, TextBlock backupStatusText, TextBlock versionText, TextBlock updateStatusText) BuildContent()
+    private (TextBlock globalStatusText, CheckBox hideHomeTitleTextBox, CheckBox showSourceNameBox, TextBox oldUsernameBox, PasswordBox oldPasswordBox, TextBox newUsernameBox, PasswordBox newPasswordBox, TextBlock authStatusText, ListView librarySettingsList, TextBlock libraryStatusText, TextBox javdbCacheHoursBox, TextBox tmdbCacheHoursBox, TextBox bangumiCacheHoursBox, TextBox javdbRequestIntervalBox, TextBox tmdbApiKeyBox, PasswordBox tmdbTokenBox, TextBlock tmdbTokenStatusText, TextBlock backupStatusText, TextBlock versionText, TextBlock updateProgressText, TextBlock updateStatusText, StackPanel updateVersionsStack) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "SettingsPage");
 
@@ -244,11 +261,11 @@ public sealed partial class SettingsPage : Page
         };
         var backupCoreButton = FluentTheme.ApplyButton(new Button { Content = "下载数据库备份" }, FluentButtonStyle.Accent);
         AutomationProperties.SetAutomationId(backupCoreButton, "SettingsBackupCore");
-        backupCoreButton.Click += (_, _) => OpenBackup("core");
+        backupCoreButton.Click += async (sender, _) => await SaveBackupAsync("core", sender as Button);
         backupActions.Children.Add(backupCoreButton);
         var backupFullButton = FluentTheme.ApplyButton(new Button { Content = "下载完整备份 (含封面图)" }, FluentButtonStyle.Accent);
         AutomationProperties.SetAutomationId(backupFullButton, "SettingsBackupFull");
-        backupFullButton.Click += (_, _) => OpenBackup("full");
+        backupFullButton.Click += async (sender, _) => await SaveBackupAsync("full", sender as Button);
         backupActions.Children.Add(backupFullButton);
         var restoreBackupButton = FluentTheme.ApplyButton(new Button { Content = "选择备份恢复" });
         AutomationProperties.SetAutomationId(restoreBackupButton, "SettingsRestoreBackup");
@@ -282,8 +299,13 @@ public sealed partial class SettingsPage : Page
         };
         AutomationProperties.SetAutomationId(versionText, "SettingsVersion");
         updateStack.Children.Add(versionText);
+        var updateProgressText = StatusText("SettingsUpdateProgressText");
+        updateStack.Children.Add(updateProgressText);
         var updateStatusText = StatusText("SettingsUpdateStatusText");
         updateStack.Children.Add(updateStatusText);
+        var updateVersionsStack = new StackPanel { Spacing = 10 };
+        AutomationProperties.SetAutomationId(updateVersionsStack, "SettingsUpdateVersions");
+        updateStack.Children.Add(updateVersionsStack);
         var logsButton = FluentTheme.ApplyButton(new Button
         {
             Content = "打开问题日志",
@@ -321,7 +343,9 @@ public sealed partial class SettingsPage : Page
             tmdbTokenStatusText,
             backupStatusText,
             versionText,
-            updateStatusText
+            updateProgressText,
+            updateStatusText,
+            updateVersionsStack
         );
     }
 
@@ -331,6 +355,14 @@ public sealed partial class SettingsPage : Page
         await LoadVersionAsync();
         await LoadTmdbConfigAsync();
         await LoadLibrarySettingsAsync();
+        await LoadUpdateStatusAsync();
+        await CheckUpdatesOnLoadAsync();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs args)
+    {
+        _scanStatusTimer.Stop();
+        _updateStatusTimer.Stop();
     }
 
     private void LoadUiPreferences()
@@ -353,8 +385,11 @@ public sealed partial class SettingsPage : Page
         try
         {
             var version = await AppServices.Updates.GetVersionAsync();
-            var source = version.CurrentSource == "app-package" ? "应用包" : "安装包内置";
-            _versionText.Text = $"当前版本：{version.Version}    运行来源：Windows · {source}    镜像内置版本：{version.BaseVersion}";
+            _versionText.Text = FormatVersionLine(
+                version.Version,
+                version.CurrentSource,
+                version.BaseVersion,
+                version.StatusNote);
         }
         catch (Exception ex)
         {
@@ -457,11 +492,12 @@ public sealed partial class SettingsPage : Page
             button.IsEnabled = false;
             ShowAuthStatus("正在更新账号...", false);
             await AppServices.Api.ChangePasswordAsync(_oldUsernameBox.Text, _oldPasswordBox.Password, _newUsernameBox.Text, _newPasswordBox.Password);
+            var session = await AppServices.Auth.LoginAndPersistAsync(_newUsernameBox.Text, _newPasswordBox.Password);
             _oldUsernameBox.Text = "";
             _oldPasswordBox.Password = "";
             _newUsernameBox.Text = "";
             _newPasswordBox.Password = "";
-            ShowAuthStatus("密码已更新。", false);
+            ShowAuthStatus($"密码已更新。{session.Message}", false);
         }
         catch (Exception ex)
         {
@@ -481,6 +517,7 @@ public sealed partial class SettingsPage : Page
             _libraryStatusText.Foreground = FluentTheme.TextSecondary;
             _libraryStatusText.Text = "正在加载媒体库设置...";
             _librarySettingsList.Items.Clear();
+            _scanRows.Clear();
 
             var roots = await AppServices.Library.GetMediaRootsAsync();
             var settings = await AppServices.Library.GetLibrarySettingsAsync();
@@ -509,6 +546,7 @@ public sealed partial class SettingsPage : Page
         {
             ShellLogger.Error(ex, "Failed to load native library scraper settings.");
             _librarySettingsList.Items.Clear();
+            _scanRows.Clear();
             _libraryStatusText.Foreground = FluentTheme.Error;
             _libraryStatusText.Text = $"加载媒体库设置失败：{ex.Message}";
         }
@@ -610,10 +648,20 @@ public sealed partial class SettingsPage : Page
         grid.Children.Add(passwordBox);
 
         var actions = new StackPanel { Spacing = 8 };
+        var rowStatusText = StatusText($"SettingsLibraryRowStatus_{index}");
+        var rowLogText = new TextBlock
+        {
+            Foreground = FluentTheme.TextTertiary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = 11,
+            Visibility = Visibility.Collapsed,
+        };
+        AutomationProperties.SetAutomationId(rowLogText, $"SettingsLibraryScanLog_{index}");
         var saveButton = FluentTheme.ApplyButton(new Button
         {
             Content = "保存",
-            Tag = new LibrarySettingsRowContext(root.Path, setting?.TmdbKey ?? "", scraperBox, passwordBox),
+            Tag = new LibrarySettingsRowContext(root.Path, setting?.TmdbKey ?? "", scraperBox, passwordBox, rowStatusText, rowLogText),
         }, FluentButtonStyle.Accent);
         AutomationProperties.SetAutomationId(saveButton, $"SettingsSaveLibrary_{index}");
         saveButton.Click += OnSaveLibrarySettingClicked;
@@ -622,11 +670,12 @@ public sealed partial class SettingsPage : Page
         var scanButton = FluentTheme.ApplyButton(new Button
         {
             Content = "重新扫描",
-            Tag = new LibrarySettingsRowContext(root.Path, setting?.TmdbKey ?? "", scraperBox, passwordBox),
+            Tag = new LibrarySettingsRowContext(root.Path, setting?.TmdbKey ?? "", scraperBox, passwordBox, rowStatusText, rowLogText),
         });
         AutomationProperties.SetAutomationId(scanButton, $"SettingsScanLibrary_{index}");
         scanButton.Click += OnScanLibraryClicked;
         actions.Children.Add(scanButton);
+        _scanRows[root.Path] = new LibraryScanRowUi(rowStatusText, rowLogText, scanButton);
         Grid.SetColumn(actions, 3);
         grid.Children.Add(actions);
 
@@ -639,7 +688,11 @@ public sealed partial class SettingsPage : Page
             actions);
 
         row.Child = grid;
-        return row;
+        var rowStack = new StackPanel { Spacing = 10 };
+        rowStack.Children.Add(row);
+        rowStack.Children.Add(rowStatusText);
+        rowStack.Children.Add(rowLogText);
+        return rowStack;
     }
 
     private async void OnSaveLibrarySettingClicked(object sender, RoutedEventArgs args)
@@ -654,16 +707,19 @@ public sealed partial class SettingsPage : Page
             button.IsEnabled = false;
             _libraryStatusText.Foreground = FluentTheme.TextSecondary;
             _libraryStatusText.Text = "正在保存媒体库设置...";
+            ShowRowStatus(context.StatusText, "正在保存媒体库设置...", false);
             await SaveLibrarySettingAsync(context);
 
             _libraryStatusText.Foreground = FluentTheme.Accent;
             _libraryStatusText.Text = "媒体库设置已保存。";
+            ShowRowStatus(context.StatusText, "已保存。", false);
         }
         catch (Exception ex)
         {
             ShellLogger.Error(ex, "Failed to save native library scraper setting.");
             _libraryStatusText.Foreground = FluentTheme.Error;
             _libraryStatusText.Text = $"保存媒体库设置失败：{ex.Message}";
+            ShowRowStatus(context.StatusText, $"保存失败：{ex.Message}", true);
         }
         finally
         {
@@ -683,21 +739,29 @@ public sealed partial class SettingsPage : Page
             button.IsEnabled = false;
             _libraryStatusText.Foreground = FluentTheme.TextSecondary;
             _libraryStatusText.Text = "正在保存刮削器设置并重新扫描...";
+            ShowRowStatus(context.StatusText, "正在保存刮削器设置并重新扫描...", false);
+            context.LogText.Visibility = Visibility.Collapsed;
+            context.LogText.Text = "";
             await SaveLibrarySettingAsync(context);
             await AppServices.Library.ClearLibraryAsync(context.MediaRoot);
-            await AppServices.Library.ScanAsync(context.MediaRoot);
+            _ = StartLibraryScanInBackgroundAsync(context.MediaRoot);
+            _activeScanRoots.Add(context.MediaRoot);
+            _scanPollCounts[context.MediaRoot] = 0;
+            _scanStatusTimer.Start();
             _libraryStatusText.Foreground = FluentTheme.Accent;
             _libraryStatusText.Text = "已开始重新扫描。你可以继续使用应用。";
+            ShowRowStatus(context.StatusText, "已开始重新扫描。", false);
         }
         catch (Exception ex)
         {
             ShellLogger.Error(ex, "Failed to rescan native library from settings.");
             _libraryStatusText.Foreground = FluentTheme.Error;
             _libraryStatusText.Text = $"重新扫描失败：{ex.Message}";
+            ShowRowStatus(context.StatusText, $"重新扫描失败：{ex.Message}", true);
         }
         finally
         {
-            button.IsEnabled = true;
+            button.IsEnabled = !_activeScanRoots.Contains(context.MediaRoot);
         }
     }
 
@@ -717,21 +781,59 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private void OpenBackup(string backupType)
+    private async System.Threading.Tasks.Task SaveBackupAsync(string backupType, Button? button)
     {
         try
         {
-            Process.Start(new ProcessStartInfo
+            if (button is not null)
             {
-                FileName = AppServices.Api.BuildBackupUri(backupType).ToString(),
-                UseShellExecute = true,
-            });
-            ShowBackupStatus("已打开备份下载。", false);
+                button.IsEnabled = false;
+            }
+
+            ShowBackupStatus("正在准备备份文件...", false);
+            var picker = new FileSavePicker
+            {
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                SuggestedFileName = backupType == "full" ? "mediatree_full_backup.tar.gz" : "mediatree_backup.db",
+            };
+            if (backupType == "full")
+            {
+                picker.FileTypeChoices.Add("MediaTree 完整备份", [".gz"]);
+            }
+            else
+            {
+                picker.FileTypeChoices.Add("MediaTree 数据库备份", [".db"]);
+            }
+
+            if (AppServices.MainWindow is not null)
+            {
+                InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(AppServices.MainWindow));
+            }
+
+            var file = await picker.PickSaveFileAsync();
+            if (file is null)
+            {
+                ShowBackupStatus("已取消保存。", false);
+                return;
+            }
+
+            var bytes = await AppServices.Api.DownloadBackupAsync(backupType);
+            CachedFileManager.DeferUpdates(file);
+            await FileIO.WriteBytesAsync(file, bytes);
+            await CachedFileManager.CompleteUpdatesAsync(file);
+            ShowBackupStatus("备份已保存。", false);
         }
         catch (Exception ex)
         {
-            ShellLogger.Error(ex, "Failed to open native backup URL.");
-            ShowBackupStatus($"打开备份失败：{ex.Message}", true);
+            ShellLogger.Error(ex, "Failed to save native backup.");
+            ShowBackupStatus($"保存备份失败：{ex.Message}", true);
+        }
+        finally
+        {
+            if (button is not null)
+            {
+                button.IsEnabled = true;
+            }
         }
     }
 
@@ -780,9 +882,18 @@ public sealed partial class SettingsPage : Page
 
     private async void OnCheckUpdatesClicked(object sender, RoutedEventArgs args)
     {
+        var button = sender as Button;
+        if (button is not null)
+        {
+            button.IsEnabled = false;
+        }
+
         try
         {
+            ShowUpdateStatus("正在检查更新...", false);
             var result = await AppServices.Updates.CheckForUpdatesAsync();
+            _lastUpdateResult = result;
+            await LoadUpdateStatusAsync();
             if (!result.HasUpdate)
             {
                 ShowUpdateStatus("当前已经是最新版本。", false);
@@ -795,11 +906,49 @@ public sealed partial class SettingsPage : Page
                     : $"发现新版本 {next?.DisplayVersion}。可以直接在应用内更新。";
                 ShowUpdateStatus(message, false);
             }
+            RenderUpdateVersions();
         }
         catch (Exception ex)
         {
             ShellLogger.Error(ex, "Failed to check native Windows updates.");
             ShowUpdateStatus($"检查更新失败：{ex.Message}", true);
+        }
+        finally
+        {
+            if (button is not null)
+            {
+                button.IsEnabled = true;
+            }
+        }
+    }
+
+    private async System.Threading.Tasks.Task CheckUpdatesOnLoadAsync()
+    {
+        try
+        {
+            _lastUpdateResult = await AppServices.Updates.CheckForUpdatesAsync();
+            RenderUpdateVersions();
+            if (_lastUpdateResult.HasUpdate)
+            {
+                var next = _lastUpdateResult.Versions.Count > 0 ? _lastUpdateResult.Versions[0] : null;
+                ShowUpdateStatus($"发现新版本 {next?.DisplayVersion ?? next?.Version ?? ""}", false);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to auto-check native Windows updates.");
+        }
+    }
+
+    private async System.Threading.Tasks.Task StartLibraryScanInBackgroundAsync(string mediaRoot)
+    {
+        try
+        {
+            await AppServices.Library.ScanAsync(mediaRoot);
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Native library scan trigger failed or timed out.");
         }
     }
 
@@ -821,9 +970,357 @@ public sealed partial class SettingsPage : Page
         }
     }
 
+    private async System.Threading.Tasks.Task LoadUpdateStatusAsync()
+    {
+        try
+        {
+            _lastUpdateStatus = await AppServices.Updates.GetStatusAsync();
+            RenderUpdateStatus(_lastUpdateStatus);
+            RenderUpdateVersions();
+            if (IsUpdateBusy(_lastUpdateStatus))
+            {
+                _updateStatusTimer.Start();
+            }
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to load native update status.");
+        }
+    }
+
+    private async void OnUpdateStatusTimerTick(object? sender, object args)
+    {
+        await RefreshUpdateStatusAsync();
+    }
+
+    private async System.Threading.Tasks.Task RefreshUpdateStatusAsync()
+    {
+        try
+        {
+            _lastUpdateStatus = await AppServices.Updates.GetStatusAsync();
+            RenderUpdateStatus(_lastUpdateStatus);
+            RenderUpdateVersions();
+            if (!IsUpdateBusy(_lastUpdateStatus))
+            {
+                _updateStatusTimer.Stop();
+                if (_lastUpdateStatus.Status == "success")
+                {
+                    await LoadVersionAsync();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to refresh native update status.");
+            ShowUpdateStatus("服务可能正在重启，请稍后刷新设置页查看最新版本。", false);
+        }
+    }
+
+    private void RenderUpdateStatus(UpdateStatusDto status)
+    {
+        var label = StatusLabel(status.Status);
+        var percent = status.Total > 0 ? $" · {Math.Min(100, (int)Math.Round(status.Downloaded * 100.0 / status.Total))}%" : "";
+        var message = string.IsNullOrWhiteSpace(status.Message) ? "" : $" · {status.Message}";
+        _updateProgressText.Text = $"更新状态：{label}{percent}{message}";
+        _updateProgressText.Foreground = status.Status == "error" ? FluentTheme.Error : FluentTheme.TextSecondary;
+        _updateProgressText.Visibility = status.Status == "idle" && string.IsNullOrWhiteSpace(status.Message)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private void RenderUpdateVersions()
+    {
+        _updateVersionsStack.Children.Clear();
+        var versions = (_lastUpdateResult?.Versions ?? []).Take(3).ToList();
+        foreach (var version in versions)
+        {
+            _updateVersionsStack.Children.Add(CreateUpdateVersionRow(version));
+        }
+    }
+
+    private UIElement CreateUpdateVersionRow(VersionEntryDto version)
+    {
+        var row = new Border
+        {
+            Padding = new Thickness(12),
+            CornerRadius = FluentTheme.CardCornerRadius,
+            Background = FluentTheme.LayerAlt,
+            BorderBrush = FluentTheme.Border,
+            BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        var stack = new StackPanel { Spacing = 8 };
+        stack.Children.Add(new TextBlock
+        {
+            Text = DisplayVersionOrVersion(version),
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = FluentTheme.TextPrimary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        });
+        var typeText = version.RequiresWindowsBaseUpdate
+            ? "需要 Windows 桌面版更新"
+            : version.RequiresImageUpdate
+                ? "需要完整镜像更新"
+                : "应用包更新";
+        var meta = new TextBlock
+        {
+            Text = $"{typeText} · {FormatSize(version.Size)}{FormatReason(version)}",
+            Foreground = FluentTheme.TextSecondary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        };
+        stack.Children.Add(meta);
+
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+        };
+        var changelogButton = FluentTheme.ApplyButton(new Button { Content = "更新日志" });
+        AutomationProperties.SetAutomationId(changelogButton, $"SettingsUpdateChangelog_{SanitizeAutomationId(version.Version)}");
+        changelogButton.Click += (_, _) => _ = ShowChangelogAsync(version);
+        actions.Children.Add(changelogButton);
+
+        if (CanRollbackTo(version))
+        {
+            var rollbackButton = FluentTheme.ApplyButton(new Button { Content = "回滚到此版本" });
+            AutomationProperties.SetAutomationId(rollbackButton, $"SettingsRollbackUpdate_{SanitizeAutomationId(version.Version)}");
+            rollbackButton.Click += (_, _) => _ = RollbackUpdateAsync(version);
+            actions.Children.Add(rollbackButton);
+        }
+        else if (!IsCurrentVersion(version) && version.RequiresWindowsBaseUpdate)
+        {
+            var downloadButton = FluentTheme.ApplyButton(new Button { Content = "下载桌面新版" });
+            AutomationProperties.SetAutomationId(downloadButton, $"SettingsDownloadWindowsUpdate_{SanitizeAutomationId(version.Version)}");
+            downloadButton.Click += (_, _) => OpenUrl(version.HtmlUrl);
+            actions.Children.Add(downloadButton);
+        }
+        else if (!IsCurrentVersion(version) && version.RequiresImageUpdate)
+        {
+            actions.Children.Add(FluentTheme.Body("完整镜像更新请在宿主机执行，Windows 桌面端不直接替换镜像。", 12));
+        }
+        else if (!IsCurrentVersion(version))
+        {
+            var updateButton = FluentTheme.ApplyButton(new Button { Content = "下载并更新" }, FluentButtonStyle.Accent);
+            AutomationProperties.SetAutomationId(updateButton, $"SettingsPerformUpdate_{SanitizeAutomationId(version.Version)}");
+            updateButton.IsEnabled = !IsUpdateBusy(_lastUpdateStatus);
+            updateButton.Click += (_, _) => _ = PerformUpdateAsync(version);
+            actions.Children.Add(updateButton);
+        }
+
+        actions.SizeChanged += (_, args) => ApplyActionStackLayout(args.NewSize.Width, actions);
+        stack.Children.Add(actions);
+        row.Child = stack;
+        return row;
+    }
+
+    private async System.Threading.Tasks.Task PerformUpdateAsync(VersionEntryDto version)
+    {
+        try
+        {
+            ShowUpdateStatus("正在发起应用包更新...", false);
+            _lastUpdateStatus = new UpdateStatusDto
+            {
+                Status = "downloading",
+                Version = version.Version,
+                Message = "正在发起应用包更新...",
+                UpdateType = "app-package",
+            };
+            RenderUpdateStatus(_lastUpdateStatus);
+            RenderUpdateVersions();
+            _updateStatusTimer.Start();
+            var result = await AppServices.Updates.PerformUpdateAsync(version.Version, "app-package");
+            ShowUpdateStatus(string.IsNullOrWhiteSpace(result.Message) ? "更新已触发。" : result.Message, false);
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to perform native Windows app update.");
+            ShowUpdateStatus($"更新失败：{ex.Message}", true);
+        }
+        finally
+        {
+            RenderUpdateVersions();
+        }
+    }
+
+    private async System.Threading.Tasks.Task RollbackUpdateAsync(VersionEntryDto version)
+    {
+        try
+        {
+            ShowUpdateStatus("正在触发回滚...", false);
+            _updateStatusTimer.Start();
+            var result = await AppServices.Updates.RollbackAsync();
+            ShowUpdateStatus(string.IsNullOrWhiteSpace(result.Message) ? "已触发回滚。" : result.Message, false);
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to rollback native Windows app update.");
+            ShowUpdateStatus($"回滚失败：{ex.Message}", true);
+        }
+        finally
+        {
+            RenderUpdateVersions();
+        }
+    }
+
+    private async System.Threading.Tasks.Task ShowChangelogAsync(VersionEntryDto version)
+    {
+        try
+        {
+            var changelog = await AppServices.Updates.GetChangelogAsync(version.Version);
+            var text = new TextBox
+            {
+                Text = string.IsNullOrWhiteSpace(changelog.Body) ? "暂无更新日志" : changelog.Body,
+                AcceptsReturn = true,
+                IsReadOnly = true,
+                TextWrapping = TextWrapping.Wrap,
+                MinWidth = 520,
+                MaxHeight = 480,
+            };
+            var dialog = new ContentDialog
+            {
+                Title = $"更新日志 - {DisplayVersionOrVersion(version)}",
+                Content = new ScrollViewer { Content = text },
+                CloseButtonText = "关闭",
+                XamlRoot = XamlRoot,
+            };
+            await dialog.ShowAsync();
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to load native update changelog.");
+            ShowUpdateStatus($"读取更新日志失败：{ex.Message}", true);
+        }
+    }
+
+    private static bool IsUpdateBusy(UpdateStatusDto? status)
+        => status?.Status is "downloading" or "verifying" or "installing" or "restarting";
+
+    private bool IsCurrentVersion(VersionEntryDto version)
+        => string.Equals(NormalizeVersion(version.Version), NormalizeVersion(_lastUpdateResult?.CurrentVersion), StringComparison.OrdinalIgnoreCase);
+
+    private bool CanRollbackTo(VersionEntryDto version)
+        => _lastUpdateStatus?.CanRollback == true
+            && !string.IsNullOrWhiteSpace(_lastUpdateStatus.RollbackVersion)
+            && string.Equals(NormalizeVersion(_lastUpdateStatus.RollbackVersion), NormalizeVersion(version.Version), StringComparison.OrdinalIgnoreCase)
+            && !IsCurrentVersion(version);
+
+    private static string StatusLabel(string status)
+        => status switch
+        {
+            "downloading" => "下载中",
+            "verifying" => "校验中",
+            "installing" => "安装中",
+            "restarting" => "重启中",
+            "success" => "完成",
+            "error" => "失败",
+            _ => "空闲",
+        };
+
+    private static string FormatVersionLine(string version, string currentSource, string baseVersion, string statusNote = "")
+    {
+        var source = currentSource == "app-package" ? "应用包" : currentSource == "docker-image" ? "Docker 镜像" : "安装包内置";
+        var note = string.IsNullOrWhiteSpace(statusNote) ? "" : $"    {statusNote}";
+        return $"当前版本：{version}    运行来源：Windows · {source}    镜像内置版本：{baseVersion}{note}";
+    }
+
+    private static string NormalizeVersion(string? version)
+        => (version ?? "").Trim().TrimStart('v', 'V');
+
+    private static string FormatSize(long size)
+    {
+        if (size <= 0)
+        {
+            return "大小未知";
+        }
+
+        return size < 1024 * 1024
+            ? $"{size / 1024.0:F1} KB"
+            : $"{size / 1024.0 / 1024.0:F1} MB";
+    }
+
+    private static string DisplayVersionOrVersion(VersionEntryDto version)
+        => string.IsNullOrWhiteSpace(version.DisplayVersion) ? version.Version : version.DisplayVersion;
+
+    private static string FormatReason(VersionEntryDto version)
+    {
+        var reason = version.RequiresWindowsBaseUpdate && !string.IsNullOrWhiteSpace(version.WindowsReason)
+            ? version.WindowsReason
+            : version.Reason;
+        return string.IsNullOrWhiteSpace(reason) ? "" : $" · {reason}";
+    }
+
+    private static string SanitizeAutomationId(string value)
+        => string.Join("_", (value ?? "").Where(char.IsLetterOrDigit));
+
+    private static void OpenUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = url,
+            UseShellExecute = true,
+        });
+    }
+
     private void OnAddLibraryClicked(object sender, RoutedEventArgs args)
     {
-        ShellPage.Current?.NavigateToSetup();
+        _ = AddLibraryFromSettingsAsync(sender as Button);
+    }
+
+    private async System.Threading.Tasks.Task AddLibraryFromSettingsAsync(Button? button)
+    {
+        try
+        {
+            if (button is not null)
+            {
+                button.IsEnabled = false;
+            }
+
+            var picker = new FolderPicker
+            {
+                SuggestedStartLocation = PickerLocationId.VideosLibrary,
+            };
+            picker.FileTypeFilter.Add("*");
+            if (AppServices.MainWindow is not null)
+            {
+                InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(AppServices.MainWindow));
+            }
+
+            var folder = await picker.PickSingleFolderAsync();
+            if (folder is null)
+            {
+                _libraryStatusText.Foreground = FluentTheme.TextSecondary;
+                _libraryStatusText.Text = "已取消选择。";
+                return;
+            }
+
+            _libraryStatusText.Foreground = FluentTheme.TextSecondary;
+            _libraryStatusText.Text = "正在添加媒体库...";
+            var added = await AppServices.Library.AddLibraryRootAsync(folder.Path, "auto");
+            await LoadLibrarySettingsAsync();
+            _libraryStatusText.Foreground = FluentTheme.Accent;
+            _libraryStatusText.Text = added
+                ? "已添加媒体库，建议先保存刮削器设置后重新扫描。"
+                : "该媒体库已存在，已刷新列表。";
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to add native library from settings.");
+            _libraryStatusText.Foreground = FluentTheme.Error;
+            _libraryStatusText.Text = $"添加媒体库失败：{ex.Message}";
+        }
+        finally
+        {
+            if (button is not null)
+            {
+                button.IsEnabled = true;
+            }
+        }
     }
 
     private void ShowGlobalStatus(string message, bool isError)
@@ -859,6 +1356,85 @@ public sealed partial class SettingsPage : Page
         _updateStatusText.Text = message;
         _updateStatusText.Foreground = isError ? FluentTheme.Error : FluentTheme.TextSecondary;
         _updateStatusText.Visibility = Visibility.Visible;
+    }
+
+    private static void ShowRowStatus(TextBlock textBlock, string message, bool isError)
+    {
+        textBlock.Text = message;
+        textBlock.Foreground = isError ? FluentTheme.Error : FluentTheme.Accent;
+        textBlock.Visibility = Visibility.Visible;
+    }
+
+    private async void OnScanStatusTimerTick(object? sender, object args)
+    {
+        if (_activeScanRoots.Count == 0)
+        {
+            _scanStatusTimer.Stop();
+            return;
+        }
+
+        foreach (var mediaRoot in _activeScanRoots.ToList())
+        {
+            await RefreshScanRowAsync(mediaRoot);
+        }
+    }
+
+    private async System.Threading.Tasks.Task RefreshScanRowAsync(string mediaRoot)
+    {
+        if (!_scanRows.TryGetValue(mediaRoot, out var row))
+        {
+            _activeScanRoots.Remove(mediaRoot);
+            return;
+        }
+
+        _scanPollCounts[mediaRoot] = _scanPollCounts.TryGetValue(mediaRoot, out var count) ? count + 1 : 1;
+        try
+        {
+            var status = await AppServices.Library.GetScanStatusAsync(mediaRoot);
+            var message = FormatScanStatus(status);
+            row.StatusText.Text = message;
+            row.StatusText.Foreground = status.Status == "done" ? FluentTheme.Accent : FluentTheme.TextSecondary;
+            row.StatusText.Visibility = Visibility.Visible;
+
+            var log = await AppServices.Library.GetScanLogAsync(mediaRoot, 20);
+            if (log.Lines.Count > 0)
+            {
+                row.LogText.Text = string.Join(Environment.NewLine, log.Lines);
+                row.LogText.Visibility = Visibility.Visible;
+            }
+
+            if (status.Status is "done" or "disabled" or "not_found" || _scanPollCounts[mediaRoot] > 120)
+            {
+                _activeScanRoots.Remove(mediaRoot);
+                _scanPollCounts.Remove(mediaRoot);
+                row.ScanButton.IsEnabled = true;
+                if (_activeScanRoots.Count == 0)
+                {
+                    _scanStatusTimer.Stop();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to refresh native scan status.");
+            ShowRowStatus(row.StatusText, $"读取扫描进度失败：{ex.Message}", true);
+            _activeScanRoots.Remove(mediaRoot);
+            _scanPollCounts.Remove(mediaRoot);
+            row.ScanButton.IsEnabled = true;
+        }
+    }
+
+    private static string FormatScanStatus(ScanStatusDto status)
+    {
+        return status.Status switch
+        {
+            "scanning" => status.Total > 0 ? $"正在刮削：{status.Done}/{status.Total}" : "正在刮削...",
+            "clearing" => "清除已有数据...",
+            "done" => "刮削完成。",
+            "disabled" => "媒体库已禁用。",
+            "not_found" => "等待扫描进度...",
+            _ => string.IsNullOrWhiteSpace(status.Status) ? "正在扫描..." : status.Status,
+        };
     }
 
     private static Border SectionCard(UIElement child, string automationId, Thickness? padding = null)
