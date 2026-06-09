@@ -8,7 +8,7 @@ const SCRAPER_META: Record<string, { label: string; desc: string; hasKey: boolea
   tmdb_movie: { label: 'TMDB 电影', desc: '适合电影库；tmdbid 调用 /movie 精确刮削', hasKey: true },
   tmdb_tv: { label: 'TMDB 剧集/番剧', desc: '适合剧集、番剧、电视剧库；tmdbid 调用 /tv 精确刮削', hasKey: true },
   bangumi: { label: 'Bangumi', desc: '适合番剧、动画、二次元条目，数据可能不全', hasKey: false },
-  javdatabase: { label: 'Javdatabase', desc: '适合 JAV 番号识别和刮削；不加入全库/右键重新刮削的 auto 自动链，需要单独选择使用', hasKey: false },
+  javdatabase: { label: 'Javdatabase', desc: '适合 JAV 番号识别和刮削；不加入自动刮削链，需要单独选择使用', hasKey: false },
   auto: { label: '自动', desc: '自动判断刮削源，但可能效果不好', hasKey: true },
   none: { label: '不刮削', desc: '只扫描本地文件，不联网刮削元数据', hasKey: false },
 }
