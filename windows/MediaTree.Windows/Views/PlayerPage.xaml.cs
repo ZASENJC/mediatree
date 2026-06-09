@@ -310,11 +310,11 @@ public sealed partial class PlayerPage : Page
         };
         toolbarScroll.Content = topToolbar;
 
-        var speedBox = new ComboBox
+        var speedBox = FluentTheme.ApplyComboBox(new ComboBox
         {
             Width = 104,
             VerticalAlignment = VerticalAlignment.Center,
-        };
+        });
         AutomationProperties.SetAutomationId(speedBox, "PlayerSpeed");
         AddSpeedOption(speedBox, "0.5x", 0.5);
         AddSpeedOption(speedBox, "0.75x", 0.75);

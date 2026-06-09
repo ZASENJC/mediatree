@@ -120,6 +120,40 @@ public static class FluentTheme
         return button;
     }
 
+    public static TextBox ApplyTextInput(TextBox box)
+    {
+        box.CornerRadius = ControlCornerRadius;
+        box.MinHeight = box.MinHeight > 0 ? box.MinHeight : 36;
+        return box;
+    }
+
+    public static PasswordBox ApplyPasswordInput(PasswordBox box)
+    {
+        box.CornerRadius = ControlCornerRadius;
+        box.MinHeight = box.MinHeight > 0 ? box.MinHeight : 36;
+        return box;
+    }
+
+    public static ComboBox ApplyComboBox(ComboBox box)
+    {
+        box.CornerRadius = ControlCornerRadius;
+        box.MinHeight = box.MinHeight > 0 ? box.MinHeight : 36;
+        return box;
+    }
+
+    public static NumberBox ApplyNumberInput(NumberBox box)
+    {
+        box.CornerRadius = ControlCornerRadius;
+        box.MinHeight = box.MinHeight > 0 ? box.MinHeight : 36;
+        return box;
+    }
+
+    public static CheckBox ApplyCheckBox(CheckBox box)
+    {
+        box.CornerRadius = ControlCornerRadius;
+        return box;
+    }
+
     public static Thickness PagePadding(double width)
         => width < CompactBreakpoint ? new Thickness(18) : new Thickness(28);
 

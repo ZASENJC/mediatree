@@ -163,18 +163,18 @@ public sealed partial class SettingsPage : Page
 
         var uiPrefsStack = new StackPanel { Spacing = 12 };
         uiPrefsStack.Children.Add(SectionTitle("界面偏好", "SettingsUiPrefsCard"));
-        var hideHomeTitleTextBox = new CheckBox
+        var hideHomeTitleTextBox = FluentTheme.ApplyCheckBox(new CheckBox
         {
             Content = WrapText("无字模式：首页仅展示影片封面图，隐藏卡片上的标题文字和目录数量。"),
-        };
+        });
         AutomationProperties.SetAutomationId(hideHomeTitleTextBox, "SettingsHideHomeTitleText");
         hideHomeTitleTextBox.Checked += OnUiPreferenceChanged;
         hideHomeTitleTextBox.Unchecked += OnUiPreferenceChanged;
         uiPrefsStack.Children.Add(hideHomeTitleTextBox);
-        var showSourceNameBox = new CheckBox
+        var showSourceNameBox = FluentTheme.ApplyCheckBox(new CheckBox
         {
             Content = WrapText("使用源文件名称：首页媒体库卡片显示源文件夹名称。"),
-        };
+        });
         AutomationProperties.SetAutomationId(showSourceNameBox, "SettingsShowSourceName");
         showSourceNameBox.Checked += OnUiPreferenceChanged;
         showSourceNameBox.Unchecked += OnUiPreferenceChanged;
@@ -607,11 +607,11 @@ public sealed partial class SettingsPage : Page
             Spacing = 6,
             Width = 230,
         };
-        var scraperBox = new ComboBox
+        var scraperBox = FluentTheme.ApplyComboBox(new ComboBox
         {
             Header = "资料来源",
             MinWidth = 0,
-        };
+        });
         AutomationProperties.SetAutomationId(scraperBox, $"SettingsLibraryScraper_{index}");
         foreach (var option in ScraperOptions)
         {
@@ -638,12 +638,12 @@ public sealed partial class SettingsPage : Page
         Grid.SetColumn(scraperStack, 1);
         grid.Children.Add(scraperStack);
 
-        var passwordBox = new PasswordBox
+        var passwordBox = FluentTheme.ApplyPasswordInput(new PasswordBox
         {
             Header = "密码",
             PlaceholderText = "可选",
             Width = 120,
-        };
+        });
         AutomationProperties.SetAutomationId(passwordBox, $"SettingsLibraryPassword_{index}");
         Grid.SetColumn(passwordBox, 2);
         grid.Children.Add(passwordBox);
@@ -1242,7 +1242,7 @@ public sealed partial class SettingsPage : Page
         try
         {
             var changelog = await AppServices.Updates.GetChangelogAsync(version.Version);
-            var text = new TextBox
+            var text = FluentTheme.ApplyTextInput(new TextBox
             {
                 Text = string.IsNullOrWhiteSpace(changelog.Body) ? "暂无更新日志" : changelog.Body,
                 AcceptsReturn = true,
@@ -1250,7 +1250,7 @@ public sealed partial class SettingsPage : Page
                 TextWrapping = TextWrapping.Wrap,
                 MinWidth = 520,
                 MaxHeight = 480,
-            };
+            });
             var dialog = new ContentDialog
             {
                 Title = $"更新日志 - {DisplayVersionOrVersion(version)}",
@@ -1692,25 +1692,25 @@ public sealed partial class SettingsPage : Page
 
     private static TextBox TextInput(string header, string automationId, string value = "")
     {
-        var box = new TextBox
+        var box = FluentTheme.ApplyTextInput(new TextBox
         {
             Header = header,
             Text = value,
             MinWidth = 0,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-        };
+        });
         AutomationProperties.SetAutomationId(box, automationId);
         return box;
     }
 
     private static PasswordBox PasswordInput(string header, string automationId)
     {
-        var box = new PasswordBox
+        var box = FluentTheme.ApplyPasswordInput(new PasswordBox
         {
             Header = header,
             MinWidth = 0,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-        };
+        });
         AutomationProperties.SetAutomationId(box, automationId);
         return box;
     }

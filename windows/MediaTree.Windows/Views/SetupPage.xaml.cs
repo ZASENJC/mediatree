@@ -119,23 +119,23 @@ public sealed partial class SetupPage : Page
         form.Children.Add(scraperButtons);
 
         var tmdbTokenSection = new StackPanel { Spacing = 6 };
-        var tmdbTokenBox = new PasswordBox
+        var tmdbTokenBox = FluentTheme.ApplyPasswordInput(new PasswordBox
         {
             Header = "TMDB 读访问令牌（可选）",
             PlaceholderText = "以 eyJ 开头的 Read Access Token",
             MinWidth = 0,
-        };
+        });
         AutomationProperties.SetAutomationId(tmdbTokenBox, "SetupTmdbAccessToken");
         tmdbTokenSection.Children.Add(tmdbTokenBox);
         tmdbTokenSection.Children.Add(FluentTheme.Body("选择 TMDB 电影、TMDB 剧集/番剧、TMDB 合集或自动时可填写；也可以之后在设置页补充。", 13));
         form.Children.Add(tmdbTokenSection);
 
-        var libraryPasswordBox = new PasswordBox
+        var libraryPasswordBox = FluentTheme.ApplyPasswordInput(new PasswordBox
         {
             Header = "媒体库密码（可选）",
             PlaceholderText = "留空则不设密码",
             MinWidth = 0,
-        };
+        });
         AutomationProperties.SetAutomationId(libraryPasswordBox, "SetupLibraryPassword");
         form.Children.Add(libraryPasswordBox);
 

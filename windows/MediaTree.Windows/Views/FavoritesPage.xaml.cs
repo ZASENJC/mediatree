@@ -77,20 +77,20 @@ public sealed partial class FavoritesPage : Page
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Bottom,
         };
-        var libraryBox = new ComboBox
+        var libraryBox = FluentTheme.ApplyComboBox(new ComboBox
         {
             Header = "媒体库",
             MinWidth = 220,
-        };
+        });
         AutomationProperties.SetAutomationId(libraryBox, "FavoritesLibrarySelector");
         libraryBox.SelectionChanged += OnLibraryChanged;
         controls.Children.Add(libraryBox);
 
-        var sortBox = new ComboBox
+        var sortBox = FluentTheme.ApplyComboBox(new ComboBox
         {
             Header = "排序",
             MinWidth = 160,
-        };
+        });
         AutomationProperties.SetAutomationId(sortBox, "FavoritesSort");
         BrowsePage.AddSortOptions(sortBox, browseLabels: false);
         sortBox.SelectedIndex = 0;

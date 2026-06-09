@@ -100,12 +100,12 @@ public static class MediaContextMenuService
 
     private static async Task ShowManualScrapeDialogAsync(MovieDto movie, MediaContextMenuHost host)
     {
-        var queryBox = new TextBox
+        var queryBox = FluentTheme.ApplyTextInput(new TextBox
         {
             Header = "搜索关键词",
             Text = movie.BestTitle,
             PlaceholderText = "输入片名、原名或编号",
-        };
+        });
         var scraperBox = CreateScraperBox("刮削器");
         var resultsList = new ListView
         {
@@ -151,12 +151,12 @@ public static class MediaContextMenuService
 
     private static async Task ShowFolderScrapeDialogAsync(FolderCardItem folder, MediaContextMenuHost host)
     {
-        var queryBox = new TextBox
+        var queryBox = FluentTheme.ApplyTextInput(new TextBox
         {
             Header = "搜索关键词",
             Text = folder.Title,
             PlaceholderText = "输入目录对应的片名或合集名",
-        };
+        });
         var scraperBox = CreateScraperBox("刮削器");
         var resultsList = new ListView
         {
@@ -522,17 +522,17 @@ public static class MediaContextMenuService
         int? initialDuration,
         Func<EditFields, Task> saveAsync)
     {
-        var titleBox = new TextBox { Header = "标题", Text = initialTitle };
-        var codeBox = new TextBox { Header = "番号/标识", Text = initialCode };
-        var actressBox = new TextBox { Header = "演员", Text = initialActress };
-        var releaseDateBox = new TextBox { Header = "发行日", PlaceholderText = "YYYY-MM-DD", Text = initialReleaseDate };
-        var durationBox = new NumberBox
+        var titleBox = FluentTheme.ApplyTextInput(new TextBox { Header = "标题", Text = initialTitle });
+        var codeBox = FluentTheme.ApplyTextInput(new TextBox { Header = "番号/标识", Text = initialCode });
+        var actressBox = FluentTheme.ApplyTextInput(new TextBox { Header = "演员", Text = initialActress });
+        var releaseDateBox = FluentTheme.ApplyTextInput(new TextBox { Header = "发行日", PlaceholderText = "YYYY-MM-DD", Text = initialReleaseDate });
+        var durationBox = FluentTheme.ApplyNumberInput(new NumberBox
         {
             Header = "时长(分钟)",
             Value = initialDuration ?? double.NaN,
             Minimum = 0,
             SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
-        };
+        });
         var status = StatusText("");
         status.Visibility = Visibility.Collapsed;
         var form = DialogStack(titleBox, codeBox, actressBox, releaseDateBox, durationBox, status);
@@ -645,7 +645,7 @@ public static class MediaContextMenuService
 
     private static ComboBox CreateScraperBox(string header)
     {
-        var scraperBox = new ComboBox { Header = header, MinWidth = 0 };
+        var scraperBox = FluentTheme.ApplyComboBox(new ComboBox { Header = header, MinWidth = 0 });
         AddScraperOption(scraperBox, "auto", "自动");
         AddScraperOption(scraperBox, "tmdb_movie", "TMDB 电影");
         AddScraperOption(scraperBox, "tmdb_tv", "TMDB 剧集/番剧");

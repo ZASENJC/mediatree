@@ -134,30 +134,30 @@ public sealed partial class LibraryPage : Page
         moviesBackButton.Click += OnBackToFoldersClicked;
         toolbar.Children.Add(moviesBackButton);
 
-        var libraryBox = new ComboBox
+        var libraryBox = FluentTheme.ApplyComboBox(new ComboBox
         {
             Header = "文件夹",
             MinWidth = 240,
-        };
+        });
         AutomationProperties.SetAutomationId(libraryBox, "LibrarySelector");
         libraryBox.SelectionChanged += OnLibraryChanged;
         Grid.SetColumn(libraryBox, 1);
         toolbar.Children.Add(libraryBox);
 
-        var searchBox = new TextBox
+        var searchBox = FluentTheme.ApplyTextInput(new TextBox
         {
             Header = "搜索影片",
             PlaceholderText = "输入标题或关键字",
-        };
+        });
         AutomationProperties.SetAutomationId(searchBox, "LibrarySearchBox");
         searchBox.KeyDown += OnSearchKeyDown;
         Grid.SetColumn(searchBox, 2);
         toolbar.Children.Add(searchBox);
 
-        var sortBox = new ComboBox
+        var sortBox = FluentTheme.ApplyComboBox(new ComboBox
         {
             Header = "排序",
-        };
+        });
         AutomationProperties.SetAutomationId(sortBox, "LibrarySort");
         sortBox.Items.Add(new ComboBoxItem { Content = "最近加入", Tag = "created_desc" });
         sortBox.Items.Add(new ComboBoxItem { Content = "名称", Tag = "name" });

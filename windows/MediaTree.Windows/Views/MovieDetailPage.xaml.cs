@@ -398,20 +398,20 @@ public sealed partial class MovieDetailPage : Page
 
     private async System.Threading.Tasks.Task ShowManualScrapeDialogAsync(MovieDto movie)
     {
-        var queryBox = new TextBox
+        var queryBox = FluentTheme.ApplyTextInput(new TextBox
         {
             Header = "搜索关键词",
             Text = movie.BestTitle,
             PlaceholderText = "输入片名、原名或编号",
             MinWidth = 0,
-        };
+        });
         AutomationProperties.SetAutomationId(queryBox, "ManualScrapeQuery");
 
-        var scraperBox = new ComboBox
+        var scraperBox = FluentTheme.ApplyComboBox(new ComboBox
         {
             Header = "刮削器",
             MinWidth = 0,
-        };
+        });
         AddScraperOption(scraperBox, "auto", "自动");
         AddScraperOption(scraperBox, "tmdb_movie", "TMDB 电影");
         AddScraperOption(scraperBox, "tmdb_tv", "TMDB 剧集/番剧");

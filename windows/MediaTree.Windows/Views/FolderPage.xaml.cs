@@ -101,12 +101,12 @@ public sealed partial class FolderPage : Page
         titleStack.Children.Add(headerSubtitleText);
         header.Children.Add(titleStack);
 
-        var sortBox = new ComboBox
+        var sortBox = FluentTheme.ApplyComboBox(new ComboBox
         {
             Header = "排序",
             MinWidth = 160,
             VerticalAlignment = VerticalAlignment.Bottom,
-        };
+        });
         AutomationProperties.SetAutomationId(sortBox, "FolderSort");
         BrowsePage.AddSortOptions(sortBox, browseLabels: false);
         sortBox.SelectedIndex = 0;

@@ -90,30 +90,30 @@ public sealed partial class BrowsePage : Page
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Bottom,
         };
-        var libraryBox = new ComboBox
+        var libraryBox = FluentTheme.ApplyComboBox(new ComboBox
         {
             Header = "媒体库",
             MinWidth = 220,
-        };
+        });
         AutomationProperties.SetAutomationId(libraryBox, "BrowseLibrarySelector");
         libraryBox.SelectionChanged += OnLibraryChanged;
         controls.Children.Add(libraryBox);
 
-        var searchBox = new TextBox
+        var searchBox = FluentTheme.ApplyTextInput(new TextBox
         {
             Header = "搜索",
             PlaceholderText = "标题或关键字",
             MinWidth = 240,
-        };
+        });
         AutomationProperties.SetAutomationId(searchBox, "BrowseSearchBox");
         searchBox.KeyDown += OnSearchKeyDown;
         controls.Children.Add(searchBox);
 
-        var sortBox = new ComboBox
+        var sortBox = FluentTheme.ApplyComboBox(new ComboBox
         {
             Header = "排序",
             MinWidth = 160,
-        };
+        });
         AutomationProperties.SetAutomationId(sortBox, "BrowseSort");
         AddSortOptions(sortBox, browseLabels: true);
         sortBox.SelectedIndex = 0;

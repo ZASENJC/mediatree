@@ -42,11 +42,13 @@ public sealed partial class LoginPage : Page
         stack.Children.Add(FluentTheme.Body("这台电脑上的 MediaTree 已经设置过账号。输入一次用户名和密码后，桌面版会把登录状态安全保存到当前 Windows 用户里，下次会自动进入。", 14));
 
         _usernameBox.Header = "用户名";
+        FluentTheme.ApplyTextInput(_usernameBox);
         _usernameBox.KeyDown += OnLoginFieldKeyDown;
         AutomationProperties.SetAutomationId(_usernameBox, "LoginUsername");
         stack.Children.Add(_usernameBox);
 
         _passwordBox.Header = "密码";
+        FluentTheme.ApplyPasswordInput(_passwordBox);
         _passwordBox.KeyDown += OnLoginFieldKeyDown;
         AutomationProperties.SetAutomationId(_passwordBox, "LoginPassword");
         stack.Children.Add(_passwordBox);
