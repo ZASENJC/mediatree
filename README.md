@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG_zh-CN.md"><img src="https://img.shields.io/badge/版本-1.0.12-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG_zh-CN.md"><img src="https://img.shields.io/badge/版本-1.0.13-blue?style=flat-square" alt="Version"></a>
   <a href="https://github.com/ZASENJC/mediatree/blob/main/LICENSE"><img src="https://img.shields.io/badge/许可证-MIT-green?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react" alt="React">
@@ -29,8 +29,9 @@ MediaTree 面向把电影、电视剧、动漫和私人片库保存在自己硬�
 
 - **文件还在原处**：用只读挂载接入现有目录，不改变你的文件结构。
 - **少做手工整理**：从 TMDB、Bangumi、Javdatabase 获取海报、标题、演员、季集和详情。
-- **播放器够用**：支持直链播放、HTTP Range 跳转、按需转码、ASS/SSA 特效字幕、画中画和 IINA/mpv/VLC 外部播放。
-- **打开就能管理**：按媒体库、文件夹树、收藏、分类和季集浏览；支持启动扫描和文件变动自动更新。
+- **花絮不打扰正片**：把非正片内容放进影片目录下的 `sp` 文件夹即可按花絮入库，默认隐藏，可在目录里单独显示。
+- **播放器够用**：支持直链播放、HTTP Range 跳转、按需转码、AC3 自动转码、ASS/SSA 特效字幕、画中画和 IINA/mpv/VLC 外部播放。
+- **打开就能管理**：按媒体库、文件夹树、收藏、分类和季集浏览；支持启动扫描和文件变动自动更新，花絮不会混入继续观看。
 - **不只 Web 能用**：提供 Jellyfin 兼容 API，可接入 VidHub、Infuse、Kodi、VLC、IINA 和 mpv。
 - **部署简单**：Docker Compose、SQLite、持久化 `./data`，支持 linux/amd64 和 linux/arm64。
 

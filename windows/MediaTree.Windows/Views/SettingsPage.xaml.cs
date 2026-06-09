@@ -30,6 +30,7 @@ public sealed partial class SettingsPage : Page
     [
         new("tmdb_movie", "TMDB 电影", "适合电影库；tmdbid 调用 /movie 精确刮削", true),
         new("tmdb_tv", "TMDB 剧集/番剧", "适合剧集、番剧、电视剧库；tmdbid 调用 /tv 精确刮削", true),
+        new("tmdb_collection", "TMDB 合集", "适合电影合集库；按合集条目整理系列电影元数据", true),
         new("bangumi", "Bangumi", "适合番剧、动画、二次元条目，数据可能不全", false),
         new("javdatabase", "Javdatabase", "适合 JAV 番号识别和刮削", false),
         new("auto", "自动", "自动判断刮削源，但可能效果不好", true),
@@ -1031,11 +1032,84 @@ public sealed partial class SettingsPage : Page
     private void RenderUpdateVersions()
     {
         _updateVersionsStack.Children.Clear();
+        if (_lastUpdateResult?.LatestSyncWarning is { } warning)
+        {
+            _updateVersionsStack.Children.Add(CreateLatestSyncWarningRow(warning));
+        }
+
         var versions = (_lastUpdateResult?.Versions ?? []).Take(3).ToList();
         foreach (var version in versions)
         {
             _updateVersionsStack.Children.Add(CreateUpdateVersionRow(version));
         }
+    }
+
+    private static UIElement CreateLatestSyncWarningRow(LatestSyncWarningDto warning)
+    {
+        var stack = new StackPanel { Spacing = 6 };
+        stack.Children.Add(new TextBlock
+        {
+            Text = string.IsNullOrWhiteSpace(warning.Message) ? "DockerHub latest 可能未同步到最新应用包版本。" : warning.Message,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = FluentTheme.Error,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        });
+        if (!string.IsNullOrWhiteSpace(warning.Action))
+        {
+            stack.Children.Add(new TextBlock
+            {
+                Text = warning.Action,
+                Foreground = FluentTheme.TextSecondary,
+                TextWrapping = TextWrapping.WrapWholeWords,
+            });
+        }
+
+        var evidence = FormatLatestSyncEvidence(warning);
+        if (!string.IsNullOrWhiteSpace(evidence))
+        {
+            stack.Children.Add(new TextBlock
+            {
+                Text = evidence,
+                FontSize = 12,
+                Foreground = FluentTheme.TextTertiary,
+                TextWrapping = TextWrapping.WrapWholeWords,
+            });
+        }
+
+        var row = new Border
+        {
+            Padding = new Thickness(12),
+            CornerRadius = FluentTheme.CardCornerRadius,
+            Background = FluentTheme.LayerAlt,
+            BorderBrush = FluentTheme.Error,
+            BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Child = stack,
+        };
+        AutomationProperties.SetAutomationId(row, "SettingsLatestSyncWarning");
+        return row;
+    }
+
+    private static string FormatLatestSyncEvidence(LatestSyncWarningDto warning)
+    {
+        var release = string.IsNullOrWhiteSpace(warning.ReleaseDisplayVersion) ? warning.ReleaseVersion : warning.ReleaseDisplayVersion;
+        var docker = warning.DockerHubLatestVersion;
+        if (string.IsNullOrWhiteSpace(release) && string.IsNullOrWhiteSpace(docker))
+        {
+            return "";
+        }
+
+        if (string.IsNullOrWhiteSpace(docker))
+        {
+            return $"GitHub 最新版本：{release}";
+        }
+
+        if (string.IsNullOrWhiteSpace(release))
+        {
+            return $"DockerHub latest：{docker}";
+        }
+
+        return $"GitHub 最新版本：{release} · DockerHub latest：{docker}";
     }
 
     private UIElement CreateUpdateVersionRow(VersionEntryDto version)

@@ -6,7 +6,7 @@ All notable changes to MediaTree are documented here.
 
 ---
 
-## Unreleased
+## 1.0.13 (2026-06-09)
 
 ### Windows Desktop
 
@@ -17,13 +17,38 @@ All notable changes to MediaTree are documented here.
 - The Windows desktop runtime reuses the existing app-package updater, so routine FastAPI/React changes continue to ship through `mediatree-app-<version>.tar.gz`
 - Release manifests now include `requires_windows_base_update` and `windows_reason`, so only Windows runtime changes require a new desktop package
 
+### Library
+
+- Added folder-level specials support for media stored under `sp` directories, hidden from main listings by default and displayed in a separate specials section when enabled
+- Kept specials out of scraping, search, favorites, continue watching, folder movie counts, and player episode lists while preserving original file titles for specials
+- Changed detail-page specials into a local expand/collapse section so detail selection no longer toggles folder-page specials visibility
+- Tightened Javdatabase scraping so explicit JAV code extraction drives scraping and prefix noise is cleaned before code matching
+
+### Scraping
+
+- Added the TMDB Collection scraper for movie-series collection metadata, including collection posters, backdrops, and overview data
+- Added TMDB Collection to the automatic scraping search chain so manual auto searches can show collection candidates alongside TMDB Movie, TMDB TV, Bangumi, and allowed Javdatabase results
+- Changed manual auto scraping to search and display all candidates from the automatic scraping chain instead of applying a scrape immediately
+- Unified card rescrape behavior so right-click "Rescrape" uses the scraper configured on that media library and applies the result
+- Limited Javdatabase to libraries explicitly configured with the Javdatabase scraper; it is not included in the automatic scraping chain for other libraries
+
+### Playback
+
+- Added AC3 audio auto-transcoding for browser playback compatibility
+- Prevented specials playback progress from appearing in continue watching
+
 ### Release Pipeline
 
 - Added a Windows release workflow that skips ordinary app-package releases and builds MSIX assets only when manually triggered or when Windows base update metadata requires it
+- Added Docker image version labels so `zasenjc/mediatree:latest` exposes the application version baseline
+- Added update-page detection for DockerHub `latest` drift after app-package releases, with maintainer guidance when the registry is behind the latest GitHub release
+- Passed `MEDIATREE_VERSION` through `scripts/push-docker-release.sh` so local DockerHub pushes label both `latest` and versioned image releases correctly
 
 ### Release Type
 
-- App-package update for Docker/Web; Windows desktop native UI and libmpv changes require a Windows desktop base package update
+- Full Docker image update is required because this release changes the Docker image metadata/update baseline and release publishing path
+- Windows desktop native UI and libmpv changes require a Windows desktop base package update
+- Docker Compose users should run `docker compose pull && docker compose up -d`
 
 ---
 

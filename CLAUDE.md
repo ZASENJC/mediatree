@@ -143,12 +143,17 @@ In production, the backend serves the built frontend at `/`. In development, run
 ```
 scan_media(root)
   → upsert_movie() for each file (fills local fields: path, code, clean_title, episode_number, display_title, cover_local)
+  → mark files under `sp` directory segments as `content_role='special'` with `special_parent_levels`
   → cleanup_deleted_files() (removes DB entries for missing files)
-  → scrape_for_library() (network metadata for unscraped movies, using configured scraper + fallback chain)
+  → scrape_for_library() (network metadata for unscraped non-special movies, using configured scraper + fallback chain)
 ```
+
+- Root-level orphan `sp` folders are skipped; nested `sp` folders are treated as specials for their parent folder.
+- Specials stay out of home/search/favorites/recent/episode lists by default and are loaded through the folder specials API when shown.
 
 ### Fallback chain (in `scanner.py`)
 - `javdatabase` scraper: independent (only searches by JAV code, no fallback)
+- `javdatabase` should not run for specials, and should require an explicit local code rather than scraping noisy titles.
 - `tmdb_movie` scraper: TMDB movie ID/title → Bangumi → TMDB movie title search
 - `tmdb_tv` scraper: TMDB tv ID/title → Bangumi → TMDB tv title search
 - `bangumi` scraper: Bangumi → TMDB tv title search

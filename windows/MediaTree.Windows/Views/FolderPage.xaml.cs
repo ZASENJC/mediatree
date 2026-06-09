@@ -25,10 +25,14 @@ public sealed partial class FolderPage : Page
     private readonly ComboBox _sortBox;
     private readonly TextBlock _statusText;
     private List<MovieDto> _allMovies = [];
+    private List<MovieDto> _specialMovies = [];
     private string _folderPath = "";
     private string _mediaRoot = "";
     private string _seasonFilter = "";
     private string _title = "";
+    private bool _showSpecials;
+    private bool _specialsSelected;
+    private int _specialCount;
     private int _loadGeneration;
 
     public FolderPage()
@@ -226,15 +230,25 @@ public sealed partial class FolderPage : Page
             _moviesGrid.Items.Clear();
             _seasonTabs.Children.Clear();
             _seasonFilter = "";
+            _specialsSelected = false;
+            _specialMovies = [];
+            _specialCount = 0;
+            _showSpecials = false;
 
             var sort = CurrentSort();
             var response = await AppServices.Movie.GetMoviesAsync(_mediaRoot, _folderPath, "", sort, 2000, 0);
+            var specials = string.IsNullOrWhiteSpace(_folderPath)
+                ? new FolderSpecialsResponseDto()
+                : await AppServices.Movie.GetFolderSpecialsAsync(_folderPath, _mediaRoot, includeMovies: true);
             if (generation != _loadGeneration)
             {
                 return;
             }
 
             _allMovies = SortMovies(response.Movies, sort).ToList();
+            _showSpecials = specials.ShowSpecials;
+            _specialCount = specials.SpecialCount;
+            _specialMovies = SortMovies(specials.Movies, sort).ToList();
             _headerTitleText.Text = string.IsNullOrWhiteSpace(_title) ? FolderTitleFromPath(_folderPath) : _title;
             RenderSeasonTabs();
             RenderMovies();
@@ -257,7 +271,7 @@ public sealed partial class FolderPage : Page
     {
         _seasonTabs.Children.Clear();
         var tabs = BuildSeasonTabs().ToList();
-        if (tabs.Count == 0)
+        if (tabs.Count == 0 && _specialCount <= 0)
         {
             _seasonTabs.Visibility = Visibility.Collapsed;
             return;
@@ -268,6 +282,11 @@ public sealed partial class FolderPage : Page
         foreach (var tab in tabs)
         {
             _seasonTabs.Children.Add(CreateSeasonButton($"{tab.Name} ({tab.Count})", tab.Path));
+        }
+
+        if (_specialCount > 0)
+        {
+            _seasonTabs.Children.Add(CreateSpecialsButton($"花絮 ({_specialCount})"));
         }
     }
 
@@ -281,6 +300,7 @@ public sealed partial class FolderPage : Page
         AutomationProperties.SetAutomationId(button, string.IsNullOrWhiteSpace(path) ? "FolderSeason_All" : $"FolderSeason_{SanitizeAutomationId(path)}");
         button.Click += (_, _) =>
         {
+            _specialsSelected = false;
             _seasonFilter = path;
             RenderSeasonTabs();
             RenderMovies();
@@ -288,10 +308,48 @@ public sealed partial class FolderPage : Page
         return button;
     }
 
+    private Button CreateSpecialsButton(string label)
+    {
+        var button = FluentTheme.ApplyButton(new Button
+        {
+            Content = label,
+        }, _specialsSelected ? FluentButtonStyle.Accent : FluentButtonStyle.Standard);
+        AutomationProperties.SetAutomationId(button, "FolderSeason_Specials");
+        button.Click += async (_, _) => await SelectSpecialsAsync();
+        return button;
+    }
+
+    private async System.Threading.Tasks.Task SelectSpecialsAsync()
+    {
+        try
+        {
+            if (!_showSpecials && !string.IsNullOrWhiteSpace(_folderPath))
+            {
+                await AppServices.Movie.SetFolderSpecialsAsync(_folderPath, _mediaRoot, true);
+                var specials = await AppServices.Movie.GetFolderSpecialsAsync(_folderPath, _mediaRoot, includeMovies: true);
+                _showSpecials = specials.ShowSpecials;
+                _specialCount = specials.SpecialCount;
+                _specialMovies = SortMovies(specials.Movies, CurrentSort()).ToList();
+            }
+
+            _specialsSelected = true;
+            _seasonFilter = "";
+            RenderSeasonTabs();
+            RenderMovies();
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to show native folder specials.");
+            ShowStatus($"花絮加载失败：{ex.Message}", true);
+        }
+    }
+
     private void RenderMovies()
     {
         _moviesGrid.Items.Clear();
-        var movies = string.IsNullOrWhiteSpace(_seasonFilter)
+        var movies = _specialsSelected
+            ? _specialMovies
+            : string.IsNullOrWhiteSpace(_seasonFilter)
             ? _allMovies
             : _allMovies.Where(movie => IsInSeason(movie, _seasonFilter)).ToList();
 
@@ -300,10 +358,10 @@ public sealed partial class FolderPage : Page
             _moviesGrid.Items.Add(CreateEpisodeCardAsync(movie));
         }
 
-        _headerSubtitleText.Text = $"{movies.Count} 部影片";
+        _headerSubtitleText.Text = _specialsSelected ? $"{movies.Count} 个花絮" : $"{movies.Count} 部影片";
         if (movies.Count == 0)
         {
-            ShowStatus("此文件夹下没有影片", false);
+            ShowStatus(_specialsSelected ? "此文件夹下没有花絮" : "此文件夹下没有影片", false);
         }
         else
         {

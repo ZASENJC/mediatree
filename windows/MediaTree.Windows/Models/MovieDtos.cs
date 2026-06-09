@@ -59,6 +59,10 @@ public sealed class MovieDto
     [JsonPropertyName("tmdb_type")]
     public string TmdbType { get; set; } = "";
 
+    [JsonPropertyName("tmdb_id")]
+    [JsonConverter(typeof(NullToNullableIntConverter))]
+    public int? TmdbId { get; set; }
+
     [JsonPropertyName("tmdb_season")]
     [JsonConverter(typeof(NullToNullableIntConverter))]
     public int? TmdbSeason { get; set; }
@@ -77,6 +81,30 @@ public sealed class MovieDto
     [JsonPropertyName("episode_still")]
     public string EpisodeStill { get; set; } = "";
 
+    [JsonPropertyName("episode_label")]
+    public string EpisodeLabel { get; set; } = "";
+
+    [JsonPropertyName("clean_title")]
+    public string CleanTitle { get; set; } = "";
+
+    [JsonPropertyName("scraper_source")]
+    public string ScraperSource { get; set; } = "";
+
+    [JsonPropertyName("source_id")]
+    public string SourceId { get; set; } = "";
+
+    [JsonPropertyName("cover_remote")]
+    public string CoverRemote { get; set; } = "";
+
+    [JsonPropertyName("cover_local")]
+    public string CoverLocal { get; set; } = "";
+
+    [JsonPropertyName("content_role")]
+    public string ContentRole { get; set; } = "main";
+
+    [JsonPropertyName("special_parent_levels")]
+    public string SpecialParentLevels { get; set; } = "";
+
     [JsonPropertyName("playback_position")]
     [JsonConverter(typeof(NullToZeroDoubleConverter))]
     public double PlaybackPosition { get; set; }
@@ -86,7 +114,17 @@ public sealed class MovieDto
     public double ProgressPercent { get; set; }
 
     [JsonIgnore]
-    public string BestTitle => FirstNonEmpty(DisplayTitle, Title, OriginalTitle, Code, System.IO.Path.GetFileNameWithoutExtension(Path));
+    public bool IsSpecial => string.Equals(ContentRole, "special", System.StringComparison.OrdinalIgnoreCase);
+
+    [JsonIgnore]
+    public string BestTitle => IsSpecial
+        ? FirstNonEmpty(System.IO.Path.GetFileNameWithoutExtension(Path), DisplayTitle, Title, CleanTitle, Code)
+        : FirstNonEmpty(DisplayTitle, Title, OriginalTitle, CleanTitle, Code, System.IO.Path.GetFileNameWithoutExtension(Path));
+
+    [JsonIgnore]
+    public string FolderForSpecials => IsSpecial
+        ? FirstNonEmpty(SpecialParentLevels, ParentFolder(FolderLevels))
+        : FolderLevels;
 
     private static string FirstNonEmpty(params string[] values)
     {
@@ -100,6 +138,30 @@ public sealed class MovieDto
 
         return "未命名影片";
     }
+
+    private static string ParentFolder(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "";
+        }
+
+        var normalized = value.Replace("\\", "/").TrimEnd('/');
+        var index = normalized.LastIndexOf("/", System.StringComparison.Ordinal);
+        return index <= 0 ? "" : normalized[..index];
+    }
+}
+
+public sealed class FolderSpecialsResponseDto
+{
+    [JsonPropertyName("show_specials")]
+    public bool ShowSpecials { get; set; }
+
+    [JsonPropertyName("special_count")]
+    public int SpecialCount { get; set; }
+
+    [JsonPropertyName("movies")]
+    public List<MovieDto> Movies { get; set; } = [];
 }
 
 public sealed class ProgressDto

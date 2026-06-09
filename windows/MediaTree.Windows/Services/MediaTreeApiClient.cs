@@ -163,6 +163,57 @@ public sealed class MediaTreeApiClient : IDisposable
     public async Task<MoviesResponseDto> GetFavoritesAsync(string mediaRoot, string sort, int limit, int offset, CancellationToken cancellationToken = default)
         => await GetAsync<MoviesResponseDto>($"/favorites?media_root={Uri.EscapeDataString(mediaRoot)}&sort={Uri.EscapeDataString(sort)}&limit={limit}&offset={offset}", cancellationToken);
 
+    public async Task<FolderSpecialsResponseDto> GetFolderSpecialsAsync(
+        string folder,
+        string mediaRoot,
+        bool includeMovies = false,
+        CancellationToken cancellationToken = default)
+    {
+        var include = includeMovies ? "&include_movies=1" : "";
+        return await GetAsync<FolderSpecialsResponseDto>(
+            $"/folder/specials?folder={Uri.EscapeDataString(folder)}&media_root={Uri.EscapeDataString(mediaRoot)}{include}",
+            cancellationToken);
+    }
+
+    public async Task<FolderSpecialsResponseDto> SetFolderSpecialsAsync(
+        string folder,
+        string mediaRoot,
+        bool showSpecials,
+        CancellationToken cancellationToken = default)
+        => await PostJsonAsync<FolderSpecialsResponseDto>("/folder/specials", new
+        {
+            folder,
+            media_root = mediaRoot,
+            show_specials = showSpecials,
+        }, cancellationToken);
+
+    public async Task<SearchScrapeResponseDto> SearchScrapeAsync(
+        string query,
+        string scraper,
+        string mediaRoot,
+        CancellationToken cancellationToken = default)
+        => await PostJsonAsync<SearchScrapeResponseDto>("/search-scrape", new
+        {
+            query,
+            scraper = NormalizeManualScraper(scraper),
+            media_root = mediaRoot,
+        }, cancellationToken);
+
+    public async Task<ManualScrapeResultDto> ManualScrapeMovieAsync(
+        int movieId,
+        string query,
+        string sourceId,
+        string mediaType,
+        string scraper,
+        CancellationToken cancellationToken = default)
+        => await PostJsonAsync<ManualScrapeResultDto>($"/movies/{movieId}/manual-scrape", new
+        {
+            query,
+            source_id = sourceId,
+            media_type = string.IsNullOrWhiteSpace(mediaType) ? "movie" : mediaType,
+            scraper = NormalizeManualScraper(scraper),
+        }, cancellationToken);
+
     public async Task RemoveTagAsync(int movieId, string tag, CancellationToken cancellationToken = default)
         => await DeleteAsync<JsonElement>($"/movies/{movieId}/tags/{Uri.EscapeDataString(tag)}", cancellationToken);
 
@@ -304,6 +355,17 @@ public sealed class MediaTreeApiClient : IDisposable
     {
         var value = (accessToken ?? "").Trim();
         return value.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? value[7..].Trim() : value;
+    }
+
+    private static string NormalizeManualScraper(string scraper)
+    {
+        var value = (scraper ?? "").Trim().ToLowerInvariant();
+        return value switch
+        {
+            "tmdb" => "tmdb_movie",
+            "auto" or "tmdb_movie" or "tmdb_tv" or "tmdb_collection" or "bangumi" or "javdatabase" => value,
+            _ => "auto",
+        };
     }
 
     private HttpRequestMessage CreateRequest(HttpMethod method, string path)

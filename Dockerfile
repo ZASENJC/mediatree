@@ -8,6 +8,11 @@ RUN npm run build
 FROM python:3.12-slim
 WORKDIR /opt/mediatree/base
 
+ARG MEDIATREE_VERSION=unknown
+LABEL org.opencontainers.image.title="MediaTree" \
+      org.opencontainers.image.source="https://github.com/ZASENJC/mediatree" \
+      org.opencontainers.image.version=$MEDIATREE_VERSION
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \

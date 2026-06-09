@@ -224,6 +224,21 @@ function libParam(): string {
   return lib ? `&media_root=${encodeURIComponent(lib)}` : ''
 }
 
+export type ManualScraperName = 'auto' | 'tmdb_movie' | 'tmdb_tv' | 'tmdb_collection' | 'bangumi' | 'javdatabase'
+export type ScrapeMediaType = 'movie' | 'tv' | 'collection' | (string & {})
+
+export interface ScrapeSearchResult {
+  source: string
+  source_id: string
+  media_type: ScrapeMediaType
+  title: string
+  original_title?: string
+  year?: string
+  poster_url?: string
+  overview?: string
+  scraper?: ManualScraperName
+}
+
 export const api = {
   authStatus: () => request<{ need_auth: boolean; auth_configured: boolean }>('/auth/status'),
 
@@ -360,6 +375,24 @@ export const api = {
       body: JSON.stringify({ folder, media_root: mediaRoot, watched }),
     }),
 
+  folderSpecials: (folder: string, mediaRoot?: string, includeMovies = false) => {
+    const lib = mediaRoot || getActiveLibrary()
+    const include = includeMovies ? '&include_movies=1' : ''
+    return request<FolderSpecialsResponse>(
+      `/folder/specials?folder=${encodeURIComponent(folder)}&media_root=${encodeURIComponent(lib)}${include}`
+    )
+  },
+
+  setFolderSpecials: (folder: string, mediaRoot: string | undefined, showSpecials: boolean) =>
+    request<FolderSpecialsResponse>('/folder/specials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder, media_root: mediaRoot || getActiveLibrary(), show_specials: showSpecials }),
+    }).then(result => {
+      clearCache()
+      return result
+    }),
+
   deleteMovie: (movieId: number) =>
     request(`/movies/${movieId}`, { method: 'DELETE' }),
 
@@ -489,7 +522,7 @@ export const api = {
     }),
 
   searchScrape: (query: string, scraper?: string, mediaRoot?: string) =>
-    request<{ results: { source: string; source_id: string; media_type: string; title: string; original_title: string; year: string; poster_url?: string; overview: string }[] }>('/search-scrape', {
+    request<{ results: ScrapeSearchResult[] }>('/search-scrape', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, scraper: scraper || 'tmdb_movie', media_root: mediaRoot || getActiveLibrary() }),
@@ -502,7 +535,7 @@ export const api = {
       body: JSON.stringify({ folder, media_root: mediaRoot, query, scraper: scraper || '' }),
     }),
 
-  applyFolderScrape: (folder: string, mediaRoot: string, sourceId: string, source: string, mediaType: string) =>
+  applyFolderScrape: (folder: string, mediaRoot: string, sourceId: string, source: string, mediaType: ScrapeMediaType) =>
     request<{ ok: boolean; source: string; title: string; affected?: number }>('/apply-folder-scrape', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -510,7 +543,7 @@ export const api = {
     }),
 
   fetchSearchBackdrops: (results: any[]) =>
-    request<{ backdrops: { source_id: string; source: string; backdrop_url?: string; poster_url?: string }[] }>('/search-backdrops', {
+    request<{ backdrops: { source_id: string; source: string; media_type?: string; backdrop_url?: string; poster_url?: string }[] }>('/search-backdrops', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ results }),
@@ -544,7 +577,7 @@ export const api = {
       body: JSON.stringify({ folder, media_root: mediaRoot }),
     }),
 
-  manualScrapeMovie: (movieId: number, query: string, sourceId?: string, mediaType?: string, scraper?: string) =>
+  manualScrapeMovie: (movieId: number, query: string, sourceId?: string, mediaType?: ScrapeMediaType, scraper?: string) =>
     request<{ ok: boolean; source: string; title: string }>(`/movies/${movieId}/manual-scrape`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -714,6 +747,8 @@ export interface FolderNode {
   progress_percent?: number
   tmdb_id?: number
   tmdb_type?: string
+  special_count?: number
+  show_specials?: boolean
 }
 
 export interface Movie {
@@ -769,6 +804,14 @@ export interface Movie {
   crew?: { name: string; job: string; department?: string; profile_path?: string; person_id?: string; source?: string }[]
   playback_position?: number
   progress_percent?: number
+  content_role?: 'main' | 'special' | string
+  special_parent_levels?: string
+}
+
+export interface FolderSpecialsResponse {
+  show_specials: boolean
+  special_count: number
+  movies: Movie[]
 }
 
 export interface Category {
@@ -820,6 +863,29 @@ export interface VersionEntry {
   windows_reason?: string
 }
 
+export interface DockerHubLatestBaseline {
+  version?: string
+  display_version?: string
+  published_at?: string
+  html_url?: string
+  source?: 'dockerhub-latest' | string
+  status?: 'ok' | 'unknown' | string
+  reason?: string
+}
+
+export interface LatestSyncWarning {
+  type: 'dockerhub-latest-outdated' | string
+  severity: 'warning' | string
+  release_version: string
+  release_display_version?: string
+  release_published_at?: string
+  dockerhub_latest_version?: string
+  dockerhub_latest_updated_at?: string
+  evidence?: 'version' | 'timestamp' | string
+  message: string
+  action: string
+}
+
 export interface UpdateCheckResult {
   current_version: string
   runtime_version?: string
@@ -830,6 +896,8 @@ export interface UpdateCheckResult {
   overlay_is_outdated?: boolean
   status_note?: string
   has_update: boolean
+  dockerhub_latest?: DockerHubLatestBaseline | null
+  latest_sync_warning?: LatestSyncWarning | null
   versions: VersionEntry[]
 }
 

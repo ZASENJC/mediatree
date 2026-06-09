@@ -7,6 +7,8 @@ This supplements `CLAUDE.md` with Codex-specific guidance for this repository.
 - This repository is the full MediaTree web/backend project.
 - Backend code lives under `backend/app/` and uses FastAPI, SQLite, ffmpeg/ffprobe, and scraper integrations.
 - Frontend code lives under `frontend/` and uses React 18, TypeScript, Vite, Tailwind, ArtPlayer, and Capacitor.
+- Media under nested `sp` folders is treated as folder-level specials: keep it out of normal listings, scraping, continue watching, and player episode queues unless a specials-specific path is being changed.
+- Browser playback compatibility includes automatic AC3 transcoding; preserve this behavior when touching stream or player capability code.
 - Keep user-facing explanations, plans, summaries, questions, and change reports in Chinese.
 - Keep code identifiers, file names, paths, commands, config keys, API routes, function names, class names, and logs in their original English.
 

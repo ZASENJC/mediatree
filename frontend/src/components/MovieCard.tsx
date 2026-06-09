@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { api, Movie } from '../api'
+import { api, Movie, type ManualScraperName, type ScrapeSearchResult } from '../api'
 import { saveScrollPos } from '../scroll'
 import { showToast } from '../toast'
 import { showTaskProgress, hideTaskProgress } from '../taskProgress'
@@ -10,6 +10,7 @@ import ContextMenu, { ContextMenuItem } from './ContextMenu'
 import EditModal from './EditModal'
 import { clearCache } from '../cache'
 import CoverPickerModal from './CoverPickerModal'
+import { specialMovieTitle } from '../movieTitle'
 
 interface MovieCardProps {
   movie: Movie
@@ -25,10 +26,10 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const [showEdit, setShowEdit] = useState(false)
   const [showManualSearch, setShowManualSearch] = useState(false)
   const [manualQuery, setManualQuery] = useState('')
-  const [manualScraper, setManualScraper] = useState('')
+  const [manualScraper, setManualScraper] = useState<ManualScraperName>('auto')
   const [showCoverPicker, setShowCoverPicker] = useState(false)
   const [altCovers, setAltCovers] = useState<{ url: string; source: string; width?: number; height?: number; language?: string; vote_count?: number }[]>([])
-  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [searchResults, setSearchResults] = useState<ScrapeSearchResult[]>([])
   const [searching, setSearching] = useState(false)
   const [applying, setApplying] = useState(false)
   const [coverVersion, setCoverVersion] = useState(() => movie.updated_at || '')
@@ -79,24 +80,28 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   }, [movie.id, movie.tags])
 
   const isEpisode = movie.tmdb_type === 'tv' && movie.tmdb_episode != null
+  const isSpecial = movie.content_role === 'special'
   const hasEpisodeStill = !!(isEpisode && movie.episode_still)
   const withVersion = (url: string) => coverVersion ? `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(coverVersion)}` : url
   const coverSrc = (hasEpisodeStill
     ? api.episodeStillUrl(movie.id)
     : api.coverUrl(movie.id))
-  const displayTitle = isEpisode
+  const displayTitle = isSpecial
+    ? specialMovieTitle(movie)
+    : isEpisode
     ? `E${String(movie.tmdb_episode).padStart(2, '0')} ${movie.episode_title || movie.title || movie.code}`
     : (movie.title || movie.code)
   const watched = localWatched !== null ? localWatched : (movie.tags || []).includes('watched')
   const progressPercent = Math.max(0, Math.min(100, movie.progress_percent || 0))
   const showProgress = !watched && progressPercent > 0 && progressPercent < 90
   const movieLibraryScraper = movie.media_root ? libraryScrapers[movie.media_root] : undefined
-  const canUseJavdatabase = !movie.media_root || movieLibraryScraper === undefined || movieLibraryScraper === 'javdatabase'
+  const canUseJavdatabase = movieLibraryScraper === 'javdatabase'
 
-  const checkTmdbConfig = useCallback(async () => {
+  const checkTmdbConfig = useCallback(async (scraperName: string = manualScraper) => {
     try {
       const cfg = await api.getConfig()
-      if (!cfg.tmdb_configured && (!manualScraper || manualScraper.startsWith('tmdb'))) {
+      const normalizedScraper = scraperName === 'tmdb' ? 'tmdb_movie' : (scraperName || 'auto')
+      if (!cfg.tmdb_configured && (normalizedScraper === 'auto' || normalizedScraper.startsWith('tmdb'))) {
         showToast('TMDB API 未配置，刮削可能失败，请在设置中填写 API Key')
       }
     } catch {}
@@ -104,7 +109,9 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
 
   const handleRescrape = useCallback(async () => {
     try {
-      await checkTmdbConfig()
+      const librarySettings = await api.librarySettings().catch(() => [])
+      const libraryScraper = librarySettings.find(item => item.media_root === movie.media_root)?.scraper || 'auto'
+      await checkTmdbConfig(libraryScraper)
       await api.rescrapeMovie(movie.id)
       clearCache()
       setCoverVersion(String(Date.now()))
@@ -113,31 +120,36 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       console.error('Rescrape failed for movie', movie.id, err)
       showToast(`刮削失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
     }
-  }, [movie.id, onUpdated, checkTmdbConfig])
+  }, [movie.id, movie.media_root, onUpdated, checkTmdbConfig])
 
   const handleSearch = useCallback(async () => {
-    if (!manualQuery.trim()) return
+    const query = manualQuery.trim()
+    if (!query) return
     await checkTmdbConfig()
     setSearching(true)
     try {
-      const data = await api.searchScrape(manualQuery.trim(), manualScraper || undefined, movie.media_root || '')
-      setSearchResults(data.results || [])
+      const data = await api.searchScrape(query, manualScraper, movie.media_root || '')
+      setSearchResults((data.results || []).map(result => ({
+        ...result,
+        scraper: result.scraper || manualScraper,
+      })))
       if ((data.results || []).length === 0) {
         showToast('没有找到匹配结果')
       }
     } catch (err) {
       console.error('Search scrape failed', err)
       showToast(`搜索失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
+    } finally {
+      setSearching(false)
     }
-    setSearching(false)
   }, [manualQuery, manualScraper, movie.media_root, checkTmdbConfig])
 
-  const handleSelectSearchResult = useCallback(async (result: any) => {
+  const handleSelectSearchResult = useCallback(async (result: ScrapeSearchResult) => {
     if (applying) return
     setApplying(true)
     showTaskProgress({ status: '正在刮削媒体信息...' })
     try {
-      await api.manualScrapeMovie(movie.id, result.title, result.source_id, result.media_type, result.source)
+      await api.manualScrapeMovie(movie.id, result.title, result.source_id, result.media_type, result.scraper || manualScraper || result.source)
       clearCache()
       setCoverVersion(String(Date.now()))
       setShowManualSearch(false)
@@ -152,7 +164,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
     } finally {
       setApplying(false)
     }
-  }, [movie.id, onUpdated, applying])
+  }, [movie.id, onUpdated, applying, manualScraper])
 
   const handleLoadAltCovers = useCallback(async () => {
     try {
@@ -211,8 +223,10 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   }, [movie.id, onUpdated])
 
   const menuItems: ContextMenuItem[] = [
-    { label: '重新刮削', onClick: handleRescrape },
-    { label: '手动刮削', onClick: () => setShowManualSearch(true) },
+    ...(!isSpecial ? [
+      { label: '重新刮削', onClick: handleRescrape },
+      { label: '手动刮削', onClick: () => setShowManualSearch(true) },
+    ] : []),
     { label: '更换封面', onClick: handleLoadAltCovers },
     { label: '编辑信息', onClick: () => setShowEdit(true) },
     { label: '删除', danger: true, onClick: handleDelete },
@@ -291,7 +305,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
           )}
           <div className="absolute bottom-0 left-0 right-0 min-w-0 p-3">
             <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-white drop-shadow">{displayTitle}</p>
-            <p className="mt-0.5 truncate text-xs text-gray-400">{movie.code}</p>
+            <p className="mt-0.5 truncate text-xs text-gray-400">{isSpecial ? '花絮' : movie.code}</p>
           </div>
           </>
           )}
@@ -328,12 +342,13 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
                 className="glass-input flex-1 px-3 py-2 text-sm"
               />
               <select
-                value={manualScraper} onChange={e => setManualScraper(e.target.value)}
+                value={manualScraper} onChange={e => setManualScraper(e.target.value as ManualScraperName)}
                 className="glass-input px-3 py-2 text-sm text-gray-300"
               >
-                <option value="">自动</option>
+                <option value="auto">自动</option>
                 <option value="tmdb_movie">TMDB 电影</option>
                 <option value="tmdb_tv">TMDB 剧集/番剧</option>
+                <option value="tmdb_collection">TMDB 合集</option>
                 <option value="bangumi">Bangumi</option>
                 {canUseJavdatabase && <option value="javdatabase">Javdatabase</option>}
               </select>

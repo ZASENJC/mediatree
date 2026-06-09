@@ -6,21 +6,52 @@
 
 ---
 
-## Unreleased
+## 1.0.13 (2026-06-09)
 
 ### Windows 桌面版
 
-- 新增 Windows 桌面版 V1 搭建链路：WinUI 3 壳、WebView2、本地 PyInstaller onedir 后端和 MSIX/.appinstaller 打包
+- 重建 Windows 桌面版为 WinUI 3 原生客户端，复用本地 FastAPI 运行时，并提供原生媒体库设置、媒体网格、详情页和窗口内 libmpv 播放
+- 新增 DPAPI 保护的 Windows 本机会话恢复，首次接管本地后端后不再需要暴露 web 登录流程
+- 将 Windows 原生 UI 与 libmpv 运行时变化标记为 `requires_windows_base_update`
 - Windows 桌面版复用现有应用包更新机制，日常 FastAPI/React 更新继续通过 `mediatree-app-<version>.tar.gz` 同步
 - Release manifest 新增 `requires_windows_base_update` 与 `windows_reason`，仅在 Windows 基础运行时变化时要求安装新版桌面包
+
+### 媒体库
+
+- 支持将影片目录下的 `sp` 文件夹作为花絮入库，默认不混入普通列表、搜索、收藏、继续观看、文件夹计数和播放器选集
+- 详情页花絮改为本页内“展开/收起”查看，不再联动文件夹页的花絮显示开关
+- Javdatabase 番号识别更严格，优先使用明确番号，并在匹配前清理前缀噪音
+
+### 刮削
+
+- 新增 `TMDB Collection` 刮削器，用于电影系列合集的封面、背景和简介元数据
+- `TMDB Collection` 加入自动刮削搜索链，手动选择“自动”时会展示自动链搜索到的全部候选
+- 手动刮削的“自动”保持搜索语义，不再直接应用刮削结果
+- 右键“重新刮削”统一使用该媒体库配置的刮削器进行刮削并应用结果
+- Javdatabase 仅限配置为 Javdatabase 的媒体库使用，不加入自动刮削链
+
+### 播放
+
+- 浏览器播放遇到 AC3 音轨时可自动转码，提高浏览器兼容性
+- 花絮播放进度不会进入继续观看
 
 ### 发布流水线
 
 - 新增 Windows release workflow：普通应用包更新不会重打 Windows 壳；手动触发或 Windows base 更新标记为 true 时才生成 MSIX 资产
+- Docker 镜像新增版本 label，让 `zasenjc/mediatree:latest` 能暴露当前应用版本基线
+- 更新页可检测应用包发布后 DockerHub `latest` 是否落后，并给出维护者本地同步提示
+- `scripts/push-docker-release.sh` 会传入 `MEDIATREE_VERSION`，确保本地推送的 `latest` 和版本镜像带有正确版本标记
+
+### 更新方式
+
+- 本版本需要完整 Docker 镜像更新，因为 Docker 镜像 metadata、更新基线和发布链发生变化
+- Docker Compose：执行 `docker compose pull && docker compose up -d`
+- Windows 桌面版原生 UI 和 libmpv 运行时变化需要安装新版 Windows 桌面包
 
 ### 发布类型
 
-- 应用包级更新；不需要完整 Docker 镜像更新；不需要更新 Windows 桌面版基础运行时
+- 需要完整 Docker 镜像更新
+- Windows 桌面版需要基础包更新
 
 ---
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { api, FolderNode, Movie, resolveMediaUrl } from '../api'
+import { api, FolderNode, Movie, resolveMediaUrl, type ManualScraperName, type ScrapeSearchResult } from '../api'
 import { getExcluded, getUiPrefs } from '../store'
 import { saveScrollPos, restoreScrollPos } from '../scroll'
 import { showToast } from '../toast'
@@ -39,6 +39,36 @@ const sortOptions = [
   { key: 'random', label: '随机' },
 ]
 
+function scraperMayNeedTmdb(scraper?: string): boolean {
+  const normalized = scraper === 'tmdb' ? 'tmdb_movie' : (scraper || 'auto')
+  return normalized === 'auto' || normalized.startsWith('tmdb')
+}
+
+function sortMovies(movies: Movie[], sort: SortMode): Movie[] {
+  const sorted = [...movies]
+  const toTime = (value?: string) => value ? new Date(value).getTime() || 0 : 0
+  const titleOf = (movie: Movie) => movie.display_title || movie.clean_title || movie.title || movie.code || ''
+
+  if (sort === 'name') {
+    sorted.sort((a, b) => titleOf(a).localeCompare(titleOf(b), 'zh-CN'))
+  } else if (sort === 'created_desc') {
+    sorted.sort((a, b) => toTime(b.created_at) - toTime(a.created_at))
+  } else if (sort === 'created_asc') {
+    sorted.sort((a, b) => toTime(a.created_at) - toTime(b.created_at))
+  } else if (sort === 'release_date_desc') {
+    sorted.sort((a, b) => toTime(b.release_date) - toTime(a.release_date))
+  } else if (sort === 'release_date_asc') {
+    sorted.sort((a, b) => toTime(a.release_date) - toTime(b.release_date))
+  } else if (sort === 'random') {
+    for (let i = sorted.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [sorted[i], sorted[j]] = [sorted[j], sorted[i]]
+    }
+  }
+
+  return sorted
+}
+
 export default function Home() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -54,6 +84,8 @@ export default function Home() {
   const [activeFolderPath, setActiveFolderPath] = useState('')
   const [activeMediaRoot, setActiveMediaRoot] = useState('')
   const [activeFolderName, setActiveFolderName] = useState('')
+  const [activeFolderSpecialCount, setActiveFolderSpecialCount] = useState(0)
+  const [activeFolderShowSpecials, setActiveFolderShowSpecials] = useState(false)
   const hideHomeTitleText = getUiPrefs().hideHomeTitleText
   const showSourceName = getUiPrefs().showSourceName
 
@@ -75,9 +107,9 @@ export default function Home() {
 
   const [showFolderScrape, setShowFolderScrape] = useState(false)
   const [folderScrapeQuery, setFolderScrapeQuery] = useState('')
-  const [folderScrapeSrc, setFolderScrapeSrc] = useState('')
-  const [folderScrapeResults, setFolderScrapeResults] = useState<any[]>([])
-  const [folderScrapeBackdrops, setFolderScrapeBackdrops] = useState<any[]>([])
+  const [folderScrapeSrc, setFolderScrapeSrc] = useState<ManualScraperName>('auto')
+  const [folderScrapeResults, setFolderScrapeResults] = useState<ScrapeSearchResult[]>([])
+  const [folderScrapeBackdrops, setFolderScrapeBackdrops] = useState<{ source_id: string; source: string; media_type?: string; backdrop_url?: string; poster_url?: string }[]>([])
   const [folderScrapeSearching, setFolderScrapeSearching] = useState(false)
   const [folderScrapeApplying, setFolderScrapeApplying] = useState(false)
 
@@ -128,10 +160,10 @@ export default function Home() {
   const loadRecent = useCallback(() => {
     setLoading(true)
     api.getRecentWatched(200).then((data) => {
-      setRecentMovies(data.movies)
+      setRecentMovies(sortMovies(data.movies, sort))
       setRecentTotal(data.total)
     }).catch(() => {}).finally(() => setLoading(false))
-  }, [])
+  }, [sort])
 
   useEffect(() => {
     if (tab === 'recent') loadRecent()
@@ -160,6 +192,8 @@ export default function Home() {
     setActiveFolderPath(node.path)
     setActiveMediaRoot(node.media_root || '')
     setActiveFolderName(node.name)
+    setActiveFolderSpecialCount(node.special_count || 0)
+    setActiveFolderShowSpecials(Boolean(node.show_specials))
     setFolderMenu({
       x: e.clientX, y: e.clientY,
       mediaRoot: node.media_root || '', folderPath: node.path, folderName: node.name,
@@ -169,8 +203,12 @@ export default function Home() {
   const handleRescanFolder = useCallback(async () => {
     clearCache()
     try {
-      const cfg = await api.getConfig()
-      if (!cfg.tmdb_configured) {
+      const [cfg, librarySettings] = await Promise.all([
+        api.getConfig(),
+        api.librarySettings().catch(() => []),
+      ])
+      const libraryScraper = librarySettings.find(item => item.media_root === activeMediaRoot)?.scraper || 'auto'
+      if (!cfg.tmdb_configured && scraperMayNeedTmdb(libraryScraper)) {
         showToast('TMDB API 未配置，刮削可能失败，请在设置中填写 API Key')
       }
       await api.rescrapeFolder(activeFolderPath, activeMediaRoot)
@@ -184,24 +222,28 @@ export default function Home() {
 
   const handleManualScrapeFolder = useCallback(() => {
     setFolderScrapeQuery(activeFolderName || '')
-    setFolderScrapeSrc('')
+    setFolderScrapeSrc('auto')
     setFolderScrapeResults([])
     setShowFolderScrape(true)
     setFolderMenu(null)
   }, [activeFolderName])
 
   const handleFolderScrapeSearch = useCallback(async () => {
-    if (!folderScrapeQuery.trim()) return
+    const query = folderScrapeQuery.trim()
+    if (!query) return
     try {
       const cfg = await api.getConfig()
-      if (!cfg.tmdb_configured && (!folderScrapeSrc || folderScrapeSrc.startsWith('tmdb'))) {
+      if (!cfg.tmdb_configured && (folderScrapeSrc === 'auto' || folderScrapeSrc.startsWith('tmdb'))) {
         showToast('TMDB API 未配置，刮削可能失败，请在设置中填写 API Key')
       }
     } catch {}
     setFolderScrapeSearching(true)
     try {
-      const data = await api.searchScrape(folderScrapeQuery.trim(), folderScrapeSrc || undefined, activeMediaRoot)
-      const results = data.results || []
+      const data = await api.searchScrape(query, folderScrapeSrc, activeMediaRoot)
+      const results = (data.results || []).map(result => ({
+        ...result,
+        scraper: result.scraper || folderScrapeSrc,
+      }))
       setFolderScrapeResults(results)
       if (results.length === 0) {
         showToast('没有找到匹配结果')
@@ -213,11 +255,12 @@ export default function Home() {
     } catch (err) {
       console.error('Search scrape failed', err)
       showToast(`搜索失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
+    } finally {
+      setFolderScrapeSearching(false)
     }
-    setFolderScrapeSearching(false)
   }, [folderScrapeQuery, folderScrapeSrc, activeMediaRoot])
 
-  const handleSelectFolderScrapeResult = useCallback(async (result: any) => {
+  const handleSelectFolderScrapeResult = useCallback(async (result: ScrapeSearchResult) => {
     if (folderScrapeApplying) return
     setFolderScrapeApplying(true)
     showTaskProgress({ status: '正在刮削媒体信息...' })
@@ -333,11 +376,29 @@ export default function Home() {
     }
   }, [activeFolderName, activeFolderPath, activeMediaRoot, load])
 
+  const handleToggleFolderSpecials = useCallback(async () => {
+    if (!activeFolderSpecialCount) return
+    const next = !activeFolderShowSpecials
+    try {
+      await api.setFolderSpecials(activeFolderPath, activeMediaRoot, next)
+      setActiveFolderShowSpecials(next)
+      setFolderMenu(null)
+      showToast(next ? '已显示花絮' : '已隐藏花絮')
+      await load()
+    } catch {
+      showToast('花絮显示设置失败')
+    }
+  }, [activeFolderPath, activeMediaRoot, activeFolderShowSpecials, activeFolderSpecialCount, load])
+
   const folderMenuItems: ContextMenuItem[] = [
     { label: '重新刮削', onClick: handleRescanFolder },
     { label: '手动刮削', onClick: handleManualScrapeFolder },
     { label: '更换封面', onClick: handleChangeFolderCover },
     { label: '编辑信息', onClick: handleEditFolder },
+    ...(activeFolderSpecialCount > 0 ? [{
+      label: activeFolderShowSpecials ? `隐藏花絮 (${activeFolderSpecialCount})` : `显示花絮 (${activeFolderSpecialCount})`,
+      onClick: handleToggleFolderSpecials,
+    }] : []),
     { label: '删除', danger: true, onClick: handleDeleteFolder },
   ]
 
@@ -372,7 +433,7 @@ export default function Home() {
               继续观看
             </button>
           </div>
-          <SortDropdown options={sortOptions} current={sort} onChange={handleSort} />
+          <SortDropdown options={sortOptions} current={sort} onChange={handleSort} variant="menu" />
         </div>
       </div>
 
@@ -442,7 +503,9 @@ export default function Home() {
                     )}
                     <div className="absolute bottom-0 left-0 right-0 min-w-0 p-3">
                       <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-white drop-shadow">{showSourceName ? node.name : (node.display_title || node.name)}</p>
-                      <p className="mt-1 text-xs text-gray-400">{node.movie_count} 部</p>
+                      <p className="mt-1 text-xs text-gray-400">
+                        {node.movie_count} 项{node.special_count ? ` · ${node.special_count} 花絮` : ''}
+                      </p>
                     </div>
                     </>
                     )}
@@ -469,11 +532,12 @@ export default function Home() {
                 onKeyDown={e => { if (e.key === 'Enter') handleFolderScrapeSearch() }}
                 placeholder="搜索关键词" autoFocus
                 className="glass-input flex-1 px-3 py-2 text-sm" />
-              <select value={folderScrapeSrc} onChange={e => setFolderScrapeSrc(e.target.value)}
+              <select value={folderScrapeSrc} onChange={e => setFolderScrapeSrc(e.target.value as ManualScraperName)}
                 className="glass-input px-3 py-2 text-sm text-gray-300">
-                <option value="">自动</option>
+                <option value="auto">自动</option>
                 <option value="tmdb_movie">TMDB 电影</option>
                 <option value="tmdb_tv">TMDB 剧集/番剧</option>
+                <option value="tmdb_collection">TMDB 合集</option>
                 <option value="bangumi">Bangumi</option>
                 {activeFolderUsesJavdatabase && <option value="javdatabase">Javdatabase</option>}
               </select>
@@ -487,7 +551,7 @@ export default function Home() {
                 <p className="mb-2 text-xs text-gray-500">共 {folderScrapeResults.length} 个结果，点击应用元数据，长按/右键查看封面和背景图可选</p>
                 <div className="grid max-h-[50vh] grid-cols-2 gap-3 overflow-y-auto sm:grid-cols-3">
                   {folderScrapeResults.map((r, i) => {
-                    const bd = folderScrapeBackdrops.find(b => b.source_id === r.source_id && b.source === r.source)
+                    const bd = folderScrapeBackdrops.find(b => b.source_id === r.source_id && b.source === r.source && (b.media_type || '') === (r.media_type || ''))
                     return (
                       <div key={i} className="glass-card overflow-hidden transition-all hover:border-apple-blue/40 hover:shadow-glow">
                         <div className="aspect-[2/3] cursor-pointer bg-white/[0.04]"

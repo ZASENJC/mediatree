@@ -48,8 +48,71 @@ public sealed class UpdateCheckResultDto
     [JsonPropertyName("has_update")]
     public bool HasUpdate { get; set; }
 
+    [JsonPropertyName("dockerhub_latest")]
+    public DockerHubLatestBaselineDto? DockerHubLatest { get; set; }
+
+    [JsonPropertyName("latest_sync_warning")]
+    public LatestSyncWarningDto? LatestSyncWarning { get; set; }
+
     [JsonPropertyName("versions")]
     public List<VersionEntryDto> Versions { get; set; } = [];
+}
+
+public sealed class DockerHubLatestBaselineDto
+{
+    [JsonPropertyName("version")]
+    public string Version { get; set; } = "";
+
+    [JsonPropertyName("display_version")]
+    public string DisplayVersion { get; set; } = "";
+
+    [JsonPropertyName("published_at")]
+    public string PublishedAt { get; set; } = "";
+
+    [JsonPropertyName("html_url")]
+    public string HtmlUrl { get; set; } = "";
+
+    [JsonPropertyName("source")]
+    public string Source { get; set; } = "";
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "";
+
+    [JsonPropertyName("reason")]
+    public string Reason { get; set; } = "";
+}
+
+public sealed class LatestSyncWarningDto
+{
+    [JsonPropertyName("type")]
+    public string Type { get; set; } = "";
+
+    [JsonPropertyName("severity")]
+    public string Severity { get; set; } = "";
+
+    [JsonPropertyName("release_version")]
+    public string ReleaseVersion { get; set; } = "";
+
+    [JsonPropertyName("release_display_version")]
+    public string ReleaseDisplayVersion { get; set; } = "";
+
+    [JsonPropertyName("release_published_at")]
+    public string ReleasePublishedAt { get; set; } = "";
+
+    [JsonPropertyName("dockerhub_latest_version")]
+    public string DockerHubLatestVersion { get; set; } = "";
+
+    [JsonPropertyName("dockerhub_latest_updated_at")]
+    public string DockerHubLatestUpdatedAt { get; set; } = "";
+
+    [JsonPropertyName("evidence")]
+    public string Evidence { get; set; } = "";
+
+    [JsonPropertyName("message")]
+    public string Message { get; set; } = "";
+
+    [JsonPropertyName("action")]
+    public string Action { get; set; } = "";
 }
 
 public sealed class VersionEntryDto

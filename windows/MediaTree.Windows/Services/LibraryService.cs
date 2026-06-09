@@ -133,7 +133,7 @@ public sealed class LibraryService
         {
             "" => "auto",
             "tmdb" => "tmdb_movie",
-            "tmdb_movie" or "tmdb_tv" or "bangumi" or "javdatabase" or "auto" or "none" => value,
+            "tmdb_movie" or "tmdb_tv" or "tmdb_collection" or "bangumi" or "javdatabase" or "auto" or "none" => value,
             _ => "auto",
         };
     }

@@ -4,6 +4,7 @@ import { api, Movie } from '../api'
 import VideoPlayer from '../components/VideoPlayer'
 import Lightbox from '../components/Lightbox'
 import { useTheater } from '../theater'
+import { specialMovieTitle } from '../movieTitle'
 
 type ThumbnailImage = { src: string; fallback?: string; alt: string }
 
@@ -45,6 +46,9 @@ export default function Detail() {
   const [movie, setMovie] = useState<Movie | null>(null)
   const [loading, setLoading] = useState(true)
   const [episodes, setEpisodes] = useState<Movie[]>([])
+  const [specialMovies, setSpecialMovies] = useState<Movie[]>([])
+  const [specialCount, setSpecialCount] = useState(0)
+  const [specialsExpanded, setSpecialsExpanded] = useState(false)
   const [lightboxIdx, setLightboxIdx] = useState(-1)
   const [infoExpanded, setInfoExpanded] = useState(false)
 
@@ -64,6 +68,9 @@ export default function Detail() {
     if (!id) return
     setLoading(true)
     setEpisodes([])
+    setSpecialMovies([])
+    setSpecialCount(0)
+    setSpecialsExpanded(false)
     setPosters([])
     setVideos([])
     setReviews([])
@@ -101,9 +108,35 @@ export default function Detail() {
     return () => { cancelled = true }
   }, [movie?.id, movie?.folder_levels, movie?.media_root])
 
+  useEffect(() => {
+    const specialFolder = movie?.content_role === 'special'
+      ? (movie.special_parent_levels || parentFolder(movie.folder_levels))
+      : movie?.folder_levels
+    if (!specialFolder) {
+      setSpecialMovies([])
+      setSpecialCount(0)
+      setSpecialsExpanded(false)
+      return
+    }
+    let cancelled = false
+    api.folderSpecials(specialFolder, movie?.media_root || undefined, true)
+      .then((data) => {
+        if (cancelled) return
+        setSpecialCount(data.special_count || 0)
+        setSpecialMovies(data.movies || [])
+      })
+      .catch(() => {
+        if (cancelled) return
+        setSpecialMovies([])
+        setSpecialCount(0)
+        setSpecialsExpanded(false)
+      })
+    return () => { cancelled = true }
+  }, [movie?.id, movie?.folder_levels, movie?.media_root, movie?.content_role, movie?.special_parent_levels])
+
   // Load TMDB extended data when movie has tmdb_id
   useEffect(() => {
-    if (!movie?.tmdb_id || !movie?.tmdb_type || tmdbDataLoaded) return
+    if (movie?.content_role === 'special' || !movie?.tmdb_id || !movie?.tmdb_type || tmdbDataLoaded) return
     setTmdbDataLoaded(true)
     const mt = movie.tmdb_type
     const mid = movie.tmdb_id
@@ -122,7 +155,7 @@ export default function Detail() {
         setReviews(revRes.value.results || [])
       }
     }).catch(() => {})
-  }, [movie?.tmdb_id, movie?.tmdb_type, tmdbDataLoaded])
+  }, [movie?.content_role, movie?.tmdb_id, movie?.tmdb_type, tmdbDataLoaded])
 
   if (loading) {
     return (
@@ -157,9 +190,11 @@ export default function Detail() {
   }
   const cast = (movie.cast || []).filter(p => p.name)
   const crew = (movie.crew || []).filter(p => p.name)
-  const isJavdatabase = movie.scraper_source === 'javdatabase' || Boolean(movie.javdb_id || movie.javdb_url)
+  const isSpecial = movie.content_role === 'special'
+  const displayTitle = isSpecial ? specialMovieTitle(movie) : (movie.title || movie.code)
+  const isJavdatabase = !isSpecial && (movie.scraper_source === 'javdatabase' || Boolean(movie.javdb_id || movie.javdb_url))
   const castNames = cast.map(p => p.name).filter(Boolean)
-  const performerText = movie.actress || castNames.slice(0, 5).join(', ')
+  const performerText = isSpecial ? '' : (movie.actress || castNames.slice(0, 5).join(', '))
   const crewByJob = (jobs: string[]) => crew.filter(p => jobs.some(j => (p.job || '').toLowerCase().includes(j.toLowerCase())))
   const directors = crewByJob(['director', '导演'])
   const supervisors = crewByJob(['supervisor', 'animation director', 'series director', '监督'])
@@ -176,12 +211,16 @@ export default function Detail() {
     }
   }
 
+  const toggleSpecials = () => {
+    setSpecialsExpanded(v => !v)
+  }
+
   const coreMeta = [
-    movie.release_date ? { label: '发行日', value: movie.release_date } : null,
+    !isSpecial && movie.release_date ? { label: '发行日', value: movie.release_date } : null,
     movie.duration ? { label: '时长', value: `${movie.duration} 分钟` } : null,
-    movie.javdb_score != null && movie.javdb_score > 0 ? { label: '评分', value: movie.javdb_score.toFixed(1), tone: 'text-apple-yellow' } : null,
-    movie.javdb_likes != null && movie.javdb_likes > 0 ? { label: '喜欢', value: movie.javdb_likes.toLocaleString(), tone: 'text-apple-pink' } : null,
-    movie.tmdb_type === 'tv' && movie.tmdb_season != null
+    !isSpecial && movie.javdb_score != null && movie.javdb_score > 0 ? { label: '评分', value: movie.javdb_score.toFixed(1), tone: 'text-apple-yellow' } : null,
+    !isSpecial && movie.javdb_likes != null && movie.javdb_likes > 0 ? { label: '喜欢', value: movie.javdb_likes.toLocaleString(), tone: 'text-apple-pink' } : null,
+    !isSpecial && movie.tmdb_type === 'tv' && movie.tmdb_season != null
       ? { label: '季/集', value: `Season ${movie.tmdb_season}${movie.tmdb_episode != null ? ` · Episode ${movie.tmdb_episode}` : ''}` }
       : null,
   ].filter(Boolean) as { label: string; value: string; tone?: string }[]
@@ -210,9 +249,9 @@ export default function Detail() {
           <div className="min-w-0 flex-1">
             <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">Now Playing</p>
             <h1 className="mt-1 break-words text-2xl font-bold tracking-tight text-white sm:text-4xl">
-              {movie.title || movie.code}
+              {displayTitle}
             </h1>
-            {movie.original_title && movie.original_title !== movie.title && (
+            {!isSpecial && movie.original_title && movie.original_title !== movie.title && (
               <p className="mt-2 break-words text-sm text-gray-400">{movie.original_title}</p>
             )}
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
@@ -284,6 +323,51 @@ export default function Detail() {
           </div>
         )}
       </section>
+
+      {specialCount > 0 && (
+        <section className="rounded-3xl bg-white/[0.04] px-4 py-3 shadow-glass backdrop-blur-2xl sm:px-6 sm:py-4">
+          <button
+            onClick={toggleSpecials}
+            className={`${specialsExpanded ? 'mb-3' : ''} flex w-full items-center justify-between gap-4 text-left`}
+          >
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-apple-pink/70">Specials</p>
+              <h2 className="mt-0.5 truncate text-base font-semibold text-white sm:text-lg">花絮</h2>
+            </div>
+            <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-3 py-1 text-xs text-gray-300 transition-all hover:border-apple-pink/40 hover:text-apple-pink">
+              {specialsExpanded ? '收起' : '展开'}
+            </span>
+          </button>
+          {specialsExpanded && specialMovies.length > 0 && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 media-grid">
+              {specialMovies.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => { if (item.id !== movie.id) navigate(`/detail/${item.id}`) }}
+                  className="apple-focus group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] text-left transition-all hover:border-apple-pink/40 hover:bg-white/[0.09]"
+                >
+                  <div className="relative aspect-video bg-black/20">
+                    <img
+                      src={api.coverUrl(item.id)}
+                      alt={item.title || item.code}
+                      className="h-full w-full object-cover opacity-85 transition-transform duration-500 group-hover:scale-105"
+                      loading="lazy"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                    />
+                    <span className="absolute left-2 top-2 rounded-full border border-apple-pink/30 bg-black/45 px-2 py-0.5 text-[10px] font-semibold text-apple-pink backdrop-blur-xl">
+                      花絮
+                    </span>
+                  </div>
+                  <div className="p-3">
+                    <p className="line-clamp-2 text-sm font-semibold text-white">{specialMovieTitle(item)}</p>
+                    <p className="mt-1 truncate text-xs text-gray-500">{item.folder_levels}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="rounded-3xl bg-white/[0.04] px-4 py-3 shadow-glass backdrop-blur-2xl sm:px-6 sm:py-4">
         <button

@@ -568,7 +568,7 @@ public sealed partial class PlayerPage : Page
                 }
             }
 
-            UpdateEpisodes(SortEpisodes(items).ToList());
+            UpdateEpisodes(SortEpisodes(items.Where(item => !item.IsSpecial)).ToList());
         }
         catch (Exception ex)
         {

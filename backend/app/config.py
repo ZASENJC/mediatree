@@ -129,6 +129,40 @@ class Settings(BaseSettings):
                     seen.add(resolved)
         return roots
 
+    def canonical_media_root(self, media_root: str) -> str | None:
+        requested = str(media_root or "").strip()
+        if not requested:
+            return None
+
+        roots = self.get_all_media_roots()
+        try:
+            requested_path = Path(requested).expanduser().resolve()
+            requested_resolved = str(requested_path)
+        except (OSError, ValueError):
+            requested_path = None
+            requested_resolved = requested
+
+        if not roots:
+            return requested_resolved if requested_path and requested_path.exists() and requested_path.is_dir() else requested
+
+        if requested in roots or requested_resolved in roots:
+            return requested if requested in roots else requested_resolved
+
+        requested_norm = os.path.normcase(os.path.normpath(requested_resolved))
+        for root in roots:
+            if os.path.normcase(os.path.normpath(root)) == requested_norm:
+                return root
+
+        if requested_path is not None:
+            for root in roots:
+                try:
+                    if Path(root).samefile(requested_path):
+                        return root
+                except (OSError, ValueError):
+                    continue
+
+        return None
+
     def load_persisted_config(self):
         try:
             if os.path.exists(self.config_path):

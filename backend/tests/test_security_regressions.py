@@ -345,6 +345,30 @@ class SecurityRegressionTest(unittest.TestCase):
         self.assertEqual(fetch_response.status_code, 400)
         self.assertIn("Javdatabase", fetch_response.json()["detail"])
 
+    def test_javdatabase_fetch_rejects_disabled_javdatabase_library(self):
+        import asyncio
+
+        async def seed_library():
+            await database.init_db()
+            await database.save_library_settings({
+                "media_root": config.settings.canonical_media_root(str(self.media_root)) or str(self.media_root),
+                "scraper": "javdatabase",
+                "tmdb_key": "",
+                "password_hash": None,
+                "enabled": 0,
+            })
+
+        asyncio.run(seed_library())
+
+        with TestClient(main.app) as client:
+            response = client.post(
+                f"/api/javdb/fetch?code=ABP-123&media_root={self.media_root}",
+                headers=self.auth_headers(),
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("disabled", response.json()["detail"])
+
 
 if __name__ == "__main__":
     unittest.main()

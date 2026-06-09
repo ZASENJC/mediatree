@@ -168,6 +168,76 @@ class UpdaterVersionStateTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["requires_windows_base_update"])
         self.assertIn("Windows runtime changed.", result["error"])
 
+    def test_extracts_dockerhub_latest_version_from_image_labels(self):
+        config = {
+            "config": {
+                "Labels": {
+                    "org.opencontainers.image.version": "1.0.04",
+                },
+            },
+        }
+
+        version = updater._extract_version_from_image_config(config)
+
+        self.assertEqual(version, "1.0.04")
+
+    async def test_get_available_versions_warns_when_dockerhub_latest_lags_app_package_release(self):
+        latest_release = {
+            "version": "1.0.05",
+            "display_version": "v1.0.05",
+            "name": "v1.0.05",
+            "published_at": "2026-06-08T00:00:00Z",
+            "html_url": "https://example.com/release/v1.0.05",
+            "body": "",
+            "source": "github",
+            "assets": [],
+        }
+        release_entry = {
+            "version": "1.0.05",
+            "display_version": "v1.0.05",
+            "published_at": "2026-06-08T00:00:00Z",
+            "html_url": "https://example.com/release/v1.0.05",
+            "source": "github-release",
+            "update_type": "app-package",
+            "size": 1024,
+            "requires_image_update": False,
+            "reason": "应用包级更新；不需要完整 Docker 镜像更新。",
+        }
+        dockerhub_latest = {
+            "version": "1.0.04",
+            "display_version": "latest",
+            "published_at": "2026-06-07T00:00:00Z",
+            "html_url": "https://hub.docker.com/r/zasenjc/mediatree/tags?name=latest",
+            "source": "dockerhub-latest",
+            "status": "ok",
+            "reason": "",
+        }
+        version_state = {
+            "current_version": "1.0.05",
+            "runtime_version": "1.0.05",
+            "current_source": "app-package",
+            "base_version": "1.0.04",
+            "effective_version": "1.0.05",
+            "overlay_active": True,
+            "overlay_is_outdated": False,
+            "status_note": "当前已更新到 1.0.05。镜像内置版本为 1.0.04。",
+        }
+
+        with patch.object(updater, "get_version_state", return_value=version_state), \
+                patch.object(updater, "fetch_github_releases", AsyncMock(return_value=[latest_release])), \
+                patch.object(updater, "_build_release_entry", AsyncMock(return_value=release_entry)), \
+                patch.object(updater, "fetch_dockerhub_latest_baseline", AsyncMock(return_value=dockerhub_latest)):
+            result = await updater.get_available_versions()
+
+        warning = result["latest_sync_warning"]
+
+        self.assertFalse(result["has_update"])
+        self.assertEqual(result["dockerhub_latest"]["version"], "1.0.04")
+        self.assertEqual(warning["type"], "dockerhub-latest-outdated")
+        self.assertEqual(warning["release_version"], "1.0.05")
+        self.assertEqual(warning["dockerhub_latest_version"], "1.0.04")
+        self.assertIn("scripts/push-docker-release.sh 1.0.05", warning["action"])
+
     def test_get_update_status_clears_stale_error_for_current_version(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

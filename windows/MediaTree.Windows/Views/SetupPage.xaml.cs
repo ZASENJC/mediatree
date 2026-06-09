@@ -19,6 +19,7 @@ public sealed partial class SetupPage : Page
     [
         new("tmdb_movie", "TMDB 电影", "电影库；tmdbid 调用 /movie 精确刮削", "SetupScraperTmdbMovie"),
         new("tmdb_tv", "TMDB 剧集/番剧", "剧集、番剧、电视剧库；tmdbid 调用 /tv 精确刮削", "SetupScraperTmdbTv"),
+        new("tmdb_collection", "TMDB 合集", "电影合集库；复用 TMDB collection 元数据", "SetupScraperTmdbCollection"),
         new("bangumi", "Bangumi", "番剧、动画、二次元条目", "SetupScraperBangumi"),
         new("javdatabase", "Javdatabase", "JAV 番号识别和刮削", "SetupScraperJavdatabase"),
         new("auto", "自动", "自动判断，可能效果不好", "SetupScraperAuto"),
@@ -126,7 +127,7 @@ public sealed partial class SetupPage : Page
         };
         AutomationProperties.SetAutomationId(tmdbTokenBox, "SetupTmdbAccessToken");
         tmdbTokenSection.Children.Add(tmdbTokenBox);
-        tmdbTokenSection.Children.Add(FluentTheme.Body("选择 TMDB 电影、TMDB 剧集/番剧或自动时可填写；也可以之后在设置页补充。", 13));
+        tmdbTokenSection.Children.Add(FluentTheme.Body("选择 TMDB 电影、TMDB 剧集/番剧、TMDB 合集或自动时可填写；也可以之后在设置页补充。", 13));
         form.Children.Add(tmdbTokenSection);
 
         var libraryPasswordBox = new PasswordBox
@@ -323,5 +324,5 @@ public sealed partial class SetupPage : Page
     }
 
     private static bool RequiresTmdbToken(string scraper)
-        => scraper is "tmdb_movie" or "tmdb_tv" or "auto";
+        => scraper is "tmdb_movie" or "tmdb_tv" or "tmdb_collection" or "auto";
 }

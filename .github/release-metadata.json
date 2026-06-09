@@ -6,6 +6,12 @@
     "windows_reason": "应用包级更新；不需要更新 Windows 桌面版基础运行时。"
   },
   "versions": {
+    "1.0.13": {
+      "requires_image_update": true,
+      "requires_windows_base_update": true,
+      "reason": "本版本包含 Dockerfile、基础运行时版本标记和更新发布链调整；请在宿主机执行 docker compose pull && docker compose up -d 拉取完整 Docker 镜像更新。",
+      "windows_reason": "Windows 桌面版主界面改为 WinUI 3 原生客户端并接入 libmpv，需要安装新版 Windows 包。"
+    },
     "1.0.12": {
       "requires_image_update": false,
       "requires_windows_base_update": true,

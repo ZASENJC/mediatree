@@ -359,7 +359,7 @@ async def batch_fetch_metadata(codes: list[str], progress_callback=None):
                        javdb_thumbnails=COALESCE(NULLIF(?, ''), javdb_thumbnails),
                        cover_remote=COALESCE(NULLIF(?, ''), cover_remote),
                        updated_at=datetime('now')
-                       WHERE code=?""",
+                       WHERE code=? AND COALESCE(content_role, 'main') != 'special'""",
                     (data.get("title", ""), data.get("actress", ""),
                      data.get("release_date", ""), data.get("duration"),
                      data.get("javdb_url", ""), data.get("javdb_score"),

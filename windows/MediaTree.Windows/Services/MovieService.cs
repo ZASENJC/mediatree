@@ -25,6 +25,18 @@ public sealed class MovieService
     public Task<MoviesResponseDto> GetFavoritesAsync(string mediaRoot, string sort, int limit, int offset, CancellationToken cancellationToken = default)
         => _api.GetFavoritesAsync(mediaRoot, sort, limit, offset, cancellationToken);
 
+    public Task<FolderSpecialsResponseDto> GetFolderSpecialsAsync(string folder, string mediaRoot, bool includeMovies = false, CancellationToken cancellationToken = default)
+        => _api.GetFolderSpecialsAsync(folder, mediaRoot, includeMovies, cancellationToken);
+
+    public Task<FolderSpecialsResponseDto> SetFolderSpecialsAsync(string folder, string mediaRoot, bool showSpecials, CancellationToken cancellationToken = default)
+        => _api.SetFolderSpecialsAsync(folder, mediaRoot, showSpecials, cancellationToken);
+
+    public Task<SearchScrapeResponseDto> SearchScrapeAsync(string query, string scraper, string mediaRoot, CancellationToken cancellationToken = default)
+        => _api.SearchScrapeAsync(query, scraper, mediaRoot, cancellationToken);
+
+    public Task<ManualScrapeResultDto> ManualScrapeMovieAsync(int movieId, string query, string sourceId, string mediaType, string scraper, CancellationToken cancellationToken = default)
+        => _api.ManualScrapeMovieAsync(movieId, query, sourceId, mediaType, scraper, cancellationToken);
+
     public Task<MovieDto> GetMovieDetailAsync(int movieId, CancellationToken cancellationToken = default)
         => _api.GetMovieDetailAsync(movieId, cancellationToken);
 

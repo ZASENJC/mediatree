@@ -46,6 +46,110 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void MovieDtosAcceptWebSpecialAndTmdbCollectionFields()
+    {
+        var json = """
+            {
+              "id": 9,
+              "path": "Show/sp/interview.mp4",
+              "title": "Scraped title",
+              "display_title": "Display title",
+              "clean_title": "Clean title",
+              "folder_levels": "Show/sp",
+              "content_role": "special",
+              "special_parent_levels": "Show",
+              "tmdb_id": "12345",
+              "scraper_source": "tmdb_collection",
+              "source_id": "998",
+              "cover_remote": "/api/media/poster.jpg",
+              "cover_local": "covers/poster.jpg"
+            }
+            """;
+
+        var movie = JsonSerializer.Deserialize<MovieDto>(json);
+
+        Assert.True(movie!.IsSpecial);
+        Assert.Equal(12345, movie.TmdbId);
+        Assert.Equal("tmdb_collection", movie.ScraperSource);
+        Assert.Equal("Show", movie.FolderForSpecials);
+        Assert.Equal("interview", movie.BestTitle);
+    }
+
+    [Fact]
+    public void FolderSpecialsDtoAcceptsWebResponse()
+    {
+        var json = """
+            {
+              "show_specials": true,
+              "special_count": 1,
+              "movies": [
+                { "id": 3, "path": "Show/sp/a.mp4", "content_role": "special" }
+              ]
+            }
+            """;
+
+        var response = JsonSerializer.Deserialize<FolderSpecialsResponseDto>(json);
+
+        Assert.True(response!.ShowSpecials);
+        Assert.Equal(1, response.SpecialCount);
+        Assert.True(Assert.Single(response.Movies).IsSpecial);
+    }
+
+    [Fact]
+    public void UpdateDtoAcceptsDockerHubLatestSyncWarning()
+    {
+        var json = """
+            {
+              "current_version": "1.0.12",
+              "has_update": true,
+              "dockerhub_latest": {
+                "version": "1.0.11",
+                "published_at": "2026-06-09T00:00:00Z"
+              },
+              "latest_sync_warning": {
+                "type": "dockerhub-latest-outdated",
+                "severity": "warning",
+                "release_version": "1.0.13",
+                "message": "latest 未同步",
+                "action": "请同步 DockerHub latest"
+              },
+              "versions": []
+            }
+            """;
+
+        var response = JsonSerializer.Deserialize<UpdateCheckResultDto>(json);
+
+        Assert.Equal("1.0.11", response!.DockerHubLatest!.Version);
+        Assert.Equal("latest 未同步", response.LatestSyncWarning!.Message);
+    }
+
+    [Fact]
+    public void ScrapeSearchDtoAcceptsTmdbCollectionCandidates()
+    {
+        var json = """
+            {
+              "results": [
+                {
+                  "source": "tmdb_collection",
+                  "source_id": "998",
+                  "media_type": "collection",
+                  "title": "Sample Collection",
+                  "year": "2026",
+                  "scraper": "tmdb_collection"
+                }
+              ]
+            }
+            """;
+
+        var response = JsonSerializer.Deserialize<SearchScrapeResponseDto>(json);
+
+        var result = Assert.Single(response!.Results);
+        Assert.Equal("tmdb_collection", result.Source);
+        Assert.Equal("collection", result.MediaType);
+        Assert.Equal("tmdb_collection", result.Scraper);
+    }
+
+    [Fact]
     public void MovieDtosTreatNullNumericFieldsAsZero()
     {
         var json = """
