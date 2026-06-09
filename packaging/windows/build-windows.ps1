@@ -88,8 +88,8 @@ function Resolve-MSBuild {
   throw "MSBuild.exe was not found. Install Visual Studio 2022 Build Tools with MSBuild and Windows SDK components."
 }
 
-function Resolve-7ZipTool {
-  $commands = @("7z.exe", "7za.exe", "7zr.exe")
+function Resolve-PowershellTool {
+  $commands = @("pwsh.exe", "pwsh", "powershell.exe", "powershell")
   foreach ($command in $commands) {
     $resolved = Get-Command $command -ErrorAction SilentlyContinue
     if ($resolved) {
@@ -97,27 +97,7 @@ function Resolve-7ZipTool {
     }
   }
 
-  $candidates = @(
-    (Join-Path $env:ProgramFiles "7-Zip\7z.exe"),
-    (Join-Path ${env:ProgramFiles(x86)} "7-Zip\7z.exe")
-  )
-  foreach ($candidate in $candidates) {
-    if ($candidate -and (Test-Path $candidate)) {
-      return $candidate
-    }
-  }
-
-  $toolsDir = Join-Path $Root "build/windows/tools"
-  New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
-  $downloaded = Join-Path $toolsDir "7zr.exe"
-  if (-not (Test-Path $downloaded)) {
-    Write-Host "Downloading 7-Zip standalone extractor: $SevenZipUrl"
-    Invoke-WebRequest -Uri $SevenZipUrl -OutFile $downloaded
-  }
-  if (-not (Test-Path $downloaded)) {
-    throw "7-Zip extractor was not available."
-  }
-  return $downloaded
+  throw "PowerShell was not found. Install PowerShell 7 or use Windows PowerShell."
 }
 
 function New-ExpandedAppxManifest {
@@ -207,110 +187,29 @@ function Sign-MsixPackage {
   Invoke-Native $signtool sign /fd SHA256 /f $PfxPath /p $PfxPassword $MsixPath
 }
 
-function Expand-MpvArchive {
-  param(
-    [string]$ArchivePath,
-    [string]$Destination
-  )
-
-  if (Test-Path $Destination) {
-    Remove-Item $Destination -Recurse -Force
-  }
-  New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-  $sevenZip = Resolve-7ZipTool
-  Invoke-Native $sevenZip x $ArchivePath "-o$Destination" -y
-  if (Get-ChildItem -Path $Destination -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1) {
-    return
-  }
-
-  $extractScript = @"
-import sys
-from pathlib import Path
-import py7zr
-
-archive = Path(sys.argv[1])
-destination = Path(sys.argv[2])
-with py7zr.SevenZipFile(archive, mode="r") as z:
-    z.extractall(destination)
-"@
-  $extractScriptPath = Join-Path $Root "build/windows/extract-mpv.py"
-  Set-Content -Path $extractScriptPath -Value $extractScript -Encoding UTF8
-  Invoke-Native python $extractScriptPath $ArchivePath $Destination
-}
-
 function Install-BundledMpv {
   param(
     [string]$Destination
   )
 
-  $cacheDir = Join-Path $Root "build/windows/mpv-cache"
-  $extractDir = Join-Path $Root "build/windows/mpv-extract"
-  $libExtractDir = Join-Path $Root "build/windows/libmpv-extract"
-  New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
-  $archive = $MpvArchivePath
-  if (-not $archive) {
-    $archive = Join-Path $cacheDir (Split-Path ([Uri]$MpvArchiveUrl).LocalPath -Leaf)
+  $prepareArgs = @(
+    "packaging/windows/prepare-mpv.ps1",
+    "-Destination", $Destination,
+    "-MpvArchiveUrl", $MpvArchiveUrl,
+    "-LibMpvArchiveUrl", $LibMpvArchiveUrl,
+    "-SevenZipUrl", $SevenZipUrl
+  )
+  if ($SkipMpvDownload) {
+    $prepareArgs += "-SkipMpvDownload"
+  }
+  if ($MpvArchivePath) {
+    $prepareArgs += @("-MpvArchivePath", $MpvArchivePath)
+  }
+  if ($LibMpvArchivePath) {
+    $prepareArgs += @("-LibMpvArchivePath", $LibMpvArchivePath)
   }
 
-  if (-not (Test-Path $archive)) {
-    if ($SkipMpvDownload) {
-      throw "Bundled mpv archive is missing and SkipMpvDownload was set: $archive"
-    }
-    Write-Host "Downloading bundled mpv: $MpvArchiveUrl"
-    Invoke-WebRequest -Uri $MpvArchiveUrl -OutFile $archive
-  }
-
-  Expand-MpvArchive -ArchivePath $archive -Destination $extractDir
-  $mpvExe = Get-ChildItem -Path $extractDir -Recurse -Filter "mpv.exe" -ErrorAction SilentlyContinue |
-    Select-Object -First 1
-  if (-not $mpvExe) {
-    throw "mpv.exe was not found in archive: $archive"
-  }
-  $mpvDll = Get-ChildItem -Path $mpvExe.Directory.FullName -Filter "mpv-2.dll" -ErrorAction SilentlyContinue |
-    Select-Object -First 1
-
-  if (Test-Path $Destination) {
-    Remove-Item $Destination -Recurse -Force
-  }
-  New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-  Copy-Item (Join-Path $mpvExe.Directory.FullName "*") $Destination -Recurse -Force
-
-  if (-not $mpvDll) {
-    $libArchive = $LibMpvArchivePath
-    if (-not $libArchive) {
-      $libArchive = Join-Path $cacheDir (Split-Path ([Uri]$LibMpvArchiveUrl).LocalPath -Leaf)
-    }
-
-    if (-not (Test-Path $libArchive)) {
-      if ($SkipMpvDownload) {
-        throw "Bundled libmpv archive is missing and SkipMpvDownload was set: $libArchive"
-      }
-      Write-Host "Downloading bundled libmpv: $LibMpvArchiveUrl"
-      Invoke-WebRequest -Uri $LibMpvArchiveUrl -OutFile $libArchive
-    }
-
-    Expand-MpvArchive -ArchivePath $libArchive -Destination $libExtractDir
-    $mpvDll = Get-ChildItem -Path $libExtractDir -Recurse -Filter "mpv-2.dll" -ErrorAction SilentlyContinue |
-      Select-Object -First 1
-    if (-not $mpvDll) {
-      $mpvDll = Get-ChildItem -Path $libExtractDir -Recurse -Filter "libmpv-2.dll" -ErrorAction SilentlyContinue |
-        Select-Object -First 1
-    }
-  }
-
-  if (-not $mpvDll) {
-    throw "mpv-2.dll/libmpv-2.dll was not found in bundled mpv archives."
-  }
-
-  Copy-Item (Join-Path $mpvDll.Directory.FullName "*") $Destination -Recurse -Force
-  if ($mpvDll.Name -ieq "libmpv-2.dll") {
-    Copy-Item $mpvDll.FullName (Join-Path $Destination "mpv-2.dll") -Force
-  }
-
-  if (-not (Test-Path (Join-Path $Destination "mpv-2.dll"))) {
-    throw "Bundled mpv-2.dll was not copied to $Destination"
-  }
-  Remove-Item (Join-Path $Destination "mpv.exe") -Force -ErrorAction SilentlyContinue
+  Invoke-Native (Resolve-PowershellTool) -NoProfile -ExecutionPolicy Bypass -File @prepareArgs
 }
 
 if (-not $Version) {
@@ -410,7 +309,8 @@ try {
     /p:WindowsPackageType=None `
     /p:SelfContained=true `
     /p:PublishSingleFile=false `
-    /p:AppxPackage=false
+    /p:AppxPackage=false `
+    /p:SkipPrepareBundledMpv=true
 
   if (-not (Test-Path (Join-Path $ShellOutput "MediaTree.Windows.exe"))) {
     throw "WinUI output is missing MediaTree.Windows.exe: $ShellOutput"

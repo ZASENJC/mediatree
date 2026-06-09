@@ -13,6 +13,9 @@
 - 重建 Windows 桌面版为 WinUI 3 原生客户端，复用本地 FastAPI 运行时，并提供原生媒体库设置、媒体网格、详情页和窗口内 libmpv 播放
 - 新增 DPAPI 保护的 Windows 本机会话恢复，首次接管本地后端后不再需要暴露 web 登录流程
 - 将 Windows 原生 UI 与 libmpv 运行时变化标记为 `requires_windows_base_update`
+- 修复 Windows 原生媒体卡片点击后直接进入播放器的问题，现在会先进入详情页再由详情页播放
+- 加固 Windows 打包流程，发布桌面包前会准备并校验内置 `mpv-2.dll`
+- 修复 Windows 原生目录加载旧媒体库时 `cast`/`crew` 为 JSON 字符串导致列表页报错的问题
 - Windows 桌面版复用现有应用包更新机制，日常 FastAPI/React 更新继续通过 `mediatree-app-<version>.tar.gz` 同步
 - Release manifest 新增 `requires_windows_base_update` 与 `windows_reason`，仅在 Windows 基础运行时变化时要求安装新版桌面包
 

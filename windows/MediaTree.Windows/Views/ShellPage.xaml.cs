@@ -43,7 +43,7 @@ public sealed partial class ShellPage : Page
 
     public void NavigateToMovie(int movieId)
     {
-        NavigateToPlayer(movieId);
+        _contentFrame.Navigate(typeof(MovieDetailPage), new MovieNavigationParameter(movieId));
     }
 
     public void NavigateToPlayer(int movieId)

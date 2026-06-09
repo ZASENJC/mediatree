@@ -432,8 +432,10 @@ public sealed partial class BrowsePage : Page
         sortBox.Items.Add(new ComboBoxItem { Content = "随机", Tag = "random" });
     }
 
-    internal static Button CreateMovieCard(MovieCardItem item, MediaContextMenuHost? contextHost = null)
+    internal static Button CreateMovieCard(MovieCardItem item, MediaContextMenuHost? contextHost = null, Action? onClick = null)
     {
+        onClick ??= () => ShellPage.Current?.NavigateToMovie(item.Id);
+
         var imageHost = new Grid
         {
             Height = item.HasEpisodeStill ? 100 : 252,
@@ -547,7 +549,7 @@ public sealed partial class BrowsePage : Page
             card.ContextFlyout = MediaContextMenuService.CreateMovieFlyout(item, contextHost);
         }
 
-        card.Click += (_, _) => ShellPage.Current?.NavigateToMovie(item.Id);
+        card.Click += (_, _) => onClick?.Invoke();
         return card;
     }
 

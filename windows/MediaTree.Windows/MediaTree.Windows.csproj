@@ -34,11 +34,26 @@
     <None Include="server\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="mpv\**\*" Exclude="mpv\mpv.exe">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <Content Include="Assets\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
+  <PropertyGroup>
+    <PowershellRuntime Condition="'$(PowershellRuntime)' == ''">powershell</PowershellRuntime>
+  </PropertyGroup>
+
+  <Target Name="PrepareBundledMpv" Condition="'$(SkipPrepareBundledMpv)' != 'true' and '$(OS)' == 'Windows_NT'">
+    <Exec
+      Command="$(PowershellRuntime) -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\packaging\windows\prepare-mpv.ps1&quot; -Destination &quot;$(MSBuildProjectDirectory)\mpv&quot;" />
+  </Target>
+
+  <Target Name="IncludeBundledMpvFiles" BeforeTargets="AssignTargetPaths" DependsOnTargets="PrepareBundledMpv">
+    <ItemGroup>
+      <None Include="mpv\**\*" Exclude="mpv\mpv.exe">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </None>
+    </ItemGroup>
+  </Target>
 </Project>

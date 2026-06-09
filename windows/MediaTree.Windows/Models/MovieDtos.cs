@@ -141,9 +141,11 @@ public sealed class MovieDto
     public List<string> Tags { get; set; } = [];
 
     [JsonPropertyName("cast")]
+    [JsonConverter(typeof(MovieStaffListConverter))]
     public List<MovieStaffDto> Cast { get; set; } = [];
 
     [JsonPropertyName("crew")]
+    [JsonConverter(typeof(MovieStaffListConverter))]
     public List<MovieStaffDto> Crew { get; set; } = [];
 
     [JsonIgnore]
@@ -359,6 +361,59 @@ internal sealed class StringOrArrayListConverter : JsonConverter<List<string>>
         }
 
         writer.WriteEndArray();
+    }
+}
+
+internal sealed class MovieStaffListConverter : JsonConverter<List<MovieStaffDto>>
+{
+    public override List<MovieStaffDto> Read(ref Utf8JsonReader reader, System.Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return [];
+        }
+
+        if (reader.TokenType == JsonTokenType.StartArray)
+        {
+            return JsonSerializer.Deserialize<List<MovieStaffDto>>(ref reader, options) ?? [];
+        }
+
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var value = reader.GetString();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return [];
+            }
+
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<List<MovieStaffDto>>(value, options);
+                if (parsed is not null)
+                {
+                    return parsed;
+                }
+            }
+            catch (JsonException)
+            {
+                // Older database rows may contain comma-separated names instead of JSON arrays.
+            }
+
+            return value
+                .Replace("，", ",")
+                .Replace("、", ",")
+                .Split(',', System.StringSplitOptions.RemoveEmptyEntries | System.StringSplitOptions.TrimEntries)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => new MovieStaffDto { Name = name, Source = "legacy" })
+                .ToList();
+        }
+
+        throw new JsonException($"Cannot convert {reader.TokenType} to movie staff list.");
+    }
+
+    public override void Write(Utf8JsonWriter writer, List<MovieStaffDto> value, JsonSerializerOptions options)
+    {
+        JsonSerializer.Serialize(writer, value, options);
     }
 }
 

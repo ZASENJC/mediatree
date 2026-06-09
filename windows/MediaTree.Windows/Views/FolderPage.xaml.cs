@@ -398,7 +398,8 @@ public sealed partial class FolderPage : Page
     {
         var card = BrowsePage.CreateMovieCard(
             await BrowsePage.CreateMovieCardItemAsync(movie, "folder"),
-            CreateContextMenuHost(async () => await LoadAsync()));
+            CreateContextMenuHost(async () => await LoadAsync()),
+            onClick: () => ShellPage.Current?.NavigateToPlayer(movie.Id));
         AutomationProperties.SetAutomationId(card, $"FolderMovieCard_{movie.Id}");
         cardHost.Children.Clear();
         cardHost.Children.Add(card);

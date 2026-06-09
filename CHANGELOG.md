@@ -14,6 +14,9 @@ All notable changes to MediaTree are documented here.
 - Added DPAPI-protected Windows local session recovery so first-run desktop users do not need to see the web login flow after the app owns the local backend session
 - Marked Windows native UI and libmpv runtime changes as `requires_windows_base_update`, while keeping ordinary FastAPI/React app-package updates on the existing release path
 - Replaced the previous Windows WebView2 shell direction with a native WinUI 3 desktop client while keeping the local PyInstaller backend and MSIX/.appinstaller packaging path
+- Fixed Windows native media-card navigation so selecting a movie opens the detail page before playback
+- Hardened Windows packaging so bundled `mpv-2.dll` is prepared and validated before publishing the desktop app
+- Fixed Windows native movie-list loading when older libraries return `cast`/`crew` metadata as JSON strings
 - The Windows desktop runtime reuses the existing app-package updater, so routine FastAPI/React changes continue to ship through `mediatree-app-<version>.tar.gz`
 - Release manifests now include `requires_windows_base_update` and `windows_reason`, so only Windows runtime changes require a new desktop package
 

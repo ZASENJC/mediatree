@@ -107,6 +107,32 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void MovieDtosAcceptLegacyStaffJsonStringsFromMovieLists()
+    {
+        var json = """
+            {
+              "movies": [
+                {
+                  "id": 12,
+                  "path": "Show/S01/E01.mkv",
+                  "cast": "[{\"name\":\"Actor A\",\"role\":\"Lead\"}]",
+                  "crew": "Director B, Studio C"
+                }
+              ],
+              "total": 1
+            }
+            """;
+
+        var response = JsonSerializer.Deserialize<MoviesResponseDto>(json);
+
+        var movie = Assert.Single(response!.Movies);
+        Assert.Equal("Actor A", Assert.Single(movie.Cast).Name);
+        Assert.Equal("Lead", movie.Cast[0].Detail);
+        Assert.Equal(["Director B", "Studio C"], movie.Crew.ConvertAll(item => item.Name));
+        Assert.All(movie.Crew, item => Assert.Equal("legacy", item.Source));
+    }
+
+    [Fact]
     public void FolderSpecialsDtoAcceptsWebResponse()
     {
         var json = """
