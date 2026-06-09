@@ -150,6 +150,36 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void ContextMenuDtosAcceptWebCoverAndActionResponses()
+    {
+        var coversJson = """
+            {
+              "covers": [
+                {
+                  "url": "https://image.tmdb.org/t/p/w500/sample.jpg",
+                  "source": "tmdb_poster",
+                  "width": 500,
+                  "height": 750,
+                  "language": "zh",
+                  "vote_count": 8
+                }
+              ]
+            }
+            """;
+        var actionJson = """{"ok": true, "title": "Sample", "affected": 2, "deleted": 1}""";
+
+        var covers = JsonSerializer.Deserialize<AlternativeCoversResponseDto>(coversJson);
+        var action = JsonSerializer.Deserialize<BasicActionResultDto>(actionJson);
+
+        var cover = Assert.Single(covers!.Covers);
+        Assert.Equal("tmdb_poster", cover.Source);
+        Assert.Equal(500, cover.Width);
+        Assert.True(action!.Ok);
+        Assert.Equal(2, action.Affected);
+        Assert.Equal(1, action.Deleted);
+    }
+
+    [Fact]
     public void MovieDtosTreatNullNumericFieldsAsZero()
     {
         var json = """

@@ -37,6 +37,39 @@ public sealed class MovieService
     public Task<ManualScrapeResultDto> ManualScrapeMovieAsync(int movieId, string query, string sourceId, string mediaType, string scraper, CancellationToken cancellationToken = default)
         => _api.ManualScrapeMovieAsync(movieId, query, sourceId, mediaType, scraper, cancellationToken);
 
+    public Task<BasicActionResultDto> RescrapeMovieAsync(int movieId, CancellationToken cancellationToken = default)
+        => _api.RescrapeMovieAsync(movieId, cancellationToken);
+
+    public Task<BasicActionResultDto> RescrapeFolderAsync(string folder, string mediaRoot, CancellationToken cancellationToken = default)
+        => _api.RescrapeFolderAsync(folder, mediaRoot, cancellationToken);
+
+    public Task<BasicActionResultDto> ApplyFolderScrapeAsync(string folder, string mediaRoot, string sourceId, string source, string mediaType, CancellationToken cancellationToken = default)
+        => _api.ApplyFolderScrapeAsync(folder, mediaRoot, sourceId, source, mediaType, cancellationToken);
+
+    public Task<AlternativeCoversResponseDto> GetAlternativeCoversAsync(int movieId, CancellationToken cancellationToken = default)
+        => _api.GetAlternativeCoversAsync(movieId, cancellationToken);
+
+    public Task<BasicActionResultDto> ChangeMovieCoverAsync(int movieId, string url, CancellationToken cancellationToken = default)
+        => _api.ChangeMovieCoverAsync(movieId, url, cancellationToken);
+
+    public Task<BasicActionResultDto> UploadMovieCoverAsync(int movieId, string filePath, CancellationToken cancellationToken = default)
+        => _api.UploadMovieCoverAsync(movieId, filePath, cancellationToken);
+
+    public Task<BasicActionResultDto> ChangeFolderCoverAsync(string folder, string mediaRoot, string url, CancellationToken cancellationToken = default)
+        => _api.ChangeFolderCoverAsync(folder, mediaRoot, url, cancellationToken);
+
+    public Task<BasicActionResultDto> EditMovieAsync(int movieId, string title, string code, string actress, string releaseDate, int? duration, CancellationToken cancellationToken = default)
+        => _api.EditMovieAsync(movieId, title, code, actress, releaseDate, duration, cancellationToken);
+
+    public Task<BasicActionResultDto> EditFolderAsync(string folder, string mediaRoot, string title, string code, string actress, string releaseDate, int? duration, CancellationToken cancellationToken = default)
+        => _api.EditFolderAsync(folder, mediaRoot, title, code, actress, releaseDate, duration, cancellationToken);
+
+    public Task<BasicActionResultDto> DeleteMovieAsync(int movieId, CancellationToken cancellationToken = default)
+        => _api.DeleteMovieAsync(movieId, cancellationToken);
+
+    public Task<BasicActionResultDto> DeleteFolderAsync(string folder, string mediaRoot, CancellationToken cancellationToken = default)
+        => _api.DeleteFolderAsync(folder, mediaRoot, cancellationToken);
+
     public Task<MovieDto> GetMovieDetailAsync(int movieId, CancellationToken cancellationToken = default)
         => _api.GetMovieDetailAsync(movieId, cancellationToken);
 

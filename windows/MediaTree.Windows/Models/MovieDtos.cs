@@ -37,6 +37,9 @@ public sealed class MovieDto
     [JsonPropertyName("overview")]
     public string Overview { get; set; } = "";
 
+    [JsonPropertyName("actress")]
+    public string Actress { get; set; } = "";
+
     [JsonPropertyName("release_date")]
     public string ReleaseDate { get; set; } = "";
 
@@ -112,6 +115,9 @@ public sealed class MovieDto
     [JsonPropertyName("progress_percent")]
     [JsonConverter(typeof(NullToZeroDoubleConverter))]
     public double ProgressPercent { get; set; }
+
+    [JsonPropertyName("tags")]
+    public List<string> Tags { get; set; } = [];
 
     [JsonIgnore]
     public bool IsSpecial => string.Equals(ContentRole, "special", System.StringComparison.OrdinalIgnoreCase);

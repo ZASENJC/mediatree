@@ -214,6 +214,133 @@ public sealed class MediaTreeApiClient : IDisposable
             scraper = NormalizeManualScraper(scraper),
         }, cancellationToken);
 
+    public async Task<BasicActionResultDto> RescrapeMovieAsync(int movieId, CancellationToken cancellationToken = default)
+        => await PostJsonAsync<BasicActionResultDto>($"/movies/{movieId}/rescrape", new { }, cancellationToken);
+
+    public async Task<BasicActionResultDto> RescrapeFolderAsync(
+        string folder,
+        string mediaRoot,
+        CancellationToken cancellationToken = default)
+        => await PostJsonAsync<BasicActionResultDto>("/rescrape-folder", new
+        {
+            folder,
+            media_root = mediaRoot,
+        }, cancellationToken);
+
+    public async Task<BasicActionResultDto> ApplyFolderScrapeAsync(
+        string folder,
+        string mediaRoot,
+        string sourceId,
+        string source,
+        string mediaType,
+        CancellationToken cancellationToken = default)
+        => await PostJsonAsync<BasicActionResultDto>("/apply-folder-scrape", new
+        {
+            folder,
+            media_root = mediaRoot,
+            source_id = sourceId,
+            source,
+            media_type = string.IsNullOrWhiteSpace(mediaType) ? "movie" : mediaType,
+        }, cancellationToken);
+
+    public async Task<AlternativeCoversResponseDto> GetAlternativeCoversAsync(int movieId, CancellationToken cancellationToken = default)
+        => await GetAsync<AlternativeCoversResponseDto>($"/movies/{movieId}/alternative-covers", cancellationToken);
+
+    public async Task<BasicActionResultDto> ChangeMovieCoverAsync(int movieId, string url, CancellationToken cancellationToken = default)
+        => await PostJsonAsync<BasicActionResultDto>($"/movies/{movieId}/cover", new { url }, cancellationToken);
+
+    public async Task<BasicActionResultDto> UploadMovieCoverAsync(int movieId, string filePath, CancellationToken cancellationToken = default)
+    {
+        await using var stream = File.OpenRead(filePath);
+        using var request = CreateRequest(HttpMethod.Post, $"/movies/{movieId}/cover");
+        using var content = new MultipartFormDataContent();
+        content.Add(new StreamContent(stream), "file", Path.GetFileName(filePath));
+        request.Content = content;
+        return await SendAsync<BasicActionResultDto>(request, cancellationToken);
+    }
+
+    public async Task<BasicActionResultDto> ChangeFolderCoverAsync(
+        string folder,
+        string mediaRoot,
+        string url,
+        CancellationToken cancellationToken = default)
+        => await PostJsonAsync<BasicActionResultDto>("/folder/cover", new
+        {
+            folder,
+            media_root = mediaRoot,
+            url,
+        }, cancellationToken);
+
+    public async Task<BasicActionResultDto> EditMovieAsync(
+        int movieId,
+        string title,
+        string code,
+        string actress,
+        string releaseDate,
+        int? duration,
+        CancellationToken cancellationToken = default)
+    {
+        var body = new Dictionary<string, object?>();
+        PutIfNotNull(body, "title", title);
+        PutIfNotNull(body, "code", code);
+        PutIfNotNull(body, "actress", actress);
+        PutIfNotNull(body, "release_date", releaseDate);
+        if (duration.HasValue)
+        {
+            body["duration"] = duration.Value;
+        }
+
+        if (body.Count == 0)
+        {
+            return new BasicActionResultDto { Ok = true };
+        }
+
+        return await PutJsonAsync<BasicActionResultDto>($"/movies/{movieId}", body, cancellationToken);
+    }
+
+    public async Task<BasicActionResultDto> EditFolderAsync(
+        string folder,
+        string mediaRoot,
+        string title,
+        string code,
+        string actress,
+        string releaseDate,
+        int? duration,
+        CancellationToken cancellationToken = default)
+    {
+        var fields = new Dictionary<string, object?>();
+        PutIfNotNull(fields, "title", title);
+        PutIfNotNull(fields, "code", code);
+        PutIfNotNull(fields, "actress", actress);
+        PutIfNotNull(fields, "release_date", releaseDate);
+        if (duration.HasValue)
+        {
+            fields["duration"] = duration.Value;
+        }
+
+        if (fields.Count == 0)
+        {
+            return new BasicActionResultDto { Ok = true };
+        }
+
+        return await PutJsonAsync<BasicActionResultDto>("/folder/edit", new
+        {
+            folder,
+            media_root = mediaRoot,
+            fields,
+        }, cancellationToken);
+    }
+
+    public async Task<BasicActionResultDto> DeleteMovieAsync(int movieId, CancellationToken cancellationToken = default)
+        => await DeleteAsync<BasicActionResultDto>($"/movies/{movieId}", cancellationToken);
+
+    public async Task<BasicActionResultDto> DeleteFolderAsync(string folder, string mediaRoot, CancellationToken cancellationToken = default)
+        => await PostJsonAsync<BasicActionResultDto>("/folder/delete", new
+        {
+            folder,
+            media_root = mediaRoot,
+        }, cancellationToken);
+
     public async Task RemoveTagAsync(int movieId, string tag, CancellationToken cancellationToken = default)
         => await DeleteAsync<JsonElement>($"/movies/{movieId}/tags/{Uri.EscapeDataString(tag)}", cancellationToken);
 
@@ -345,6 +472,13 @@ public sealed class MediaTreeApiClient : IDisposable
         return await SendAsync<T>(request, cancellationToken);
     }
 
+    private async Task<T> PutJsonAsync<T>(string path, object body, CancellationToken cancellationToken)
+    {
+        using var request = CreateRequest(HttpMethod.Put, path);
+        request.Content = JsonContent.Create(body, options: _jsonOptions);
+        return await SendAsync<T>(request, cancellationToken);
+    }
+
     private async Task<T> DeleteAsync<T>(string path, CancellationToken cancellationToken)
     {
         using var request = CreateRequest(HttpMethod.Delete, path);
@@ -366,6 +500,14 @@ public sealed class MediaTreeApiClient : IDisposable
             "auto" or "tmdb_movie" or "tmdb_tv" or "tmdb_collection" or "bangumi" or "javdatabase" => value,
             _ => "auto",
         };
+    }
+
+    private static void PutIfNotNull(Dictionary<string, object?> body, string key, string value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            body[key] = value.Trim();
+        }
     }
 
     private HttpRequestMessage CreateRequest(HttpMethod method, string path)

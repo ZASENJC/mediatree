@@ -309,7 +309,9 @@ public sealed partial class BrowsePage : Page
 
             foreach (var movie in response.Movies)
             {
-                _moviesGrid.Items.Add(CreateMovieCard(await CreateMovieCardItemAsync(movie, "browse")));
+                _moviesGrid.Items.Add(CreateMovieCard(
+                    await CreateMovieCardItemAsync(movie, "browse"),
+                    CreateContextMenuHost(async () => await LoadMoviesAsync())));
             }
 
             _titleText.Text = string.IsNullOrWhiteSpace(_activeFolderPath) ? "全部影片" : $"浏览: {_activeFolderPath}";
@@ -430,7 +432,7 @@ public sealed partial class BrowsePage : Page
         sortBox.Items.Add(new ComboBoxItem { Content = "随机", Tag = "random" });
     }
 
-    internal static Button CreateMovieCard(MovieCardItem item)
+    internal static Button CreateMovieCard(MovieCardItem item, MediaContextMenuHost? contextHost = null)
     {
         var imageHost = new Grid
         {
@@ -540,9 +542,22 @@ public sealed partial class BrowsePage : Page
             Tag = item,
         };
         AutomationProperties.SetAutomationId(card, $"BrowseMovieCard_{item.Id}");
+        if (contextHost is not null)
+        {
+            card.ContextFlyout = MediaContextMenuService.CreateMovieFlyout(item, contextHost);
+        }
+
         card.Click += (_, _) => ShellPage.Current?.NavigateToMovie(item.Id);
         return card;
     }
+
+    private MediaContextMenuHost CreateContextMenuHost(Func<Task> refreshAsync)
+        => new()
+        {
+            XamlRoot = XamlRoot,
+            ShowStatus = ShowStatus,
+            RefreshAsync = refreshAsync,
+        };
 
     internal static async Task<MovieCardItem> CreateMovieCardItemAsync(MovieDto movie, string logContext)
     {

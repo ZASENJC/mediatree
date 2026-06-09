@@ -396,7 +396,9 @@ public sealed partial class FolderPage : Page
 
     private async System.Threading.Tasks.Task LoadEpisodeCardAsync(MovieDto movie, Grid cardHost)
     {
-        var card = BrowsePage.CreateMovieCard(await BrowsePage.CreateMovieCardItemAsync(movie, "folder"));
+        var card = BrowsePage.CreateMovieCard(
+            await BrowsePage.CreateMovieCardItemAsync(movie, "folder"),
+            CreateContextMenuHost(async () => await LoadAsync()));
         AutomationProperties.SetAutomationId(card, $"FolderMovieCard_{movie.Id}");
         cardHost.Children.Clear();
         cardHost.Children.Add(card);
@@ -508,6 +510,14 @@ public sealed partial class FolderPage : Page
         _statusText.Foreground = isError ? FluentTheme.Error : FluentTheme.TextSecondary;
         _statusText.Visibility = Visibility.Visible;
     }
+
+    private MediaContextMenuHost CreateContextMenuHost(Func<System.Threading.Tasks.Task> refreshAsync)
+        => new()
+        {
+            XamlRoot = XamlRoot,
+            ShowStatus = ShowStatus,
+            RefreshAsync = refreshAsync,
+        };
 
     private static string FolderTitleFromPath(string folderPath)
     {

@@ -232,7 +232,7 @@ public sealed partial class FavoritesPage : Page
 
     private UIElement CreateFavoriteMovieCard(MovieCardItem item)
     {
-        var card = BrowsePage.CreateMovieCard(item);
+        var card = BrowsePage.CreateMovieCard(item, CreateContextMenuHost(async () => await LoadFavoritesAsync()));
         AutomationProperties.SetAutomationId(card, $"FavoriteMovieCard_{item.Id}");
 
         var removeButton = FluentTheme.ApplyButton(new Button
@@ -289,4 +289,12 @@ public sealed partial class FavoritesPage : Page
         _statusText.Foreground = isError ? FluentTheme.Error : FluentTheme.TextSecondary;
         _statusText.Visibility = Visibility.Visible;
     }
+
+    private MediaContextMenuHost CreateContextMenuHost(Func<System.Threading.Tasks.Task> refreshAsync)
+        => new()
+        {
+            XamlRoot = XamlRoot,
+            ShowStatus = ShowStatus,
+            RefreshAsync = refreshAsync,
+        };
 }

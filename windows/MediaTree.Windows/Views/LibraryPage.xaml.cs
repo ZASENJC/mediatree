@@ -403,6 +403,11 @@ public sealed partial class LibraryPage : Page
             var cards = new List<Button>();
             foreach (var folder in folders)
             {
+                if (string.IsNullOrWhiteSpace(folder.MediaRoot))
+                {
+                    folder.MediaRoot = mediaRoot;
+                }
+
                 var cover = await BuildFolderCoverUrlAsync(folder);
                 cards.Add(CreateFolderCard(new FolderCardItem(folder, cover)));
             }
@@ -478,7 +483,9 @@ public sealed partial class LibraryPage : Page
                     ShellLogger.Error(ex, $"Failed to build native cover URL for movie {movie.Id}.");
                 }
 
-                cards.Add(CreateMovieCard(new MovieCardItem(movie, cover)));
+                cards.Add(CreateMovieCard(
+                    new MovieCardItem(movie, cover),
+                    CreateContextMenuHost(async () => await LoadMoviesAsync(folderPath, recent))));
             }
 
             if (generation != _movieLoadGeneration || mediaRoot != _activeMediaRoot)
@@ -880,11 +887,14 @@ public sealed partial class LibraryPage : Page
             Tag = item,
         };
         AutomationProperties.SetAutomationId(card, $"FolderCard_{SanitizeAutomationId(item.Path)}");
+        card.ContextFlyout = MediaContextMenuService.CreateFolderFlyout(
+            item,
+            CreateContextMenuHost(async () => await LoadFoldersAsync()));
         card.Click += (_, _) => OpenFolderItem(item);
         return card;
     }
 
-    private static Button CreateMovieCard(MovieCardItem item)
+    private Button CreateMovieCard(MovieCardItem item, MediaContextMenuHost? contextHost = null)
     {
         var imageHost = new Grid
         {
@@ -963,9 +973,22 @@ public sealed partial class LibraryPage : Page
             Tag = item,
         };
         AutomationProperties.SetAutomationId(card, $"MovieCard_{item.Id}");
+        if (contextHost is not null)
+        {
+            card.ContextFlyout = MediaContextMenuService.CreateMovieFlyout(item, contextHost);
+        }
+
         card.Click += (_, _) => ShellPage.Current?.NavigateToMovie(item.Id);
         return card;
     }
+
+    private MediaContextMenuHost CreateContextMenuHost(Func<Task> refreshAsync)
+        => new()
+        {
+            XamlRoot = XamlRoot,
+            ShowStatus = (message, isError) => ShowInfo(message, isError ? InfoBarSeverity.Error : InfoBarSeverity.Informational),
+            RefreshAsync = refreshAsync,
+        };
 
     private static ComboBoxItem CreateLibraryItem(MediaRootDto root)
     {
