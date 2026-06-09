@@ -124,14 +124,22 @@ export default function Settings() {
   }
 
   const normalizeVersion = (version?: string) => (version || '').replace(/^v/i, '')
+  const isDockerSetupError = (message?: string) => {
+    const text = message || ''
+    return text.includes('Docker CLI') || text.includes('Docker socket') || text.includes('/var/run/docker.sock')
+  }
+  const getDockerUpdateShortError = (message?: string) => {
+    if (!isDockerSetupError(message)) return message || '完整镜像更新失败'
+    return '当前容器无法直接更新镜像，请在宿主机执行 docker compose pull && docker compose up -d。'
+  }
   const getDockerUpdateGuide = (message?: string) => {
     const text = (message || '').trim()
     if (!text) return ''
     if (text.includes('Docker CLI')) {
-      return '请改为在宿主机执行完整镜像更新：如果你用的是 docker compose，执行 docker compose pull && docker compose up -d；如果你用的是 docker run，请按原参数重新 pull 并重建容器。若希望以后能在设置页里直接完成完整镜像更新，请重建镜像时加入 INCLUDE_DOCKER_CLI=true。'
+      return '当前镜像缺少 Docker CLI，不能在设置页替换容器。请在宿主机执行 docker compose pull && docker compose up -d。'
     }
     if (text.includes('Docker socket') || text.includes('/var/run/docker.sock')) {
-      return '当前容器没有挂载 /var/run/docker.sock，设置页无法直接替换容器。请在宿主机重新创建容器并挂载该 socket，或直接在宿主机执行 docker compose pull && docker compose up -d。'
+      return '当前容器没有挂载 Docker socket，不能在设置页替换容器。请在宿主机执行 docker compose pull && docker compose up -d。'
     }
     return ''
   }
@@ -152,7 +160,7 @@ export default function Settings() {
         const status = await api.updateStatus()
         setUpdateProgress(status)
         if (status.status === 'error') {
-          setUpdateMsg(`更新失败: ${status.message || '未知错误'}`)
+          setUpdateMsg(isDockerSetupError(status.message) ? '' : `更新失败: ${status.message || '未知错误'}`)
           stopUpdatePolling()
           return
         }
@@ -233,6 +241,7 @@ export default function Settings() {
   )
 
   const dockerUpdateGuide = useMemo(() => {
+    if (updateProgress?.status === 'error' && updateProgress.update_type === 'docker-image') return ''
     const statusMessage = updateProgress?.status === 'error' ? updateProgress.message : ''
     return getDockerUpdateGuide(statusMessage || updateMsg)
   }, [updateMsg, updateProgress])
@@ -893,6 +902,8 @@ export default function Settings() {
                                   const message = e.message || '未知错误'
                                   if (message.includes('Failed to fetch')) {
                                     setUpdateMsg('完整镜像更新已触发，服务可能正在重启')
+                                  } else if (isDockerSetupError(message)) {
+                                    setUpdateMsg('')
                                   } else {
                                     setUpdateMsg(`完整镜像更新失败: ${message}`)
                                   }
@@ -937,7 +948,7 @@ export default function Settings() {
                         <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-2xl border border-white/10 bg-black/35 p-3 font-mono text-[11px] text-gray-400">
                           <div className={activeUpdate.status === 'error' ? 'mb-1 text-red-400' : 'mb-1 text-gray-300'}>
                             {statusLabel(activeUpdate.status)}
-                            {(dockerErrorGuide || activeUpdate.message) ? ` · ${dockerErrorGuide || activeUpdate.message}` : ''}
+                            {(dockerErrorGuide || activeUpdate.message) ? ` · ${dockerErrorGuide || getDockerUpdateShortError(activeUpdate.message)}` : ''}
                           </div>
                           {activeUpdate.status === 'error' ? null : (activeUpdate.logs || []).length > 0 ? (
                             activeUpdate.logs!.map((line, logIndex) => (
