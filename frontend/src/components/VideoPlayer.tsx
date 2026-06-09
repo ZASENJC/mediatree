@@ -1753,10 +1753,10 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
         {selectableEpisodes.length > 0 && (
           <div className={`episode-switcher absolute right-3 top-1/2 z-50 flex items-center justify-end sm:right-4 ${playerChromeVisible ? 'episode-switcher-visible' : ''}`}>
             {episodeMenuOpen && (
-              <div className="mr-2 max-h-[min(22rem,70dvh)] w-[min(18rem,calc(100vw-5rem))] overflow-hidden rounded-2xl border border-white/10 bg-black/70 shadow-glass backdrop-blur-2xl">
-                <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
-                  <p className="text-xs font-semibold text-white">选集</p>
-                  <span className="text-[11px] text-gray-500">{selectableEpisodes.length}</span>
+              <div className="player-episode-menu mr-2 max-h-[min(22rem,70dvh)] w-[min(18rem,calc(100vw-5rem))] overflow-hidden rounded-2xl">
+                <div className="player-episode-menu-header flex items-center justify-between px-3 py-2">
+                  <p className="text-xs font-semibold">选集</p>
+                  <span className="player-episode-count text-[11px]">{selectableEpisodes.length}</span>
                 </div>
                 <div className="max-h-[calc(min(22rem,70dvh)-2.5rem)] overflow-y-auto p-1.5">
                   {selectableEpisodes.map(episode => {
@@ -1770,15 +1770,13 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
                           if (!active) onEpisodeSelect?.(episode)
                         }}
                         className={`mb-1 flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-all last:mb-0 ${
-                          active
-                            ? 'border border-apple-blue/35 bg-apple-blue/20 text-white'
-                            : 'text-gray-300 hover:bg-white/[0.1] hover:text-white'
+                          active ? 'player-episode-item-active' : 'player-episode-item'
                         }`}
                       >
-                        <span className={`h-2 w-2 shrink-0 rounded-full ${active ? 'bg-apple-blue shadow-glow' : 'bg-white/20'}`} />
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${active ? 'player-episode-dot-active' : 'player-episode-dot'}`} />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-xs font-medium">{episodeLabel(episode)}</span>
-                          <span className="mt-0.5 block truncate text-[11px] text-gray-500">
+                          <span className="player-episode-meta mt-0.5 block truncate text-[11px]">
                             {episode.duration ? `${episode.duration}分` : episode.code}
                             {progress > 0 && progress < 90 ? ` · ${Math.round(progress)}%` : ''}
                           </span>
@@ -1807,34 +1805,34 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
         )}
 
         {seekOsd && (
-          <div className="glass-popover absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 px-4 py-2 text-sm font-semibold text-white">
+          <div className="player-osd absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 rounded-2xl px-4 py-2 text-sm font-semibold">
             {seekOsd.delta >= 0 ? '+' : '-'}{fmt(Math.abs(seekOsd.delta))} &nbsp; {fmt(seekOsd.target)} / {fmt(seekOsd.duration)}
           </div>
         )}
 
         {showResume && (
-          <div className="absolute bottom-[20%] left-1/2 z-30 flex -translate-x-1/2 items-center overflow-hidden rounded-full border border-apple-blue/35 bg-apple-blue/75 text-sm font-semibold text-white shadow-glow backdrop-blur-2xl">
-            <button onClick={handleResume} className="px-5 py-3 transition-all hover:bg-white/10">
+          <div className="player-resume-prompt absolute bottom-[20%] left-1/2 z-30 flex -translate-x-1/2 items-center overflow-hidden rounded-full text-sm font-semibold">
+            <button onClick={handleResume} className="player-resume-action border-0 px-5 py-3 transition-all">
               从上次位置继续 ({fmt(resumePos)})
             </button>
-            <button onClick={hideResumePrompt} className="border-l border-white/20 px-3 py-3 text-white/80 hover:bg-white/10" aria-label="关闭继续播放提示">
+            <button onClick={hideResumePrompt} className="player-resume-dismiss border-y-0 border-r-0 px-3 py-3" aria-label="关闭继续播放提示">
               ×
             </button>
           </div>
         )}
 
         {unsupportedAudio && !useTranscode && !videoError && !transcodePromptDismissed && (
-          <div className="absolute left-3 right-3 top-3 z-30 rounded-2xl border border-amber-400/25 bg-black/55 px-3 py-2 shadow-glass backdrop-blur-2xl">
+          <div className="player-warning absolute left-3 right-3 top-3 z-30 rounded-2xl px-3 py-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
-                <p className="text-xs font-medium text-amber-200">当前音频编码 {unsupportedAudio.toUpperCase()} 可能无声</p>
-                <p className="mt-0.5 text-[11px] text-gray-400">直传不会占用转码资源；需要声音时再手动开启音频转码或外部播放器。</p>
+                <p className="player-warning-title text-xs font-medium">当前音频编码 {unsupportedAudio.toUpperCase()} 可能无声</p>
+                <p className="player-warning-body mt-0.5 text-[11px]">直传不会占用转码资源；需要声音时再手动开启音频转码或外部播放器。</p>
               </div>
               <div className="flex shrink-0 gap-1.5">
-                <button onClick={() => startTranscode('audio')} className="rounded-full border border-amber-400/30 bg-amber-500/20 px-2.5 py-1 text-xs text-amber-100 transition-all hover:bg-amber-500/30">
+                <button onClick={() => startTranscode('audio')} className="player-warning-action rounded-full px-2.5 py-1 text-xs transition-all">
                   音频转码
                 </button>
-                <button onClick={openMpv} className="rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-200 transition-all hover:bg-white/[0.14] hover:text-white">
+                <button onClick={openMpv} className="player-action-chip rounded-full px-2.5 py-1 text-xs transition-all">
                   MPV
                 </button>
               </div>
@@ -1843,15 +1841,15 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
         )}
 
         {videoError && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 p-4 backdrop-blur-xl">
-            <div className="glass-modal max-w-sm p-5 text-center">
-              <p className="mb-2 font-semibold text-white">该视频解码失败</p>
-              <p className="mb-4 text-xs text-gray-400">浏览器不支持此视频的音视频编码</p>
+          <div className="player-error-overlay absolute inset-0 z-30 flex items-center justify-center p-4">
+            <div className="player-modal max-w-sm rounded-3xl p-5 text-center">
+              <p className="mb-2 font-semibold">该视频解码失败</p>
+              <p className="player-modal-muted mb-4 text-xs">浏览器不支持此视频的音视频编码</p>
               <div className="flex flex-col justify-center gap-2 sm:flex-row">
-                <button onClick={() => startTranscode('audio')} className="glass-button-primary px-4 py-2 text-sm">
+                <button onClick={() => startTranscode('audio')} className="player-modal-primary rounded-full px-4 py-2 text-sm font-semibold transition-all">
                   音频转码播放
                 </button>
-                <button onClick={() => startTranscode('full')} className="glass-button px-4 py-2 text-sm">
+                <button onClick={() => startTranscode('full')} className="player-modal-secondary rounded-full px-4 py-2 text-sm font-medium transition-all">
                   完整转码
                 </button>
               </div>
@@ -1862,20 +1860,20 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
 
       {!theaterMode && (
       <div className="mt-5 flex items-center justify-center gap-2 overflow-x-auto pb-1">
-        <a href={`iina://weblink?url=${encodeURIComponent(localPlaybackUrl)}`} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-300 backdrop-blur-xl transition-all hover:bg-white/[0.14] hover:text-white">
+        <a href={`iina://weblink?url=${encodeURIComponent(localPlaybackUrl)}`} target="_blank" rel="noopener noreferrer" className="player-action-chip shrink-0 rounded-full px-2.5 py-1 text-xs transition-all">
           IINA
         </a>
-        <button onClick={openMpv} className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-300 backdrop-blur-xl transition-all hover:bg-white/[0.14] hover:text-white">
+        <button onClick={openMpv} className="player-action-chip shrink-0 rounded-full px-2.5 py-1 text-xs transition-all">
           MPV
         </button>
-        <button onClick={copyStreamUrl} className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-300 backdrop-blur-xl transition-all hover:bg-white/[0.14] hover:text-white">
+        <button onClick={copyStreamUrl} className="player-action-chip shrink-0 rounded-full px-2.5 py-1 text-xs transition-all">
           {linkCopied ? '已复制' : '复制链接'}
         </button>
-        <button onClick={toggleAmbient} className={`shrink-0 rounded-full border px-2.5 py-1 text-xs backdrop-blur-xl transition-all ${ambientEnabled ? 'border-apple-blue/30 bg-apple-blue/15 text-apple-blue' : 'border-white/10 bg-white/[0.08] text-gray-300 hover:bg-white/[0.14] hover:text-white'}`} title="剧院光效">
+        <button onClick={toggleAmbient} className={`shrink-0 rounded-full px-2.5 py-1 text-xs transition-all ${ambientEnabled ? 'player-action-chip-active' : 'player-action-chip'}`} title="剧院光效">
           光效
         </button>
         {useTranscode && (
-          <span className="shrink-0 rounded-full border border-amber-400/20 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-200 backdrop-blur-xl">
+          <span className="player-transcode-chip shrink-0 rounded-full px-2.5 py-1 text-xs">
             {transcodeMode === 'full' ? '完整转码' : '音频转码'} · {fmt(currentTimeRef.current || transcodeStart)}
           </span>
         )}
