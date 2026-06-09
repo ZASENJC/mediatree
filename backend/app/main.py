@@ -1150,9 +1150,9 @@ async def api_version():
     }
 
 @app.get("/api/update/check")
-async def api_update_check():
-    """Check for available updates from GitHub and DockerHub."""
-    return await get_available_versions()
+async def api_update_check(include_registry_sync: bool = Query(False)):
+    """Check for available updates from GitHub Releases."""
+    return await get_available_versions(include_registry_sync=include_registry_sync)
 
 @app.post("/api/update/perform")
 async def api_update_perform(data: dict):

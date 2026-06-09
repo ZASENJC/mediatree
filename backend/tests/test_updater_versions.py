@@ -81,6 +81,50 @@ class UpdaterVersionStateTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(version, "1.0.04")
 
+    async def test_get_available_versions_skips_dockerhub_latest_sync_by_default(self):
+        latest_release = {
+            "version": "1.0.05",
+            "display_version": "v1.0.05",
+            "name": "v1.0.05",
+            "published_at": "2026-06-08T00:00:00Z",
+            "html_url": "https://example.com/release/v1.0.05",
+            "body": "",
+            "source": "github",
+            "assets": [],
+        }
+        release_entry = {
+            "version": "1.0.05",
+            "display_version": "v1.0.05",
+            "published_at": "2026-06-08T00:00:00Z",
+            "html_url": "https://example.com/release/v1.0.05",
+            "source": "github-release",
+            "update_type": "app-package",
+            "size": 1024,
+            "requires_image_update": False,
+            "reason": "应用包级更新；不需要完整 Docker 镜像更新。",
+        }
+        version_state = {
+            "current_version": "1.0.04",
+            "runtime_version": "1.0.04",
+            "current_source": "base",
+            "base_version": "1.0.04",
+            "effective_version": "1.0.04",
+            "overlay_active": False,
+            "overlay_is_outdated": False,
+            "status_note": "当前已更新到 1.0.04。",
+        }
+
+        with patch.object(updater, "get_version_state", return_value=version_state), \
+                patch.object(updater, "fetch_github_releases", AsyncMock(return_value=[latest_release])), \
+                patch.object(updater, "_build_release_entry", AsyncMock(return_value=release_entry)), \
+                patch.object(updater, "fetch_dockerhub_latest_baseline", AsyncMock()) as dockerhub_latest:
+            result = await updater.get_available_versions()
+
+        dockerhub_latest.assert_not_awaited()
+        self.assertIsNone(result["dockerhub_latest"])
+        self.assertIsNone(result["latest_sync_warning"])
+        self.assertTrue(result["has_update"])
+
     async def test_get_available_versions_warns_when_dockerhub_latest_lags_app_package_release(self):
         latest_release = {
             "version": "1.0.05",
@@ -127,7 +171,7 @@ class UpdaterVersionStateTest(unittest.IsolatedAsyncioTestCase):
                 patch.object(updater, "fetch_github_releases", AsyncMock(return_value=[latest_release])), \
                 patch.object(updater, "_build_release_entry", AsyncMock(return_value=release_entry)), \
                 patch.object(updater, "fetch_dockerhub_latest_baseline", AsyncMock(return_value=dockerhub_latest)):
-            result = await updater.get_available_versions()
+            result = await updater.get_available_versions(include_registry_sync=True)
 
         warning = result["latest_sync_warning"]
 

@@ -648,8 +648,8 @@ export const api = {
   getVersion: () =>
     request<UpdateInfo>('/version'),
 
-  checkForUpdates: () =>
-    request<UpdateCheckResult>('/update/check'),
+  checkForUpdates: (includeRegistrySync = false) =>
+    request<UpdateCheckResult>(`/update/check${includeRegistrySync ? '?include_registry_sync=true' : ''}`),
 
   performUpdate: (version: string, mode: 'auto' | 'app-package' | 'docker-image' = 'auto') =>
     request<{ ok: boolean; message?: string; version?: string; error?: string }>('/update/perform', {

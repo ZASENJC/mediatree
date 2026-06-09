@@ -33,10 +33,60 @@ interface ScanState {
   total: number
 }
 
+interface CacheHourStepperProps {
+  value: number
+  onChange: (value: number) => void
+  label: string
+}
+
+const clampCacheHours = (value: number) => Math.min(720, Math.max(1, Number.isFinite(value) ? Math.round(value) : 1))
+
+function CacheHourStepper({ value, onChange, label }: CacheHourStepperProps) {
+  const setNextValue = (next: number) => onChange(clampCacheHours(next))
+
+  return (
+    <div className="flex h-10 w-full items-center overflow-hidden rounded-full border border-white/10 bg-white/[0.07] shadow-inner backdrop-blur-xl transition-all focus-within:border-apple-blue/60 focus-within:bg-white/[0.1] focus-within:ring-2 focus-within:ring-apple-blue/20">
+      <input
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        aria-label={`${label}小时`}
+        value={value}
+        onChange={e => {
+          const next = e.target.value.replace(/[^\d]/g, '')
+          if (next) setNextValue(Number(next))
+        }}
+        className="min-w-0 flex-1 bg-transparent py-2 pl-3 pr-1 text-center text-sm font-semibold text-white outline-none"
+      />
+      <span className="shrink-0 pr-2 text-[11px] text-gray-500">小时</span>
+      <div className="mr-1 flex h-8 w-7 shrink-0 flex-col overflow-hidden rounded-full border border-white/10 bg-black/20">
+        <button
+          type="button"
+          aria-label={`${label}增加 1 小时`}
+          disabled={value >= 720}
+          onClick={() => setNextValue(value + 1)}
+          className="flex h-4 w-full items-center justify-center text-[10px] font-semibold leading-none text-gray-300 transition-colors hover:bg-apple-blue/20 hover:text-white disabled:text-gray-600 disabled:hover:bg-transparent"
+        >
+          +
+        </button>
+        <button
+          type="button"
+          aria-label={`${label}减少 1 小时`}
+          disabled={value <= 1}
+          onClick={() => setNextValue(value - 1)}
+          className="flex h-4 w-full items-center justify-center border-t border-white/10 text-[10px] font-semibold leading-none text-gray-300 transition-colors hover:bg-white/[0.12] hover:text-white disabled:text-gray-600 disabled:hover:bg-transparent"
+        >
+          -
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function Settings() {
   const nativeApp = isNativeApp()
   const [config, setConfig] = useState<Config | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [librariesLoading, setLibrariesLoading] = useState(true)
 
   const [javdbEnabled, setJavdbEnabled] = useState(true)
   const [javdbCache, setJavdbCache] = useState(24)
@@ -72,7 +122,7 @@ export default function Settings() {
   const [authSaving, setAuthSaving] = useState(false)
 
   // update
-  const [updateChecking, setUpdateChecking] = useState(false)
+  const [updateChecking, setUpdateChecking] = useState(true)
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null)
   const [updatePerforming, setUpdatePerforming] = useState<string | null>(null)
   const [updateMsg, setUpdateMsg] = useState('')
@@ -191,6 +241,35 @@ export default function Settings() {
     updateStatusTimer.current = setInterval(poll, 1500)
   }
 
+  const applyUpdateCheckResult = (result: UpdateCheckResult, freshMessage = false) => {
+    setUpdateResult(result)
+    if (result.has_update) {
+      setUpdateMsg(`发现新版本 ${result.versions[0]?.display_version || ''}`)
+    } else if (freshMessage) {
+      setUpdateMsg('已是最新版本')
+    }
+  }
+
+  const checkUpdates = async (freshMessage = false) => {
+    setUpdateChecking(true)
+    if (freshMessage) setUpdateMsg('正在检查更新...')
+    try {
+      const [result, status] = await Promise.all([
+        api.checkForUpdates(),
+        api.updateStatus().catch(() => null),
+      ])
+      applyUpdateCheckResult(result, freshMessage)
+      if (status) setUpdateProgress(status)
+    } catch {
+      if (freshMessage) {
+        setUpdateMsg('检查更新失败')
+        setUpdateResult(null)
+      }
+    } finally {
+      setUpdateChecking(false)
+    }
+  }
+
 
   useEffect(() => {
     api.getConfig().then(d => {
@@ -214,16 +293,10 @@ export default function Settings() {
         sp[i.path] = normalizeScraper(settingMap[i.path]?.scraper)
       })
       setLibScraper(sp)
-    }).catch(() => {}).finally(() => setLoading(false))
+    }).catch(() => {}).finally(() => setLibrariesLoading(false))
 
     // 自动检查更新
-    api.checkForUpdates().then(result => {
-      setUpdateResult(result)
-      if (result.has_update) {
-        setUpdateMsg(`发现新版本 ${result.versions[0]?.display_version || ''}`)
-      }
-    }).catch(() => {})
-    api.updateStatus().then(setUpdateProgress).catch(() => {})
+    checkUpdates(true)
 
     return () => {
       // Clear all scan polling timers on unmount
@@ -344,12 +417,6 @@ export default function Settings() {
     setServerMsg('服务器地址已保存，正在重新连接...')
     window.setTimeout(() => window.location.reload(), 500)
   }
-
-  if (loading) return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="animate-pulse text-gray-400 text-lg">加载中...</div>
-    </div>
-  )
 
   const cardClass = "glass-panel p-5"
   const sectionTitle = "mb-4 text-lg font-semibold text-white"
@@ -484,6 +551,11 @@ export default function Settings() {
           <div className={cardClass}>
             <h2 className={sectionTitle}>媒体库</h2>
             <div className="space-y-2">
+            {librariesLoading && (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-xs text-gray-500">
+                媒体库加载中...
+              </div>
+            )}
             {[...libraries].sort((a, b) => a.label.localeCompare(b.label, 'zh-CN')).map((lib) => {
             const st = scanStates[lib.path]
             const progress = st && st.total > 0 ? Math.round((st.done / st.total) * 100) : 0
@@ -576,12 +648,7 @@ export default function Settings() {
                 ].map(({ k, set, label }) => (
                   <div key={label}>
                     <label className={labelClass}>{label}</label>
-                    <div className="flex items-center gap-1">
-                      <input type="number" min={1} max={720} value={k}
-                        onChange={e => set(Number(e.target.value))}
-                        className="glass-input w-20 px-2 py-1.5 text-xs sm:w-16" />
-                      <span className="text-xs text-gray-600">小时</span>
-                    </div>
+                    <CacheHourStepper value={k} onChange={set} label={label} />
                   </div>
                 ))}
               </div>
@@ -672,25 +739,7 @@ export default function Settings() {
               <h2 className={sectionTitle + " mb-0"}>更新</h2>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={async () => {
-                    setUpdateChecking(true)
-                    setUpdateMsg('')
-                    try {
-                      const result = await api.checkForUpdates()
-                      setUpdateResult(result)
-                      const status = await api.updateStatus().catch(() => null)
-                      if (status) setUpdateProgress(status)
-                      if (result.has_update) {
-                        setUpdateMsg(`发现新版本 ${result.versions[0]?.display_version || ''}`)
-                      } else {
-                        setUpdateMsg('已是最新版本')
-                      }
-                    } catch {
-                      setUpdateMsg('检查更新失败')
-                      setUpdateResult(null)
-                    }
-                    setUpdateChecking(false)
-                  }}
+                  onClick={() => checkUpdates(true)}
                   disabled={updateChecking}
                   className={btnDark}
                 >

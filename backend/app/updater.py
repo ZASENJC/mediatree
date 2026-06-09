@@ -852,7 +852,7 @@ def _apply_image_update_gate(entries: list[dict], base_version: str) -> list[dic
 
 async def _get_release_entries(max_count: int = 30) -> list[dict]:
     releases = await fetch_github_releases(max_count=max_count)
-    entries = [await _build_release_entry(release) for release in releases]
+    entries = await asyncio.gather(*(_build_release_entry(release) for release in releases))
     entries.sort(key=lambda x: _normalize_version(x["version"]), reverse=True)
     return entries
 
@@ -867,7 +867,7 @@ async def _get_release_entry(version: str) -> dict | None:
     return None
 
 
-async def get_available_versions() -> dict:
+async def get_available_versions(include_registry_sync: bool = False) -> dict:
     """Fetch app package versions from GitHub Releases."""
     version_state = get_version_state()
     current = version_state["current_version"]
@@ -879,7 +879,7 @@ async def get_available_versions() -> dict:
     latest_entry = entries[0] if entries else None
     dockerhub_latest = None
     latest_sync_warning = None
-    if _is_app_package_release(latest_entry):
+    if include_registry_sync and _is_app_package_release(latest_entry):
         dockerhub_latest = await fetch_dockerhub_latest_baseline()
         latest_sync_warning = _build_latest_sync_warning(latest_entry, dockerhub_latest)
 
