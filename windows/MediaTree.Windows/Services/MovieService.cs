@@ -76,6 +76,9 @@ public sealed class MovieService
     public Task<ProgressDto> GetProgressAsync(int movieId, CancellationToken cancellationToken = default)
         => _api.GetProgressAsync(movieId, cancellationToken);
 
+    public Task AddTagAsync(int movieId, string tag, CancellationToken cancellationToken = default)
+        => _api.AddTagAsync(movieId, tag, cancellationToken);
+
     public Task RemoveTagAsync(int movieId, string tag, CancellationToken cancellationToken = default)
         => _api.RemoveTagAsync(movieId, tag, cancellationToken);
 }

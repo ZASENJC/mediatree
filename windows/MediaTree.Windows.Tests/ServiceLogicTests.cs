@@ -76,6 +76,37 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void MovieDtosAcceptWebDetailMetadataFields()
+    {
+        var json = """
+            {
+              "id": 12,
+              "path": "Show/S01/E01.mkv",
+              "episode_overview": "第一集简介",
+              "javdb_score": "4.5",
+              "javdb_likes": 123,
+              "javdb_thumbnails": "[\"https://example.invalid/1.jpg\"]",
+              "cast": [
+                { "name": "Actor A", "character": "Lead", "person_id": "42" }
+              ],
+              "crew": [
+                { "name": "Director B", "job": "Director", "department": "Directing" }
+              ]
+            }
+            """;
+
+        var movie = JsonSerializer.Deserialize<MovieDto>(json);
+
+        Assert.Equal("第一集简介", movie!.EpisodeOverview);
+        Assert.Equal(4.5, movie.JavdbScore);
+        Assert.Equal(123, movie.JavdbLikes);
+        Assert.Equal("https://example.invalid/1.jpg", Assert.Single(movie.JavdbThumbnails));
+        Assert.Equal("Actor A", Assert.Single(movie.Cast).Name);
+        Assert.Equal("Lead", movie.Cast[0].Detail);
+        Assert.Equal("Director", Assert.Single(movie.Crew).Job);
+    }
+
+    [Fact]
     public void FolderSpecialsDtoAcceptsWebResponse()
     {
         var json = """

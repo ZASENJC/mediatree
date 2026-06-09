@@ -87,6 +87,27 @@ public sealed class MovieDto
     [JsonPropertyName("episode_label")]
     public string EpisodeLabel { get; set; } = "";
 
+    [JsonPropertyName("episode_overview")]
+    public string EpisodeOverview { get; set; } = "";
+
+    [JsonPropertyName("javdb_score")]
+    [JsonConverter(typeof(NullToNullableDoubleConverter))]
+    public double? JavdbScore { get; set; }
+
+    [JsonPropertyName("javdb_likes")]
+    [JsonConverter(typeof(NullToNullableIntConverter))]
+    public int? JavdbLikes { get; set; }
+
+    [JsonPropertyName("javdb_thumbnails")]
+    [JsonConverter(typeof(StringOrArrayListConverter))]
+    public List<string> JavdbThumbnails { get; set; } = [];
+
+    [JsonPropertyName("javdb_url")]
+    public string JavdbUrl { get; set; } = "";
+
+    [JsonPropertyName("javdb_id")]
+    public string JavdbId { get; set; } = "";
+
     [JsonPropertyName("clean_title")]
     public string CleanTitle { get; set; } = "";
 
@@ -118,6 +139,12 @@ public sealed class MovieDto
 
     [JsonPropertyName("tags")]
     public List<string> Tags { get; set; } = [];
+
+    [JsonPropertyName("cast")]
+    public List<MovieStaffDto> Cast { get; set; } = [];
+
+    [JsonPropertyName("crew")]
+    public List<MovieStaffDto> Crew { get; set; } = [];
 
     [JsonIgnore]
     public bool IsSpecial => string.Equals(ContentRole, "special", System.StringComparison.OrdinalIgnoreCase);
@@ -158,6 +185,49 @@ public sealed class MovieDto
     }
 }
 
+public sealed class MovieStaffDto
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+
+    [JsonPropertyName("character")]
+    public string Character { get; set; } = "";
+
+    [JsonPropertyName("role")]
+    public string Role { get; set; } = "";
+
+    [JsonPropertyName("job")]
+    public string Job { get; set; } = "";
+
+    [JsonPropertyName("department")]
+    public string Department { get; set; } = "";
+
+    [JsonPropertyName("profile_path")]
+    public string ProfilePath { get; set; } = "";
+
+    [JsonPropertyName("person_id")]
+    public string PersonId { get; set; } = "";
+
+    [JsonPropertyName("source")]
+    public string Source { get; set; } = "";
+
+    [JsonIgnore]
+    public string Detail => MovieDtoStaffDetail();
+
+    private string MovieDtoStaffDetail()
+    {
+        foreach (var value in new[] { Role, Character, Job, Department, Source })
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        return "";
+    }
+}
+
 public sealed class FolderSpecialsResponseDto
 {
     [JsonPropertyName("show_specials")]
@@ -182,6 +252,114 @@ public sealed class ProgressDto
     [JsonPropertyName("progress_percent")]
     [JsonConverter(typeof(NullToZeroDoubleConverter))]
     public double ProgressPercent { get; set; }
+}
+
+internal sealed class NullToNullableDoubleConverter : JsonConverter<double?>
+{
+    public override double? Read(ref Utf8JsonReader reader, System.Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return null;
+        }
+
+        if (reader.TokenType == JsonTokenType.Number)
+        {
+            return reader.GetDouble();
+        }
+
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var value = reader.GetString();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleValue))
+            {
+                return doubleValue;
+            }
+        }
+
+        throw new JsonException($"Cannot convert {reader.TokenType} to nullable double.");
+    }
+
+    public override void Write(Utf8JsonWriter writer, double? value, JsonSerializerOptions options)
+    {
+        if (value.HasValue)
+        {
+            writer.WriteNumberValue(value.Value);
+            return;
+        }
+
+        writer.WriteNullValue();
+    }
+}
+
+internal sealed class StringOrArrayListConverter : JsonConverter<List<string>>
+{
+    public override List<string> Read(ref Utf8JsonReader reader, System.Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return [];
+        }
+
+        if (reader.TokenType == JsonTokenType.StartArray)
+        {
+            var values = new List<string>();
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndArray)
+                {
+                    return values;
+                }
+
+                if (reader.TokenType == JsonTokenType.String)
+                {
+                    var value = reader.GetString();
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        values.Add(value);
+                    }
+                }
+            }
+
+            throw new JsonException("Cannot read string array.");
+        }
+
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var value = reader.GetString();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return [];
+            }
+
+            try
+            {
+                return JsonSerializer.Deserialize<List<string>>(value, options) ?? [];
+            }
+            catch (JsonException)
+            {
+                return [value];
+            }
+        }
+
+        throw new JsonException($"Cannot convert {reader.TokenType} to string list.");
+    }
+
+    public override void Write(Utf8JsonWriter writer, List<string> value, JsonSerializerOptions options)
+    {
+        writer.WriteStartArray();
+        foreach (var item in value)
+        {
+            writer.WriteStringValue(item);
+        }
+
+        writer.WriteEndArray();
+    }
 }
 
 internal sealed class NullToZeroDoubleConverter : JsonConverter<double>

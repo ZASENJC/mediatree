@@ -9,12 +9,14 @@ using MediaTree.Windows.Controls;
 using MediaTree.Windows.Models;
 using MediaTree.Windows.Services;
 using MediaTree.Windows.Styles;
+using MediaTree.Windows.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.System;
 
@@ -26,6 +28,7 @@ public sealed partial class PlayerPage : Page
 
     private sealed record PlayerUi(
         Grid Root,
+        Border PlayerFrame,
         MpvPlayerControl PlayerHost,
         Border TopChrome,
         Border BottomChrome,
@@ -46,7 +49,32 @@ public sealed partial class PlayerPage : Page
         TextBlock ResumeText,
         Border EpisodePanel,
         TextBlock EpisodeCountText,
-        StackPanel EpisodeItems);
+        StackPanel EpisodeItems,
+        StackPanel DetailHost,
+        TextBlock DetailTitleText,
+        TextBlock DetailOriginalTitleText,
+        TextBlock DetailMetaText,
+        TextBlock DetailProgressText,
+        StackPanel DetailActions,
+        Button FavoriteButton,
+        Button WantButton,
+        Button WatchedButton,
+        Button DetailMoreButton,
+        TextBlock DetailOverviewText,
+        TextBlock DetailEpisodeOverviewText,
+        TextBlock DetailPathText,
+        TextBlock DetailStaffText,
+        TextBlock DetailStatusText,
+        Border DetailEpisodesCard,
+        TextBlock DetailEpisodesTitleText,
+        GridView DetailEpisodesGrid,
+        Border SpecialsCard,
+        TextBlock SpecialsTitleText,
+        Button SpecialsToggleButton,
+        GridView SpecialsGrid,
+        Border ThumbnailsCard,
+        TextBlock ThumbnailsTitleText,
+        GridView ThumbnailsGrid);
 
     private readonly DispatcherTimer _chromeTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromSeconds(5) };
@@ -73,6 +101,32 @@ public sealed partial class PlayerPage : Page
     private readonly Button _volumeButton;
     private readonly Slider _volumeSlider;
     private readonly List<MovieDto> _episodes = [];
+    private readonly List<MovieDto> _specialMovies = [];
+    private readonly StackPanel _detailHost;
+    private readonly TextBlock _detailTitleText;
+    private readonly TextBlock _detailOriginalTitleText;
+    private readonly TextBlock _detailMetaText;
+    private readonly TextBlock _detailProgressText;
+    private readonly StackPanel _detailActions;
+    private readonly Button _favoriteButton;
+    private readonly Button _wantButton;
+    private readonly Button _watchedButton;
+    private readonly Button _detailMoreButton;
+    private readonly TextBlock _detailOverviewText;
+    private readonly TextBlock _detailEpisodeOverviewText;
+    private readonly TextBlock _detailPathText;
+    private readonly TextBlock _detailStaffText;
+    private readonly TextBlock _detailStatusText;
+    private readonly Border _detailEpisodesCard;
+    private readonly TextBlock _detailEpisodesTitleText;
+    private readonly GridView _detailEpisodesGrid;
+    private readonly Border _specialsCard;
+    private readonly TextBlock _specialsTitleText;
+    private readonly Button _specialsToggleButton;
+    private readonly GridView _specialsGrid;
+    private readonly Border _thumbnailsCard;
+    private readonly TextBlock _thumbnailsTitleText;
+    private readonly GridView _thumbnailsGrid;
     private IMpvPlayerService? _player;
     private MovieDto? _movie;
     private PlayerStateSnapshot _state = new(0, 0, true);
@@ -85,6 +139,7 @@ public sealed partial class PlayerPage : Page
     private bool _ignoreVolume;
     private bool _muted;
     private bool _playbackStarted;
+    private bool _specialsExpanded;
     private double _duration;
     private double _lastKnownVolume = 80;
     private double _resumePosition;
@@ -114,6 +169,31 @@ public sealed partial class PlayerPage : Page
         _episodePanel = ui.EpisodePanel;
         _episodeCountText = ui.EpisodeCountText;
         _episodeItems = ui.EpisodeItems;
+        _detailHost = ui.DetailHost;
+        _detailTitleText = ui.DetailTitleText;
+        _detailOriginalTitleText = ui.DetailOriginalTitleText;
+        _detailMetaText = ui.DetailMetaText;
+        _detailProgressText = ui.DetailProgressText;
+        _detailActions = ui.DetailActions;
+        _favoriteButton = ui.FavoriteButton;
+        _wantButton = ui.WantButton;
+        _watchedButton = ui.WatchedButton;
+        _detailMoreButton = ui.DetailMoreButton;
+        _detailOverviewText = ui.DetailOverviewText;
+        _detailEpisodeOverviewText = ui.DetailEpisodeOverviewText;
+        _detailPathText = ui.DetailPathText;
+        _detailStaffText = ui.DetailStaffText;
+        _detailStatusText = ui.DetailStatusText;
+        _detailEpisodesCard = ui.DetailEpisodesCard;
+        _detailEpisodesTitleText = ui.DetailEpisodesTitleText;
+        _detailEpisodesGrid = ui.DetailEpisodesGrid;
+        _specialsCard = ui.SpecialsCard;
+        _specialsTitleText = ui.SpecialsTitleText;
+        _specialsToggleButton = ui.SpecialsToggleButton;
+        _specialsGrid = ui.SpecialsGrid;
+        _thumbnailsCard = ui.ThumbnailsCard;
+        _thumbnailsTitleText = ui.ThumbnailsTitleText;
+        _thumbnailsGrid = ui.ThumbnailsGrid;
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -442,9 +522,193 @@ public sealed partial class PlayerPage : Page
             episodePanel,
             resumePrompt);
 
-        Content = root;
+        var playerFrame = new Border
+        {
+            Background = Brush(0, 0, 0),
+            CornerRadius = FluentTheme.MediaCornerRadius,
+            BorderBrush = FluentTheme.Border,
+            BorderThickness = new Thickness(1),
+            MinHeight = 320,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Child = root,
+        };
+        AutomationProperties.SetAutomationId(playerFrame, "PlayerFrame");
+
+        var detailHost = new StackPanel
+        {
+            Spacing = 16,
+            MaxWidth = 1180,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        AutomationProperties.SetAutomationId(detailHost, "PlayerDetailHost");
+
+        var detailHeader = new Grid { ColumnSpacing = 18 };
+        detailHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        detailHeader.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var titleBlock = new StackPanel { Spacing = 8 };
+        var detailTitleText = new TextBlock
+        {
+            FontSize = 28,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = FluentTheme.TextPrimary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        };
+        AutomationProperties.SetAutomationId(detailTitleText, "PlayerDetailTitle");
+        titleBlock.Children.Add(detailTitleText);
+
+        var detailOriginalTitleText = new TextBlock
+        {
+            Foreground = FluentTheme.TextSecondary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+            Visibility = Visibility.Collapsed,
+        };
+        AutomationProperties.SetAutomationId(detailOriginalTitleText, "PlayerDetailOriginalTitle");
+        titleBlock.Children.Add(detailOriginalTitleText);
+
+        var detailMetaText = new TextBlock
+        {
+            Foreground = FluentTheme.TextSecondary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        };
+        AutomationProperties.SetAutomationId(detailMetaText, "PlayerDetailMeta");
+        titleBlock.Children.Add(detailMetaText);
+
+        var detailProgressText = new TextBlock
+        {
+            Foreground = FluentTheme.Accent,
+            FontSize = 13,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        };
+        AutomationProperties.SetAutomationId(detailProgressText, "PlayerDetailProgress");
+        titleBlock.Children.Add(detailProgressText);
+        detailHeader.Children.Add(titleBlock);
+
+        var detailActions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = VerticalAlignment.Bottom,
+        };
+        Grid.SetColumn(detailActions, 1);
+
+        var favoriteButton = DetailActionButton("收藏", "PlayerDetailFavorite");
+        favoriteButton.Click += async (_, _) => await ToggleTagAsync("favorite");
+        detailActions.Children.Add(favoriteButton);
+
+        var wantButton = DetailActionButton("想看", "PlayerDetailWant");
+        wantButton.Click += async (_, _) => await ToggleTagAsync("want_to_watch");
+        detailActions.Children.Add(wantButton);
+
+        var watchedButton = DetailActionButton("标为已看", "PlayerDetailWatched");
+        watchedButton.Click += async (_, _) => await ToggleTagAsync("watched");
+        detailActions.Children.Add(watchedButton);
+
+        var detailMoreButton = DetailActionButton("更多", "PlayerDetailMore");
+        detailMoreButton.Click += OnDetailMoreClicked;
+        detailActions.Children.Add(detailMoreButton);
+        detailHeader.Children.Add(detailActions);
+
+        var detailStatusText = new TextBlock
+        {
+            Foreground = FluentTheme.TextSecondary,
+            Visibility = Visibility.Collapsed,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        };
+        AutomationProperties.SetAutomationId(detailStatusText, "PlayerDetailStatus");
+
+        var heroStack = new StackPanel { Spacing = 14 };
+        heroStack.Children.Add(detailHeader);
+        heroStack.Children.Add(detailStatusText);
+        detailHost.Children.Add(FluentTheme.Card(heroStack, new Thickness(20)));
+
+        var detailEpisodesGrid = DetailGrid("PlayerDetailEpisodesGrid", 430);
+        var detailEpisodesTitleText = SectionTitle("选集");
+        AutomationProperties.SetAutomationId(detailEpisodesTitleText, "PlayerDetailEpisodesTitle");
+        var detailEpisodesStack = SectionStack(detailEpisodesTitleText, detailEpisodesGrid);
+        var detailEpisodesCard = FluentTheme.Card(detailEpisodesStack, new Thickness(16));
+        detailEpisodesCard.Visibility = Visibility.Collapsed;
+        AutomationProperties.SetAutomationId(detailEpisodesCard, "PlayerDetailEpisodesCard");
+        detailHost.Children.Add(detailEpisodesCard);
+
+        var specialsGrid = DetailGrid("PlayerDetailSpecialsGrid", 430);
+        var specialsTitleText = SectionTitle("花絮");
+        AutomationProperties.SetAutomationId(specialsTitleText, "PlayerDetailSpecialsTitle");
+        var specialsToggleButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = "展开",
+            HorizontalAlignment = HorizontalAlignment.Right,
+        });
+        AutomationProperties.SetAutomationId(specialsToggleButton, "PlayerDetailSpecialsToggle");
+        AttachPlaybackKeyHandler(specialsToggleButton);
+        specialsToggleButton.Click += OnSpecialsToggleClicked;
+        var specialsStack = SectionStack(specialsTitleText, specialsGrid, specialsToggleButton);
+        specialsGrid.Visibility = Visibility.Collapsed;
+        var specialsCard = FluentTheme.Card(specialsStack, new Thickness(16));
+        specialsCard.Visibility = Visibility.Collapsed;
+        AutomationProperties.SetAutomationId(specialsCard, "PlayerDetailSpecialsCard");
+        detailHost.Children.Add(specialsCard);
+
+        var thumbnailsGrid = DetailGrid("PlayerDetailThumbnailsGrid", 260);
+        var thumbnailsTitleText = SectionTitle("缩略图");
+        AutomationProperties.SetAutomationId(thumbnailsTitleText, "PlayerDetailThumbnailsTitle");
+        var thumbnailsCard = FluentTheme.Card(SectionStack(thumbnailsTitleText, thumbnailsGrid), new Thickness(16));
+        thumbnailsCard.Visibility = Visibility.Collapsed;
+        AutomationProperties.SetAutomationId(thumbnailsCard, "PlayerDetailThumbnailsCard");
+        detailHost.Children.Add(thumbnailsCard);
+
+        var detailOverviewText = DetailBodyText("还没有简介。", "PlayerDetailOverview");
+        var detailEpisodeOverviewText = DetailBodyText("", "PlayerDetailEpisodeOverview");
+        detailEpisodeOverviewText.Visibility = Visibility.Collapsed;
+        var detailStaffText = DetailBodyText("", "PlayerDetailStaff");
+        detailStaffText.Visibility = Visibility.Collapsed;
+        var detailPathText = DetailBodyText("", "PlayerDetailPath");
+        detailPathText.Foreground = FluentTheme.TextTertiary;
+        detailPathText.FontSize = 12;
+
+        var infoStack = new StackPanel { Spacing = 12 };
+        infoStack.Children.Add(SectionTitle("影片信息"));
+        infoStack.Children.Add(detailOverviewText);
+        infoStack.Children.Add(detailEpisodeOverviewText);
+        infoStack.Children.Add(detailStaffText);
+        infoStack.Children.Add(detailPathText);
+        detailHost.Children.Add(FluentTheme.Card(infoStack, new Thickness(16)));
+
+        var contentStack = new StackPanel { Spacing = 18 };
+        contentStack.Children.Add(playerFrame);
+        contentStack.Children.Add(detailHost);
+
+        var pageRoot = new Grid
+        {
+            Background = FluentTheme.Canvas,
+            Padding = FluentTheme.PagePadding(1200),
+            IsTabStop = true,
+        };
+        pageRoot.KeyDown += OnKeyDown;
+        pageRoot.Children.Add(contentStack);
+
+        var scrollViewer = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalScrollMode = ScrollMode.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollMode = ScrollMode.Auto,
+            Content = pageRoot,
+        };
+        scrollViewer.KeyDown += OnKeyDown;
+        scrollViewer.SizeChanged += (_, args) => ApplyPageResponsiveLayout(
+            args.NewSize.Width,
+            args.NewSize.Height,
+            pageRoot,
+            playerFrame,
+            detailHeader,
+            detailActions,
+            detailHost);
+
+        Content = scrollViewer;
         return new PlayerUi(
             root,
+            playerFrame,
             playerHost,
             topChrome,
             bottomChrome,
@@ -465,7 +729,32 @@ public sealed partial class PlayerPage : Page
             resumeText,
             episodePanel,
             episodeCountText,
-            episodeItems);
+            episodeItems,
+            detailHost,
+            detailTitleText,
+            detailOriginalTitleText,
+            detailMetaText,
+            detailProgressText,
+            detailActions,
+            favoriteButton,
+            wantButton,
+            watchedButton,
+            detailMoreButton,
+            detailOverviewText,
+            detailEpisodeOverviewText,
+            detailPathText,
+            detailStaffText,
+            detailStatusText,
+            detailEpisodesCard,
+            detailEpisodesTitleText,
+            detailEpisodesGrid,
+            specialsCard,
+            specialsTitleText,
+            specialsToggleButton,
+            specialsGrid,
+            thumbnailsCard,
+            thumbnailsTitleText,
+            thumbnailsGrid);
     }
 
     private static void ApplyPlayerResponsiveLayout(
@@ -485,6 +774,117 @@ public sealed partial class PlayerPage : Page
         episodePanel.Width = Math.Min(332, Math.Max(220, width - 32));
         episodePanel.Margin = compact ? new Thickness(0, 0, 10, 0) : new Thickness(0, 0, 16, 0);
         resumePrompt.Margin = compact ? new Thickness(10, 0, 10, 104) : new Thickness(0, 0, 0, 132);
+    }
+
+    private static void ApplyPageResponsiveLayout(
+        double width,
+        double height,
+        Grid pageRoot,
+        Border playerFrame,
+        Grid detailHeader,
+        StackPanel detailActions,
+        StackPanel detailHost)
+    {
+        var compact = width < FluentTheme.CompactBreakpoint;
+        pageRoot.Padding = FluentTheme.PagePadding(width);
+        detailHost.MaxWidth = compact ? double.PositiveInfinity : 1180;
+        detailHost.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Center;
+
+        if (detailHost.Visibility == Visibility.Collapsed)
+        {
+            pageRoot.Padding = new Thickness(0);
+            playerFrame.Height = Math.Max(280, height);
+        }
+        else
+        {
+            playerFrame.Height = Math.Clamp(height * (compact ? 0.54 : 0.64), compact ? 280 : 420, compact ? 520 : 720);
+        }
+
+        detailHeader.ColumnDefinitions[0].Width = compact ? new GridLength(1, GridUnitType.Star) : new GridLength(1, GridUnitType.Star);
+        detailHeader.ColumnDefinitions[1].Width = compact ? new GridLength(0) : GridLength.Auto;
+        detailHeader.RowDefinitions.Clear();
+        detailHeader.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        detailHeader.RowDefinitions.Add(new RowDefinition { Height = compact ? GridLength.Auto : new GridLength(0) });
+        Grid.SetColumn(detailActions, compact ? 0 : 1);
+        Grid.SetRow(detailActions, compact ? 1 : 0);
+        detailActions.Margin = compact ? new Thickness(0, 8, 0, 0) : new Thickness(0);
+        detailActions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
+        detailActions.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
+        foreach (var child in detailActions.Children.OfType<FrameworkElement>())
+        {
+            child.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        }
+    }
+
+    private static TextBlock SectionTitle(string text)
+        => new()
+        {
+            Text = text,
+            FontSize = 18,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = FluentTheme.TextPrimary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+    private static TextBlock DetailBodyText(string text, string automationId)
+    {
+        var block = new TextBlock
+        {
+            Text = text,
+            Foreground = FluentTheme.TextPrimary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+            LineHeight = 20,
+        };
+        AutomationProperties.SetAutomationId(block, automationId);
+        return block;
+    }
+
+    private static StackPanel SectionStack(TextBlock title, UIElement content, Button? action = null)
+    {
+        var stack = new StackPanel { Spacing = 12 };
+        if (action is null)
+        {
+            stack.Children.Add(title);
+        }
+        else
+        {
+            var header = new Grid { ColumnSpacing = 12 };
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            header.Children.Add(title);
+            Grid.SetColumn(action, 1);
+            header.Children.Add(action);
+            stack.Children.Add(header);
+        }
+
+        stack.Children.Add(content);
+        return stack;
+    }
+
+    private static GridView DetailGrid(string automationId, double maxHeight)
+    {
+        var grid = new GridView
+        {
+            SelectionMode = ListViewSelectionMode.None,
+            IsItemClickEnabled = false,
+            MaxHeight = maxHeight,
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+        };
+        AutomationProperties.SetAutomationId(grid, automationId);
+        return grid;
+    }
+
+    private Button DetailActionButton(string text, string automationId)
+    {
+        var button = FluentTheme.ApplyButton(new Button
+        {
+            Content = text,
+            MinWidth = 96,
+        });
+        AttachPlaybackKeyHandler(button);
+        AutomationProperties.SetAutomationId(button, automationId);
+        return button;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs args)
@@ -527,6 +927,7 @@ public sealed partial class PlayerPage : Page
         _movie = movie;
         _titleText.Text = movie.BestTitle;
         _statusText.Visibility = Visibility.Collapsed;
+        UpdateDetail(movie, progress);
 
         _player = new LibMpvPlayerService();
         _player.StateChanged += OnPlayerStateChanged;
@@ -542,6 +943,8 @@ public sealed partial class PlayerPage : Page
         }
 
         _ = LoadEpisodesAsync(movie);
+        _ = LoadSpecialsAsync(movie);
+        _ = LoadThumbnailsAsync(movie);
         _saveTimer.Start();
         ScheduleChromeHide();
     }
@@ -586,6 +989,7 @@ public sealed partial class PlayerPage : Page
             _episodeButton.Visibility = _episodes.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
             _episodePanelOpen = _episodePanelOpen && _episodes.Count > 1;
             RenderEpisodePanel();
+            _ = RenderDetailEpisodesAsync();
             UpdateEpisodePanelVisibility();
         });
     }
@@ -665,6 +1069,529 @@ public sealed partial class PlayerPage : Page
         button.Content = row;
         return button;
     }
+
+    private void UpdateDetail(MovieDto movie, ProgressDto progress)
+    {
+        _detailTitleText.Text = movie.IsSpecial ? SpecialMovieTitle(movie) : movie.BestTitle;
+        var showOriginal = !movie.IsSpecial &&
+            !string.IsNullOrWhiteSpace(movie.OriginalTitle) &&
+            !string.Equals(movie.OriginalTitle, movie.BestTitle, StringComparison.OrdinalIgnoreCase);
+        _detailOriginalTitleText.Text = movie.OriginalTitle;
+        _detailOriginalTitleText.Visibility = showOriginal ? Visibility.Visible : Visibility.Collapsed;
+        _detailMetaText.Text = string.Join(" · ", DetailMetaParts(movie));
+        _detailProgressText.Text = progress.ProgressPercent > 0
+            ? $"已观看 {progress.ProgressPercent:0}%"
+            : movie.ProgressPercent > 0 ? $"已观看 {movie.ProgressPercent:0}%" : "";
+        _detailOverviewText.Text = string.IsNullOrWhiteSpace(movie.Overview) ? "还没有简介。" : movie.Overview;
+        _detailEpisodeOverviewText.Text = string.IsNullOrWhiteSpace(movie.EpisodeOverview) ? "" : $"集概述：{movie.EpisodeOverview}";
+        _detailEpisodeOverviewText.Visibility = string.IsNullOrWhiteSpace(movie.EpisodeOverview) ? Visibility.Collapsed : Visibility.Visible;
+        _detailPathText.Text = string.IsNullOrWhiteSpace(movie.Path) ? movie.FolderLevels : movie.Path;
+        _detailStaffText.Text = BuildStaffSummary(movie);
+        _detailStaffText.Visibility = string.IsNullOrWhiteSpace(_detailStaffText.Text) ? Visibility.Collapsed : Visibility.Visible;
+        _detailMoreButton.IsEnabled = _movie is not null;
+        UpdateTagButtons();
+        ShowDetailStatus("", false, visible: false);
+    }
+
+    private IEnumerable<string> DetailMetaParts(MovieDto movie)
+    {
+        if (!string.IsNullOrWhiteSpace(movie.Code))
+        {
+            yield return movie.Code;
+        }
+
+        if (!movie.IsSpecial && !string.IsNullOrWhiteSpace(movie.ReleaseDate))
+        {
+            yield return movie.ReleaseDate;
+        }
+
+        if (movie.Duration > 0)
+        {
+            yield return $"{movie.Duration:0} 分钟";
+        }
+
+        if (!movie.IsSpecial && !string.IsNullOrWhiteSpace(movie.Genre))
+        {
+            yield return movie.Genre;
+        }
+
+        if (!movie.IsSpecial && !string.IsNullOrWhiteSpace(movie.ContentRating))
+        {
+            yield return movie.ContentRating;
+        }
+
+        if (!movie.IsSpecial && movie.TmdbType == "tv" && movie.TmdbSeason is not null)
+        {
+            var episode = movie.TmdbEpisode is null ? "" : $" · Episode {movie.TmdbEpisode.Value}";
+            yield return $"Season {movie.TmdbSeason.Value}{episode}";
+        }
+
+        if (!movie.IsSpecial && movie.JavdbScore is > 0)
+        {
+            yield return $"评分 {movie.JavdbScore.Value:0.0}";
+        }
+
+        if (!movie.IsSpecial && movie.JavdbLikes is > 0)
+        {
+            yield return $"喜欢 {movie.JavdbLikes.Value:N0}";
+        }
+    }
+
+    private static string BuildStaffSummary(MovieDto movie)
+    {
+        var lines = new List<string>();
+        var castNames = movie.Cast
+            .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+            .Select(item => string.IsNullOrWhiteSpace(item.Detail) ? item.Name : $"{item.Name} ({item.Detail})")
+            .Take(8)
+            .ToList();
+
+        if (castNames.Count == 0 && !string.IsNullOrWhiteSpace(movie.Actress))
+        {
+            castNames = movie.Actress
+                .Split([',', '，', '、'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Take(8)
+                .ToList();
+        }
+
+        if (castNames.Count > 0)
+        {
+            lines.Add($"演员：{string.Join("、", castNames)}");
+        }
+
+        AddCrewLine(lines, "导演", movie.Crew, ["director", "导演"]);
+        AddCrewLine(lines, "监督", movie.Crew, ["supervisor", "animation director", "series director", "监督"]);
+        AddCrewLine(lines, "编剧", movie.Crew, ["writer", "脚本", "编剧"]);
+        AddCrewLine(lines, "制作", movie.Crew, ["studio", "制作"]);
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static void AddCrewLine(List<string> lines, string label, IEnumerable<MovieStaffDto> crew, string[] jobs)
+    {
+        var names = crew
+            .Where(item => !string.IsNullOrWhiteSpace(item.Name) && jobs.Any(job => (item.Job ?? "").Contains(job, StringComparison.OrdinalIgnoreCase)))
+            .Select(item => item.Name)
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .Take(6)
+            .ToList();
+        if (names.Count > 0)
+        {
+            lines.Add($"{label}：{string.Join("、", names)}");
+        }
+    }
+
+    private void UpdateTagButtons()
+    {
+        UpdateTagButton(_favoriteButton, "favorite", "已收藏", "收藏");
+        UpdateTagButton(_wantButton, "want_to_watch", "想看中", "想看");
+        UpdateTagButton(_watchedButton, "watched", "已看", "标为已看");
+    }
+
+    private void UpdateTagButton(Button button, string tag, string selectedText, string normalText)
+    {
+        var selected = _movie?.Tags.Contains(tag) == true;
+        button.Content = selected ? selectedText : normalText;
+        FluentTheme.ApplyButton(button, selected ? FluentButtonStyle.Accent : FluentButtonStyle.Standard);
+    }
+
+    private async Task ToggleTagAsync(string tag)
+    {
+        if (_movie is null)
+        {
+            return;
+        }
+
+        try
+        {
+            SetTagButtonsEnabled(false);
+            var hadTag = _movie.Tags.Contains(tag);
+            if (hadTag)
+            {
+                await AppServices.Movie.RemoveTagAsync(_movie.Id, tag);
+                _movie.Tags.RemoveAll(item => string.Equals(item, tag, StringComparison.OrdinalIgnoreCase));
+            }
+            else
+            {
+                await AppServices.Movie.AddTagAsync(_movie.Id, tag);
+                _movie.Tags.Add(tag);
+            }
+
+            UpdateTagButtons();
+            ShowDetailStatus(hadTag ? "标签已移除" : "标签已添加", false);
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, $"Failed to toggle native player detail tag: movie={_movie.Id} tag={tag}.");
+            ShowDetailStatus($"标签更新失败：{ex.Message}", true);
+        }
+        finally
+        {
+            SetTagButtonsEnabled(true);
+        }
+    }
+
+    private void SetTagButtonsEnabled(bool enabled)
+    {
+        _favoriteButton.IsEnabled = enabled;
+        _wantButton.IsEnabled = enabled;
+        _watchedButton.IsEnabled = enabled;
+    }
+
+    private void OnDetailMoreClicked(object sender, RoutedEventArgs args)
+    {
+        if (_movie is null)
+        {
+            return;
+        }
+
+        var item = new MovieCardItem(_movie, "")
+        {
+            FallbackCoverUrl = "",
+        };
+        var flyout = MediaContextMenuService.CreateMovieFlyout(item, CreateContextMenuHost(async () => await RefreshDetailAsync()));
+        flyout.ShowAt(_detailMoreButton);
+    }
+
+    private async Task RefreshDetailAsync()
+    {
+        var movie = await AppServices.Movie.GetMovieDetailAsync(_movieId);
+        var progress = await AppServices.Movie.GetProgressAsync(_movieId);
+        _movie = movie;
+        _titleText.Text = movie.BestTitle;
+        UpdateDetail(movie, progress);
+        _ = LoadEpisodesAsync(movie);
+        _ = LoadSpecialsAsync(movie);
+        _ = LoadThumbnailsAsync(movie);
+    }
+
+    private void ShowDetailStatus(string message, bool isError, bool visible = true)
+    {
+        _detailStatusText.Text = message;
+        _detailStatusText.Foreground = isError ? FluentTheme.Error : FluentTheme.TextSecondary;
+        _detailStatusText.Visibility = visible && !string.IsNullOrWhiteSpace(message) ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private MediaContextMenuHost CreateContextMenuHost(Func<Task> refreshAsync)
+        => new()
+        {
+            XamlRoot = XamlRoot,
+            ShowStatus = (message, isError) => ShowDetailStatus(message, isError),
+            RefreshAsync = refreshAsync,
+        };
+
+    private async Task RenderDetailEpisodesAsync()
+    {
+        var episodes = _episodes.ToList();
+        if (episodes.Count <= 1)
+        {
+            _detailEpisodesGrid.Items.Clear();
+            _detailEpisodesCard.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        _detailEpisodesTitleText.Text = $"选集 ({episodes.Count})";
+        _detailEpisodesCard.Visibility = Visibility.Visible;
+        _detailEpisodesGrid.Items.Clear();
+
+        foreach (var episode in episodes)
+        {
+            _detailEpisodesGrid.Items.Add(await CreateDetailMovieCardAsync(episode, "player-detail-episode"));
+        }
+    }
+
+    private async Task LoadSpecialsAsync(MovieDto movie)
+    {
+        _specialsExpanded = false;
+        _specialMovies.Clear();
+        _specialsGrid.Items.Clear();
+        _specialsGrid.Visibility = Visibility.Collapsed;
+        _specialsToggleButton.Content = "展开";
+        _specialsCard.Visibility = Visibility.Collapsed;
+
+        var folder = movie.FolderForSpecials;
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            return;
+        }
+
+        try
+        {
+            var data = await AppServices.Movie.GetFolderSpecialsAsync(folder, movie.MediaRoot, includeMovies: true);
+            _specialMovies.AddRange(data.Movies
+                .OrderBy(item => item.FolderLevels, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(item => item.BestTitle, StringComparer.CurrentCultureIgnoreCase));
+
+            if (data.SpecialCount <= 0)
+            {
+                return;
+            }
+
+            _specialsTitleText.Text = $"花絮 ({data.SpecialCount})";
+            _specialsCard.Visibility = Visibility.Visible;
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to load native player detail specials.");
+            ShowDetailStatus($"花絮加载失败：{ex.Message}", true);
+        }
+    }
+
+    private async void OnSpecialsToggleClicked(object sender, RoutedEventArgs args)
+    {
+        _specialsExpanded = !_specialsExpanded;
+        _specialsToggleButton.Content = _specialsExpanded ? "收起" : "展开";
+        _specialsGrid.Visibility = _specialsExpanded ? Visibility.Visible : Visibility.Collapsed;
+        if (!_specialsExpanded || _specialsGrid.Items.Count > 0)
+        {
+            return;
+        }
+
+        foreach (var special in _specialMovies)
+        {
+            _specialsGrid.Items.Add(await CreateDetailMovieCardAsync(special, "player-detail-special"));
+        }
+    }
+
+    private async Task LoadThumbnailsAsync(MovieDto movie)
+    {
+        _thumbnailsGrid.Items.Clear();
+        _thumbnailsCard.Visibility = Visibility.Collapsed;
+        var sources = new List<(string Source, string Title)>();
+        if (!string.IsNullOrWhiteSpace(movie.EpisodeStill))
+        {
+            try
+            {
+                sources.Add((await AppServices.Api.BuildEpisodeStillUrlAsync(movie.Id), "单集封面"));
+            }
+            catch (Exception ex)
+            {
+                ShellLogger.Error(ex, $"Failed to build native detail episode still URL for movie {movie.Id}.");
+            }
+        }
+
+        sources.AddRange(movie.JavdbThumbnails
+            .Where(source => !string.IsNullOrWhiteSpace(source))
+            .Take(12)
+            .Select((source, index) => (source, $"缩略图 {index + 1}")));
+
+        if (sources.Count == 0)
+        {
+            return;
+        }
+
+        _thumbnailsTitleText.Text = $"缩略图 ({sources.Count})";
+        _thumbnailsCard.Visibility = Visibility.Visible;
+        foreach (var (source, title) in sources)
+        {
+            _thumbnailsGrid.Items.Add(await CreateThumbnailCardAsync(source, title));
+        }
+    }
+
+    private async Task<Button> CreateThumbnailCardAsync(string source, string title)
+    {
+        var imageHost = new Grid
+        {
+            Width = 188,
+            Height = 106,
+            Background = FluentTheme.LayerAlt,
+        };
+        try
+        {
+            var url = await AppServices.Api.BuildMediaAssetUrlAsync(source);
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            {
+                var image = new Image
+                {
+                    Source = new BitmapImage(uri),
+                    Stretch = Stretch.UniformToFill,
+                };
+                image.ImageFailed += (_, _) => image.Visibility = Visibility.Collapsed;
+                imageHost.Children.Add(image);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to load native player detail thumbnail.");
+        }
+
+        var stack = new StackPanel();
+        stack.Children.Add(imageHost);
+        stack.Children.Add(new TextBlock
+        {
+            Text = title,
+            Padding = new Thickness(10, 8, 10, 10),
+            Foreground = FluentTheme.TextSecondary,
+            FontSize = 12,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+
+        var card = new Button
+        {
+            Width = 188,
+            Margin = new Thickness(6),
+            CornerRadius = FluentTheme.MediaCornerRadius,
+            Background = FluentTheme.Layer,
+            BorderBrush = FluentTheme.Border,
+            BorderThickness = new Thickness(1),
+            Content = stack,
+            Padding = new Thickness(0),
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Stretch,
+        };
+        AttachPlaybackKeyHandler(card);
+        return card;
+    }
+
+    private async Task<Button> CreateDetailMovieCardAsync(MovieDto movie, string logContext)
+    {
+        var item = await BrowsePage.CreateMovieCardItemAsync(movie, logContext);
+        var card = CreateDetailMovieCard(item);
+        AutomationProperties.SetAutomationId(card, $"PlayerDetailMovieCard_{movie.Id}");
+        card.Click += async (_, _) =>
+        {
+            if (movie.Id == _movieId)
+            {
+                return;
+            }
+
+            try
+            {
+                await SaveProgressAsync(true);
+            }
+            catch (Exception ex)
+            {
+                ShellLogger.Error(ex, "Failed to save progress before native detail card navigation.");
+            }
+
+            ShellPage.Current?.NavigateToPlayer(movie.Id);
+        };
+        return card;
+    }
+
+    private Button CreateDetailMovieCard(MovieCardItem item)
+    {
+        var imageHost = new Grid
+        {
+            Width = 178,
+            Height = item.HasEpisodeStill ? 100 : 252,
+            Background = FluentTheme.LayerAlt,
+        };
+
+        try
+        {
+            if (Uri.TryCreate(item.CoverUrl, UriKind.Absolute, out var coverUri))
+            {
+                var triedFallback = false;
+                var image = new Image
+                {
+                    Source = new BitmapImage(coverUri),
+                    Stretch = Stretch.UniformToFill,
+                };
+                image.ImageFailed += (_, _) =>
+                {
+                    if (item.HasEpisodeStill && !triedFallback && Uri.TryCreate(item.FallbackCoverUrl, UriKind.Absolute, out var fallbackUri))
+                    {
+                        triedFallback = true;
+                        image.Source = new BitmapImage(fallbackUri);
+                        return;
+                    }
+
+                    image.Visibility = Visibility.Collapsed;
+                    imageHost.Children.Add(CoverFallbackText());
+                };
+                imageHost.Children.Add(image);
+            }
+            else
+            {
+                imageHost.Children.Add(CoverFallbackText());
+            }
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, $"Failed to create native player detail cover image for movie {item.Id}.");
+            imageHost.Children.Add(CoverFallbackText());
+        }
+
+        if (item.IsEpisode)
+        {
+            imageHost.Children.Add(new Border
+            {
+                Margin = new Thickness(8),
+                Padding = new Thickness(8, 3, 8, 3),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top,
+                CornerRadius = FluentTheme.ControlCornerRadius,
+                Background = FluentTheme.Accent,
+                Child = new TextBlock
+                {
+                    Text = $"S{item.Movie.TmdbSeason?.ToString() ?? "-"}·E{item.Movie.TmdbEpisode?.ToString() ?? "-"}",
+                    FontSize = 11,
+                    FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(Microsoft.UI.Colors.White),
+                },
+            });
+        }
+
+        var textStack = new StackPanel
+        {
+            Padding = new Thickness(12),
+            Spacing = 4,
+        };
+        textStack.Children.Add(new TextBlock
+        {
+            Text = item.Title,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = FluentTheme.TextPrimary,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        textStack.Children.Add(new TextBlock
+        {
+            Text = item.Subtitle,
+            FontSize = 12,
+            Foreground = FluentTheme.TextSecondary,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        if (!string.IsNullOrWhiteSpace(item.ProgressText))
+        {
+            textStack.Children.Add(new TextBlock
+            {
+                Text = item.ProgressText,
+                FontSize = 12,
+                Foreground = FluentTheme.Accent,
+            });
+        }
+
+        var stack = new StackPanel();
+        stack.Children.Add(imageHost);
+        stack.Children.Add(textStack);
+
+        var card = new Button
+        {
+            Width = 178,
+            Margin = new Thickness(6),
+            CornerRadius = FluentTheme.MediaCornerRadius,
+            Background = FluentTheme.Layer,
+            BorderBrush = FluentTheme.Border,
+            BorderThickness = new Thickness(1),
+            Content = stack,
+            Padding = new Thickness(0),
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            VerticalContentAlignment = VerticalAlignment.Stretch,
+            Tag = item,
+            ContextFlyout = MediaContextMenuService.CreateMovieFlyout(item, CreateContextMenuHost(async () => await RefreshDetailAsync())),
+        };
+        AttachPlaybackKeyHandler(card);
+        return card;
+    }
+
+    private static TextBlock CoverFallbackText()
+        => new()
+        {
+            Text = "无封面",
+            Foreground = FluentTheme.TextTertiary,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
 
     private void OnPlayerStateChanged(object? sender, PlayerStateSnapshot state)
     {
@@ -1051,6 +1978,7 @@ public sealed partial class PlayerPage : Page
     {
         ShellPage.Current?.SetNavigationChromeVisible(!_fullScreenMode);
         _fullScreenButton.Content = _fullScreenMode ? "退出全屏" : "全屏";
+        _detailHost.Visibility = _fullScreenMode ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private async void OnBackClicked(object sender, RoutedEventArgs args)
@@ -1116,6 +2044,7 @@ public sealed partial class PlayerPage : Page
         }
 
         _fullScreenMode = false;
+        _detailHost.Visibility = Visibility.Visible;
         ShellPage.Current?.SetNavigationChromeVisible(true);
     }
 
@@ -1398,6 +2327,14 @@ public sealed partial class PlayerPage : Page
 
         return parts.Count == 0 ? "未播放" : string.Join(" · ", parts);
     }
+
+    private static string SpecialMovieTitle(MovieDto movie)
+        => FirstNonEmpty(
+            Path.GetFileNameWithoutExtension(movie.Path),
+            movie.DisplayTitle,
+            movie.Title,
+            movie.CleanTitle,
+            movie.Code);
 
     private static string ParentFolder(string path)
     {

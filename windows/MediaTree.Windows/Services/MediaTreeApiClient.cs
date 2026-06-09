@@ -341,6 +341,9 @@ public sealed class MediaTreeApiClient : IDisposable
             media_root = mediaRoot,
         }, cancellationToken);
 
+    public async Task AddTagAsync(int movieId, string tag, CancellationToken cancellationToken = default)
+        => await PostJsonAsync<JsonElement>($"/movies/{movieId}/tags", new { tag }, cancellationToken);
+
     public async Task RemoveTagAsync(int movieId, string tag, CancellationToken cancellationToken = default)
         => await DeleteAsync<JsonElement>($"/movies/{movieId}/tags/{Uri.EscapeDataString(tag)}", cancellationToken);
 
