@@ -151,6 +151,7 @@ public sealed partial class PlayerPage : Page
     private bool _muted;
     private bool _playbackStarted;
     private bool _playbackShortcutClickGuard;
+    private bool _playbackShortcutKeyDown;
     private bool _resumePromptAutoHideScheduled;
     private bool _specialsExpanded;
     private bool _volumePanelOpen;
@@ -232,6 +233,7 @@ public sealed partial class PlayerPage : Page
         root.PointerMoved += OnUserPointerMoved;
         root.PointerExited += OnUserPointerExited;
         root.PointerPressed += OnUserPointerPressed;
+        AttachPlaybackKeyHandler(root);
         root.KeyDown += OnKeyDown;
 
         var playerHost = new MpvPlayerControl();
@@ -2346,8 +2348,12 @@ public sealed partial class PlayerPage : Page
 
     private void AttachPlaybackKeyHandler(UIElement element)
     {
-        element.KeyDown += OnPlayerControlKeyDown;
-        element.KeyUp += OnPlayerControlKeyUp;
+        element.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(OnPlayerControlKeyDown), handledEventsToo: true);
+        element.AddHandler(UIElement.KeyUpEvent, new KeyEventHandler(OnPlayerControlKeyUp), handledEventsToo: true);
+        if (element is Button button)
+        {
+            button.AllowFocusOnInteraction = false;
+        }
     }
 
     private async void OnPlayerControlKeyDown(object sender, KeyRoutedEventArgs args)
@@ -2363,6 +2369,7 @@ public sealed partial class PlayerPage : Page
         if (IsPlayPauseKey(args.Key))
         {
             args.Handled = true;
+            _playbackShortcutKeyDown = false;
         }
     }
 
@@ -2416,6 +2423,12 @@ public sealed partial class PlayerPage : Page
     private async Task HandlePlaybackShortcutAsync(KeyRoutedEventArgs args)
     {
         args.Handled = true;
+        if (_playbackShortcutKeyDown)
+        {
+            return;
+        }
+
+        _playbackShortcutKeyDown = true;
         _playbackShortcutClickGuard = true;
         _playbackShortcutClickGuardTimer.Stop();
         _playbackShortcutClickGuardTimer.Start();
