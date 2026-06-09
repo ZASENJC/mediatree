@@ -37,9 +37,12 @@ public sealed partial class PlayerPage : Page
         Button AudioButton,
         Button EpisodeButton,
         Button VolumeButton,
+        Button VolumeMuteButton,
         Button FullScreenButton,
         Slider ProgressSlider,
         Slider VolumeSlider,
+        FrameworkElement VolumePanel,
+        Flyout VolumeFlyout,
         ComboBox SpeedBox,
         TextBlock TitleText,
         TextBlock TrackSummaryText,
@@ -99,7 +102,10 @@ public sealed partial class PlayerPage : Page
     private readonly Border _topChrome;
     private readonly TextBlock _trackSummaryText;
     private readonly Button _volumeButton;
+    private readonly Button _volumeMuteButton;
     private readonly Slider _volumeSlider;
+    private readonly FrameworkElement _volumePanel;
+    private readonly Flyout _volumeFlyout;
     private readonly List<MovieDto> _episodes = [];
     private readonly List<MovieDto> _specialMovies = [];
     private readonly StackPanel _detailHost;
@@ -140,6 +146,7 @@ public sealed partial class PlayerPage : Page
     private bool _muted;
     private bool _playbackStarted;
     private bool _specialsExpanded;
+    private bool _volumePanelOpen;
     private double _duration;
     private double _lastKnownVolume = 80;
     private double _resumePosition;
@@ -156,9 +163,12 @@ public sealed partial class PlayerPage : Page
         _audioButton = ui.AudioButton;
         _episodeButton = ui.EpisodeButton;
         _volumeButton = ui.VolumeButton;
+        _volumeMuteButton = ui.VolumeMuteButton;
         _fullScreenButton = ui.FullScreenButton;
         _progressSlider = ui.ProgressSlider;
         _volumeSlider = ui.VolumeSlider;
+        _volumePanel = ui.VolumePanel;
+        _volumeFlyout = ui.VolumeFlyout;
         _speedBox = ui.SpeedBox;
         _titleText = ui.TitleText;
         _trackSummaryText = ui.TrackSummaryText;
@@ -210,8 +220,9 @@ public sealed partial class PlayerPage : Page
             Background = Brush(0, 0, 0),
             IsTabStop = true,
         };
-        root.PointerMoved += OnUserActivity;
-        root.PointerPressed += OnUserActivity;
+        AddPlaybackKeyboardAccelerators(root);
+        root.PointerMoved += OnUserPointerMoved;
+        root.PointerPressed += OnUserPointerPressed;
         root.KeyDown += OnKeyDown;
 
         var playerHost = new MpvPlayerControl();
@@ -288,13 +299,13 @@ public sealed partial class PlayerPage : Page
             VerticalScrollMode = ScrollMode.Disabled,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        var toolbar = new StackPanel
+        var topToolbar = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 8,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        toolbarScroll.Content = toolbar;
+        toolbarScroll.Content = topToolbar;
 
         var speedBox = new ComboBox
         {
@@ -311,28 +322,25 @@ public sealed partial class PlayerPage : Page
         speedBox.SelectedIndex = 2;
         AttachPlaybackKeyHandler(speedBox);
         speedBox.SelectionChanged += OnSpeedChanged;
-        toolbar.Children.Add(speedBox);
+        topToolbar.Children.Add(speedBox);
 
         var subtitleButton = OverlayButton("字幕", "PlayerSubtitle");
         AttachPlaybackKeyHandler(subtitleButton);
         subtitleButton.Click += OnSubtitleClicked;
-        toolbar.Children.Add(subtitleButton);
 
         var audioButton = OverlayButton("音轨", "PlayerAudio");
         AttachPlaybackKeyHandler(audioButton);
         audioButton.Click += OnAudioClicked;
-        toolbar.Children.Add(audioButton);
 
         var episodeButton = OverlayButton("选集", "PlayerEpisodes");
         episodeButton.Visibility = Visibility.Collapsed;
         AttachPlaybackKeyHandler(episodeButton);
         episodeButton.Click += OnEpisodeButtonClicked;
-        toolbar.Children.Add(episodeButton);
+        topToolbar.Children.Add(episodeButton);
 
         var fullScreenButton = OverlayButton("全屏", "PlayerFullScreen");
         AttachPlaybackKeyHandler(fullScreenButton);
         fullScreenButton.Click += (_, _) => ToggleFullScreenMode();
-        toolbar.Children.Add(fullScreenButton);
 
         Grid.SetColumn(toolbarScroll, 2);
         topGrid.Children.Add(toolbarScroll);
@@ -392,34 +400,91 @@ public sealed partial class PlayerPage : Page
         playbackControls.Children.Add(timeText);
         controlGrid.Children.Add(playbackControls);
 
-        var volumeControls = new StackPanel
+        var bottomControlsScroll = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollMode = ScrollMode.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollMode = ScrollMode.Disabled,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            MaxWidth = 520,
+        };
+        var bottomControls = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 8,
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Right,
         };
-        var volumeButton = OverlayButton("静音", "PlayerMute");
+        bottomControlsScroll.Content = bottomControls;
+        bottomControls.Children.Add(subtitleButton);
+        bottomControls.Children.Add(audioButton);
+
+        var volumeButton = OverlayButton("音量", "PlayerVolume");
         AttachPlaybackKeyHandler(volumeButton);
-        volumeButton.Click += async (_, _) => await ToggleMuteAsync();
-        volumeControls.Children.Add(volumeButton);
+        volumeButton.Click += OnVolumeButtonClicked;
+        bottomControls.Children.Add(volumeButton);
+        bottomControls.Children.Add(fullScreenButton);
+
+        Grid.SetColumn(bottomControlsScroll, 1);
+        controlGrid.Children.Add(bottomControlsScroll);
+        bottomStack.Children.Add(controlGrid);
+        root.Children.Add(bottomChrome);
+
+        var volumePanelStack = new StackPanel
+        {
+            Width = 220,
+            Padding = new Thickness(12),
+            Spacing = 10,
+            RequestedTheme = ElementTheme.Dark,
+        };
+        AutomationProperties.SetAutomationId(volumePanelStack, "PlayerVolumePanel");
+        volumePanelStack.Children.Add(new TextBlock
+        {
+            Text = "音量",
+            Foreground = Brush(0xFF, 0xFF, 0xFF),
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+        });
 
         var volumeSlider = new Slider
         {
             Minimum = 0,
             Maximum = 100,
             Value = 80,
-            Width = 128,
+            Width = 196,
             VerticalAlignment = VerticalAlignment.Center,
         };
         AutomationProperties.SetAutomationId(volumeSlider, "PlayerVolumeSlider");
         AttachPlaybackKeyHandler(volumeSlider);
         volumeSlider.ValueChanged += OnVolumeChanged;
-        volumeControls.Children.Add(volumeSlider);
-        Grid.SetColumn(volumeControls, 1);
-        controlGrid.Children.Add(volumeControls);
-        bottomStack.Children.Add(controlGrid);
-        root.Children.Add(bottomChrome);
+        volumePanelStack.Children.Add(volumeSlider);
+
+        var volumeMuteButton = OverlayButton("静音", "PlayerMute");
+        volumeMuteButton.HorizontalAlignment = HorizontalAlignment.Stretch;
+        volumeMuteButton.MaxWidth = double.PositiveInfinity;
+        AttachPlaybackKeyHandler(volumeMuteButton);
+        volumeMuteButton.Click += async (_, _) => await ToggleMuteAsync();
+        volumePanelStack.Children.Add(volumeMuteButton);
+        volumePanelStack.PointerPressed += (_, args) => args.Handled = true;
+
+        var volumeFlyout = new Flyout
+        {
+            Content = volumePanelStack,
+            Placement = FlyoutPlacementMode.TopEdgeAlignedRight,
+            ShouldConstrainToRootBounds = true,
+        };
+        volumeFlyout.Opened += (_, _) =>
+        {
+            _volumePanelOpen = true;
+            ShowChrome(true);
+        };
+        volumeFlyout.Closed += (_, _) =>
+        {
+            _volumePanelOpen = false;
+            ScheduleChromeHide();
+        };
+        FlyoutBase.SetAttachedFlyout(volumeButton, volumeFlyout);
 
         var episodePanel = new Border
         {
@@ -518,6 +583,7 @@ public sealed partial class PlayerPage : Page
             topChrome,
             bottomChrome,
             volumeSlider,
+            volumePanelStack,
             timeText,
             episodePanel,
             resumePrompt);
@@ -717,9 +783,12 @@ public sealed partial class PlayerPage : Page
             audioButton,
             episodeButton,
             volumeButton,
+            volumeMuteButton,
             fullScreenButton,
             progressSlider,
             volumeSlider,
+            volumePanelStack,
+            volumeFlyout,
             speedBox,
             titleText,
             trackSummaryText,
@@ -762,6 +831,7 @@ public sealed partial class PlayerPage : Page
         Border topChrome,
         Border bottomChrome,
         Slider volumeSlider,
+        FrameworkElement volumePanel,
         TextBlock timeText,
         Border episodePanel,
         Border resumePrompt)
@@ -769,7 +839,8 @@ public sealed partial class PlayerPage : Page
         var compact = width < FluentTheme.CompactBreakpoint;
         topChrome.Margin = compact ? new Thickness(10) : new Thickness(16);
         bottomChrome.Margin = compact ? new Thickness(10, 0, 10, 10) : new Thickness(16, 0, 16, 16);
-        volumeSlider.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        volumeSlider.Width = compact ? 168 : 196;
+        volumePanel.Width = compact ? 192 : 220;
         timeText.MinWidth = compact ? 96 : 128;
         episodePanel.Width = Math.Min(332, Math.Max(220, width - 32));
         episodePanel.Margin = compact ? new Thickness(0, 0, 10, 0) : new Thickness(0, 0, 16, 0);
@@ -1639,7 +1710,8 @@ public sealed partial class PlayerPage : Page
     private void UpdatePlaybackLabels(PlayerStateSnapshot state)
     {
         _playPauseButton.Content = state.Paused ? "播放" : "暂停";
-        _volumeButton.Content = _muted ? "取消静音" : "静音";
+        _volumeButton.Content = _muted ? "音量 0%" : $"音量 {Math.Round(state.Volume)}%";
+        _volumeMuteButton.Content = _muted ? "取消静音" : "静音";
         _timeText.Text = $"{FormatTime(state.Position)} / {FormatTime(state.Duration)}";
     }
 
@@ -1744,6 +1816,38 @@ public sealed partial class PlayerPage : Page
         await SetVolumeAsync(args.NewValue, showOsd: true);
     }
 
+    private void OnVolumeButtonClicked(object sender, RoutedEventArgs args)
+    {
+        if (_volumePanelOpen)
+        {
+            CloseVolumePanel();
+        }
+        else
+        {
+            CloseEpisodePanel();
+            FlyoutBase.ShowAttachedFlyout(_volumeButton);
+        }
+
+        ShowChrome(true);
+    }
+
+    private void UpdateVolumePanelVisibility()
+    {
+        ScheduleChromeHide();
+    }
+
+    private void CloseVolumePanel()
+    {
+        if (!_volumePanelOpen)
+        {
+            return;
+        }
+
+        _volumePanelOpen = false;
+        _volumeFlyout.Hide();
+        ScheduleChromeHide();
+    }
+
     private async Task SetVolumeAsync(double volume, bool showOsd)
     {
         try
@@ -1764,7 +1868,8 @@ public sealed partial class PlayerPage : Page
                 await _player.SetVolumeAsync(value);
             }
 
-            _volumeButton.Content = _muted ? "取消静音" : "静音";
+            _volumeButton.Content = _muted ? "音量 0%" : $"音量 {Math.Round(value)}%";
+            _volumeMuteButton.Content = _muted ? "取消静音" : "静音";
             if (showOsd)
             {
                 ShowOsd($"音量 {Math.Round(value)}%");
@@ -1909,6 +2014,7 @@ public sealed partial class PlayerPage : Page
 
     private void OnEpisodeButtonClicked(object sender, RoutedEventArgs args)
     {
+        CloseVolumePanel();
         _episodePanelOpen = !_episodePanelOpen;
         UpdateEpisodePanelVisibility();
         ShowChrome(true);
@@ -1918,6 +2024,17 @@ public sealed partial class PlayerPage : Page
     {
         _episodePanel.Visibility = _episodePanelOpen && _episodes.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
         ScheduleChromeHide();
+    }
+
+    private void CloseEpisodePanel()
+    {
+        if (!_episodePanelOpen)
+        {
+            return;
+        }
+
+        _episodePanelOpen = false;
+        UpdateEpisodePanelVisibility();
     }
 
     private async void OnResumeClicked(object sender, RoutedEventArgs args)
@@ -2044,6 +2161,7 @@ public sealed partial class PlayerPage : Page
         }
 
         _fullScreenMode = false;
+        CloseVolumePanel();
         _detailHost.Visibility = Visibility.Visible;
         ShellPage.Current?.SetNavigationChromeVisible(true);
     }
@@ -2064,15 +2182,39 @@ public sealed partial class PlayerPage : Page
         await AppServices.PlaybackProgress.SaveAsync(_movieId, state.Position, _duration > 0 ? _duration : state.Duration, stopped);
     }
 
-    private void OnUserActivity(object sender, PointerRoutedEventArgs args)
+    private void OnUserPointerMoved(object sender, PointerRoutedEventArgs args)
     {
+        ShowChrome(true);
+        ScheduleChromeHide();
+    }
+
+    private void OnUserPointerPressed(object sender, PointerRoutedEventArgs args)
+    {
+        if (args.OriginalSource is DependencyObject source)
+        {
+            if (!IsDescendantOf(source, _episodePanel) && !IsDescendantOf(source, _episodeButton))
+            {
+                CloseEpisodePanel();
+            }
+
+            if (!IsDescendantOf(source, _volumePanel) && !IsDescendantOf(source, _volumeButton))
+            {
+                CloseVolumePanel();
+            }
+        }
+        else
+        {
+            CloseEpisodePanel();
+            CloseVolumePanel();
+        }
+
         ShowChrome(true);
         ScheduleChromeHide();
     }
 
     private void OnChromeTimerTick(object? sender, object args)
     {
-        if (!_state.Paused && !_episodePanelOpen)
+        if (!_state.Paused && !_episodePanelOpen && !_volumePanelOpen)
         {
             ShowChrome(false);
         }
@@ -2086,12 +2228,29 @@ public sealed partial class PlayerPage : Page
         _bottomChrome.Opacity = opacity;
         _topChrome.IsHitTestVisible = visible;
         _bottomChrome.IsHitTestVisible = visible;
+        if (!visible)
+        {
+            CloseVolumePanel();
+        }
+    }
+
+    private static bool IsDescendantOf(DependencyObject source, DependencyObject parent)
+    {
+        for (var current = source; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, parent))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void ScheduleChromeHide()
     {
         _chromeTimer.Stop();
-        if (_controlsVisible && !_state.Paused && !_episodePanelOpen)
+        if (_controlsVisible && !_state.Paused && !_episodePanelOpen && !_volumePanelOpen)
         {
             _chromeTimer.Start();
         }
@@ -2121,6 +2280,23 @@ public sealed partial class PlayerPage : Page
     {
         element.KeyDown += OnPlayerControlKeyDown;
         element.KeyUp += OnPlayerControlKeyUp;
+    }
+
+    private void AddPlaybackKeyboardAccelerators(UIElement element)
+    {
+        AddPlaybackKeyboardAccelerator(element, VirtualKey.Space, TogglePlayPauseAsync);
+        AddPlaybackKeyboardAccelerator(element, VirtualKey.K, TogglePlayPauseAsync);
+    }
+
+    private static void AddPlaybackKeyboardAccelerator(UIElement element, VirtualKey key, Func<Task> action)
+    {
+        var accelerator = new KeyboardAccelerator { Key = key };
+        accelerator.Invoked += async (_, args) =>
+        {
+            args.Handled = true;
+            await action();
+        };
+        element.KeyboardAccelerators.Add(accelerator);
     }
 
     private async void OnPlayerControlKeyDown(object sender, KeyRoutedEventArgs args)
@@ -2187,6 +2363,12 @@ public sealed partial class PlayerPage : Page
 
     private void HandleEscape()
     {
+        if (_volumePanelOpen)
+        {
+            CloseVolumePanel();
+            return;
+        }
+
         if (_episodePanelOpen)
         {
             _episodePanelOpen = false;

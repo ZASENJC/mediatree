@@ -113,6 +113,13 @@ docker compose up -d --build
 scripts/push-docker-release.sh
 ```
 
+### Windows Desktop Build
+
+- Windows 构建固定连接本地 `mediatree-windows` 主机：`Administrator@192.168.100.102:22`。
+- 远端固定复用目录：`C:\Users\Administrator\Documents\code\mediatree-codex-win-live`。
+- 后续 Windows 构建以 `portable` 为主目标，优先验证和交付“一个文件打开就能用”的体验。
+- 除非用户明确要求 MSIX / `.appinstaller`，Windows 构建、验证和交付说明都默认围绕 portable 包展开。
+
 ## Security Without Hooks
 
 Codex does not provide Claude Code hooks in this repo, so enforce security through review and verification:
