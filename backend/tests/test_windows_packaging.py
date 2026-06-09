@@ -425,6 +425,7 @@ class WindowsPackagingTest(unittest.TestCase):
         self.assertIn("root.Width = Math.Max(0, viewportWidth)", settings_page)
         self.assertIn("columns.Width = contentWidth", settings_page)
         self.assertIn("SettingsHeaderCard", settings_page)
+        self.assertIn("private static Border SectionCard", settings_page)
         self.assertIn("_settingsContentWidth", settings_page)
         self.assertIn("ApplyColumnCardWidths", settings_page)
         self.assertIn("ApplyLoadedLibraryRowWidths", settings_page)

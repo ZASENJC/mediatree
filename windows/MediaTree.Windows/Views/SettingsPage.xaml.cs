@@ -869,16 +869,12 @@ public sealed partial class SettingsPage : Page
         _updateStatusText.Visibility = Visibility.Visible;
     }
 
-    private static ContentControl SectionCard(UIElement child, string automationId, Thickness? padding = null)
+    private static Border SectionCard(UIElement child, string automationId, Thickness? padding = null)
     {
-        var wrapper = new ContentControl
-        {
-            Content = FluentTheme.Card(child, padding ?? new Thickness(22)),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            IsTabStop = false,
-        };
-        AutomationProperties.SetAutomationId(wrapper, automationId);
-        return wrapper;
+        var card = FluentTheme.Card(child, padding ?? new Thickness(22));
+        card.HorizontalAlignment = HorizontalAlignment.Stretch;
+        AutomationProperties.SetAutomationId(card, automationId);
+        return card;
     }
 
     private void ApplySettingsViewportLayout(double viewportWidth, StackPanel root, Grid columns, StackPanel leftColumn, StackPanel rightColumn)
