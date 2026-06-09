@@ -50,6 +50,7 @@ public sealed partial class SettingsPage : Page
     private readonly TextBlock _tmdbTokenStatusText;
     private readonly TextBlock _updateStatusText;
     private readonly TextBlock _versionText;
+    private double _settingsContentWidth;
     private ConfigDto _loadedConfig = new();
     private bool _suppressUiPreferenceSave;
 
@@ -126,7 +127,7 @@ public sealed partial class SettingsPage : Page
         Grid.SetColumn(saveGlobalButton, 1);
         headerGrid.Children.Add(saveGlobalButton);
         headerGrid.SizeChanged += (_, args) => ApplyHeaderActionLayout(args.NewSize.Width, headerGrid, saveGlobalButton);
-        root.Children.Add(FluentTheme.Card(headerGrid, new Thickness(18)));
+        root.Children.Add(SectionCard(headerGrid, "SettingsHeaderCard", new Thickness(18)));
 
         var globalStatusText = StatusText("SettingsGlobalStatusText");
         root.Children.Add(globalStatusText);
@@ -300,6 +301,7 @@ public sealed partial class SettingsPage : Page
             args.NewSize.Width,
             root,
             columns,
+            leftColumn,
             rightColumn);
 
         scrollViewer.Content = root;
@@ -504,6 +506,7 @@ public sealed partial class SettingsPage : Page
                 settingMap.TryGetValue(root.Path, out var setting);
                 _librarySettingsList.Items.Add(CreateLibrarySettingsRow(root, setting, i));
             }
+            ApplyLoadedLibraryRowWidths();
 
             _libraryStatusText.Text = "选择刮削器后点击保存。需要重新整理时可直接重新扫描。";
         }
@@ -527,6 +530,13 @@ public sealed partial class SettingsPage : Page
             BorderThickness = new Thickness(1),
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
+        if (_settingsContentWidth > 0)
+        {
+            var compactSettings = _settingsContentWidth < FluentTheme.MediumBreakpoint;
+            row.Width = compactSettings
+                ? Math.Max(0, _settingsContentWidth - 44)
+                : Math.Max(0, ((_settingsContentWidth - 20) / 2) - 44);
+        }
 
         var grid = new Grid { ColumnSpacing = 12, HorizontalAlignment = HorizontalAlignment.Stretch };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -859,11 +869,11 @@ public sealed partial class SettingsPage : Page
         _updateStatusText.Visibility = Visibility.Visible;
     }
 
-    private static ContentControl SectionCard(UIElement child, string automationId)
+    private static ContentControl SectionCard(UIElement child, string automationId, Thickness? padding = null)
     {
         var wrapper = new ContentControl
         {
-            Content = FluentTheme.Card(child, new Thickness(22)),
+            Content = FluentTheme.Card(child, padding ?? new Thickness(22)),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             IsTabStop = false,
         };
@@ -871,18 +881,61 @@ public sealed partial class SettingsPage : Page
         return wrapper;
     }
 
-    private static void ApplySettingsViewportLayout(double viewportWidth, StackPanel root, Grid columns, StackPanel rightColumn)
+    private void ApplySettingsViewportLayout(double viewportWidth, StackPanel root, Grid columns, StackPanel leftColumn, StackPanel rightColumn)
     {
         var compact = viewportWidth < FluentTheme.MediumBreakpoint;
         root.Width = Math.Max(0, viewportWidth);
         root.Padding = FluentTheme.SpaciousPagePadding(viewportWidth);
         var contentWidth = Math.Max(0, viewportWidth - root.Padding.Left - root.Padding.Right);
+        _settingsContentWidth = contentWidth;
         columns.Width = contentWidth;
         columns.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
         columns.RowDefinitions[1].Height = compact ? GridLength.Auto : new GridLength(0);
         columns.ColumnSpacing = compact ? 0 : 20;
         Grid.SetColumn(rightColumn, compact ? 0 : 1);
         Grid.SetRow(rightColumn, compact ? 1 : 0);
+
+        var columnWidth = compact ? contentWidth : Math.Max(0, (contentWidth - columns.ColumnSpacing) / 2);
+        leftColumn.Width = columnWidth;
+        rightColumn.Width = columnWidth;
+        foreach (var card in root.Children.OfType<FrameworkElement>())
+        {
+            if (card == columns)
+            {
+                continue;
+            }
+
+            card.Width = contentWidth;
+        }
+
+        ApplyColumnCardWidths(leftColumn, columnWidth);
+        ApplyColumnCardWidths(rightColumn, columnWidth);
+        ApplyLoadedLibraryRowWidths();
+    }
+
+    private static void ApplyColumnCardWidths(StackPanel column, double width)
+    {
+        foreach (var child in column.Children.OfType<FrameworkElement>())
+        {
+            child.Width = width;
+        }
+    }
+
+    private void ApplyLoadedLibraryRowWidths()
+    {
+        if (_settingsContentWidth <= 0)
+        {
+            return;
+        }
+
+        var compact = _settingsContentWidth < FluentTheme.MediumBreakpoint;
+        var rowWidth = compact
+            ? Math.Max(0, _settingsContentWidth - 44)
+            : Math.Max(0, ((_settingsContentWidth - 20) / 2) - 44);
+        foreach (var row in _librarySettingsList.Items.OfType<FrameworkElement>())
+        {
+            row.Width = rowWidth;
+        }
     }
 
     private static TextBlock WrapText(string text)
