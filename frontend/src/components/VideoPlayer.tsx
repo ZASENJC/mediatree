@@ -1446,6 +1446,11 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
       setPlayerChromeVisible(visible)
       if (!visible) setEpisodeMenuOpen(false)
     }
+    const exitTheaterAfterFullscreen = (fullscreen: boolean) => {
+      if (!fullscreen && theaterModeRef.current) {
+        setTheaterMode(false)
+      }
+    }
 
     art.on('ready', () => {
       artReadyRef.current = true
@@ -1506,6 +1511,8 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
     })
     art.on('video:playing', hideTranscodePrompt)
     art.on('video:play', hideResumePrompt)
+    art.on('fullscreen', exitTheaterAfterFullscreen)
+    art.on('fullscreenWeb', exitTheaterAfterFullscreen)
     art.on('video:pause', () => {
       const pos = currentTimeRef.current || art.currentTime || 0
       savePos(movieId, pos)
