@@ -84,12 +84,19 @@ public sealed partial class SettingsPage : Page
     {
         AutomationProperties.SetAutomationId(this, "SettingsPage");
 
-        var scrollViewer = new ScrollViewer();
+        var scrollViewer = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalScrollMode = ScrollMode.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollMode = ScrollMode.Auto,
+        };
         var root = new StackPanel
         {
             Padding = new Thickness(40),
             Spacing = 22,
             Background = FluentTheme.Canvas,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             RequestedTheme = ElementTheme.Light,
         };
 
@@ -125,13 +132,14 @@ public sealed partial class SettingsPage : Page
         root.Children.Add(globalStatusText);
 
         var columns = new Grid { ColumnSpacing = 20, RowSpacing = 20 };
+        columns.HorizontalAlignment = HorizontalAlignment.Stretch;
         columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         columns.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         columns.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
 
-        var leftColumn = new StackPanel { Spacing = 20 };
-        var rightColumn = new StackPanel { Spacing = 20 };
+        var leftColumn = new StackPanel { Spacing = 20, HorizontalAlignment = HorizontalAlignment.Stretch };
+        var rightColumn = new StackPanel { Spacing = 20, HorizontalAlignment = HorizontalAlignment.Stretch };
         Grid.SetColumn(rightColumn, 1);
         columns.Children.Add(leftColumn);
         columns.Children.Add(rightColumn);
@@ -141,7 +149,7 @@ public sealed partial class SettingsPage : Page
         uiPrefsStack.Children.Add(SectionTitle("界面偏好", "SettingsUiPrefsCard"));
         var hideHomeTitleTextBox = new CheckBox
         {
-            Content = "无字模式：首页仅展示影片封面图，隐藏卡片上的标题文字和目录数量。",
+            Content = WrapText("无字模式：首页仅展示影片封面图，隐藏卡片上的标题文字和目录数量。"),
         };
         AutomationProperties.SetAutomationId(hideHomeTitleTextBox, "SettingsHideHomeTitleText");
         hideHomeTitleTextBox.Checked += OnUiPreferenceChanged;
@@ -149,7 +157,7 @@ public sealed partial class SettingsPage : Page
         uiPrefsStack.Children.Add(hideHomeTitleTextBox);
         var showSourceNameBox = new CheckBox
         {
-            Content = "使用源文件名称：首页媒体库卡片显示源文件夹名称。",
+            Content = WrapText("使用源文件名称：首页媒体库卡片显示源文件夹名称。"),
         };
         AutomationProperties.SetAutomationId(showSourceNameBox, "SettingsShowSourceName");
         showSourceNameBox.Checked += OnUiPreferenceChanged;
@@ -200,6 +208,7 @@ public sealed partial class SettingsPage : Page
             SelectionMode = ListViewSelectionMode.None,
             IsItemClickEnabled = false,
             Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             Padding = new Thickness(0),
         };
         AutomationProperties.SetAutomationId(librarySettingsList, "SettingsLibrarySettingsList");
@@ -287,7 +296,7 @@ public sealed partial class SettingsPage : Page
         updateStack.Children.Add(logsButton);
         rightColumn.Children.Add(SectionCard(updateStack, "SettingsUpdateCard"));
 
-        root.SizeChanged += (_, args) => ApplySettingsResponsiveLayout(
+        scrollViewer.SizeChanged += (_, args) => ApplySettingsViewportLayout(
             args.NewSize.Width,
             root,
             columns,
@@ -516,9 +525,10 @@ public sealed partial class SettingsPage : Page
             Background = FluentTheme.LayerAlt,
             BorderBrush = FluentTheme.Border,
             BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
 
-        var grid = new Grid { ColumnSpacing = 12 };
+        var grid = new Grid { ColumnSpacing = 12, HorizontalAlignment = HorizontalAlignment.Stretch };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -559,7 +569,7 @@ public sealed partial class SettingsPage : Page
         var scraperBox = new ComboBox
         {
             Header = "资料来源",
-            MinWidth = 210,
+            MinWidth = 0,
         };
         AutomationProperties.SetAutomationId(scraperBox, $"SettingsLibraryScraper_{index}");
         foreach (var option in ScraperOptions)
@@ -854,20 +864,34 @@ public sealed partial class SettingsPage : Page
         var wrapper = new ContentControl
         {
             Content = FluentTheme.Card(child, new Thickness(22)),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             IsTabStop = false,
         };
         AutomationProperties.SetAutomationId(wrapper, automationId);
         return wrapper;
     }
 
-    private static void ApplySettingsResponsiveLayout(double width, StackPanel root, Grid columns, StackPanel rightColumn)
+    private static void ApplySettingsViewportLayout(double viewportWidth, StackPanel root, Grid columns, StackPanel rightColumn)
     {
-        var compact = width < FluentTheme.MediumBreakpoint;
-        root.Padding = FluentTheme.SpaciousPagePadding(width);
+        var compact = viewportWidth < FluentTheme.MediumBreakpoint;
+        root.Width = Math.Max(0, viewportWidth);
+        root.Padding = FluentTheme.SpaciousPagePadding(viewportWidth);
+        var contentWidth = Math.Max(0, viewportWidth - root.Padding.Left - root.Padding.Right);
+        columns.Width = contentWidth;
         columns.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
         columns.RowDefinitions[1].Height = compact ? GridLength.Auto : new GridLength(0);
+        columns.ColumnSpacing = compact ? 0 : 20;
         Grid.SetColumn(rightColumn, compact ? 0 : 1);
         Grid.SetRow(rightColumn, compact ? 1 : 0);
+    }
+
+    private static TextBlock WrapText(string text)
+    {
+        return new TextBlock
+        {
+            Text = text,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        };
     }
 
     private static void ApplyHeaderActionLayout(double width, Grid header, FrameworkElement action)
@@ -965,7 +989,8 @@ public sealed partial class SettingsPage : Page
         {
             Header = header,
             Text = value,
-            MinWidth = 160,
+            MinWidth = 0,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         AutomationProperties.SetAutomationId(box, automationId);
         return box;
@@ -976,7 +1001,8 @@ public sealed partial class SettingsPage : Page
         var box = new PasswordBox
         {
             Header = header,
-            MinWidth = 160,
+            MinWidth = 0,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         AutomationProperties.SetAutomationId(box, automationId);
         return box;
