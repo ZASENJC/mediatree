@@ -130,6 +130,8 @@ Docker Hub image: `zasenjc/mediatree:latest`
 | `TMDB_API_KEY` / `TMDB_ACCESS_TOKEN` | Optional, improves TMDB scraping |
 | `JAVDB_ENABLED` | Enables or disables Javdatabase scraping |
 
+Scraper cache TTLs and the Javdatabase request interval are managed internally instead of being tuned from Settings or environment variables. Manual scans, rescrapes, and manual apply actions bypass cache, and empty results are not cached, so stale empty responses do not block later metadata fixes.
+
 See [.env.example](.env.example) for all options. Detailed setup, scraper behavior, client compatibility, and troubleshooting live in the [Wiki](https://github.com/ZASENJC/mediatree/wiki).
 
 ## Updates

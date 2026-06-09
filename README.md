@@ -131,6 +131,8 @@ Docker Hub 镜像：`zasenjc/mediatree:latest`
 | `TMDB_API_KEY` / `TMDB_ACCESS_TOKEN` | 可选，用于改善 TMDB 刮削 |
 | `JAVDB_ENABLED` | 启用或关闭 Javdatabase 刮削 |
 
+刮削器缓存有效期和 Javdatabase 请求间隔由应用内部管理，不再需要在设置页或环境变量里调整。手动扫描、重新刮削和手动应用结果会绕过缓存，空结果不会写入缓存，避免旧的空结果挡住后续补齐的数据。
+
 完整配置见 [.env.example](.env.example)。高级配置、刮削逻辑、客户端兼容和排障说明放在 [Wiki](https://github.com/ZASENJC/mediatree/wiki)。
 
 ## 更新

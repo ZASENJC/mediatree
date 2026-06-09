@@ -22,6 +22,10 @@ All notable changes to MediaTree are documented here.
 - Changed manual auto scraping to search and display all candidates from the automatic scraping chain instead of applying a scrape immediately
 - Unified card rescrape behavior so right-click "Rescrape" uses the scraper configured on that media library and applies the result
 - Limited Javdatabase to libraries explicitly configured with the Javdatabase scraper; it is not included in the automatic scraping chain for other libraries
+- Changed scraper cache TTLs and Javdatabase request spacing into internal backend policy, removing the Settings/environment tuning knobs
+- Made manual scans, rescrapes, manual scrape apply, and selected-result apply bypass scraper cache so user-requested refreshes fetch current data
+- Stopped caching empty scraper results and automatically removes legacy empty cache rows when they are read
+- Normalized Javdatabase throttling so search, direct, fuzzy, and detail requests all use the internal 3-second request interval
 
 ### Playback
 
@@ -36,7 +40,7 @@ All notable changes to MediaTree are documented here.
 
 ### Release Type
 
-- Full Docker image update is required because this release changes the Docker image metadata/update baseline and release publishing path
+- Full Docker image update is required because this release changes the Docker image metadata/update baseline, release publishing path, and Docker/runtime scraper policy defaults
 - Docker Compose users should run `docker compose pull && docker compose up -d`
 
 ---

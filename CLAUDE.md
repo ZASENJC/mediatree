@@ -67,7 +67,7 @@ Copy `.env.example` to `.env` and configure:
 - `MEDIA_VOLUMES` — format `/host/path:/media/alias:ro`
 - `DATA_DIR` — persistent data (DB, covers, config), default `./data`
 - `HOST_PORT` — default `27580`
-- `JAVDB_ENABLED` / `JAVDB_CACHE_HOURS` / `JAVDB_REQUEST_INTERVAL` — JAV scraper tuning
+- `JAVDB_ENABLED` — enable/disable the Javdatabase scraper. Scraper cache TTLs and the Javdatabase request interval are internal runtime policy, not user-facing env/config knobs.
 
 ## Architecture
 
@@ -79,7 +79,7 @@ In production, the backend serves the built frontend at `/`. In development, run
 - `scanner.py` — Core scanning and scraping engine (~1800 lines): `scan_media()` walks filesystem, `scrape_for_library()` runs the fallback chain, per-library lock prevents duplicate concurrent scans.
 - `auto_scrape.py` — Automatic scrape scheduling and watcher path policy. Coalesces affected media roots, filters relevant file/folder changes, and centralizes container-safe watcher polling defaults.
 - `database.py` — All SQLite CRUD (~1150 lines): `init_db()` with schema migrations, movie/folder/tag/category ops, Jellyfin user_data/playback_sessions/tokens tables.
-- `config.py` — `pydantic-settings` + JSON config persistence. `Settings` class reads `.env`, then `load_persisted_config()` overlays `data/config.json`. Runtime changes via `/api/config` POST write back to `config.json`.
+- `config.py` — `pydantic-settings` + JSON config persistence. `Settings` class reads `.env`, then `load_persisted_config()` overlays `data/config.json` except for internal scraper cache/request policy keys. Runtime changes via `/api/config` POST write back to `config.json`.
 - `models.py` — Pydantic v2 models: `Movie`, `JavdbCache`, `Category`, `Tag`, `ScanResult`, `ConfigUpdate`, `FolderNode`.
 - `stream.py` — Video streaming with HTTP Range support (byte-range seeking), ffmpeg transcoding, media info extraction via ffprobe.
 - `covers.py` — Cover image management: download, compress (Pillow, max 500px, JPEG q=80), episode still generation.
@@ -91,6 +91,7 @@ In production, the backend serves the built frontend at `/`. In development, run
 - `registry.py` — Maps scraper names to instances. Built-in: `tmdb_movie`, `tmdb_tv`, `bangumi`, `javdatabase`, `auto` (TMDB ID → Bangumi → TMDB title search chain), `none` (no-op). Use `register_scraper()`/`get_scraper()`.
 - `tmdb_scraper.py`, `bangumi_scraper.py`, `javdatabase_scraper.py` — Thin adapters wrapping `tmdb.py`, `bangumi.py`, `javdb.py`.
 - `utils.py` — Shared helper functions for scraper result processing.
+- Scraper cache TTLs are internal defaults (TMDB/Bangumi 168h, Javdatabase 24h). Empty results are not cached; manual scans/rescrapes/manual apply bypass scraper cache. Javdatabase network requests are internally spaced at least 3s apart.
 - To add a scraper: create new file here, subclass `BaseScraper`, register in `registry.py`.
 
 ### Jellyfin compatibility layer
