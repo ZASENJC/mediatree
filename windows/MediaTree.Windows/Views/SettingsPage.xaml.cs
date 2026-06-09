@@ -64,6 +64,7 @@ public sealed partial class SettingsPage : Page
     private readonly TextBlock _updateStatusText;
     private readonly StackPanel _updateVersionsStack;
     private readonly TextBlock _versionText;
+    private readonly List<FrameworkElement> _settingsCards = [];
     private double _settingsColumnWidth;
     private ConfigDto _loadedConfig = new();
     private UpdateCheckResultDto? _lastUpdateResult;
@@ -156,10 +157,10 @@ public sealed partial class SettingsPage : Page
         var settingsGrid = new Grid
         {
             ColumnSpacing = SettingsColumnSpacing,
-            RowSpacing = 20,
             HorizontalAlignment = HorizontalAlignment.Center,
         };
         root.Children.Add(settingsGrid);
+        _settingsCards.Clear();
 
         var uiPrefsStack = new StackPanel { Spacing = 12 };
         uiPrefsStack.Children.Add(SectionTitle("界面偏好", "SettingsUiPrefsCard"));
@@ -179,7 +180,7 @@ public sealed partial class SettingsPage : Page
         showSourceNameBox.Checked += OnUiPreferenceChanged;
         showSourceNameBox.Unchecked += OnUiPreferenceChanged;
         uiPrefsStack.Children.Add(showSourceNameBox);
-        settingsGrid.Children.Add(SectionCard(uiPrefsStack, "SettingsUiPrefsCard"));
+        _settingsCards.Add(SectionCard(uiPrefsStack, "SettingsUiPrefsCard"));
 
         var authStack = new StackPanel { Spacing = 12 };
         authStack.Children.Add(SectionTitle("账号安全", "SettingsAuthCard"));
@@ -199,7 +200,7 @@ public sealed partial class SettingsPage : Page
         authStack.Children.Add(changePasswordButton);
         var authStatusText = StatusText("SettingsAuthStatusText");
         authStack.Children.Add(authStatusText);
-        settingsGrid.Children.Add(SectionCard(authStack, "SettingsAuthCard"));
+        _settingsCards.Add(SectionCard(authStack, "SettingsAuthCard"));
 
         var libraryStack = new StackPanel { Spacing = 12 };
         var libraryHeader = new Grid { ColumnSpacing = 12, RowSpacing = 10 };
@@ -219,20 +220,19 @@ public sealed partial class SettingsPage : Page
         libraryHeader.SizeChanged += (_, args) => ApplyHeaderActionLayout(args.NewSize.Width, libraryHeader, addLibraryButton);
         libraryStack.Children.Add(libraryHeader);
         libraryStack.Children.Add(FluentTheme.Body("Windows 桌面版可直接选择本机文件夹作为媒体库。", 13));
-        var librarySettingsList = new ListView
+        var librarySettingsList = FluentTheme.ApplyListView(new ListView
         {
             SelectionMode = ListViewSelectionMode.None,
             IsItemClickEnabled = false,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Padding = new Thickness(0),
-        };
+        });
         AutomationProperties.SetAutomationId(librarySettingsList, "SettingsLibrarySettingsList");
         libraryStack.Children.Add(librarySettingsList);
         var libraryStatusText = StatusText("SettingsLibraryStatusText", visible: true);
         libraryStatusText.Text = "正在加载媒体库设置...";
         libraryStack.Children.Add(libraryStatusText);
-        settingsGrid.Children.Add(SectionCard(libraryStack, "SettingsLibraryCard"));
+        _settingsCards.Add(SectionCard(libraryStack, "SettingsLibraryCard"));
 
         var scraperStack = new StackPanel { Spacing = 12 };
         scraperStack.Children.Add(SectionTitle("刮削器", "SettingsScraperCard"));
@@ -251,7 +251,7 @@ public sealed partial class SettingsPage : Page
         var tmdbTokenStatusText = StatusText("SettingsTmdbTokenStatusText");
         scraperStack.Children.Add(tmdbTokenStatusText);
         scraperStack.Children.Add(ScraperDescriptionGrid());
-        settingsGrid.Children.Add(SectionCard(scraperStack, "SettingsScraperCard"));
+        _settingsCards.Add(SectionCard(scraperStack, "SettingsScraperCard"));
 
         var backupStack = new StackPanel { Spacing = 12 };
         backupStack.Children.Add(SectionTitle("数据备份与恢复", "SettingsBackupCard"));
@@ -277,7 +277,7 @@ public sealed partial class SettingsPage : Page
         backupStack.Children.Add(FluentTheme.Body("完整备份包含数据库和所有封面图片缓存。恢复会覆盖当前数据。", 13));
         var backupStatusText = StatusText("SettingsBackupStatusText");
         backupStack.Children.Add(backupStatusText);
-        settingsGrid.Children.Add(SectionCard(backupStack, "SettingsBackupCard"));
+        _settingsCards.Add(SectionCard(backupStack, "SettingsBackupCard"));
 
         var updateStack = new StackPanel { Spacing = 12 };
         var updateHeader = new Grid { ColumnSpacing = 12, RowSpacing = 10 };
@@ -315,7 +315,7 @@ public sealed partial class SettingsPage : Page
         AutomationProperties.SetAutomationId(logsButton, "SettingsOpenLogs");
         logsButton.Click += OnOpenLogsClicked;
         updateStack.Children.Add(logsButton);
-        settingsGrid.Children.Add(SectionCard(updateStack, "SettingsUpdateCard"));
+        _settingsCards.Add(SectionCard(updateStack, "SettingsUpdateCard"));
 
         scrollViewer.SizeChanged += (_, args) => ApplySettingsViewportLayout(
             args.NewSize.Width,
@@ -1251,13 +1251,13 @@ public sealed partial class SettingsPage : Page
                 MinWidth = 520,
                 MaxHeight = 480,
             });
-            var dialog = new ContentDialog
+            var dialog = FluentTheme.ApplyContentDialog(new ContentDialog
             {
                 Title = $"更新日志 - {DisplayVersionOrVersion(version)}",
                 Content = new ScrollViewer { Content = text },
                 CloseButtonText = "关闭",
                 XamlRoot = XamlRoot,
-            };
+            });
             await dialog.ShowAsync();
         }
         catch (Exception ex)
@@ -1524,24 +1524,12 @@ public sealed partial class SettingsPage : Page
         root.Width = Math.Max(0, viewportWidth);
         root.Padding = FluentTheme.SpaciousPagePadding(viewportWidth);
         var contentWidth = Math.Max(0, viewportWidth - root.Padding.Left - root.Padding.Right);
-        var columnCount = CalculateSettingsColumnCount(contentWidth, settingsGrid.Children.Count);
+        var columnCount = CalculateSettingsColumnCount(contentWidth, _settingsCards.Count);
         var totalSpacing = (columnCount - 1) * SettingsColumnSpacing;
         var columnWidth = Math.Min(SettingsColumnMaxWidth, Math.Max(0, (contentWidth - totalSpacing) / columnCount));
         _settingsColumnWidth = columnWidth;
         var gridWidth = columnCount * columnWidth + totalSpacing;
         settingsGrid.Width = gridWidth;
-        settingsGrid.ColumnDefinitions.Clear();
-        settingsGrid.RowDefinitions.Clear();
-        for (var column = 0; column < columnCount; column++)
-        {
-            settingsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(columnWidth) });
-        }
-
-        var rowsNeeded = (int)Math.Ceiling(settingsGrid.Children.Count / (double)columnCount);
-        for (var row = 0; row < rowsNeeded; row++)
-        {
-            settingsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        }
 
         foreach (var card in root.Children.OfType<FrameworkElement>())
         {
@@ -1553,17 +1541,41 @@ public sealed partial class SettingsPage : Page
             card.Width = contentWidth;
         }
 
-        for (var index = 0; index < settingsGrid.Children.Count; index++)
+        RenderSettingsCardColumns(settingsGrid, columnCount, columnWidth);
+        ApplyLoadedLibraryRowWidths(columnWidth);
+    }
+
+    private void RenderSettingsCardColumns(Grid settingsGrid, int columnCount, double columnWidth)
+    {
+        foreach (var oldColumn in settingsGrid.Children.OfType<StackPanel>())
         {
-            if (settingsGrid.Children[index] is FrameworkElement child)
-            {
-                child.Width = columnWidth;
-                Grid.SetColumn(child, index / rowsNeeded);
-                Grid.SetRow(child, index % rowsNeeded);
-            }
+            oldColumn.Children.Clear();
         }
 
-        ApplyLoadedLibraryRowWidths(columnWidth);
+        settingsGrid.Children.Clear();
+        settingsGrid.ColumnDefinitions.Clear();
+        settingsGrid.RowDefinitions.Clear();
+        var columns = new List<StackPanel>();
+        for (var column = 0; column < columnCount; column++)
+        {
+            settingsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(columnWidth) });
+            var columnStack = new StackPanel { Spacing = 20, Width = columnWidth, HorizontalAlignment = HorizontalAlignment.Stretch };
+            Grid.SetColumn(columnStack, column);
+            settingsGrid.Children.Add(columnStack);
+            columns.Add(columnStack);
+        }
+
+        var rowsNeeded = (int)Math.Ceiling(_settingsCards.Count / (double)columnCount);
+        for (var index = 0; index < _settingsCards.Count; index++)
+        {
+            var child = _settingsCards[index];
+            child.Width = columnWidth;
+            child.Height = double.NaN;
+            child.VerticalAlignment = VerticalAlignment.Top;
+            var column = Math.Min(columns.Count - 1, index / rowsNeeded);
+            var columnStack = columns[column];
+            columnStack.Children.Add(child);
+        }
     }
 
     private static int CalculateSettingsColumnCount(double contentWidth, int itemCount)

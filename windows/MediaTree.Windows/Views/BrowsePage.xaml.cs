@@ -148,12 +148,11 @@ public sealed partial class BrowsePage : Page
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = FluentTheme.TextSecondary,
         });
-        var folderList = new ListView
+        var folderList = FluentTheme.ApplyListView(new ListView
         {
             SelectionMode = ListViewSelectionMode.None,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             Padding = new Thickness(0),
-        };
+        });
         AutomationProperties.SetAutomationId(folderList, "BrowseFoldersList");
         folderStack.Children.Add(folderList);
         var folderHost = FluentTheme.Card(folderStack, new Thickness(14));
@@ -161,12 +160,11 @@ public sealed partial class BrowsePage : Page
 
         var moviesHost = new Grid();
         Grid.SetColumn(moviesHost, 1);
-        var moviesGrid = new GridView
+        var moviesGrid = FluentTheme.ApplyGridView(new GridView
         {
             IsItemClickEnabled = false,
             SelectionMode = ListViewSelectionMode.None,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-        };
+        });
         AutomationProperties.SetAutomationId(moviesGrid, "BrowseMoviesGrid");
         moviesHost.Children.Add(moviesGrid);
 

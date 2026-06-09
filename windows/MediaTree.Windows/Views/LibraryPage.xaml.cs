@@ -204,23 +204,21 @@ public sealed partial class LibraryPage : Page
         var content = new Grid();
         Grid.SetRow(content, 2);
 
-        var folderGrid = new GridView
+        var folderGrid = FluentTheme.ApplyGridView(new GridView
         {
             IsItemClickEnabled = true,
             SelectionMode = ListViewSelectionMode.None,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-        };
+        });
         AutomationProperties.SetAutomationId(folderGrid, "FolderGrid");
         folderGrid.ItemClick += OnFolderItemClick;
         content.Children.Add(folderGrid);
 
-        var moviesGrid = new GridView
+        var moviesGrid = FluentTheme.ApplyGridView(new GridView
         {
             IsItemClickEnabled = true,
             SelectionMode = ListViewSelectionMode.None,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             Visibility = Visibility.Collapsed,
-        };
+        });
         AutomationProperties.SetAutomationId(moviesGrid, "MoviesGrid");
         moviesGrid.ItemClick += OnMovieItemClick;
         content.Children.Add(moviesGrid);

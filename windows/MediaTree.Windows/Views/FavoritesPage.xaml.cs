@@ -111,12 +111,11 @@ public sealed partial class FavoritesPage : Page
 
         var content = new Grid();
         Grid.SetRow(content, 1);
-        var moviesGrid = new GridView
+        var moviesGrid = FluentTheme.ApplyGridView(new GridView
         {
             IsItemClickEnabled = false,
             SelectionMode = ListViewSelectionMode.None,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-        };
+        });
         AutomationProperties.SetAutomationId(moviesGrid, "FavoritesMoviesGrid");
         content.Children.Add(moviesGrid);
 

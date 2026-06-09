@@ -63,12 +63,11 @@ public sealed partial class RecentPage : Page
             header.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
         };
 
-        var recentGrid = new GridView
+        var recentGrid = FluentTheme.ApplyGridView(new GridView
         {
             IsItemClickEnabled = true,
             SelectionMode = ListViewSelectionMode.None,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-        };
+        });
         AutomationProperties.SetAutomationId(recentGrid, "RecentMoviesGrid");
         recentGrid.ItemClick += OnMovieItemClick;
         Grid.SetRow(recentGrid, 1);

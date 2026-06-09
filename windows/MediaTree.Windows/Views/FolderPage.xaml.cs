@@ -154,12 +154,11 @@ public sealed partial class FolderPage : Page
 
         var content = new Grid();
         Grid.SetRow(content, 2);
-        var moviesGrid = new GridView
+        var moviesGrid = FluentTheme.ApplyGridView(new GridView
         {
             IsItemClickEnabled = false,
             SelectionMode = ListViewSelectionMode.None,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-        };
+        });
         AutomationProperties.SetAutomationId(moviesGrid, "FolderMoviesGrid");
         content.Children.Add(moviesGrid);
 

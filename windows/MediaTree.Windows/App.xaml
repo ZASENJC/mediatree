@@ -10,9 +10,17 @@
             <CornerRadius x:Key="ControlCornerRadius">8</CornerRadius>
             <CornerRadius x:Key="OverlayCornerRadius">8</CornerRadius>
             <CornerRadius x:Key="TextControlCornerRadius">8</CornerRadius>
+            <CornerRadius x:Key="FlyoutPresenterCornerRadius">8</CornerRadius>
+            <CornerRadius x:Key="ContentDialogCornerRadius">8</CornerRadius>
+            <CornerRadius x:Key="ListViewItemCornerRadius">8</CornerRadius>
+            <CornerRadius x:Key="GridViewItemCornerRadius">8</CornerRadius>
             <CornerRadius x:Key="ComboBoxItemCornerRadius">6</CornerRadius>
             <CornerRadius x:Key="GridViewItemCheckBoxCornerRadius">4</CornerRadius>
             <CornerRadius x:Key="ListViewItemCheckBoxCornerRadius">4</CornerRadius>
+            <Style TargetType="CheckBox" BasedOn="{StaticResource DefaultCheckBoxStyle}">
+                <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
+                <Setter Property="MinHeight" Value="36" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

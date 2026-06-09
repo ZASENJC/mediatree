@@ -372,13 +372,13 @@ public sealed partial class PlayerPage : Page
         var bottomStack = new StackPanel { Spacing = 6 };
         bottomChrome.Child = bottomStack;
 
-        var progressSlider = new Slider
+        var progressSlider = FluentTheme.ApplySlider(new Slider
         {
             Minimum = 0,
             Maximum = 1,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             MinHeight = 28,
-        };
+        });
         AutomationProperties.SetAutomationId(progressSlider, "PlayerProgressSlider");
         AttachPlaybackKeyHandler(progressSlider);
         progressSlider.ValueChanged += OnProgressSliderChanged;
@@ -458,14 +458,14 @@ public sealed partial class PlayerPage : Page
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
         });
 
-        var volumeSlider = new Slider
+        var volumeSlider = FluentTheme.ApplySlider(new Slider
         {
             Minimum = 0,
             Maximum = 100,
             Value = 80,
             Width = 196,
             VerticalAlignment = VerticalAlignment.Center,
-        };
+        });
         AutomationProperties.SetAutomationId(volumeSlider, "PlayerVolumeSlider");
         AttachPlaybackKeyHandler(volumeSlider);
         volumeSlider.ValueChanged += OnVolumeChanged;
@@ -479,12 +479,12 @@ public sealed partial class PlayerPage : Page
         volumePanelStack.Children.Add(volumeMuteButton);
         volumePanelStack.PointerPressed += (_, args) => args.Handled = true;
 
-        var volumeFlyout = new Flyout
+        var volumeFlyout = FluentTheme.ApplyFlyout(new Flyout
         {
             Content = volumePanelStack,
             Placement = FlyoutPlacementMode.TopEdgeAlignedRight,
             ShouldConstrainToRootBounds = true,
-        };
+        });
         volumeFlyout.Opened += (_, _) =>
         {
             _volumePanelOpen = true;
@@ -944,13 +944,12 @@ public sealed partial class PlayerPage : Page
 
     private static GridView DetailGrid(string automationId, double maxHeight)
     {
-        var grid = new GridView
+        var grid = FluentTheme.ApplyGridView(new GridView
         {
             SelectionMode = ListViewSelectionMode.None,
             IsItemClickEnabled = false,
             MaxHeight = maxHeight,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-        };
+        });
         AutomationProperties.SetAutomationId(grid, automationId);
         return grid;
     }

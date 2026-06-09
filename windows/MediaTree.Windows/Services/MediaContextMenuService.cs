@@ -107,12 +107,11 @@ public static class MediaContextMenuService
             PlaceholderText = "输入片名、原名或编号",
         });
         var scraperBox = CreateScraperBox("刮削器");
-        var resultsList = new ListView
+        var resultsList = FluentTheme.ApplyListView(new ListView
         {
             SelectionMode = ListViewSelectionMode.Single,
             MaxHeight = 420,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-        };
+        });
         var status = StatusText("输入关键词后搜索，选择一个结果应用到当前影片。");
         var searchButton = FluentTheme.ApplyButton(new Button { Content = "搜索", HorizontalAlignment = HorizontalAlignment.Left }, FluentButtonStyle.Accent);
         searchButton.Click += async (_, _) => await SearchScrapeIntoListAsync(queryBox.Text, SelectedScraper(scraperBox), movie.MediaRoot, resultsList, status, searchButton);
@@ -158,12 +157,11 @@ public static class MediaContextMenuService
             PlaceholderText = "输入目录对应的片名或合集名",
         });
         var scraperBox = CreateScraperBox("刮削器");
-        var resultsList = new ListView
+        var resultsList = FluentTheme.ApplyListView(new ListView
         {
             SelectionMode = ListViewSelectionMode.Single,
             MaxHeight = 420,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-        };
+        });
         var status = StatusText("搜索后选择一个结果，应用到当前目录下的影片。");
         var searchButton = FluentTheme.ApplyButton(new Button { Content = "搜索", HorizontalAlignment = HorizontalAlignment.Left }, FluentButtonStyle.Accent);
         searchButton.Click += async (_, _) => await SearchScrapeIntoListAsync(queryBox.Text, SelectedScraper(scraperBox), folder.MediaRoot, resultsList, status, searchButton);
@@ -297,12 +295,11 @@ public static class MediaContextMenuService
             return;
         }
 
-        var grid = new GridView
+        var grid = FluentTheme.ApplyGridView(new GridView
         {
             SelectionMode = ListViewSelectionMode.Single,
             MaxHeight = 520,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-        };
+        });
         foreach (var cover in covers)
         {
             grid.Items.Add(await CreateCoverChoiceCardAsync(cover));
@@ -626,7 +623,7 @@ public static class MediaContextMenuService
 
     private static async Task<bool> ConfirmAsync(XamlRoot xamlRoot, string title, string message)
     {
-        var dialog = new ContentDialog
+        var dialog = FluentTheme.ApplyContentDialog(new ContentDialog
         {
             Title = title,
             Content = new TextBlock
@@ -638,7 +635,7 @@ public static class MediaContextMenuService
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
             XamlRoot = xamlRoot,
-        };
+        });
         var result = await dialog.ShowAsync();
         return result == ContentDialogResult.Primary;
     }
@@ -688,7 +685,7 @@ public static class MediaContextMenuService
     }
 
     private static ContentDialog CreateDialog(XamlRoot xamlRoot, string title, UIElement content, string primaryText)
-        => new()
+        => FluentTheme.ApplyContentDialog(new ContentDialog
         {
             Title = title,
             Content = new ScrollViewer
@@ -700,7 +697,7 @@ public static class MediaContextMenuService
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = xamlRoot,
-        };
+        });
 
     private static FrameworkElement CreateScrapeResultRow(ScrapeSearchResultDto result)
     {

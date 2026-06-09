@@ -151,7 +151,56 @@ public static class FluentTheme
     public static CheckBox ApplyCheckBox(CheckBox box)
     {
         box.CornerRadius = ControlCornerRadius;
+        box.MinHeight = box.MinHeight > 0 ? box.MinHeight : 36;
+        box.HorizontalAlignment = HorizontalAlignment.Stretch;
         return box;
+    }
+
+    public static ListView ApplyListView(ListView list)
+    {
+        list.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        list.BorderThickness = new Thickness(0);
+        list.Padding = new Thickness(0);
+        list.HorizontalAlignment = HorizontalAlignment.Stretch;
+        list.Resources["ListViewItemCornerRadius"] = ControlCornerRadius;
+        list.Resources["ListViewItemCheckBoxCornerRadius"] = new CornerRadius(4);
+        return list;
+    }
+
+    public static GridView ApplyGridView(GridView grid)
+    {
+        grid.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        grid.BorderThickness = new Thickness(0);
+        grid.Padding = new Thickness(0);
+        grid.HorizontalAlignment = HorizontalAlignment.Stretch;
+        grid.Resources["GridViewItemCornerRadius"] = ControlCornerRadius;
+        grid.Resources["GridViewItemCheckBoxCornerRadius"] = new CornerRadius(4);
+        return grid;
+    }
+
+    public static Slider ApplySlider(Slider slider)
+    {
+        slider.MinHeight = slider.MinHeight > 0 ? slider.MinHeight : 32;
+        return slider;
+    }
+
+    public static Flyout ApplyFlyout(Flyout flyout)
+    {
+        var presenterStyle = new Style(typeof(FlyoutPresenter));
+        presenterStyle.Setters.Add(new Setter(FlyoutPresenter.CornerRadiusProperty, ControlCornerRadius));
+        presenterStyle.Setters.Add(new Setter(FlyoutPresenter.BackgroundProperty, OverlayControl));
+        presenterStyle.Setters.Add(new Setter(FlyoutPresenter.BorderBrushProperty, Brush(0xFF, 0xFF, 0xFF, 0x24)));
+        presenterStyle.Setters.Add(new Setter(FlyoutPresenter.BorderThicknessProperty, new Thickness(1)));
+        flyout.FlyoutPresenterStyle = presenterStyle;
+        return flyout;
+    }
+
+    public static ContentDialog ApplyContentDialog(ContentDialog dialog)
+    {
+        dialog.Resources["ContentDialogCornerRadius"] = ControlCornerRadius;
+        dialog.Resources["OverlayCornerRadius"] = ControlCornerRadius;
+        dialog.Resources["ControlCornerRadius"] = ControlCornerRadius;
+        return dialog;
     }
 
     public static Thickness PagePadding(double width)

@@ -175,13 +175,12 @@ public sealed partial class MovieDetailPage : Page
         specialsHeader.Children.Add(specialsToggleButton);
         specialsSection.Children.Add(specialsHeader);
 
-        var specialsGrid = new GridView
+        var specialsGrid = FluentTheme.ApplyGridView(new GridView
         {
             IsItemClickEnabled = false,
             SelectionMode = ListViewSelectionMode.None,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
             Visibility = Visibility.Collapsed,
-        };
+        });
         AutomationProperties.SetAutomationId(specialsGrid, "DetailSpecialsGrid");
         specialsSection.Children.Add(specialsGrid);
         var specialsCard = FluentTheme.Card(specialsSection, new Thickness(16));
@@ -421,13 +420,12 @@ public sealed partial class MovieDetailPage : Page
         scraperBox.SelectedIndex = 0;
         AutomationProperties.SetAutomationId(scraperBox, "ManualScrapeScraper");
 
-        var resultList = new ListView
+        var resultList = FluentTheme.ApplyListView(new ListView
         {
             SelectionMode = ListViewSelectionMode.Single,
             IsItemClickEnabled = true,
             MaxHeight = 420,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-        };
+        });
         AutomationProperties.SetAutomationId(resultList, "ManualScrapeResults");
 
         var statusText = new TextBlock
@@ -487,7 +485,7 @@ public sealed partial class MovieDetailPage : Page
         form.Children.Add(statusText);
         form.Children.Add(resultList);
 
-        var dialog = new ContentDialog
+        var dialog = FluentTheme.ApplyContentDialog(new ContentDialog
         {
             Title = "手动刮削",
             Content = new ScrollViewer { Content = form },
@@ -495,7 +493,7 @@ public sealed partial class MovieDetailPage : Page
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = XamlRoot,
-        };
+        });
 
         dialog.PrimaryButtonClick += async (_, eventArgs) =>
         {
