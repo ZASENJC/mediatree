@@ -138,6 +138,113 @@ class UpdaterVersionStateTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(warning["dockerhub_latest_version"], "1.0.04")
         self.assertIn("scripts/push-docker-release.sh 1.0.05", warning["action"])
 
+    async def test_get_available_versions_requires_image_when_crossing_image_release(self):
+        releases = [
+            {
+                "version": "1.0.14",
+                "display_version": "v1.0.14",
+                "name": "v1.0.14",
+                "published_at": "2026-06-09T00:00:00Z",
+                "html_url": "https://example.com/release/v1.0.14",
+                "body": "",
+                "source": "github",
+                "assets": [],
+            },
+            {
+                "version": "1.0.13",
+                "display_version": "v1.0.13",
+                "name": "v1.0.13",
+                "published_at": "2026-06-08T00:00:00Z",
+                "html_url": "https://example.com/release/v1.0.13",
+                "body": "",
+                "source": "github",
+                "assets": [],
+            },
+        ]
+        release_entries = {
+            "1.0.14": {
+                "version": "1.0.14",
+                "display_version": "v1.0.14",
+                "published_at": "2026-06-09T00:00:00Z",
+                "html_url": "https://example.com/release/v1.0.14",
+                "source": "github-release",
+                "update_type": "app-package",
+                "size": 1024,
+                "requires_image_update": False,
+                "reason": "应用包级更新；不需要完整 Docker 镜像更新。",
+            },
+            "1.0.13": {
+                "version": "1.0.13",
+                "display_version": "v1.0.13",
+                "published_at": "2026-06-08T00:00:00Z",
+                "html_url": "https://example.com/release/v1.0.13",
+                "source": "github-release",
+                "update_type": "docker-image-required",
+                "size": 0,
+                "requires_image_update": True,
+                "reason": "本版本需要完整 Docker 镜像更新。",
+            },
+        }
+        version_state = {
+            "current_version": "1.0.12",
+            "runtime_version": "1.0.12",
+            "current_source": "base",
+            "base_version": "1.0.12",
+            "effective_version": "1.0.12",
+            "overlay_active": False,
+            "overlay_is_outdated": False,
+            "status_note": "当前已更新到 1.0.12。",
+        }
+
+        async def build_entry(release):
+            return dict(release_entries[release["version"]])
+
+        with patch.object(updater, "get_version_state", return_value=version_state), \
+                patch.object(updater, "fetch_github_releases", AsyncMock(return_value=releases)), \
+                patch.object(updater, "_build_release_entry", AsyncMock(side_effect=build_entry)):
+            result = await updater.get_available_versions()
+
+        latest = result["versions"][0]
+        self.assertTrue(latest["requires_image_update"])
+        self.assertEqual(latest["update_type"], "docker-image-required")
+        self.assertEqual(latest["required_image_version"], "1.0.13")
+        self.assertIn("v1.0.13", latest["reason"])
+        self.assertIn("完整镜像更新", latest["reason"])
+
+    async def test_perform_app_package_update_rejects_when_crossing_image_release(self):
+        target_entry = {
+            "version": "1.0.14",
+            "display_version": "v1.0.14",
+            "published_at": "2026-06-09T00:00:00Z",
+            "html_url": "https://example.com/release/v1.0.14",
+            "source": "github-release",
+            "update_type": "app-package",
+            "size": 1024,
+            "requires_image_update": False,
+            "reason": "应用包级更新；不需要完整 Docker 镜像更新。",
+            "archive_url": "https://example.com/mediatree-app-1.0.14.tar.gz",
+            "base_api": updater.BASE_API_VERSION,
+        }
+        image_entry = {
+            "version": "1.0.13",
+            "display_version": "v1.0.13",
+            "published_at": "2026-06-08T00:00:00Z",
+            "html_url": "https://example.com/release/v1.0.13",
+            "source": "github-release",
+            "update_type": "docker-image-required",
+            "size": 0,
+            "requires_image_update": True,
+            "reason": "本版本需要完整 Docker 镜像更新。",
+        }
+
+        with patch.object(updater, "get_base_version", return_value="1.0.12"), \
+                patch.object(updater, "_get_release_entries", AsyncMock(return_value=[target_entry, image_entry])):
+            result = await updater.perform_app_package_update("1.0.14")
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["requires_image_update"])
+        self.assertIn("v1.0.13", result["error"])
+
     def test_get_update_status_clears_stale_error_for_current_version(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -794,16 +794,76 @@ def _public_release_entry(entry: dict) -> dict:
         "update_type": entry.get("update_type", "docker-image-required"),
         "size": entry.get("size", 0),
         "requires_image_update": bool(entry.get("requires_image_update")),
+        "required_image_version": entry.get("required_image_version", ""),
         "reason": entry.get("reason", ""),
     }
 
 
+def _find_blocking_image_release(
+    entries: list[dict],
+    base_version: str,
+    target_version: str,
+) -> dict | None:
+    """Find image-required releases between the installed image and target app."""
+    base_norm = _normalize_version(base_version)
+    target_norm = _normalize_version(target_version)
+    if not target_norm or target_norm <= base_norm:
+        return None
+
+    blocking = [
+        entry
+        for entry in entries
+        if entry.get("requires_image_update")
+        and base_norm < _normalize_version(entry.get("version", "")) <= target_norm
+    ]
+    if not blocking:
+        return None
+    return max(blocking, key=lambda entry: _normalize_version(entry.get("version", "")))
+
+
+def _image_gate_reason(base_version: str, target_entry: dict, blocking_entry: dict) -> str:
+    target_display = target_entry.get("display_version") or target_entry.get("version", "")
+    blocking_display = blocking_entry.get("display_version") or blocking_entry.get("version", "")
+    blocking_reason = blocking_entry.get("reason", "")
+    reason = (
+        f"从当前镜像内置版本 {base_version or 'unknown'} 升级到 {target_display} "
+        f"会跨过需要完整镜像更新的 {blocking_display}，请先执行完整镜像更新。"
+    )
+    if blocking_reason:
+        reason += f" {blocking_reason}"
+    return reason
+
+
+def _apply_image_update_gate(entries: list[dict], base_version: str) -> list[dict]:
+    """Mark app-package releases as image-required when an older image is installed."""
+    gated_entries: list[dict] = []
+    for entry in entries:
+        gated = dict(entry)
+        if not gated.get("requires_image_update"):
+            blocking = _find_blocking_image_release(entries, base_version, gated.get("version", ""))
+            if blocking:
+                gated["requires_image_update"] = True
+                gated["update_type"] = "docker-image-required"
+                gated["required_image_version"] = blocking.get("version", "")
+                gated["reason"] = _image_gate_reason(base_version, gated, blocking)
+        gated_entries.append(gated)
+    return gated_entries
+
+
+async def _get_release_entries(max_count: int = 30) -> list[dict]:
+    releases = await fetch_github_releases(max_count=max_count)
+    entries = [await _build_release_entry(release) for release in releases]
+    entries.sort(key=lambda x: _normalize_version(x["version"]), reverse=True)
+    return entries
+
+
 async def _get_release_entry(version: str) -> dict | None:
     version = version.lstrip("vV")
-    releases = await fetch_github_releases(max_count=30)
-    for release in releases:
-        if release.get("version", "").lstrip("vV") == version:
-            return await _build_release_entry(release)
+    entries = await _get_release_entries()
+    base_version = get_base_version()
+    for entry in _apply_image_update_gate(entries, base_version):
+        if entry.get("version", "").lstrip("vV") == version:
+            return entry
     return None
 
 
@@ -812,9 +872,8 @@ async def get_available_versions() -> dict:
     version_state = get_version_state()
     current = version_state["current_version"]
     effective = version_state["effective_version"]
-    releases = await fetch_github_releases()
-    entries = [await _build_release_entry(release) for release in releases]
-    entries.sort(key=lambda x: _normalize_version(x["version"]), reverse=True)
+    entries = await _get_release_entries()
+    entries = _apply_image_update_gate(entries, version_state["base_version"])
     effective_norm = _normalize_version(effective)
     has_update = any(_normalize_version(v["version"]) > effective_norm for v in entries)
     latest_entry = entries[0] if entries else None

@@ -854,6 +854,7 @@ export interface VersionEntry {
   update_type?: 'app-package' | 'docker-image-required'
   size?: number
   requires_image_update?: boolean
+  required_image_version?: string
   reason?: string
 }
 

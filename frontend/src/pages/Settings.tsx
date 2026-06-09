@@ -741,10 +741,15 @@ export default function Settings() {
                   const result = updateResult
                   if (!result) return null
                   const versionKey = normalizeVersion(v.version)
+                  const dockerTargetVersion = v.required_image_version || v.version
+                  const dockerTargetKey = normalizeVersion(dockerTargetVersion)
                   const isCurrent = versionKey === normalizeVersion(result.current_version)
                   const activeUpdate = updateProgress
                     && !isCurrent
-                    && normalizeVersion(updateProgress.version) === versionKey
+                    && (
+                      normalizeVersion(updateProgress.version) === versionKey
+                      || (v.requires_image_update && normalizeVersion(updateProgress.version) === dockerTargetKey)
+                    )
                     && updateProgress.status !== 'idle'
                     && updateProgress.status !== 'success'
                     ? updateProgress
@@ -866,24 +871,24 @@ export default function Settings() {
                           ) : !isCurrent && v.requires_image_update ? (
                             <button
                               onClick={async () => {
-                                if (!confirm(`确定要执行完整镜像更新到 ${v.display_version || v.version} 吗？该操作需要已挂载 Docker socket。`)) return
+                                if (!confirm(`确定要执行完整镜像更新到 ${dockerTargetVersion} 吗？该操作需要已挂载 Docker socket。`)) return
                                 setUpdatePerforming(v.version)
                                 setUpdateMsg('')
                                 setUpdateProgress({
                                   status: 'installing',
-                                  version: v.version,
+                                  version: dockerTargetVersion,
                                   downloaded: 0,
                                   total: 0,
                                   message: '正在发起完整镜像更新...',
                                   update_type: 'docker-image',
                                   logs: [],
                                 })
-                                startUpdatePolling(v.version)
+                                startUpdatePolling(dockerTargetVersion)
                                 try {
-                                  const res = await api.performUpdate(v.version, 'docker-image')
+                                  const res = await api.performUpdate(dockerTargetVersion, 'docker-image')
                                   if (res.ok === false) throw new Error(res.error || '完整镜像更新失败')
                                   setUpdateMsg(res.message || '完整镜像更新已触发')
-                                  dismissUpdate(v.version)
+                                  dismissUpdate(dockerTargetVersion)
                                 } catch (e: any) {
                                   const message = e.message || '未知错误'
                                   if (message.includes('Failed to fetch')) {
