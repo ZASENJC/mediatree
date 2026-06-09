@@ -16,6 +16,9 @@ namespace MediaTree.Windows.Views;
 
 public sealed partial class SettingsPage : Page
 {
+    private const double SettingsColumnMaxWidth = 520;
+    private const double SettingsColumnSpacing = 20;
+
     private sealed record ScraperOption(string Value, string Label, string Description, bool HasKey);
 
     private sealed record LibrarySettingsRowContext(string MediaRoot, string TmdbKey, ComboBox ScraperBox, PasswordBox PasswordBox);
@@ -50,7 +53,7 @@ public sealed partial class SettingsPage : Page
     private readonly TextBlock _tmdbTokenStatusText;
     private readonly TextBlock _updateStatusText;
     private readonly TextBlock _versionText;
-    private double _settingsContentWidth;
+    private double _settingsColumnWidth;
     private ConfigDto _loadedConfig = new();
     private bool _suppressUiPreferenceSave;
 
@@ -132,19 +135,13 @@ public sealed partial class SettingsPage : Page
         var globalStatusText = StatusText("SettingsGlobalStatusText");
         root.Children.Add(globalStatusText);
 
-        var columns = new Grid { ColumnSpacing = 20, RowSpacing = 20 };
-        columns.HorizontalAlignment = HorizontalAlignment.Stretch;
-        columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        columns.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        columns.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
-
-        var leftColumn = new StackPanel { Spacing = 20, HorizontalAlignment = HorizontalAlignment.Stretch };
-        var rightColumn = new StackPanel { Spacing = 20, HorizontalAlignment = HorizontalAlignment.Stretch };
-        Grid.SetColumn(rightColumn, 1);
-        columns.Children.Add(leftColumn);
-        columns.Children.Add(rightColumn);
-        root.Children.Add(columns);
+        var settingsGrid = new Grid
+        {
+            ColumnSpacing = SettingsColumnSpacing,
+            RowSpacing = 20,
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        root.Children.Add(settingsGrid);
 
         var uiPrefsStack = new StackPanel { Spacing = 12 };
         uiPrefsStack.Children.Add(SectionTitle("界面偏好", "SettingsUiPrefsCard"));
@@ -164,7 +161,7 @@ public sealed partial class SettingsPage : Page
         showSourceNameBox.Checked += OnUiPreferenceChanged;
         showSourceNameBox.Unchecked += OnUiPreferenceChanged;
         uiPrefsStack.Children.Add(showSourceNameBox);
-        leftColumn.Children.Add(SectionCard(uiPrefsStack, "SettingsUiPrefsCard"));
+        settingsGrid.Children.Add(SectionCard(uiPrefsStack, "SettingsUiPrefsCard"));
 
         var authStack = new StackPanel { Spacing = 12 };
         authStack.Children.Add(SectionTitle("账号安全", "SettingsAuthCard"));
@@ -184,7 +181,7 @@ public sealed partial class SettingsPage : Page
         authStack.Children.Add(changePasswordButton);
         var authStatusText = StatusText("SettingsAuthStatusText");
         authStack.Children.Add(authStatusText);
-        leftColumn.Children.Add(SectionCard(authStack, "SettingsAuthCard"));
+        settingsGrid.Children.Add(SectionCard(authStack, "SettingsAuthCard"));
 
         var libraryStack = new StackPanel { Spacing = 12 };
         var libraryHeader = new Grid { ColumnSpacing = 12, RowSpacing = 10 };
@@ -217,7 +214,7 @@ public sealed partial class SettingsPage : Page
         var libraryStatusText = StatusText("SettingsLibraryStatusText", visible: true);
         libraryStatusText.Text = "正在加载媒体库设置...";
         libraryStack.Children.Add(libraryStatusText);
-        leftColumn.Children.Add(SectionCard(libraryStack, "SettingsLibraryCard"));
+        settingsGrid.Children.Add(SectionCard(libraryStack, "SettingsLibraryCard"));
 
         var scraperStack = new StackPanel { Spacing = 12 };
         scraperStack.Children.Add(SectionTitle("刮削器", "SettingsScraperCard"));
@@ -236,7 +233,7 @@ public sealed partial class SettingsPage : Page
         var tmdbTokenStatusText = StatusText("SettingsTmdbTokenStatusText");
         scraperStack.Children.Add(tmdbTokenStatusText);
         scraperStack.Children.Add(ScraperDescriptionGrid());
-        rightColumn.Children.Add(SectionCard(scraperStack, "SettingsScraperCard"));
+        settingsGrid.Children.Add(SectionCard(scraperStack, "SettingsScraperCard"));
 
         var backupStack = new StackPanel { Spacing = 12 };
         backupStack.Children.Add(SectionTitle("数据备份与恢复", "SettingsBackupCard"));
@@ -262,7 +259,7 @@ public sealed partial class SettingsPage : Page
         backupStack.Children.Add(FluentTheme.Body("完整备份包含数据库和所有封面图片缓存。恢复会覆盖当前数据。", 13));
         var backupStatusText = StatusText("SettingsBackupStatusText");
         backupStack.Children.Add(backupStatusText);
-        rightColumn.Children.Add(SectionCard(backupStack, "SettingsBackupCard"));
+        settingsGrid.Children.Add(SectionCard(backupStack, "SettingsBackupCard"));
 
         var updateStack = new StackPanel { Spacing = 12 };
         var updateHeader = new Grid { ColumnSpacing = 12, RowSpacing = 10 };
@@ -295,14 +292,12 @@ public sealed partial class SettingsPage : Page
         AutomationProperties.SetAutomationId(logsButton, "SettingsOpenLogs");
         logsButton.Click += OnOpenLogsClicked;
         updateStack.Children.Add(logsButton);
-        rightColumn.Children.Add(SectionCard(updateStack, "SettingsUpdateCard"));
+        settingsGrid.Children.Add(SectionCard(updateStack, "SettingsUpdateCard"));
 
         scrollViewer.SizeChanged += (_, args) => ApplySettingsViewportLayout(
             args.NewSize.Width,
             root,
-            columns,
-            leftColumn,
-            rightColumn);
+            settingsGrid);
 
         scrollViewer.Content = root;
         Content = scrollViewer;
@@ -506,7 +501,7 @@ public sealed partial class SettingsPage : Page
                 settingMap.TryGetValue(root.Path, out var setting);
                 _librarySettingsList.Items.Add(CreateLibrarySettingsRow(root, setting, i));
             }
-            ApplyLoadedLibraryRowWidths();
+            ApplyLoadedLibraryRowWidths(_settingsColumnWidth);
 
             _libraryStatusText.Text = "选择刮削器后点击保存。需要重新整理时可直接重新扫描。";
         }
@@ -530,12 +525,9 @@ public sealed partial class SettingsPage : Page
             BorderThickness = new Thickness(1),
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
-        if (_settingsContentWidth > 0)
+        if (_settingsColumnWidth > 0)
         {
-            var compactSettings = _settingsContentWidth < FluentTheme.MediumBreakpoint;
-            row.Width = compactSettings
-                ? Math.Max(0, _settingsContentWidth - 44)
-                : Math.Max(0, ((_settingsContentWidth - 20) / 2) - 44);
+            row.Width = Math.Max(0, _settingsColumnWidth - 44);
         }
 
         var grid = new Grid { ColumnSpacing = 12, HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -877,26 +869,33 @@ public sealed partial class SettingsPage : Page
         return card;
     }
 
-    private void ApplySettingsViewportLayout(double viewportWidth, StackPanel root, Grid columns, StackPanel leftColumn, StackPanel rightColumn)
+    private void ApplySettingsViewportLayout(double viewportWidth, StackPanel root, Grid settingsGrid)
     {
-        var compact = viewportWidth < FluentTheme.MediumBreakpoint;
         root.Width = Math.Max(0, viewportWidth);
         root.Padding = FluentTheme.SpaciousPagePadding(viewportWidth);
         var contentWidth = Math.Max(0, viewportWidth - root.Padding.Left - root.Padding.Right);
-        _settingsContentWidth = contentWidth;
-        columns.Width = contentWidth;
-        columns.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
-        columns.RowDefinitions[1].Height = compact ? GridLength.Auto : new GridLength(0);
-        columns.ColumnSpacing = compact ? 0 : 20;
-        Grid.SetColumn(rightColumn, compact ? 0 : 1);
-        Grid.SetRow(rightColumn, compact ? 1 : 0);
+        var columnCount = CalculateSettingsColumnCount(contentWidth, settingsGrid.Children.Count);
+        var totalSpacing = (columnCount - 1) * SettingsColumnSpacing;
+        var columnWidth = Math.Min(SettingsColumnMaxWidth, Math.Max(0, (contentWidth - totalSpacing) / columnCount));
+        _settingsColumnWidth = columnWidth;
+        var gridWidth = columnCount * columnWidth + totalSpacing;
+        settingsGrid.Width = gridWidth;
+        settingsGrid.ColumnDefinitions.Clear();
+        settingsGrid.RowDefinitions.Clear();
+        for (var column = 0; column < columnCount; column++)
+        {
+            settingsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(columnWidth) });
+        }
 
-        var columnWidth = compact ? contentWidth : Math.Max(0, (contentWidth - columns.ColumnSpacing) / 2);
-        leftColumn.Width = columnWidth;
-        rightColumn.Width = columnWidth;
+        var rowsNeeded = (int)Math.Ceiling(settingsGrid.Children.Count / (double)columnCount);
+        for (var row = 0; row < rowsNeeded; row++)
+        {
+            settingsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        }
+
         foreach (var card in root.Children.OfType<FrameworkElement>())
         {
-            if (card == columns)
+            if (card == settingsGrid)
             {
                 continue;
             }
@@ -904,30 +903,39 @@ public sealed partial class SettingsPage : Page
             card.Width = contentWidth;
         }
 
-        ApplyColumnCardWidths(leftColumn, columnWidth);
-        ApplyColumnCardWidths(rightColumn, columnWidth);
-        ApplyLoadedLibraryRowWidths();
-    }
-
-    private static void ApplyColumnCardWidths(StackPanel column, double width)
-    {
-        foreach (var child in column.Children.OfType<FrameworkElement>())
+        for (var index = 0; index < settingsGrid.Children.Count; index++)
         {
-            child.Width = width;
+            if (settingsGrid.Children[index] is FrameworkElement child)
+            {
+                child.Width = columnWidth;
+                Grid.SetColumn(child, index / rowsNeeded);
+                Grid.SetRow(child, index % rowsNeeded);
+            }
         }
+
+        ApplyLoadedLibraryRowWidths(columnWidth);
     }
 
-    private void ApplyLoadedLibraryRowWidths()
+    private static int CalculateSettingsColumnCount(double contentWidth, int itemCount)
     {
-        if (_settingsContentWidth <= 0)
+        var maxColumns = Math.Max(1, itemCount);
+        if (contentWidth <= 0)
+        {
+            return 1;
+        }
+
+        var columnWithSpacing = SettingsColumnMaxWidth + SettingsColumnSpacing;
+        return Math.Min(maxColumns, Math.Max(1, (int)Math.Floor((contentWidth + SettingsColumnSpacing) / columnWithSpacing)));
+    }
+
+    private void ApplyLoadedLibraryRowWidths(double columnWidth)
+    {
+        if (columnWidth <= 0)
         {
             return;
         }
 
-        var compact = _settingsContentWidth < FluentTheme.MediumBreakpoint;
-        var rowWidth = compact
-            ? Math.Max(0, _settingsContentWidth - 44)
-            : Math.Max(0, ((_settingsContentWidth - 20) / 2) - 44);
+        var rowWidth = Math.Max(0, columnWidth - 44);
         foreach (var row in _librarySettingsList.Items.OfType<FrameworkElement>())
         {
             row.Width = rowWidth;
