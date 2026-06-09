@@ -80,6 +80,7 @@ public sealed partial class PlayerPage : Page
         GridView ThumbnailsGrid);
 
     private readonly DispatcherTimer _chromeTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private readonly DispatcherTimer _resumePromptTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     private readonly DispatcherTimer _saveTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     private readonly Button _audioButton;
     private readonly Border _bottomChrome;
@@ -145,6 +146,7 @@ public sealed partial class PlayerPage : Page
     private bool _ignoreVolume;
     private bool _muted;
     private bool _playbackStarted;
+    private bool _resumePromptAutoHideScheduled;
     private bool _specialsExpanded;
     private bool _volumePanelOpen;
     private double _duration;
@@ -208,6 +210,7 @@ public sealed partial class PlayerPage : Page
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         _chromeTimer.Tick += OnChromeTimerTick;
+        _resumePromptTimer.Tick += OnResumePromptTimerTick;
         _saveTimer.Tick += OnSaveTimerTick;
     }
 
@@ -538,11 +541,9 @@ public sealed partial class PlayerPage : Page
 
         var resumePrompt = new Border
         {
-            Padding = new Thickness(4),
-            CornerRadius = new CornerRadius(8),
-            Background = Brush(0x00, 0x5F, 0xB8, 0xE8),
-            BorderBrush = Brush(0xFF, 0xFF, 0xFF, 0x2E),
-            BorderThickness = new Thickness(1),
+            Padding = new Thickness(0),
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            BorderThickness = new Thickness(0),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Bottom,
             Margin = new Thickness(0, 0, 0, 132),
@@ -1695,6 +1696,7 @@ public sealed partial class PlayerPage : Page
             SelectSpeedBox(state.Speed);
             UpdatePlaybackLabels(state);
             UpdateTrackLabels(state);
+            ScheduleResumePromptAutoHide(state);
 
             if (state.Paused)
             {
@@ -2063,15 +2065,40 @@ public sealed partial class PlayerPage : Page
 
     private void ShowResumePrompt(double position)
     {
+        _resumePromptTimer.Stop();
+        _resumePromptAutoHideScheduled = false;
         _resumePosition = position;
         _resumeText.Text = $"从上次位置继续 ({FormatTime(position)})";
         _resumePrompt.Visibility = Visibility.Visible;
+        ScheduleResumePromptAutoHide(_state);
     }
 
     private void HideResumePrompt()
     {
+        _resumePromptTimer.Stop();
+        _resumePromptAutoHideScheduled = false;
         _resumePrompt.Visibility = Visibility.Collapsed;
         _resumePosition = 0;
+    }
+
+    private void ScheduleResumePromptAutoHide(PlayerStateSnapshot state)
+    {
+        if (_resumePromptAutoHideScheduled ||
+            _resumePrompt.Visibility != Visibility.Visible ||
+            _resumePosition <= 0 ||
+            state.Paused)
+        {
+            return;
+        }
+
+        _resumePromptAutoHideScheduled = true;
+        _resumePromptTimer.Stop();
+        _resumePromptTimer.Start();
+    }
+
+    private void OnResumePromptTimerTick(object? sender, object args)
+    {
+        HideResumePrompt();
     }
 
     private void ToggleFullScreenMode()
@@ -2129,6 +2156,7 @@ public sealed partial class PlayerPage : Page
         try
         {
             _chromeTimer.Stop();
+            _resumePromptTimer.Stop();
             _saveTimer.Stop();
             RestoreWindowChrome();
             await SaveProgressAsync(true);
