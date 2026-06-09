@@ -33,68 +33,14 @@ interface ScanState {
   total: number
 }
 
-interface CacheHourStepperProps {
-  value: number
-  onChange: (value: number) => void
-  label: string
-}
-
-const clampCacheHours = (value: number) => Math.min(720, Math.max(1, Number.isFinite(value) ? Math.round(value) : 1))
-
-function CacheHourStepper({ value, onChange, label }: CacheHourStepperProps) {
-  const setNextValue = (next: number) => onChange(clampCacheHours(next))
-
-  return (
-    <div className="flex h-10 w-full items-center overflow-hidden rounded-full border border-white/10 bg-white/[0.07] shadow-inner backdrop-blur-xl transition-all focus-within:border-apple-blue/60 focus-within:bg-white/[0.1] focus-within:ring-2 focus-within:ring-apple-blue/20">
-      <input
-        type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        aria-label={`${label}小时`}
-        value={value}
-        onChange={e => {
-          const next = e.target.value.replace(/[^\d]/g, '')
-          if (next) setNextValue(Number(next))
-        }}
-        className="min-w-0 flex-1 bg-transparent py-2 pl-3 pr-1 text-center text-sm font-semibold text-white outline-none"
-      />
-      <span className="shrink-0 pr-2 text-[11px] text-gray-500">小时</span>
-      <div className="mr-1 flex h-8 w-7 shrink-0 flex-col overflow-hidden rounded-full border border-white/10 bg-black/20">
-        <button
-          type="button"
-          aria-label={`${label}增加 1 小时`}
-          disabled={value >= 720}
-          onClick={() => setNextValue(value + 1)}
-          className="flex h-4 w-full items-center justify-center text-[10px] font-semibold leading-none text-gray-300 transition-colors hover:bg-apple-blue/20 hover:text-white disabled:text-gray-600 disabled:hover:bg-transparent"
-        >
-          +
-        </button>
-        <button
-          type="button"
-          aria-label={`${label}减少 1 小时`}
-          disabled={value <= 1}
-          onClick={() => setNextValue(value - 1)}
-          className="flex h-4 w-full items-center justify-center border-t border-white/10 text-[10px] font-semibold leading-none text-gray-300 transition-colors hover:bg-white/[0.12] hover:text-white disabled:text-gray-600 disabled:hover:bg-transparent"
-        >
-          -
-        </button>
-      </div>
-    </div>
-  )
-}
-
 export default function Settings() {
   const nativeApp = isNativeApp()
   const [config, setConfig] = useState<Config | null>(null)
   const [librariesLoading, setLibrariesLoading] = useState(true)
 
   const [javdbEnabled, setJavdbEnabled] = useState(true)
-  const [javdbCache, setJavdbCache] = useState(24)
-  const [tmdbCache, setTmdbCache] = useState(168)
-  const [bangumiCache, setBangumiCache] = useState(168)
   const [tmdbKey, setTmdbKey] = useState('')
   const [tmdbToken, setTmdbToken] = useState('')
-  const [reqInterval, setReqInterval] = useState(3)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
   const [serverUrlInput, setServerUrlInput] = useState(() => getServerUrl())
@@ -275,12 +221,8 @@ export default function Settings() {
     api.getConfig().then(d => {
       setConfig(d)
       setJavdbEnabled(d.javdb_enabled)
-      setJavdbCache(d.javdb_cache_hours)
-      setTmdbCache(d.tmdb_cache_hours)
-      setBangumiCache(d.bangumi_cache_hours)
       setTmdbKey(d.tmdb_api_key || '')
       setTmdbToken(d.tmdb_access_token || '')
-      setReqInterval(d.javdb_request_interval)
     }).catch(() => {})
 
     Promise.all([api.mediaRoots(), api.librarySettings()]).then(([rootsData, settings]) => {
@@ -326,10 +268,6 @@ export default function Settings() {
       setUiPrefs({ ...getUiPrefs(), hideHomeTitleText })
       await api.updateConfig({
         javdb_enabled: javdbEnabled,
-        javdb_cache_hours: javdbCache,
-        tmdb_cache_hours: tmdbCache,
-        bangumi_cache_hours: bangumiCache,
-        javdb_request_interval: reqInterval,
         tmdb_api_key: tmdbKey,
         tmdb_access_token: tmdbToken,
       })
@@ -640,25 +578,7 @@ export default function Settings() {
           <div className={cardClass}>
             <h2 className={sectionTitle}>刮削器</h2>
             <div className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {[
-                  { k: javdbCache, set: setJavdbCache, label: 'Javdatabase 缓存' },
-                  { k: tmdbCache, set: setTmdbCache, label: 'TMDB 缓存' },
-                  { k: bangumiCache, set: setBangumiCache, label: 'Bangumi 缓存' },
-                ].map(({ k, set, label }) => (
-                  <div key={label}>
-                    <label className={labelClass}>{label}</label>
-                    <CacheHourStepper value={k} onChange={set} label={label} />
-                  </div>
-                ))}
-              </div>
               <div>
-                <label className={labelClass}>请求间隔（秒）</label>
-                <input type="number" min={1} max={30} value={reqInterval}
-                  onChange={e => setReqInterval(Number(e.target.value))}
-                  className="glass-input w-20 px-2 py-1.5 text-xs" />
-              </div>
-              <div className="border-t border-white/10 pt-3">
                 <label className={labelClass}>TMDB API Key</label>
                 <input type="text" value={tmdbKey} onChange={e => setTmdbKey(e.target.value)}
                   placeholder="去 themoviedb.org 免费申请" className={inputClass} />

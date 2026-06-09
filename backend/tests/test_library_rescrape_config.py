@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from app import scanner
+from app.scraper_cache_policy import should_bypass_scraper_cache
 
 
 class _FakeCursor:
@@ -122,6 +123,38 @@ class LibraryRescrapeConfigTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(calls[0], ("get_scraper", "tmdb_collection"))
         self.assertEqual(calls[1], ("full_scrape", "Alien", "Alien"))
         self.assertEqual(calls[2], ("apply", "Alien", "Alien", "/media/movies", True))
+
+    async def test_rescrape_movie_bypasses_scraper_cache(self):
+        bypass_states = []
+
+        class CollectionScraper:
+            async def full_scrape(self, search_name, *, code="", candidate_names=None, movie=None):
+                bypass_states.append(should_bypass_scraper_cache())
+                return {
+                    "source": "tmdb_collection",
+                    "scraper_source": "tmdb_collection",
+                    "title": "Alien",
+                    "source_id": "8091",
+                    "_exact_match": True,
+                }
+
+        def get_scraper(_name):
+            return CollectionScraper()
+
+        async def apply(*_args, **_kwargs):
+            return 1
+
+        scanner.get_scraper = get_scraper
+        scanner._apply_scraped_data = apply
+
+        with (
+            patch("app.database.get_db", return_value=_FakeDb(_movie_row())),
+            patch("app.database.get_library_settings", return_value={"scraper": "tmdb_collection"}),
+        ):
+            result = await scanner.rescrape_movie(7)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(bypass_states, [True])
 
 
 if __name__ == "__main__":

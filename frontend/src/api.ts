@@ -820,10 +820,6 @@ export interface Category {
 
 export interface Config {
   javdb_enabled: boolean
-  javdb_cache_hours: number
-  javdb_request_interval: number
-  tmdb_cache_hours: number
-  bangumi_cache_hours: number
   tmdb_api_key: string
   tmdb_access_token: string
   tmdb_configured: boolean

@@ -12,6 +12,14 @@ log_file = None
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("mediatree")
 
+_INTERNAL_SCRAPER_POLICY_DEFAULTS = {
+    "javdb_cache_hours": 24,
+    "javdb_request_interval": 3.0,
+    "tmdb_cache_hours": 168,
+    "bangumi_cache_hours": 168,
+}
+_INTERNAL_SCRAPER_POLICY_KEYS = set(_INTERNAL_SCRAPER_POLICY_DEFAULTS)
+
 
 def setup_file_logging(data_dir: str):
     global log_dir, log_file
@@ -34,7 +42,7 @@ class Settings(BaseSettings):
     javdb_enabled: bool = True
     javdb_base_url: str = "https://www.javdatabase.com"
     javdb_cache_hours: int = 24
-    javdb_request_interval: float = 1.0
+    javdb_request_interval: float = 3.0
     tmdb_cache_hours: int = 168
     bangumi_cache_hours: int = 168
     tmdb_api_key: str = ""
@@ -53,6 +61,14 @@ class Settings(BaseSettings):
     auth_user: str = ""
     auth_pass: str = ""
     auth_password_hash: str = ""
+
+    def __init__(self, **values):
+        super().__init__(**values)
+        self._apply_internal_scraper_policy_defaults()
+
+    def _apply_internal_scraper_policy_defaults(self):
+        for key, val in _INTERNAL_SCRAPER_POLICY_DEFAULTS.items():
+            setattr(self, key, val)
 
     @property
     def db_path(self) -> str:
@@ -131,6 +147,8 @@ class Settings(BaseSettings):
                 with open(self.config_path, "r") as f:
                     data = json.load(f)
                 for key, val in data.items():
+                    if key in _INTERNAL_SCRAPER_POLICY_KEYS:
+                        continue
                     if hasattr(self, key):
                         if key in ("auth_user", "auth_password_hash") and val:
                             setattr(self, key, val)
@@ -145,10 +163,6 @@ class Settings(BaseSettings):
             data = {
                 "javdb_enabled": self.javdb_enabled,
                 "javdb_base_url": self.javdb_base_url,
-                "javdb_cache_hours": self.javdb_cache_hours,
-                "javdb_request_interval": self.javdb_request_interval,
-                "tmdb_cache_hours": self.tmdb_cache_hours,
-                "bangumi_cache_hours": self.bangumi_cache_hours,
                 "tmdb_api_key": self.tmdb_api_key,
                 "tmdb_access_token": self.tmdb_access_token,
                 "scrape_concurrency_per_library": self.scrape_concurrency_per_library,

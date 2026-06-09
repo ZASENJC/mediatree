@@ -4,6 +4,8 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
+from ..scraper_cache_policy import should_bypass_scraper_cache
+
 
 @dataclass
 class ScrapeCandidate:
@@ -156,6 +158,8 @@ class BaseScraper:
         key_parts: tuple[Any, ...],
         factory: Callable[[], Awaitable[Any]],
     ) -> Any:
+        if should_bypass_scraper_cache():
+            return await factory()
         key = (self.name, *key_parts)
         async with _task_cache_lock:
             task = _task_cache.get(key)

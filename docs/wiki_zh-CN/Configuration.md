@@ -28,11 +28,9 @@ MediaTree 通过环境变量（`.env` 文件）和运行时设置（设置页面
 |----------|---------|-------------|
 | `TMDB_API_KEY` | `""` | TMDB v3 API 密钥 |
 | `TMDB_ACCESS_TOKEN` | `""` | TMDB v4 读取访问令牌（推荐）|
-| `TMDB_CACHE_HOURS` | `168` | TMDB 缓存有效期（小时，1 周）|
-| `BANGUMI_CACHE_HOURS` | `168` | Bangumi 缓存有效期（小时）|
 | `JAVDB_ENABLED` | `true` | 启用 JavDatabase 刮削器 |
-| `JAVDB_CACHE_HOURS` | `24` | JavDB 缓存有效期（小时）|
-| `JAVDB_REQUEST_INTERVAL` | `1.0` | JavDB 请求最小间隔（秒）|
+
+缓存有效期和 Javdatabase 请求间隔由应用内部固定管理，不再作为环境变量或设置页选项暴露。当前内部策略：TMDB/Bangumi 缓存 168 小时，Javdatabase 缓存 24 小时，Javdatabase 外部请求默认至少间隔 3 秒。详见[刮削器缓存和刷新策略](Scrapers#刮削器缓存和刷新策略)。
 
 ### 并行度设置
 
@@ -79,7 +77,7 @@ services:
 以下设置在 Web 界面中管理，并持久化到 `data/config.json`：
 
 - **库配置** — 刮削器选择、TMDB 密钥、库密码
-- **JavDB 设置** — 启用/禁用、缓存时长、请求间隔
+- **刮削器设置** — TMDB 密钥、TMDB 读取访问令牌
 - **界面偏好** — 隐藏首页标题文字、环境光模式、显示源文件名
 
 ## 配置优先级

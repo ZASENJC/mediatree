@@ -12,6 +12,7 @@ from .scrapers.base import ScrapeCandidate, ScrapeResult, ScrapeStaff
 from .scrapers.registry import get_scraper
 from .scrapers.utils import scrape_result_to_legacy, _candidate_to_dict
 from .scrapers.tmdb_scraper import tmdb_title_search
+from .scraper_cache_policy import bypass_scraper_cache
 from .title_match import (
     TmdbIdToken, CODE_PATTERN, CODE_PATTERN_UNDERSCORE,
     extract_code, extract_tmdb_token_from_name, extract_tmdb_ref,
@@ -943,7 +944,13 @@ async def cleanup_deleted_files(media_root: str) -> int:
     return removed
 
 
-async def run_scan_for_root(media_root: str, trigger: str = "manual") -> dict:
+async def run_scan_for_root(media_root: str, trigger: str = "manual", *, bypass_cache: bool | None = None) -> dict:
+    if bypass_cache is None:
+        bypass_cache = trigger == "manual"
+    if bypass_cache:
+        with bypass_scraper_cache():
+            return await run_scan_for_root(media_root, trigger, bypass_cache=False)
+
     from .database import get_library_settings, upsert_movie
     from .config import logger
     lock = _scan_lock_for(media_root)
@@ -1039,7 +1046,11 @@ async def clear_library_scraped_data(media_root: str):
     )
 
 
-async def rescrape_movie(movie_id: int) -> dict:
+async def rescrape_movie(movie_id: int, *, bypass_cache: bool = True) -> dict:
+    if bypass_cache:
+        with bypass_scraper_cache():
+            return await rescrape_movie(movie_id, bypass_cache=False)
+
     from .database import get_db, get_library_settings
     from .config import logger
 
@@ -1199,7 +1210,26 @@ async def rescrape_movie(movie_id: int) -> dict:
     return {"ok": False, "error": f"All scrapers failed: {failure_text}"}
 
 
-async def rescrape_movie_manual(movie_id: int, query: str, preferred_scraper: str = None, source_id: str = None, media_type: str = "movie") -> dict:
+async def rescrape_movie_manual(
+    movie_id: int,
+    query: str,
+    preferred_scraper: str = None,
+    source_id: str = None,
+    media_type: str = "movie",
+    *,
+    bypass_cache: bool = True,
+) -> dict:
+    if bypass_cache:
+        with bypass_scraper_cache():
+            return await rescrape_movie_manual(
+                movie_id,
+                query,
+                preferred_scraper,
+                source_id,
+                media_type,
+                bypass_cache=False,
+            )
+
     from .database import get_db, get_library_settings
     from .config import logger
 
@@ -1365,7 +1395,11 @@ async def _propagate_to_sibling_subfolders(db, parent_levels: str, media_root: s
             logger.warning(f"  propagate: failed for folder='{subfolder}': {e}")
 
 
-async def rescrape_folder(folder_levels: str, media_root: str) -> dict:
+async def rescrape_folder(folder_levels: str, media_root: str, *, bypass_cache: bool = True) -> dict:
+    if bypass_cache:
+        with bypass_scraper_cache():
+            return await rescrape_folder(folder_levels, media_root, bypass_cache=False)
+
     from .database import get_db
     from .config import logger
 
@@ -1528,7 +1562,24 @@ async def change_folder_backdrop(folder_levels: str, media_root: str, fanart_url
     return {"ok": True}
 
 
-async def rescrape_folder_manual(folder_levels: str, media_root: str, query: str, preferred_scraper: str = "") -> dict:
+async def rescrape_folder_manual(
+    folder_levels: str,
+    media_root: str,
+    query: str,
+    preferred_scraper: str = "",
+    *,
+    bypass_cache: bool = True,
+) -> dict:
+    if bypass_cache:
+        with bypass_scraper_cache():
+            return await rescrape_folder_manual(
+                folder_levels,
+                media_root,
+                query,
+                preferred_scraper,
+                bypass_cache=False,
+            )
+
     from .database import get_db, get_library_settings
     from .config import logger
 
@@ -1615,7 +1666,26 @@ async def rescrape_folder_manual(folder_levels: str, media_root: str, query: str
     return {"ok": False, "error": "All scrapers failed"}
 
 
-async def apply_folder_scrape_result(folder_levels: str, media_root: str, source_id: str, source: str, media_type: str = "movie") -> dict:
+async def apply_folder_scrape_result(
+    folder_levels: str,
+    media_root: str,
+    source_id: str,
+    source: str,
+    media_type: str = "movie",
+    *,
+    bypass_cache: bool = True,
+) -> dict:
+    if bypass_cache:
+        with bypass_scraper_cache():
+            return await apply_folder_scrape_result(
+                folder_levels,
+                media_root,
+                source_id,
+                source,
+                media_type,
+                bypass_cache=False,
+            )
+
     from .config import logger
     from pathlib import Path
 

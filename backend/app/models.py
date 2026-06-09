@@ -53,7 +53,6 @@ class ScanResult(BaseModel):
 class ConfigUpdate(BaseModel):
     javdb_cookie: Optional[str] = None
     javdb_enabled: Optional[bool] = None
-    javdb_cache_hours: Optional[int] = None
 
 
 class FolderNode(BaseModel):
