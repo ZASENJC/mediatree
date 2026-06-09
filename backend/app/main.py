@@ -896,10 +896,6 @@ async def api_get_config():
     return {
         "javdb_enabled": settings.javdb_enabled,
         "javdb_base_url": settings.javdb_base_url,
-        "javdb_cache_hours": settings.javdb_cache_hours,
-        "javdb_request_interval": settings.javdb_request_interval,
-        "tmdb_cache_hours": getattr(settings, 'tmdb_cache_hours', 168),
-        "bangumi_cache_hours": getattr(settings, 'bangumi_cache_hours', 168),
         "tmdb_api_key": _mask_sensitive(settings.tmdb_api_key),
         "tmdb_access_token": _mask_sensitive(settings.tmdb_access_token),
         "tmdb_configured": bool(settings.tmdb_api_key or settings.tmdb_access_token),
@@ -920,14 +916,6 @@ async def api_update_config(data: dict):
         settings.javdb_enabled = data["javdb_enabled"]
     if "javdb_base_url" in data:
         settings.javdb_base_url = data["javdb_base_url"]
-    if "javdb_cache_hours" in data:
-        settings.javdb_cache_hours = data["javdb_cache_hours"]
-    if "javdb_request_interval" in data:
-        settings.javdb_request_interval = data["javdb_request_interval"]
-    if "tmdb_cache_hours" in data:
-        settings.tmdb_cache_hours = data["tmdb_cache_hours"]
-    if "bangumi_cache_hours" in data:
-        settings.bangumi_cache_hours = data["bangumi_cache_hours"]
     if "tmdb_api_key" in data:
         val = data["tmdb_api_key"]
         if val and "***" not in val:
@@ -1167,9 +1155,9 @@ async def api_version():
     }
 
 @app.get("/api/update/check")
-async def api_update_check():
-    """Check for available updates from GitHub and DockerHub."""
-    return await get_available_versions()
+async def api_update_check(include_registry_sync: bool = Query(False)):
+    """Check for available updates from GitHub Releases."""
+    return await get_available_versions(include_registry_sync=include_registry_sync)
 
 @app.post("/api/update/perform")
 async def api_update_perform(data: dict):

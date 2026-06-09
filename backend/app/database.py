@@ -3,6 +3,7 @@ import json
 import sqlite3
 from pathlib import Path
 from .config import settings, logger
+from .scraper_cache_policy import should_bypass_scraper_cache
 
 _db_pool = None
 WEB_USER_ID = "web"
@@ -1549,8 +1550,14 @@ async def has_any_library_setting() -> bool:
     return row["cnt"] > 0
 
 
-async def get_scraper_cache(source: str, query: str, max_hours: int) -> dict | None:
+def _is_empty_scraper_cache_payload(data) -> bool:
+    return data is None or data == {} or data == []
+
+
+async def get_scraper_cache(source: str, query: str, max_hours: int):
     from datetime import datetime, timedelta
+    if should_bypass_scraper_cache():
+        return None
     db = await get_db()
     cur = await db.execute(
         "SELECT data, fetched_at FROM scraper_cache WHERE source=? AND query=?", (source, query)
@@ -1562,13 +1569,22 @@ async def get_scraper_cache(source: str, query: str, max_hours: int) -> dict | N
     if datetime.now() - fetched > timedelta(hours=max_hours):
         return None
     try:
-        return json.loads(row["data"])
+        data = json.loads(row["data"])
     except (json.JSONDecodeError, TypeError):
         return None
+    if _is_empty_scraper_cache_payload(data):
+        await db.execute("DELETE FROM scraper_cache WHERE source=? AND query=?", (source, query))
+        await db.commit()
+        return None
+    return data
 
 
-async def set_scraper_cache(source: str, query: str, data: dict):
+async def set_scraper_cache(source: str, query: str, data):
     db = await get_db()
+    if _is_empty_scraper_cache_payload(data):
+        await db.execute("DELETE FROM scraper_cache WHERE source=? AND query=?", (source, query))
+        await db.commit()
+        return
     await db.execute(
         "INSERT OR REPLACE INTO scraper_cache (source, query, data, fetched_at) VALUES (?,?,?,datetime('now'))",
         (source, query, json.dumps(data, ensure_ascii=False))

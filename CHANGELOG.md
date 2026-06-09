@@ -6,6 +6,25 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## 1.0.14 (2026-06-10)
+
+### Playback
+
+- Updated the browser tab title on the detail playback page to reflect playback state: `▶ <title> - MediaTree` while playing and `⏸ <title> - MediaTree` while paused or ended
+- Kept the playback title active while staying on the playback page and restored the original site title only after leaving the page
+- Preferred the active episode label for the tab title when series episode data is available
+
+### Updates
+
+- Changed Settings update cards so older app-package versions show `回滚此版本`, while newer app-package versions show `下载并更新`
+- Aligned confirmation, progress, and error wording with rollback vs update actions
+
+### Release Type
+
+- App-package update; no full Docker image update is required
+
+---
+
 ## 1.0.13 (2026-06-09)
 
 ### Windows Desktop
@@ -34,6 +53,10 @@ All notable changes to MediaTree are documented here.
 - Changed manual auto scraping to search and display all candidates from the automatic scraping chain instead of applying a scrape immediately
 - Unified card rescrape behavior so right-click "Rescrape" uses the scraper configured on that media library and applies the result
 - Limited Javdatabase to libraries explicitly configured with the Javdatabase scraper; it is not included in the automatic scraping chain for other libraries
+- Changed scraper cache TTLs and Javdatabase request spacing into internal backend policy, removing the Settings/environment tuning knobs
+- Made manual scans, rescrapes, manual scrape apply, and selected-result apply bypass scraper cache so user-requested refreshes fetch current data
+- Stopped caching empty scraper results and automatically removes legacy empty cache rows when they are read
+- Normalized Javdatabase throttling so search, direct, fuzzy, and detail requests all use the internal 3-second request interval
 
 ### Playback
 
@@ -49,7 +72,7 @@ All notable changes to MediaTree are documented here.
 
 ### Release Type
 
-- Full Docker image update is required because this release changes the Docker image metadata/update baseline and release publishing path
+- Full Docker image update is required because this release changes the Docker image metadata/update baseline, release publishing path, and Docker/runtime scraper policy defaults
 - Windows desktop native UI and libmpv changes require a Windows desktop base package update
 - Docker Compose users should run `docker compose pull && docker compose up -d`
 

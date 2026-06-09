@@ -220,6 +220,56 @@ canvas[data-mediatree-subtitle="ass"] {
   z-index: auto;
 }
 
+.mediatree-player-frame {
+  --player-ui-accent: #00a4dc;
+  --player-ui-accent-strong: #0a84ff;
+  --player-ui-accent-soft: rgba(10, 132, 255, 0.18);
+  --player-ui-text: rgba(255, 255, 255, 0.94);
+  --player-ui-muted: rgba(210, 220, 232, 0.68);
+  --player-ui-faint: rgba(255, 255, 255, 0.32);
+  --player-ui-border: rgba(255, 255, 255, 0.18);
+  --player-ui-border-strong: rgba(10, 132, 255, 0.48);
+  --player-ui-accent-fill: rgba(0, 164, 220, 0.76);
+  --player-ui-surface: rgba(8, 12, 20, 0.72);
+  --player-ui-surface-elevated: rgba(5, 8, 14, 0.82);
+  --player-ui-surface-hover: rgba(255, 255, 255, 0.12);
+  --player-ui-error-overlay: rgba(0, 0, 0, 0.7);
+  --player-ui-bottom-scrim: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.22) 28%, rgba(0, 0, 0, 0.72) 100%);
+  --player-ui-shadow: 0 18px 52px rgba(0, 0, 0, 0.38);
+  --player-ui-inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  --player-ui-warning-surface: rgba(16, 12, 5, 0.7);
+  --player-ui-warning-border: rgba(251, 191, 36, 0.28);
+  --player-ui-warning-text: #fde68a;
+  --player-ui-warning-muted: rgba(254, 243, 199, 0.72);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  .mediatree-player-frame {
+    --player-ui-accent: #0077a8;
+    --player-ui-accent-strong: #0066cc;
+    --player-ui-accent-soft: rgba(0, 119, 168, 0.14);
+    --player-ui-text: rgba(13, 20, 30, 0.94);
+    --player-ui-muted: rgba(58, 70, 86, 0.72);
+    --player-ui-faint: rgba(13, 20, 30, 0.28);
+    --player-ui-border: rgba(15, 23, 42, 0.14);
+    --player-ui-border-strong: rgba(0, 119, 168, 0.46);
+    --player-ui-accent-fill: rgba(0, 119, 168, 0.76);
+    --player-ui-surface: rgba(248, 250, 252, 0.76);
+    --player-ui-surface-elevated: rgba(255, 255, 255, 0.9);
+    --player-ui-surface-hover: rgba(15, 23, 42, 0.08);
+    --player-ui-error-overlay: rgba(248, 250, 252, 0.78);
+    --player-ui-bottom-scrim: linear-gradient(180deg, transparent 0%, rgba(255, 255, 255, 0.12) 24%, rgba(255, 255, 255, 0.76) 100%);
+    --player-ui-shadow: 0 18px 48px rgba(15, 23, 42, 0.2);
+    --player-ui-inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+    --player-ui-warning-surface: rgba(255, 251, 235, 0.82);
+    --player-ui-warning-border: rgba(217, 119, 6, 0.26);
+    --player-ui-warning-text: #92400e;
+    --player-ui-warning-muted: rgba(120, 53, 15, 0.72);
+    color-scheme: light;
+  }
+}
+
 .mediatree-artplayer video {
   width: 100%;
   height: 100%;
@@ -236,6 +286,7 @@ canvas[data-mediatree-subtitle="ass"] {
 /* ── YouTube-style: controls hide with the whole player chrome ── */
 .mediatree-artplayer .art-control {
   background: transparent;
+  color: var(--player-ui-text);
   transition: opacity 0.3s ease;
 }
 
@@ -283,7 +334,7 @@ canvas[data-mediatree-subtitle="ass"] {
 /* ── YouTube-style bottom controls ── */
 .mediatree-artplayer .art-bottom {
   padding: 0 12px 8px;
-  background: transparent !important;
+  background: var(--player-ui-bottom-scrim) !important;
 }
 
 .mediatree-artplayer .art-video-player.art-hover:not(.art-control-show) .art-bottom {
@@ -296,10 +347,19 @@ canvas[data-mediatree-subtitle="ass"] {
   transform: translateY(var(--art-bottom-offset));
 }
 
-/* Control buttons — blue icons, no hover background */
+/* Control buttons */
 .mediatree-artplayer .art-bottom .art-controls .art-control-left > *,
 .mediatree-artplayer .art-bottom .art-controls .art-control-right > * {
-  color: #00a4dc;
+  color: var(--player-ui-text);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.22);
+  transition: color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.mediatree-artplayer .art-bottom .art-controls .art-control-left > *:hover,
+.mediatree-artplayer .art-bottom .art-controls .art-control-right > *:hover {
+  color: var(--player-ui-accent);
+  background: var(--player-ui-surface-hover);
+  transform: translateY(-1px);
 }
 
 .mediatree-artplayer .art-bottom .art-controls .art-control-left > * > svg,
@@ -327,7 +387,32 @@ canvas[data-mediatree-subtitle="ass"] {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
-  color: rgba(255,255,255,0.9);
+  color: var(--player-ui-text);
+}
+
+.mediatree-artplayer .art-setting,
+.mediatree-artplayer .art-selector,
+.mediatree-artplayer .art-contextmenus,
+.mediatree-artplayer .art-info {
+  border: 1px solid var(--player-ui-border) !important;
+  background: var(--player-ui-surface-elevated) !important;
+  color: var(--player-ui-text) !important;
+  box-shadow: var(--player-ui-shadow) !important;
+  backdrop-filter: blur(22px) saturate(170%);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+}
+
+.mediatree-artplayer .art-setting-item,
+.mediatree-artplayer .art-selector-item {
+  color: var(--player-ui-text) !important;
+}
+
+.mediatree-artplayer .art-setting-item:hover,
+.mediatree-artplayer .art-selector-item:hover,
+.mediatree-artplayer .art-setting-item.art-current,
+.mediatree-artplayer .art-selector-item.art-current {
+  background: var(--player-ui-surface-hover) !important;
+  color: var(--player-ui-accent) !important;
 }
 
 .mediatree-artplayer .art-subtitle {
@@ -368,17 +453,16 @@ canvas[data-mediatree-subtitle="ass"] {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.24);
+  border: 1px solid var(--player-ui-border);
   border-radius: 999px;
-  color: rgba(255, 255, 255, 0.94);
+  color: var(--player-ui-text);
   background:
-    radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.36), transparent 32%),
-    radial-gradient(circle at 74% 78%, rgba(10, 132, 255, 0.18), transparent 38%),
-    rgba(10, 14, 22, 0.34);
+    radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.26), transparent 32%),
+    radial-gradient(circle at 74% 78%, var(--player-ui-accent-soft), transparent 38%),
+    var(--player-ui-surface);
   box-shadow:
-    0 18px 52px rgba(0, 0, 0, 0.38),
-    inset 0 1px 0 rgba(255, 255, 255, 0.32),
-    inset 0 -12px 22px rgba(255, 255, 255, 0.05);
+    var(--player-ui-shadow),
+    var(--player-ui-inner-highlight);
   backdrop-filter: blur(22px) saturate(170%) brightness(1.08);
   -webkit-backdrop-filter: blur(22px) saturate(170%) brightness(1.08);
   transition:
@@ -403,20 +487,20 @@ canvas[data-mediatree-subtitle="ass"] {
 .episode-switcher-button:hover,
 .episode-switcher-button:focus-visible,
 .episode-switcher-button-active {
-  border-color: rgba(10, 132, 255, 0.48);
+  border-color: var(--player-ui-border-strong);
   background:
-    radial-gradient(circle at 26% 18%, rgba(255, 255, 255, 0.42), transparent 34%),
-    radial-gradient(circle at 72% 76%, rgba(10, 132, 255, 0.32), transparent 42%),
-    rgba(8, 18, 32, 0.5);
+    radial-gradient(circle at 26% 18%, rgba(255, 255, 255, 0.32), transparent 34%),
+    radial-gradient(circle at 72% 76%, var(--player-ui-accent-soft), transparent 42%),
+    var(--player-ui-surface-elevated);
   box-shadow:
-    0 20px 58px rgba(0, 0, 0, 0.42),
-    0 10px 30px rgba(10, 132, 255, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.36);
+    var(--player-ui-shadow),
+    0 10px 30px var(--player-ui-accent-soft),
+    var(--player-ui-inner-highlight);
   transform: scale(1.04);
 }
 
 .episode-switcher-button:focus-visible {
-  outline: 2px solid rgba(10, 132, 255, 0.68);
+  outline: 2px solid var(--player-ui-accent);
   outline-offset: 3px;
 }
 
@@ -434,7 +518,126 @@ canvas[data-mediatree-subtitle="ass"] {
   height: 0.12rem;
   border-radius: 999px;
   background: currentColor;
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.28);
+  box-shadow: 0 0 10px var(--player-ui-accent-soft);
+}
+
+.player-episode-menu,
+.player-osd,
+.player-resume-prompt,
+.player-warning,
+.player-modal {
+  border: 1px solid var(--player-ui-border);
+  background: var(--player-ui-surface-elevated);
+  color: var(--player-ui-text);
+  box-shadow: var(--player-ui-shadow);
+  backdrop-filter: blur(22px) saturate(170%);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+}
+
+.player-episode-menu-header {
+  border-bottom: 1px solid var(--player-ui-border);
+}
+
+.player-episode-count,
+.player-episode-meta,
+.player-modal-muted {
+  color: var(--player-ui-muted);
+}
+
+.player-episode-item {
+  color: var(--player-ui-muted);
+}
+
+.player-episode-item:hover {
+  background: var(--player-ui-surface-hover);
+  color: var(--player-ui-text);
+}
+
+.player-episode-item-active {
+  border: 1px solid var(--player-ui-border-strong);
+  background: var(--player-ui-accent-soft);
+  color: var(--player-ui-text);
+}
+
+.player-episode-dot {
+  background: var(--player-ui-faint);
+}
+
+.player-episode-dot-active {
+  background: var(--player-ui-accent);
+  box-shadow: 0 0 18px var(--player-ui-accent-soft);
+}
+
+.player-warning {
+  border-color: var(--player-ui-warning-border);
+  background: var(--player-ui-warning-surface);
+}
+
+.player-warning-title,
+.player-warning-action {
+  color: var(--player-ui-warning-text);
+}
+
+.player-warning-body {
+  color: var(--player-ui-warning-muted);
+}
+
+.player-warning-action {
+  border: 1px solid var(--player-ui-warning-border);
+  background: rgba(245, 158, 11, 0.16);
+}
+
+.player-warning-action:hover {
+  background: rgba(245, 158, 11, 0.26);
+}
+
+.player-action-chip,
+.player-modal-secondary,
+.player-resume-dismiss {
+  border: 1px solid var(--player-ui-border);
+  background: var(--player-ui-surface);
+  color: var(--player-ui-muted);
+}
+
+.player-action-chip:hover,
+.player-modal-secondary:hover,
+.player-resume-dismiss:hover {
+  background: var(--player-ui-surface-hover);
+  color: var(--player-ui-text);
+}
+
+.player-action-chip-active,
+.player-modal-primary,
+.player-resume-action {
+  border: 1px solid var(--player-ui-border-strong);
+  background: var(--player-ui-accent-fill);
+  color: #fff;
+  box-shadow: 0 16px 36px var(--player-ui-accent-soft);
+}
+
+.player-modal-primary:hover,
+.player-resume-action:hover {
+  background: var(--player-ui-accent);
+}
+
+.player-resume-action {
+  border: 0;
+}
+
+.player-resume-dismiss {
+  border-width: 0 0 0 1px;
+}
+
+.player-transcode-chip {
+  border: 1px solid var(--player-ui-warning-border);
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--player-ui-warning-text);
+}
+
+.player-error-overlay {
+  background: var(--player-ui-error-overlay);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
 
 .mediatree-art-gesture-layer {

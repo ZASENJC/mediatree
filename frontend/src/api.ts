@@ -651,8 +651,8 @@ export const api = {
   getVersion: () =>
     request<UpdateInfo>('/version'),
 
-  checkForUpdates: () =>
-    request<UpdateCheckResult>('/update/check'),
+  checkForUpdates: (includeRegistrySync = false) =>
+    request<UpdateCheckResult>(`/update/check${includeRegistrySync ? '?include_registry_sync=true' : ''}`),
 
   performUpdate: (version: string, mode: 'auto' | 'app-package' | 'docker-image' = 'auto') =>
     request<{ ok: boolean; message?: string; version?: string; error?: string }>('/update/perform', {
@@ -823,10 +823,6 @@ export interface Category {
 
 export interface Config {
   javdb_enabled: boolean
-  javdb_cache_hours: number
-  javdb_request_interval: number
-  tmdb_cache_hours: number
-  bangumi_cache_hours: number
   tmdb_api_key: string
   tmdb_access_token: string
   tmdb_configured: boolean
@@ -859,6 +855,7 @@ export interface VersionEntry {
   size?: number
   requires_image_update?: boolean
   requires_windows_base_update?: boolean
+  required_image_version?: string
   reason?: string
   windows_reason?: string
 }

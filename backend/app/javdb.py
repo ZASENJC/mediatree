@@ -7,6 +7,7 @@ from html import unescape
 import httpx
 from .config import settings, logger
 from .database import get_db
+from .scraper_cache_policy import should_bypass_scraper_cache
 
 _last_request = 0.0
 _req_lock = asyncio.Lock()
@@ -30,6 +31,12 @@ async def _rate_limit():
         _last_request = time.monotonic()
 
 
+async def _limited_get(client: httpx.AsyncClient, url: str, **kwargs) -> httpx.Response:
+    await _rate_limit()
+    async with _javdb_semaphore:
+        return await client.get(url, **kwargs)
+
+
 async def _get_client() -> httpx.AsyncClient:
     global _javdb_client
     if _javdb_client is not None and not _javdb_client.is_closed:
@@ -48,6 +55,8 @@ async def _get_client() -> httpx.AsyncClient:
 
 
 async def _get_cached(code: str) -> dict | None:
+    if should_bypass_scraper_cache():
+        return None
     db = await get_db()
     cur = await db.execute("SELECT data, fetched_at FROM javdb_cache WHERE code=?", (code,))
     row = await cur.fetchone()
@@ -57,13 +66,22 @@ async def _get_cached(code: str) -> dict | None:
     if datetime.now() - fetched > timedelta(hours=settings.javdb_cache_hours):
         return None
     try:
-        return json.loads(row["data"])
+        data = json.loads(row["data"])
     except (json.JSONDecodeError, TypeError):
         return None
+    if data == {}:
+        await db.execute("DELETE FROM javdb_cache WHERE code=?", (code,))
+        await db.commit()
+        return None
+    return data
 
 
 async def _set_cache(code: str, data: dict):
     db = await get_db()
+    if data == {}:
+        await db.execute("DELETE FROM javdb_cache WHERE code=?", (code,))
+        await db.commit()
+        return
     await db.execute(
         "INSERT OR REPLACE INTO javdb_cache (code, data, fetched_at) VALUES (?, ?, datetime('now'))",
         (code, json.dumps(data, ensure_ascii=False))
@@ -225,11 +243,9 @@ async def search_javdb(code: str) -> dict | None:
 
     try:
         client = await _get_client()
-        await _rate_limit()
         search_url = f"{settings.javdb_base_url}/?post_type=movies%2Cuncensored&s={code}"
         logger.info(f"Javdatabase search endpoint: /?post_type=movies,uncensored code={code}")
-        async with _javdb_semaphore:
-            resp = await client.get(search_url)
+        resp = await _limited_get(client, search_url)
         resp.raise_for_status()
         html = resp.text
 
@@ -252,8 +268,7 @@ async def search_javdb(code: str) -> dict | None:
         # Fallback: try direct URL by lowercased code
         if not found_url:
             direct_url = f"{settings.javdb_base_url}/movies/{code.lower()}/"
-            async with _javdb_semaphore:
-                resp2 = await client.get(direct_url)
+            resp2 = await _limited_get(client, direct_url)
             if resp2.status_code == 200 and len(resp2.text) > 5000:
                 found_url = direct_url
                 html = resp2.text
@@ -271,18 +286,15 @@ async def search_javdb(code: str) -> dict | None:
 
                 # Try direct URL with variant
                 fuzzy_direct = f"{settings.javdb_base_url}/movies/{variant.lower()}/"
-                async with _javdb_semaphore:
-                    fuzzy_resp = await client.get(fuzzy_direct)
+                fuzzy_resp = await _limited_get(client, fuzzy_direct)
                 if fuzzy_resp.status_code == 200 and len(fuzzy_resp.text) > 5000:
                     found_url = fuzzy_direct
                     html = fuzzy_resp.text
                     break
 
                 # Try search page with variant
-                await _rate_limit()
                 fuzzy_search = f"{settings.javdb_base_url}/?post_type=movies%2Cuncensored&s={variant}"
-                async with _javdb_semaphore:
-                    fuzzy_resp = await client.get(fuzzy_search)
+                fuzzy_resp = await _limited_get(client, fuzzy_search)
                 fuzzy_resp.raise_for_status()
                 fuzzy_html = fuzzy_resp.text
 
@@ -315,16 +327,13 @@ async def search_javdb(code: str) -> dict | None:
                     break
 
             if not found_url:
-                await _set_cache(code, {})
                 return None
 
         if not found_url.endswith("/"):
             found_url += "/"
 
         if "/movies/" not in html or len(html) < 5000:
-            await _rate_limit()
-            async with _javdb_semaphore:
-                detail_resp = await client.get(found_url)
+            detail_resp = await _limited_get(client, found_url)
             detail_resp.raise_for_status()
             html = detail_resp.text
 

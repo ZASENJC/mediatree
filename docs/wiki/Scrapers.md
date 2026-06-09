@@ -39,7 +39,7 @@ Code-based JAV metadata scraper.
 - **Thumbnails**: Cover and sample images
 - **Details**: Runtime, release date, series
 
-**Requirements**: Enabled by default. Configure via Settings page.
+**Requirements**: Available by default. Javdatabase is not part of the `auto` fallback chain; select it explicitly for the target library.
 
 ### Auto (`auto`)
 
@@ -99,12 +99,27 @@ from .my_scraper import MyScraper
 register_scraper(MyScraper())
 ```
 
-## Scraper Cache
+## Scraper Cache And Refresh Policy
 
-- HTTP responses are cached in SQLite (`scraper_cache` table)
-- Configurable TTL per source (default: TMDB/Bangumi 168h, JavDB 24h)
-- Concurrent requests to the same resource are deduplicated
-- Right-click → "Re-scrape" bypasses cache and forces a fresh fetch
+The scraper cache is a background helper used to reduce repeated requests to external metadata sources. It is not the primary metadata store users need to tune manually; successful scrape results such as titles, overviews, cast, artwork, and cover files are stored locally.
+
+- HTTP search and detail responses are cached in SQLite (`scraper_cache` table).
+- The legacy Javdatabase compatibility path still uses `javdb_cache`.
+- Cache TTLs are managed internally: TMDB/Bangumi use 168 hours, Javdatabase uses 24 hours.
+- The Settings page no longer exposes cache TTLs, and these values are not loaded from `config.json` or environment variables.
+- `None`, empty objects `{}`, and empty arrays `[]` are not cached; legacy empty rows are deleted when read.
+- Concurrent requests for the same resource are deduplicated within the same task round.
+- Startup scans and file-watcher triggered automatic scans use cache to reduce external traffic.
+- Manual full scans, right-click "Re-scrape", manual scrape, and clicking "Apply" on a selected search result bypass cache and fetch fresh data.
+
+The goal is for cache to help automatic background work only. When a user explicitly asks MediaTree to re-scrape or apply a manual result, cache will not block newly available or corrected metadata.
+
+## External Request Throttling
+
+- TMDB, Bangumi, and Javdatabase share `SCRAPER_API_CONCURRENCY` as the external API concurrency limit.
+- Javdatabase also has an internal per-request interval: by default, each network request is spaced at least 3 seconds apart.
+- This interval is not exposed in Settings and is not loaded from legacy config files.
+- Cache hits do not contact the external site, so they do not wait for the request interval.
 
 ## Manual Scraping
 

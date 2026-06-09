@@ -9,6 +9,8 @@ This supplements `CLAUDE.md` with Codex-specific guidance for this repository.
 - Frontend code lives under `frontend/` and uses React 18, TypeScript, Vite, Tailwind, ArtPlayer, and Capacitor.
 - Media under nested `sp` folders is treated as folder-level specials: keep it out of normal listings, scraping, continue watching, and player episode queues unless a specials-specific path is being changed.
 - Browser playback compatibility includes automatic AC3 transcoding; preserve this behavior when touching stream or player capability code.
+- Playback pages update the browser tab title with `▶` / `⏸` and the current media title while the user stays on the page; restore the site title only when leaving playback.
+- Scraper cache TTLs and Javdatabase request spacing are internal backend policy: do not re-expose them as Settings/environment configuration. Manual scans, rescrapes, and manual apply paths must bypass scraper cache.
 - Keep user-facing explanations, plans, summaries, questions, and change reports in Chinese.
 - Keep code identifiers, file names, paths, commands, config keys, API routes, function names, class names, and logs in their original English.
 

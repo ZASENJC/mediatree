@@ -5,6 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "release-tag.yml"
+CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 LOCAL_DOCKER_PUSH = ROOT / "scripts" / "push-docker-release.sh"
 DOCKERFILE = ROOT / "Dockerfile"
 
@@ -13,6 +14,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
+        cls.ci_workflow = CI_WORKFLOW.read_text(encoding="utf-8")
 
     def _step_block(self, name: str) -> str:
         pattern = rf"(?ms)^      - name: {re.escape(name)}\n(?P<body>.*?)(?=^      - name: |\Z)"
@@ -41,6 +43,27 @@ class ReleaseWorkflowTest(unittest.TestCase):
 
         self.assertLess(app_package_pos, update_tag_pos)
         self.assertLess(update_tag_pos, github_release_pos)
+
+    def test_workflows_use_node24_compatible_action_versions(self):
+        workflows = self.workflow + "\n" + self.ci_workflow
+
+        expected = [
+            "actions/checkout@v6",
+            "actions/setup-node@v6",
+            "actions/setup-python@v6",
+            "softprops/action-gh-release@v3",
+        ]
+        old_versions = [
+            "actions/checkout@v4",
+            "actions/setup-node@v4",
+            "actions/setup-python@v5",
+            "softprops/action-gh-release@v2",
+        ]
+
+        for marker in expected:
+            self.assertIn(marker, workflows)
+        for marker in old_versions:
+            self.assertNotIn(marker, workflows)
 
     def test_local_docker_push_script_handles_app_package_and_full_image_releases(self):
         script = LOCAL_DOCKER_PUSH.read_text(encoding="utf-8")

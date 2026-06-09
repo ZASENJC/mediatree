@@ -28,11 +28,9 @@ MediaTree is configured through environment variables (`.env` file) and runtime 
 |----------|---------|-------------|
 | `TMDB_API_KEY` | `""` | TMDB v3 API key |
 | `TMDB_ACCESS_TOKEN` | `""` | TMDB v4 Read Access Token _(preferred)_ |
-| `TMDB_CACHE_HOURS` | `168` | TMDB cache TTL in hours (1 week) |
-| `BANGUMI_CACHE_HOURS` | `168` | Bangumi cache TTL in hours |
 | `JAVDB_ENABLED` | `true` | Enable JavDatabase scraper |
-| `JAVDB_CACHE_HOURS` | `24` | JavDB cache TTL in hours |
-| `JAVDB_REQUEST_INTERVAL` | `1.0` | Minimum seconds between JavDB requests |
+
+Cache TTLs and the Javdatabase request interval are now fixed internal policies rather than environment variables or Settings options. Current internal policy: TMDB/Bangumi cache for 168 hours, Javdatabase caches for 24 hours, and Javdatabase network requests are spaced at least 3 seconds apart by default. See [Scraper Cache And Refresh Policy](Scrapers#scraper-cache-and-refresh-policy).
 
 ### Parallelism
 
@@ -79,7 +77,7 @@ services:
 The following settings are managed through the web UI and persisted in `data/config.json`:
 
 - **Library configuration** — scraper selection, TMDB keys, library passwords
-- **JavDB settings** — enabled/disabled, cache duration, request interval
+- **Scraper settings** — TMDB API key, TMDB Read Access Token
 - **UI preferences** — hide home title text, ambient mode, show source name
 
 ## Configuration Priority

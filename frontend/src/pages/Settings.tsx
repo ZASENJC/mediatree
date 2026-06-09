@@ -38,15 +38,11 @@ export default function Settings() {
   const nativeApp = isNativeApp()
   const windowsShell = isWindowsShell()
   const [config, setConfig] = useState<Config | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [librariesLoading, setLibrariesLoading] = useState(true)
 
   const [javdbEnabled, setJavdbEnabled] = useState(true)
-  const [javdbCache, setJavdbCache] = useState(24)
-  const [tmdbCache, setTmdbCache] = useState(168)
-  const [bangumiCache, setBangumiCache] = useState(168)
   const [tmdbKey, setTmdbKey] = useState('')
   const [tmdbToken, setTmdbToken] = useState('')
-  const [reqInterval, setReqInterval] = useState(3)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
   const [serverUrlInput, setServerUrlInput] = useState(() => getServerUrl())
@@ -75,7 +71,7 @@ export default function Settings() {
   const [authSaving, setAuthSaving] = useState(false)
 
   // update
-  const [updateChecking, setUpdateChecking] = useState(false)
+  const [updateChecking, setUpdateChecking] = useState(true)
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null)
   const [updatePerforming, setUpdatePerforming] = useState<string | null>(null)
   const [updateMsg, setUpdateMsg] = useState('')
@@ -127,14 +123,33 @@ export default function Settings() {
   }
 
   const normalizeVersion = (version?: string) => (version || '').replace(/^v/i, '')
+  const compareVersions = (a?: string, b?: string) => {
+    const left = normalizeVersion(a).split(/[.-]/).map(part => Number.parseInt(part, 10))
+    const right = normalizeVersion(b).split(/[.-]/).map(part => Number.parseInt(part, 10))
+    const length = Math.max(left.length, right.length)
+    for (let i = 0; i < length; i++) {
+      const leftPart = Number.isFinite(left[i]) ? left[i] : 0
+      const rightPart = Number.isFinite(right[i]) ? right[i] : 0
+      if (leftPart !== rightPart) return leftPart > rightPart ? 1 : -1
+    }
+    return 0
+  }
+  const isDockerSetupError = (message?: string) => {
+    const text = message || ''
+    return text.includes('Docker CLI') || text.includes('Docker socket') || text.includes('/var/run/docker.sock')
+  }
+  const getDockerUpdateShortError = (message?: string) => {
+    if (!isDockerSetupError(message)) return message || '完整镜像更新失败'
+    return '当前容器无法直接更新镜像，请在宿主机执行 docker compose pull && docker compose up -d。'
+  }
   const getDockerUpdateGuide = (message?: string) => {
     const text = (message || '').trim()
     if (!text) return ''
     if (text.includes('Docker CLI')) {
-      return '请改为在宿主机执行完整镜像更新：如果你用的是 docker compose，执行 docker compose pull && docker compose up -d；如果你用的是 docker run，请按原参数重新 pull 并重建容器。若希望以后能在设置页里直接完成完整镜像更新，请重建镜像时加入 INCLUDE_DOCKER_CLI=true。'
+      return '当前镜像缺少 Docker CLI，不能在设置页替换容器。请在宿主机执行 docker compose pull && docker compose up -d。'
     }
     if (text.includes('Docker socket') || text.includes('/var/run/docker.sock')) {
-      return '当前容器没有挂载 /var/run/docker.sock，设置页无法直接替换容器。请在宿主机重新创建容器并挂载该 socket，或直接在宿主机执行 docker compose pull && docker compose up -d。'
+      return '当前容器没有挂载 Docker socket，不能在设置页替换容器。请在宿主机执行 docker compose pull && docker compose up -d。'
     }
     return ''
   }
@@ -173,7 +188,7 @@ export default function Settings() {
         const status = await api.updateStatus()
         setUpdateProgress(status)
         if (status.status === 'error') {
-          setUpdateMsg(`更新失败: ${status.message || '未知错误'}`)
+          setUpdateMsg(isDockerSetupError(status.message) ? '' : `更新失败: ${status.message || '未知错误'}`)
           stopUpdatePolling()
           return
         }
@@ -204,29 +219,48 @@ export default function Settings() {
     updateStatusTimer.current = setInterval(poll, 1500)
   }
 
+  const applyUpdateCheckResult = (result: UpdateCheckResult, freshMessage = false) => {
+    setUpdateResult(result)
+    if (result.has_update) {
+      setUpdateMsg(`发现新版本 ${result.versions[0]?.display_version || ''}`)
+    } else if (freshMessage) {
+      setUpdateMsg('已是最新版本')
+    }
+  }
+
+  const checkUpdates = async (freshMessage = false) => {
+    setUpdateChecking(true)
+    if (freshMessage) setUpdateMsg('正在检查更新...')
+    try {
+      const [result, status] = await Promise.all([
+        api.checkForUpdates(),
+        api.updateStatus().catch(() => null),
+      ])
+      applyUpdateCheckResult(result, freshMessage)
+      if (status) setUpdateProgress(status)
+    } catch {
+      if (freshMessage) {
+        setUpdateMsg('检查更新失败')
+        setUpdateResult(null)
+      }
+    } finally {
+      setUpdateChecking(false)
+    }
+  }
+
 
   useEffect(() => {
     api.getConfig().then(d => {
       setConfig(d)
       setJavdbEnabled(d.javdb_enabled)
-      setJavdbCache(d.javdb_cache_hours)
-      setTmdbCache(d.tmdb_cache_hours)
-      setBangumiCache(d.bangumi_cache_hours)
       setTmdbKey(d.tmdb_api_key || '')
       setTmdbToken(d.tmdb_access_token || '')
-      setReqInterval(d.javdb_request_interval)
     }).catch(() => {})
 
-    loadLibraries().catch(() => {}).finally(() => setLoading(false))
+    loadLibraries().catch(() => {}).finally(() => setLibrariesLoading(false))
 
     // 自动检查更新
-    api.checkForUpdates().then(result => {
-      setUpdateResult(result)
-      if (result.has_update) {
-        setUpdateMsg(`发现新版本 ${result.versions[0]?.display_version || ''}`)
-      }
-    }).catch(() => {})
-    api.updateStatus().then(setUpdateProgress).catch(() => {})
+    checkUpdates(true)
 
     return () => {
       // Clear all scan polling timers on unmount
@@ -244,6 +278,7 @@ export default function Settings() {
   )
 
   const dockerUpdateGuide = useMemo(() => {
+    if (updateProgress?.status === 'error' && updateProgress.update_type === 'docker-image') return ''
     const statusMessage = updateProgress?.status === 'error' ? updateProgress.message : ''
     return getDockerUpdateGuide(statusMessage || updateMsg)
   }, [updateMsg, updateProgress])
@@ -255,10 +290,6 @@ export default function Settings() {
       setUiPrefs({ ...getUiPrefs(), hideHomeTitleText })
       await api.updateConfig({
         javdb_enabled: javdbEnabled,
-        javdb_cache_hours: javdbCache,
-        tmdb_cache_hours: tmdbCache,
-        bangumi_cache_hours: bangumiCache,
-        javdb_request_interval: reqInterval,
         tmdb_api_key: tmdbKey,
         tmdb_access_token: tmdbToken,
       })
@@ -377,12 +408,6 @@ export default function Settings() {
     setServerMsg('服务器地址已保存，正在重新连接...')
     window.setTimeout(() => window.location.reload(), 500)
   }
-
-  if (loading) return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="animate-pulse text-gray-400 text-lg">加载中...</div>
-    </div>
-  )
 
   const cardClass = "glass-panel p-5"
   const sectionTitle = "mb-4 text-lg font-semibold text-white"
@@ -534,6 +559,11 @@ export default function Settings() {
               )}
             </div>
             <div className="space-y-2">
+            {librariesLoading && (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-xs text-gray-500">
+                媒体库加载中...
+              </div>
+            )}
             {[...libraries].sort((a, b) => a.label.localeCompare(b.label, 'zh-CN')).map((lib) => {
             const st = scanStates[lib.path]
             const progress = st && st.total > 0 ? Math.round((st.done / st.total) * 100) : 0
@@ -618,30 +648,7 @@ export default function Settings() {
           <div className={cardClass}>
             <h2 className={sectionTitle}>刮削器</h2>
             <div className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {[
-                  { k: javdbCache, set: setJavdbCache, label: 'Javdatabase 缓存' },
-                  { k: tmdbCache, set: setTmdbCache, label: 'TMDB 缓存' },
-                  { k: bangumiCache, set: setBangumiCache, label: 'Bangumi 缓存' },
-                ].map(({ k, set, label }) => (
-                  <div key={label}>
-                    <label className={labelClass}>{label}</label>
-                    <div className="flex items-center gap-1">
-                      <input type="number" min={1} max={720} value={k}
-                        onChange={e => set(Number(e.target.value))}
-                        className="glass-input w-20 px-2 py-1.5 text-xs sm:w-16" />
-                      <span className="text-xs text-gray-600">小时</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
               <div>
-                <label className={labelClass}>请求间隔（秒）</label>
-                <input type="number" min={1} max={30} value={reqInterval}
-                  onChange={e => setReqInterval(Number(e.target.value))}
-                  className="glass-input w-20 px-2 py-1.5 text-xs" />
-              </div>
-              <div className="border-t border-white/10 pt-3">
                 <label className={labelClass}>TMDB API Key</label>
                 <input type="text" value={tmdbKey} onChange={e => setTmdbKey(e.target.value)}
                   placeholder="去 themoviedb.org 免费申请" className={inputClass} />
@@ -722,25 +729,7 @@ export default function Settings() {
               <h2 className={sectionTitle + " mb-0"}>更新</h2>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={async () => {
-                    setUpdateChecking(true)
-                    setUpdateMsg('')
-                    try {
-                      const result = await api.checkForUpdates()
-                      setUpdateResult(result)
-                      const status = await api.updateStatus().catch(() => null)
-                      if (status) setUpdateProgress(status)
-                      if (result.has_update) {
-                        setUpdateMsg(`发现新版本 ${result.versions[0]?.display_version || ''}`)
-                      } else {
-                        setUpdateMsg('已是最新版本')
-                      }
-                    } catch {
-                      setUpdateMsg('检查更新失败')
-                      setUpdateResult(null)
-                    }
-                    setUpdateChecking(false)
-                  }}
+                  onClick={() => checkUpdates(true)}
                   disabled={updateChecking}
                   className={btnDark}
                 >
@@ -800,10 +789,18 @@ export default function Settings() {
                   const result = updateResult
                   if (!result) return null
                   const versionKey = normalizeVersion(v.version)
-                  const isCurrent = versionKey === normalizeVersion(result.current_version)
+                  const dockerTargetVersion = v.required_image_version || v.version
+                  const dockerTargetKey = normalizeVersion(dockerTargetVersion)
+                  const currentVersion = result.effective_version || result.current_version
+                  const versionPosition = compareVersions(versionKey, currentVersion)
+                  const isCurrent = versionPosition === 0
+                  const isOlderVersion = versionPosition < 0
                   const activeUpdate = updateProgress
                     && !isCurrent
-                    && normalizeVersion(updateProgress.version) === versionKey
+                    && (
+                      normalizeVersion(updateProgress.version) === versionKey
+                      || (v.requires_image_update && normalizeVersion(updateProgress.version) === dockerTargetKey)
+                    )
                     && updateProgress.status !== 'idle'
                     && updateProgress.status !== 'success'
                     ? updateProgress
@@ -875,7 +872,7 @@ export default function Settings() {
                                   version: v.version,
                                   downloaded: 0,
                                   total: 0,
-                                  message: '正在切换到上一应用版本...',
+                                  message: '正在回滚到此版本...',
                                   update_type: 'app-package',
                                 })
                                 try {
@@ -891,12 +888,12 @@ export default function Settings() {
                               disabled={isBusy}
                               className={`${btnDark} text-xs px-2 py-1 disabled:opacity-50`}
                             >
-                              {updatePerforming === v.version ? '回滚中...' : '回滚到此版本'}
+                              {updatePerforming === v.version ? '回滚中...' : '回滚此版本'}
                             </button>
                           ) : !isCurrent && !v.requires_image_update && !requiresWindowsBase ? (
                             <button
                               onClick={async () => {
-                                if (!confirm(`确定要切换到 ${v.display_version || v.version} 吗？容器将自动重启。`)) return
+                                if (!confirm(`确定要${isOlderVersion ? '回滚到' : '切换到'} ${v.display_version || v.version} 吗？容器将自动重启。`)) return
                                 setUpdatePerforming(v.version)
                                 setUpdateMsg('')
                                 setUpdateProgress({
@@ -904,24 +901,26 @@ export default function Settings() {
                                   version: v.version,
                                   downloaded: 0,
                                   total: 0,
-                                  message: '正在发起应用包更新...',
+                                  message: isOlderVersion ? '正在发起版本回滚...' : '正在发起应用包更新...',
                                   update_type: 'app-package',
                                 })
                                 startUpdatePolling(v.version)
                                 try {
                                   const res = await api.performUpdate(v.version, 'app-package')
-                                  if (res.ok === false) throw new Error(res.error || '更新失败')
-                                  setUpdateMsg(res.message || '更新已触发')
+                                  if (res.ok === false) throw new Error(res.error || (isOlderVersion ? '回滚失败' : '更新失败'))
+                                  setUpdateMsg(res.message || (isOlderVersion ? '回滚已触发' : '更新已触发'))
                                   dismissUpdate(v.version)
                                 } catch (e: any) {
-                                  setUpdateMsg(`更新失败: ${e.message || '未知错误'}`)
+                                  setUpdateMsg(`${isOlderVersion ? '回滚' : '更新'}失败: ${e.message || '未知错误'}`)
                                 }
                                 setUpdatePerforming(null)
                               }}
                               disabled={isBusy}
                               className={`${btnPrimary} text-xs px-2 py-1 disabled:opacity-50`}
                             >
-                              {updatePerforming === v.version ? '更新中...' : '下载并更新'}
+                              {updatePerforming === v.version
+                                ? (isOlderVersion ? '回滚中...' : '更新中...')
+                                : (isOlderVersion ? '回滚此版本' : '下载并更新')}
                             </button>
                           ) : !isCurrent && requiresWindowsBase ? (
                             <a
@@ -936,28 +935,30 @@ export default function Settings() {
                           ) : !isCurrent && v.requires_image_update ? (
                             <button
                               onClick={async () => {
-                                if (!confirm(`确定要执行完整镜像更新到 ${v.display_version || v.version} 吗？该操作需要已挂载 Docker socket。`)) return
+                                if (!confirm(`确定要执行完整镜像更新到 ${dockerTargetVersion} 吗？该操作需要已挂载 Docker socket。`)) return
                                 setUpdatePerforming(v.version)
                                 setUpdateMsg('')
                                 setUpdateProgress({
                                   status: 'installing',
-                                  version: v.version,
+                                  version: dockerTargetVersion,
                                   downloaded: 0,
                                   total: 0,
                                   message: '正在发起完整镜像更新...',
                                   update_type: 'docker-image',
                                   logs: [],
                                 })
-                                startUpdatePolling(v.version)
+                                startUpdatePolling(dockerTargetVersion)
                                 try {
-                                  const res = await api.performUpdate(v.version, 'docker-image')
+                                  const res = await api.performUpdate(dockerTargetVersion, 'docker-image')
                                   if (res.ok === false) throw new Error(res.error || '完整镜像更新失败')
                                   setUpdateMsg(res.message || '完整镜像更新已触发')
-                                  dismissUpdate(v.version)
+                                  dismissUpdate(dockerTargetVersion)
                                 } catch (e: any) {
                                   const message = e.message || '未知错误'
                                   if (message.includes('Failed to fetch')) {
                                     setUpdateMsg('完整镜像更新已触发，服务可能正在重启')
+                                  } else if (isDockerSetupError(message)) {
+                                    setUpdateMsg('')
                                   } else {
                                     setUpdateMsg(`完整镜像更新失败: ${message}`)
                                   }
@@ -1002,7 +1003,7 @@ export default function Settings() {
                         <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-2xl border border-white/10 bg-black/35 p-3 font-mono text-[11px] text-gray-400">
                           <div className={activeUpdate.status === 'error' ? 'mb-1 text-red-400' : 'mb-1 text-gray-300'}>
                             {statusLabel(activeUpdate.status)}
-                            {(dockerErrorGuide || activeUpdate.message) ? ` · ${dockerErrorGuide || activeUpdate.message}` : ''}
+                            {(dockerErrorGuide || activeUpdate.message) ? ` · ${dockerErrorGuide || getDockerUpdateShortError(activeUpdate.message)}` : ''}
                           </div>
                           {activeUpdate.status === 'error' ? null : (activeUpdate.logs || []).length > 0 ? (
                             activeUpdate.logs!.map((line, logIndex) => (
