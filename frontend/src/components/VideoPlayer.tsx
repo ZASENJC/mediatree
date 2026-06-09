@@ -12,11 +12,13 @@ interface Props {
   src: string
   poster?: string
   movieId: number
+  title?: string
   episodes?: Movie[]
   onEpisodeSelect?: (episode: Movie) => void
   onWatched?: () => void
 }
 
+const SITE_TITLE = 'MediaTree'
 const POS_KEY = 'mediatree_pos_'
 const WATCHED_AFTER = 60
 const WATCHED_RATIO = 0.9
@@ -84,6 +86,12 @@ function episodeLabel(movie: Movie) {
   const title = movie.episode_title || movie.display_title || movie.title || movie.code
   if (!prefix) return title
   return title.toLowerCase().includes(prefix.toLowerCase()) ? title : `${prefix} ${title}`
+}
+
+function playbackDocumentTitle(title?: string, state: 'playing' | 'paused' = 'paused') {
+  const trimmed = (title || '').trim()
+  const icon = state === 'playing' ? '▶' : '⏸'
+  return trimmed ? `${icon} ${trimmed} - ${SITE_TITLE}` : SITE_TITLE
 }
 
 function localPlayerOrigin() {
@@ -586,7 +594,7 @@ function useTheaterPlayerSize(
   return size
 }
 
-export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpisodeSelect, onWatched }: Props) {
+export default function VideoPlayer({ src, poster, movieId, title, episodes = [], onEpisodeSelect, onWatched }: Props) {
   const artContainerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const playerFrameRef = useRef<HTMLDivElement>(null)
@@ -621,6 +629,11 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
   const switchUrlSeqRef = useRef(0)
   const lastPosSaveAtRef = useRef(0)
   const autoTranscodedAudioRef = useRef('')
+  const documentTitleBeforePlaybackRef = useRef('')
+  const playbackTitleActiveRef = useRef(false)
+  const playingDocumentTitleRef = useRef(SITE_TITLE)
+  const pausedDocumentTitleRef = useRef(SITE_TITLE)
+  const restoringDocumentTitleRef = useRef(false)
 
   const [resumePos, setResumePos] = useState(() => getSavedPos(movieId))
   const [showResume, setShowResume] = useState(() => false)
@@ -662,6 +675,11 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
 
   const displayDuration = mediaDuration || displayDurationRef.current
   const selectableEpisodes = episodes.length > 1 ? episodes : []
+  const activeEpisodeTitle = useMemo(() => {
+    const active = episodes.find(episode => episode.id === movieId)
+    return active ? episodeLabel(active) : ''
+  }, [episodes, movieId])
+  const currentPlaybackTitle = (activeEpisodeTitle || title || '').trim()
   const hasExternalSubtitles = tracks.some(t => t.source === 'external')
   const externalPlaylistUrl = new URL(api.externalPlaylistUrl(movieId), localPlayerOrigin()).toString()
   const localPlaybackUrl = hasExternalSubtitles ? externalPlaylistUrl : streamUrl
@@ -685,6 +703,29 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
     })
   }, [])
 
+  const ensureDocumentTitleBaseline = useCallback(() => {
+    if (!playbackTitleActiveRef.current) {
+      documentTitleBeforePlaybackRef.current = document.title || SITE_TITLE
+      playbackTitleActiveRef.current = true
+    }
+  }, [])
+
+  const showPlayingDocumentTitle = useCallback(() => {
+    ensureDocumentTitleBaseline()
+    document.title = playingDocumentTitleRef.current
+  }, [ensureDocumentTitleBaseline])
+
+  const showPausedDocumentTitle = useCallback(() => {
+    ensureDocumentTitleBaseline()
+    document.title = pausedDocumentTitleRef.current
+  }, [ensureDocumentTitleBaseline])
+
+  const restoreDocumentTitle = useCallback(() => {
+    if (!playbackTitleActiveRef.current) return
+    document.title = documentTitleBeforePlaybackRef.current || SITE_TITLE
+    playbackTitleActiveRef.current = false
+  }, [])
+
   useEffect(() => {
     const el = document.getElementById('ambient-root')
     if (!el) return
@@ -698,6 +739,16 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
       el.style.removeProperty('--ambient-b')
     }
   }, [ambientColor, effectiveAmbient])
+
+  useEffect(() => {
+    playingDocumentTitleRef.current = playbackDocumentTitle(currentPlaybackTitle, 'playing')
+    pausedDocumentTitleRef.current = playbackDocumentTitle(currentPlaybackTitle, 'paused')
+    if (artRef.current?.playing) {
+      showPlayingDocumentTitle()
+    } else {
+      showPausedDocumentTitle()
+    }
+  }, [currentPlaybackTitle, showPausedDocumentTitle, showPlayingDocumentTitle])
 
   const clearNativeSubtitle = useCallback((art: Artplayer) => {
     try { art.subtitle.show = false } catch {}
@@ -1437,6 +1488,7 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
     }
 
     const art = new Artplayer(option)
+    restoringDocumentTitleRef.current = false
     artRef.current = art
     setArtInstance(art)
     setPlayerChromeVisible(true)
@@ -1509,16 +1561,24 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
         onWatched?.()
       }
     })
-    art.on('video:playing', hideTranscodePrompt)
-    art.on('video:play', hideResumePrompt)
+    art.on('video:playing', () => {
+      showPlayingDocumentTitle()
+      hideTranscodePrompt()
+    })
+    art.on('video:play', () => {
+      showPlayingDocumentTitle()
+      hideResumePrompt()
+    })
     art.on('fullscreen', exitTheaterAfterFullscreen)
     art.on('fullscreenWeb', exitTheaterAfterFullscreen)
     art.on('video:pause', () => {
+      if (!restoringDocumentTitleRef.current) showPausedDocumentTitle()
       const pos = currentTimeRef.current || art.currentTime || 0
       savePos(movieId, pos)
       api.saveProgress(movieId, pos, displayDurationRef.current || art.duration || undefined, true).catch(() => {})
     })
     art.on('video:ended', () => {
+      if (!restoringDocumentTitleRef.current) showPausedDocumentTitle()
       savePos(movieId, 0)
       api.saveProgress(movieId, displayDurationRef.current || art.duration || currentTimeRef.current, displayDurationRef.current || art.duration || undefined, true).catch(() => {})
       onWatched?.()
@@ -1546,6 +1606,7 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
         })
       }
       if (import.meta.env.DEV) console.info('VideoPlayer cleanup: destroying ArtPlayer and subtitle resources')
+      restoringDocumentTitleRef.current = true
       artReadyRef.current = false
       subtitleSwitchRequestRef.current += 1
       window.clearTimeout(progressSaveTimerRef.current)
@@ -1556,6 +1617,7 @@ export default function VideoPlayer({ src, poster, movieId, episodes = [], onEpi
       clearRenderedSubtitles(art)
       try { art.emit('artplayer-plugin-ass:destroy') } catch {}
       try { art.pause() } catch {}
+      restoreDocumentTitle()
       try { art.destroy() } catch (err) { console.warn('VideoPlayer: ArtPlayer destroy failed', err) }
       try {
         artContainerRef.current?.querySelectorAll('.artplayer-plugin-ass, .JASSUB, canvas[data-mediatree-subtitle="ass"]').forEach(node => node.remove())

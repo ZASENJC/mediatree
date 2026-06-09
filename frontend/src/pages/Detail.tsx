@@ -237,6 +237,7 @@ export default function Detail() {
       )}
 
       <VideoPlayer src={api.streamUrl(movie.id)} poster={api.coverUrl(movie.id)} movieId={movie.id}
+        title={displayTitle}
         episodes={episodes}
         onEpisodeSelect={(episode) => {
           if (episode.id !== movie.id) navigate(`/detail/${episode.id}`)
