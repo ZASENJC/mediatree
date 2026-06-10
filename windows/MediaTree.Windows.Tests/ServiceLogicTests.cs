@@ -274,6 +274,48 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void BrowsePresenterUsesOnlyCurrentMediaRootPaths()
+    {
+        var roots = new[]
+        {
+            new MediaRootDto { Path = @"D:\Movies", Label = "Movies" },
+            new MediaRootDto { Path = @"D:\Movies\", Label = "Duplicate" },
+            new MediaRootDto { Path = "" },
+        };
+
+        var paths = BrowseLibraryPresenter.ActiveMediaRootPaths(roots);
+
+        Assert.Equal([@"D:\Movies"], paths);
+    }
+
+    [Fact]
+    public void BrowsePresenterMergesMoviesFromActiveRootsWithGlobalLimit()
+    {
+        var first = new MoviesResponseDto
+        {
+            Total = 2,
+            Movies =
+            [
+                new MovieDto { Id = 1, CreatedAt = "2026-06-10T10:00:00", MediaRoot = @"D:\Movies" },
+                new MovieDto { Id = 2, CreatedAt = "2026-06-08T10:00:00", MediaRoot = @"D:\Movies" },
+            ],
+        };
+        var second = new MoviesResponseDto
+        {
+            Total = 1,
+            Movies =
+            [
+                new MovieDto { Id = 3, CreatedAt = "2026-06-11T10:00:00", MediaRoot = @"E:\Series" },
+            ],
+        };
+
+        var merged = BrowseLibraryPresenter.MergeMovieResponses([first, second], "created_desc", 2);
+
+        Assert.Equal(3, merged.Total);
+        Assert.Equal([3, 1], merged.Movies.Select(movie => movie.Id).ToList());
+    }
+
+    [Fact]
     public void ScrapeResultPresenterBuildsCompactDisplayState()
     {
         var result = new ScrapeSearchResultDto
@@ -455,6 +497,31 @@ public sealed class ServiceLogicTests
                 Assert.Equal("Series/Extras", item.Folder.Path);
                 Assert.Equal(1, item.Depth);
             });
+    }
+
+    [Fact]
+    public void BrowseFolderTreePresenterAssignsFallbackMediaRoot()
+    {
+        var tree = new[]
+        {
+            new FolderNodeDto
+            {
+                Name = "Series",
+                Path = "Series",
+                Children =
+                [
+                    new FolderNodeDto
+                    {
+                        Name = "Season 1",
+                        Path = "Series/Season 1",
+                    },
+                ],
+            },
+        };
+
+        var items = BrowseFolderTreePresenter.FlattenForMediaRoot(@"D:\Movies", tree);
+
+        Assert.All(items, item => Assert.Equal(@"D:\Movies", item.Folder.MediaRoot));
     }
 
     [Fact]

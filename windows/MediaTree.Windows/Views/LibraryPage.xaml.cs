@@ -348,6 +348,8 @@ public sealed partial class LibraryPage : Page
     {
         try
         {
+            AppServices.Library.LibrariesChanged -= OnLibrariesChanged;
+            AppServices.Library.LibrariesChanged += OnLibrariesChanged;
             LoadUiPreferences();
             await LoadLibrariesAsync();
         }
@@ -360,7 +362,19 @@ public sealed partial class LibraryPage : Page
 
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
+        AppServices.Library.LibrariesChanged -= OnLibrariesChanged;
         _scanTimer.Stop();
+    }
+
+    private void OnLibrariesChanged(object? sender, EventArgs args)
+    {
+        if (DispatcherQueue.HasThreadAccess)
+        {
+            _ = LoadLibrariesAsync();
+            return;
+        }
+
+        _ = DispatcherQueue.TryEnqueue(() => _ = LoadLibrariesAsync());
     }
 
     private void LoadUiPreferences()

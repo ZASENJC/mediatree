@@ -17,6 +17,8 @@ namespace MediaTree.Windows.Views;
 
 public sealed partial class BrowsePage : Page
 {
+    private sealed record FolderSelection(string Path, string MediaRoot);
+
     private readonly ComboBox _libraryBox;
     private readonly ListView _folderList;
     private readonly GridView _moviesGrid;
@@ -25,7 +27,9 @@ public sealed partial class BrowsePage : Page
     private readonly ComboBox _sortBox;
     private readonly TextBlock _subtitleText;
     private readonly TextBlock _titleText;
+    private IReadOnlyList<MediaRootDto> _activeMediaRoots = [];
     private string _activeFolderPath = "";
+    private string _activeFolderMediaRoot = "";
     private string _activeMediaRoot = "";
     private int _loadGeneration;
     private bool _suppressLibrarySelectionChanged;
@@ -33,7 +37,8 @@ public sealed partial class BrowsePage : Page
     public BrowsePage()
     {
         (_libraryBox, _folderList, _moviesGrid, _statusText, _searchBox, _sortBox, _titleText, _subtitleText) = BuildContent();
-        Loaded += async (_, _) => await LoadLibrariesAsync();
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     private (ComboBox libraryBox, ListView folderList, GridView moviesGrid, TextBlock statusText, TextBox searchBox, ComboBox sortBox, TextBlock titleText, TextBlock subtitleText) BuildContent()
@@ -243,13 +248,16 @@ public sealed partial class BrowsePage : Page
 
     private async Task LoadLibrariesAsync()
     {
+        var previousMediaRoot = _activeMediaRoot;
+        var previousFolderMediaRoot = _activeFolderMediaRoot;
         _suppressLibrarySelectionChanged = true;
         try
         {
             _libraryBox.Items.Clear();
             _libraryBox.Items.Add(new ComboBoxItem { Content = "全部媒体库", Tag = "" });
             var roots = await AppServices.Library.GetMediaRootsAsync();
-            foreach (var root in roots.Items)
+            _activeMediaRoots = BrowseLibraryPresenter.DistinctMediaRoots(roots.Items);
+            foreach (var root in _activeMediaRoots)
             {
                 _libraryBox.Items.Add(new ComboBoxItem
                 {
@@ -258,8 +266,26 @@ public sealed partial class BrowsePage : Page
                 });
             }
 
-            _libraryBox.SelectedIndex = 0;
-            _activeMediaRoot = "";
+            var selectedRoot = _activeMediaRoots.Any(root => LibraryService.RootsMatch(root.Path, previousMediaRoot))
+                ? previousMediaRoot
+                : "";
+            var selectedIndex = 0;
+            if (!string.IsNullOrWhiteSpace(selectedRoot))
+            {
+                selectedIndex = _activeMediaRoots
+                    .Select((root, index) => new { root, index })
+                    .First(item => LibraryService.RootsMatch(item.root.Path, selectedRoot))
+                    .index + 1;
+            }
+
+            _libraryBox.SelectedIndex = selectedIndex;
+            _activeMediaRoot = selectedRoot;
+            if (!string.Equals(previousMediaRoot, selectedRoot, StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrWhiteSpace(previousFolderMediaRoot) && !_activeMediaRoots.Any(root => LibraryService.RootsMatch(root.Path, previousFolderMediaRoot))))
+            {
+                _activeFolderPath = "";
+                _activeFolderMediaRoot = "";
+            }
         }
         finally
         {
@@ -273,15 +299,18 @@ public sealed partial class BrowsePage : Page
     private async Task LoadFoldersAsync()
     {
         _folderList.Items.Clear();
-        var allButton = CreateFolderButton("全部影片", "", 0);
+        var allButton = CreateFolderButton("全部影片", "", "", 0);
         _folderList.Items.Add(allButton);
 
         try
         {
-            var response = await AppServices.Library.GetFoldersAsync(_activeMediaRoot);
-            foreach (var item in BrowseFolderTreePresenter.FlattenAll(response.Tree, SortFolders))
+            foreach (var root in GetSelectedMediaRoots())
             {
-                _folderList.Items.Add(CreateFolderButton(item.Folder.Name, item.Folder.Path, item.Depth));
+                var response = await AppServices.Library.GetFoldersAsync(root.Path);
+                foreach (var item in BrowseFolderTreePresenter.FlattenForMediaRoot(root.Path, response.Tree, SortFolders))
+                {
+                    _folderList.Items.Add(CreateFolderButton(item.Folder.Name, item.Folder.Path, item.Folder.MediaRoot, item.Depth));
+                }
             }
         }
         catch (Exception ex)
@@ -299,7 +328,7 @@ public sealed partial class BrowsePage : Page
             ShowStatus("正在加载...", false);
             _moviesGrid.Items.Clear();
             var sort = (_sortBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "created_desc";
-            var response = await AppServices.Movie.GetMoviesAsync(_activeMediaRoot, _activeFolderPath, _searchBox.Text.Trim(), sort, 120, 0);
+            var response = await LoadActiveMoviesAsync(sort, 120);
             if (generation != _loadGeneration)
             {
                 return;
@@ -327,7 +356,40 @@ public sealed partial class BrowsePage : Page
         }
     }
 
-    private Button CreateFolderButton(string label, string path, int depth)
+    private async Task<MoviesResponseDto> LoadActiveMoviesAsync(string sort, int limit)
+    {
+        var search = _searchBox.Text.Trim();
+        if (!string.IsNullOrWhiteSpace(_activeMediaRoot))
+        {
+            return await AppServices.Movie.GetMoviesAsync(_activeMediaRoot, _activeFolderPath, search, sort, limit, 0);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_activeFolderPath) && !string.IsNullOrWhiteSpace(_activeFolderMediaRoot))
+        {
+            return await AppServices.Movie.GetMoviesAsync(_activeFolderMediaRoot, _activeFolderPath, search, sort, limit, 0);
+        }
+
+        var roots = _activeMediaRoots.ToList();
+        if (roots.Count == 0)
+        {
+            return new MoviesResponseDto();
+        }
+
+        var responses = await Task.WhenAll(roots.Select(root => AppServices.Movie.GetMoviesAsync(root.Path, "", search, sort, limit, 0)));
+        return BrowseLibraryPresenter.MergeMovieResponses(responses, sort, limit);
+    }
+
+    private IEnumerable<MediaRootDto> GetSelectedMediaRoots()
+    {
+        if (string.IsNullOrWhiteSpace(_activeMediaRoot))
+        {
+            return _activeMediaRoots;
+        }
+
+        return _activeMediaRoots.Where(root => LibraryService.RootsMatch(root.Path, _activeMediaRoot));
+    }
+
+    private Button CreateFolderButton(string label, string path, string mediaRoot, int depth)
     {
         var text = new TextBlock
         {
@@ -341,12 +403,19 @@ public sealed partial class BrowsePage : Page
             Content = text,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Left,
-            Tag = path,
+            Tag = new FolderSelection(path, mediaRoot),
         }, FluentButtonStyle.Subtle);
-        AutomationProperties.SetAutomationId(button, string.IsNullOrWhiteSpace(path) ? "BrowseFolder_All" : $"BrowseFolder_{SanitizeAutomationId(path)}");
+        var automationKey = string.IsNullOrWhiteSpace(mediaRoot) ? path : $"{mediaRoot}_{path}";
+        AutomationProperties.SetAutomationId(button, string.IsNullOrWhiteSpace(path) ? "BrowseFolder_All" : $"BrowseFolder_{SanitizeAutomationId(automationKey)}");
         button.Click += async (_, _) =>
         {
-            _activeFolderPath = path;
+            if (button.Tag is not FolderSelection selection)
+            {
+                return;
+            }
+
+            _activeFolderPath = selection.Path;
+            _activeFolderMediaRoot = selection.MediaRoot;
             await LoadMoviesAsync();
         };
         return button;
@@ -361,9 +430,33 @@ public sealed partial class BrowsePage : Page
 
         _activeMediaRoot = (_libraryBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
         _activeFolderPath = "";
+        _activeFolderMediaRoot = "";
         _searchBox.Text = "";
         await LoadFoldersAsync();
         await LoadMoviesAsync();
+    }
+
+    private async void OnLoaded(object sender, RoutedEventArgs args)
+    {
+        AppServices.Library.LibrariesChanged -= OnLibrariesChanged;
+        AppServices.Library.LibrariesChanged += OnLibrariesChanged;
+        await LoadLibrariesAsync();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs args)
+    {
+        AppServices.Library.LibrariesChanged -= OnLibrariesChanged;
+    }
+
+    private void OnLibrariesChanged(object? sender, EventArgs args)
+    {
+        if (DispatcherQueue.HasThreadAccess)
+        {
+            _ = LoadLibrariesAsync();
+            return;
+        }
+
+        _ = DispatcherQueue.TryEnqueue(() => _ = LoadLibrariesAsync());
     }
 
     private async void OnSortChanged(object sender, SelectionChangedEventArgs args)

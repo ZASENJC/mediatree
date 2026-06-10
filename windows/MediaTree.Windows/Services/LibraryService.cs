@@ -12,6 +12,8 @@ public sealed class LibraryService
 {
     private readonly MediaTreeApiClient _api;
 
+    public event EventHandler? LibrariesChanged;
+
     public LibraryService(MediaTreeApiClient api)
     {
         _api = api;
@@ -41,6 +43,7 @@ public sealed class LibraryService
         {
             roots.Add(normalized);
             await _api.SaveConfigAsync(roots, cancellationToken);
+            NotifyLibrariesChanged();
         }
 
         if (!string.IsNullOrWhiteSpace(tmdbAccessToken))
@@ -83,6 +86,7 @@ public sealed class LibraryService
         {
             roots.Add(normalized);
             await _api.SaveConfigAsync(roots, cancellationToken);
+            NotifyLibrariesChanged();
         }
 
         await _api.SaveLibrarySettingAsync(new LibrarySettingDto
@@ -118,6 +122,7 @@ public sealed class LibraryService
         var config = await _api.GetConfigAsync(cancellationToken);
         var roots = RemoveLibraryRootFromConfig(config.ExtraMediaRoots ?? [], mediaRoot);
         await _api.SaveConfigAsync(roots, cancellationToken);
+        NotifyLibrariesChanged();
         return new BasicActionResultDto { Ok = true, Deleted = 1 };
     }
 
@@ -161,6 +166,9 @@ public sealed class LibraryService
 
     public static bool RootsMatch(string left, string right)
         => string.Equals(NormalizePathForComparison(left), NormalizePathForComparison(right), StringComparison.OrdinalIgnoreCase);
+
+    public void NotifyLibrariesChanged()
+        => LibrariesChanged?.Invoke(this, EventArgs.Empty);
 
     private static string NormalizePathForComparison(string path)
     {

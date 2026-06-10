@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using MediaTree.Windows.Models;
 using MediaTree.Windows.Services;
 using MediaTree.Windows.Styles;
@@ -17,6 +19,7 @@ public sealed partial class FavoritesPage : Page
     private readonly ComboBox _sortBox;
     private readonly TextBlock _statusText;
     private readonly TextBlock _subtitleText;
+    private IReadOnlyList<MediaRootDto> _activeMediaRoots = [];
     private string _activeMediaRoot = "";
     private int _loadGeneration;
     private bool _suppressLibrarySelectionChanged;
@@ -24,7 +27,8 @@ public sealed partial class FavoritesPage : Page
     public FavoritesPage()
     {
         (_libraryBox, _sortBox, _moviesGrid, _statusText, _subtitleText) = BuildContent();
-        Loaded += async (_, _) => await LoadLibrariesAsync();
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
     }
 
     private (ComboBox libraryBox, ComboBox sortBox, GridView moviesGrid, TextBlock statusText, TextBlock subtitleText) BuildContent()
@@ -160,13 +164,15 @@ public sealed partial class FavoritesPage : Page
 
     private async System.Threading.Tasks.Task LoadLibrariesAsync()
     {
+        var previousMediaRoot = _activeMediaRoot;
         _suppressLibrarySelectionChanged = true;
         try
         {
             _libraryBox.Items.Clear();
             _libraryBox.Items.Add(new ComboBoxItem { Content = "全部媒体库", Tag = "" });
             var roots = await AppServices.Library.GetMediaRootsAsync();
-            foreach (var root in roots.Items)
+            _activeMediaRoots = BrowseLibraryPresenter.DistinctMediaRoots(roots.Items);
+            foreach (var root in _activeMediaRoots)
             {
                 _libraryBox.Items.Add(new ComboBoxItem
                 {
@@ -175,8 +181,20 @@ public sealed partial class FavoritesPage : Page
                 });
             }
 
-            _libraryBox.SelectedIndex = 0;
-            _activeMediaRoot = "";
+            var selectedRoot = _activeMediaRoots.Any(root => LibraryService.RootsMatch(root.Path, previousMediaRoot))
+                ? previousMediaRoot
+                : "";
+            var selectedIndex = 0;
+            if (!string.IsNullOrWhiteSpace(selectedRoot))
+            {
+                selectedIndex = _activeMediaRoots
+                    .Select((root, index) => new { root, index })
+                    .First(item => LibraryService.RootsMatch(item.root.Path, selectedRoot))
+                    .index + 1;
+            }
+
+            _libraryBox.SelectedIndex = selectedIndex;
+            _activeMediaRoot = selectedRoot;
         }
         finally
         {
@@ -194,7 +212,7 @@ public sealed partial class FavoritesPage : Page
             ShowStatus("正在加载...", false);
             _moviesGrid.Items.Clear();
             var sort = (_sortBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "created_desc";
-            var response = await AppServices.Movie.GetFavoritesAsync(_activeMediaRoot, sort, 200, 0);
+            var response = await LoadActiveFavoritesAsync(sort, 200);
             if (generation != _loadGeneration)
             {
                 return;
@@ -227,6 +245,23 @@ public sealed partial class FavoritesPage : Page
             ShellLogger.Error(ex, "Failed to load native favorites.");
             ShowStatus($"加载收藏失败：{ex.Message}", true);
         }
+    }
+
+    private async System.Threading.Tasks.Task<MoviesResponseDto> LoadActiveFavoritesAsync(string sort, int limit)
+    {
+        if (!string.IsNullOrWhiteSpace(_activeMediaRoot))
+        {
+            return await AppServices.Movie.GetFavoritesAsync(_activeMediaRoot, sort, limit, 0);
+        }
+
+        var roots = _activeMediaRoots.ToList();
+        if (roots.Count == 0)
+        {
+            return new MoviesResponseDto();
+        }
+
+        var responses = await System.Threading.Tasks.Task.WhenAll(roots.Select(root => AppServices.Movie.GetFavoritesAsync(root.Path, sort, limit, 0)));
+        return BrowseLibraryPresenter.MergeMovieResponses(responses, sort, limit);
     }
 
     private UIElement CreateFavoriteMovieCard(MovieCardItem item)
@@ -287,6 +322,29 @@ public sealed partial class FavoritesPage : Page
         _statusText.Text = message;
         _statusText.Foreground = isError ? FluentTheme.Error : FluentTheme.TextSecondary;
         _statusText.Visibility = Visibility.Visible;
+    }
+
+    private async void OnLoaded(object sender, RoutedEventArgs args)
+    {
+        AppServices.Library.LibrariesChanged -= OnLibrariesChanged;
+        AppServices.Library.LibrariesChanged += OnLibrariesChanged;
+        await LoadLibrariesAsync();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs args)
+    {
+        AppServices.Library.LibrariesChanged -= OnLibrariesChanged;
+    }
+
+    private void OnLibrariesChanged(object? sender, EventArgs args)
+    {
+        if (DispatcherQueue.HasThreadAccess)
+        {
+            _ = LoadLibrariesAsync();
+            return;
+        }
+
+        _ = DispatcherQueue.TryEnqueue(() => _ = LoadLibrariesAsync());
     }
 
     private MediaContextMenuHost CreateContextMenuHost(Func<System.Threading.Tasks.Task> refreshAsync)
