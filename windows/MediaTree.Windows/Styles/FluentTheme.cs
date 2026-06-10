@@ -195,11 +195,28 @@ public static class FluentTheme
         return flyout;
     }
 
+    public static MenuFlyout ApplyMenuFlyout(MenuFlyout flyout)
+    {
+        var presenterStyle = new Style(typeof(MenuFlyoutPresenter));
+        presenterStyle.Setters.Add(new Setter(MenuFlyoutPresenter.CornerRadiusProperty, ControlCornerRadius));
+        presenterStyle.Setters.Add(new Setter(MenuFlyoutPresenter.BackgroundProperty, Layer));
+        presenterStyle.Setters.Add(new Setter(MenuFlyoutPresenter.BorderBrushProperty, Border));
+        presenterStyle.Setters.Add(new Setter(MenuFlyoutPresenter.BorderThicknessProperty, new Thickness(1)));
+        flyout.MenuFlyoutPresenterStyle = presenterStyle;
+        return flyout;
+    }
+
     public static ContentDialog ApplyContentDialog(ContentDialog dialog)
     {
+        dialog.HorizontalAlignment = HorizontalAlignment.Center;
+        dialog.VerticalAlignment = VerticalAlignment.Center;
         dialog.Resources["ContentDialogCornerRadius"] = ControlCornerRadius;
         dialog.Resources["OverlayCornerRadius"] = ControlCornerRadius;
         dialog.Resources["ControlCornerRadius"] = ControlCornerRadius;
+        dialog.Resources["TextControlCornerRadius"] = ControlCornerRadius;
+        dialog.Resources["ComboBoxItemCornerRadius"] = ControlCornerRadius;
+        dialog.Resources["ListViewItemCornerRadius"] = ControlCornerRadius;
+        dialog.Resources["GridViewItemCornerRadius"] = ControlCornerRadius;
         return dialog;
     }
 

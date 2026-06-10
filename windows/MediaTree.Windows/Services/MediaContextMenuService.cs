@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -26,7 +27,7 @@ public static class MediaContextMenuService
 {
     public static MenuFlyout CreateMovieFlyout(MovieCardItem item, MediaContextMenuHost host)
     {
-        var flyout = new MenuFlyout();
+        var flyout = FluentTheme.ApplyMenuFlyout(new MenuFlyout());
         if (!item.IsSpecial)
         {
             flyout.Items.Add(CreateItem("重新刮削", async () => await RunMovieActionAsync(item, host, "重新刮削", () => AppServices.Movie.RescrapeMovieAsync(item.Id))));
@@ -41,7 +42,7 @@ public static class MediaContextMenuService
 
     public static MenuFlyout CreateFolderFlyout(FolderCardItem item, MediaContextMenuHost host)
     {
-        var flyout = new MenuFlyout();
+        var flyout = FluentTheme.ApplyMenuFlyout(new MenuFlyout());
         flyout.Items.Add(CreateItem("重新刮削", async () => await RunFolderActionAsync(item, host, "重新刮削", () => AppServices.Movie.RescrapeFolderAsync(item.Path, item.MediaRoot))));
         flyout.Items.Add(CreateItem("手动刮削", async () => await ShowFolderScrapeDialogAsync(item, host)));
         flyout.Items.Add(CreateItem("更换封面", async () => await ShowFolderCoverDialogAsync(item, host)));
@@ -110,38 +111,37 @@ public static class MediaContextMenuService
         var resultsList = FluentTheme.ApplyListView(new ListView
         {
             SelectionMode = ListViewSelectionMode.Single,
-            MaxHeight = 420,
+            MaxHeight = 360,
         });
         var status = StatusText("输入关键词后搜索，选择一个结果应用到当前影片。");
         var searchButton = FluentTheme.ApplyButton(new Button { Content = "搜索", HorizontalAlignment = HorizontalAlignment.Left }, FluentButtonStyle.Accent);
         searchButton.Click += async (_, _) => await SearchScrapeIntoListAsync(queryBox.Text, SelectedScraper(scraperBox), movie.MediaRoot, resultsList, status, searchButton);
 
         var stack = DialogStack(queryBox, scraperBox, searchButton, status, resultsList);
-        var dialog = CreateDialog(host.XamlRoot, "手动刮削", stack, "应用所选结果");
-        dialog.PrimaryButtonClick += async (_, args) =>
+        var dialog = new WindowModalDialog("手动刮削", stack, "应用所选结果");
+        dialog.PrimaryActionAsync = async () =>
         {
             if (resultsList.SelectedItem is not FrameworkElement { Tag: ScrapeSearchResultDto selected })
             {
-                args.Cancel = true;
                 status.Foreground = FluentTheme.Error;
                 status.Text = "请先选择一个候选结果。";
-                return;
+                return false;
             }
 
-            args.Cancel = true;
             try
             {
-                dialog.IsPrimaryButtonEnabled = false;
+                status.Foreground = FluentTheme.TextSecondary;
+                status.Text = "正在应用刮削结果...";
                 await AppServices.Movie.ManualScrapeMovieAsync(movie.Id, selected.Title, selected.SourceId, selected.MediaType, string.IsNullOrWhiteSpace(selected.Scraper) ? SelectedScraper(scraperBox) : selected.Scraper);
-                dialog.Hide();
                 await host.RefreshAsync();
+                return true;
             }
             catch (Exception ex)
             {
                 ShellLogger.Error(ex, $"Native manual movie scrape failed: movie={movie.Id}.");
                 status.Foreground = FluentTheme.Error;
                 status.Text = "应用失败：" + ex.Message;
-                dialog.IsPrimaryButtonEnabled = true;
+                return false;
             }
         };
 
@@ -160,38 +160,37 @@ public static class MediaContextMenuService
         var resultsList = FluentTheme.ApplyListView(new ListView
         {
             SelectionMode = ListViewSelectionMode.Single,
-            MaxHeight = 420,
+            MaxHeight = 360,
         });
         var status = StatusText("搜索后选择一个结果，应用到当前目录下的影片。");
         var searchButton = FluentTheme.ApplyButton(new Button { Content = "搜索", HorizontalAlignment = HorizontalAlignment.Left }, FluentButtonStyle.Accent);
         searchButton.Click += async (_, _) => await SearchScrapeIntoListAsync(queryBox.Text, SelectedScraper(scraperBox), folder.MediaRoot, resultsList, status, searchButton);
 
         var stack = DialogStack(queryBox, scraperBox, searchButton, status, resultsList);
-        var dialog = CreateDialog(host.XamlRoot, "手动刮削目录", stack, "应用所选结果");
-        dialog.PrimaryButtonClick += async (_, args) =>
+        var dialog = new WindowModalDialog("手动刮削目录", stack, "应用所选结果");
+        dialog.PrimaryActionAsync = async () =>
         {
             if (resultsList.SelectedItem is not FrameworkElement { Tag: ScrapeSearchResultDto selected })
             {
-                args.Cancel = true;
                 status.Foreground = FluentTheme.Error;
                 status.Text = "请先选择一个候选结果。";
-                return;
+                return false;
             }
 
-            args.Cancel = true;
             try
             {
-                dialog.IsPrimaryButtonEnabled = false;
+                status.Foreground = FluentTheme.TextSecondary;
+                status.Text = "正在应用刮削结果...";
                 await AppServices.Movie.ApplyFolderScrapeAsync(folder.Path, folder.MediaRoot, selected.SourceId, selected.Source, selected.MediaType);
-                dialog.Hide();
                 await host.RefreshAsync();
+                return true;
             }
             catch (Exception ex)
             {
                 ShellLogger.Error(ex, $"Native manual folder scrape failed: folder={folder.Path}.");
                 status.Foreground = FluentTheme.Error;
                 status.Text = "应用失败：" + ex.Message;
-                dialog.IsPrimaryButtonEnabled = true;
+                return false;
             }
         };
 
@@ -217,12 +216,7 @@ public static class MediaContextMenuService
             var response = await AppServices.Movie.SearchScrapeAsync(trimmed, scraper, mediaRoot);
             foreach (var result in response.Results)
             {
-                if (string.IsNullOrWhiteSpace(result.Scraper))
-                {
-                    result.Scraper = scraper;
-                }
-
-                resultsList.Items.Add(CreateScrapeResultRow(result));
+                resultsList.Items.Add(await CreateScrapeResultRowAsync(ScrapeResultPresenter.NormalizeScraper(result, scraper)));
             }
 
             status.Text = response.Results.Count == 0 ? "没有找到匹配结果。" : $"找到 {response.Results.Count} 个候选结果。";
@@ -634,7 +628,7 @@ public static class MediaContextMenuService
             PrimaryButtonText = "确定",
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Close,
-            XamlRoot = xamlRoot,
+            XamlRoot = ResolveDialogXamlRoot(xamlRoot),
         });
         var result = await dialog.ShowAsync();
         return result == ContentDialogResult.Primary;
@@ -675,7 +669,11 @@ public static class MediaContextMenuService
 
     private static StackPanel DialogStack(params UIElement[] children)
     {
-        var stack = new StackPanel { Spacing = 12 };
+        var stack = new StackPanel
+        {
+            Spacing = 12,
+            MaxWidth = 720,
+        };
         foreach (var child in children)
         {
             stack.Children.Add(child);
@@ -691,41 +689,49 @@ public static class MediaContextMenuService
             Content = new ScrollViewer
             {
                 Content = content,
-                MaxHeight = 640,
+                MaxWidth = 720,
+                MaxHeight = 560,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             },
+            MaxWidth = 760,
             PrimaryButtonText = primaryText,
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = xamlRoot,
+            XamlRoot = ResolveDialogXamlRoot(xamlRoot),
         });
 
-    private static FrameworkElement CreateScrapeResultRow(ScrapeSearchResultDto result)
+    private static XamlRoot ResolveDialogXamlRoot(XamlRoot fallback)
+        => AppServices.MainWindow?.Content?.XamlRoot ?? fallback;
+
+    public static async Task<FrameworkElement> CreateScrapeResultRowAsync(ScrapeSearchResultDto result, string automationPrefix = "ContextScrapeResult")
     {
-        var stack = new StackPanel
+        var poster = await CreateScrapePosterAsync(result);
+        var textStack = new StackPanel
         {
-            Padding = new Thickness(10),
-            Spacing = 4,
+            Spacing = 5,
+            VerticalAlignment = VerticalAlignment.Center,
         };
-        stack.Children.Add(new TextBlock
+        textStack.Children.Add(new TextBlock
         {
-            Text = string.IsNullOrWhiteSpace(result.Title) ? result.SourceId : result.Title,
+            Text = ScrapeResultPresenter.DisplayTitle(result),
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = FluentTheme.TextPrimary,
             TextWrapping = TextWrapping.WrapWholeWords,
+            MaxLines = 2,
         });
 
-        var meta = new[] { result.Source, result.MediaType, result.Year, result.OriginalTitle }
-            .Where(value => !string.IsNullOrWhiteSpace(value));
-        stack.Children.Add(new TextBlock
+        var meta = ScrapeResultPresenter.MetadataParts(result);
+        textStack.Children.Add(new TextBlock
         {
             Text = string.Join(" · ", meta),
             Foreground = FluentTheme.TextSecondary,
             TextWrapping = TextWrapping.WrapWholeWords,
+            MaxLines = 2,
         });
 
         if (!string.IsNullOrWhiteSpace(result.Overview))
         {
-            stack.Children.Add(new TextBlock
+            textStack.Children.Add(new TextBlock
             {
                 Text = result.Overview,
                 MaxLines = 3,
@@ -734,6 +740,18 @@ public static class MediaContextMenuService
             });
         }
 
+        var grid = new Grid
+        {
+            Padding = new Thickness(10),
+            ColumnSpacing = 12,
+            MinHeight = 132,
+        };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.Children.Add(poster);
+        Grid.SetColumn(textStack, 1);
+        grid.Children.Add(textStack);
+
         var border = new Border
         {
             CornerRadius = FluentTheme.CardCornerRadius,
@@ -741,13 +759,66 @@ public static class MediaContextMenuService
             BorderBrush = FluentTheme.Border,
             BorderThickness = new Thickness(1),
             Margin = new Thickness(0, 0, 0, 8),
-            Child = stack,
+            MaxWidth = 700,
+            Child = grid,
             Tag = result,
         };
-        AutomationProperties.SetAutomationId(border, $"ContextScrapeResult_{SanitizeAutomationId(result.SourceId)}");
+        AutomationProperties.SetAutomationId(border, $"{automationPrefix}_{ScrapeResultPresenter.SanitizeAutomationId(result.SourceId)}");
         return border;
     }
 
-    private static string SanitizeAutomationId(string value)
-        => value.Replace("\\", "_").Replace("/", "_").Replace(":", "_");
+    private static async Task<FrameworkElement> CreateScrapePosterAsync(ScrapeSearchResultDto result)
+    {
+        var placeholder = new TextBlock
+        {
+            Text = "无封面",
+            FontSize = 12,
+            Foreground = FluentTheme.TextTertiary,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
+        };
+        var host = new Grid
+        {
+            Width = 76,
+            Height = 112,
+            Background = FluentTheme.ControlAlt,
+            Children = { placeholder },
+        };
+
+        if (ScrapeResultPresenter.HasPoster(result))
+        {
+            try
+            {
+                var posterUrl = await AppServices.Api.BuildMediaAssetUrlAsync(result.PosterUrl);
+                if (Uri.TryCreate(posterUrl, UriKind.Absolute, out var posterUri))
+                {
+                    var image = new Image
+                    {
+                        Source = new BitmapImage(posterUri),
+                        Stretch = Stretch.UniformToFill,
+                    };
+                    image.ImageFailed += (_, _) => image.Visibility = Visibility.Collapsed;
+                    host.Children.Add(image);
+                }
+            }
+            catch (Exception ex)
+            {
+                ShellLogger.Error(ex, $"Failed to render native scrape poster: {result.PosterUrl}.");
+            }
+        }
+
+        return new Border
+        {
+            Width = 76,
+            Height = 112,
+            CornerRadius = FluentTheme.MediaCornerRadius,
+            Clip = new Microsoft.UI.Xaml.Media.RectangleGeometry
+            {
+                Rect = new global::Windows.Foundation.Rect(0, 0, 76, 112),
+            },
+            Background = FluentTheme.ControlAlt,
+            Child = host,
+        };
+    }
 }

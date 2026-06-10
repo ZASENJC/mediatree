@@ -58,7 +58,12 @@ public sealed partial class SetupPage : Page
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        var header = new StackPanel { Spacing = 8, MaxWidth = 760 };
+        var header = new StackPanel
+        {
+            Spacing = 8,
+            MaxWidth = 760,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
         header.Children.Add(FluentTheme.Title("添加你的影片文件夹", 34));
         header.Children.Add(FluentTheme.Body("选择一个存放影片或剧集的本机文件夹。MediaTree 会自动扫描里面的视频，并整理成方便浏览的媒体库。", 15));
         root.Children.Add(header);

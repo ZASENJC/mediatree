@@ -19,12 +19,13 @@ public sealed partial class ShellPage : Page
     private readonly Border _navigationHost;
     private readonly ColumnDefinition _navigationColumn;
     private readonly Button _settingsButton;
+    private readonly Button _updateIndicatorButton;
     private bool _isCompactNavigation;
     private bool _navigationChromeVisible = true;
 
     public ShellPage()
     {
-        (_contentFrame, _homeButton, _browseButton, _favoritesButton, _settingsButton, _navigationHost, _navigationColumn) = BuildContent();
+        (_contentFrame, _homeButton, _browseButton, _favoritesButton, _settingsButton, _updateIndicatorButton, _navigationHost, _navigationColumn) = BuildContent();
         Current = this;
         Loaded += OnLoaded;
     }
@@ -92,6 +93,8 @@ public sealed partial class ShellPage : Page
 
     private async void OnLoaded(object sender, RoutedEventArgs args)
     {
+        _ = RefreshUpdateIndicatorAsync();
+
         try
         {
             var setup = await Services.AppServices.Library.GetSetupStatusAsync();
@@ -109,7 +112,7 @@ public sealed partial class ShellPage : Page
         }
     }
 
-    private (Frame contentFrame, Button homeButton, Button browseButton, Button favoritesButton, Button settingsButton, Border navigationHost, ColumnDefinition navigationColumn) BuildContent()
+    private (Frame contentFrame, Button homeButton, Button browseButton, Button favoritesButton, Button settingsButton, Button updateIndicatorButton, Border navigationHost, ColumnDefinition navigationColumn) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "ShellPage");
 
@@ -132,21 +135,25 @@ public sealed partial class ShellPage : Page
         AutomationProperties.SetAutomationId(navigationHost, "ShellNavigation");
 
         var navigation = new StackPanel { Spacing = 8 };
-        navigation.Children.Add(new TextBlock
+        var brandRow = new Grid
+        {
+            ColumnSpacing = 10,
+            Margin = new Thickness(8, 0, 8, 18),
+        };
+        brandRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        brandRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        brandRow.Children.Add(new TextBlock
         {
             Text = "MediaTree",
             FontSize = 24,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = FluentTheme.TextPrimary,
-            Margin = new Thickness(8, 0, 8, 2),
+            VerticalAlignment = VerticalAlignment.Center,
         });
-        navigation.Children.Add(new TextBlock
-        {
-            Text = "本机媒体库",
-            FontSize = 13,
-            Foreground = FluentTheme.TextSecondary,
-            Margin = new Thickness(8, 0, 8, 18),
-        });
+        var updateIndicatorButton = CreateUpdateIndicatorButton();
+        Grid.SetColumn(updateIndicatorButton, 1);
+        brandRow.Children.Add(updateIndicatorButton);
+        navigation.Children.Add(brandRow);
 
         var homeButton = CreateNavigationButton("首页", "NavHome");
         homeButton.Click += (_, _) => _ = NavigateToHomeAsync();
@@ -162,6 +169,7 @@ public sealed partial class ShellPage : Page
 
         var settingsButton = CreateNavigationButton("设置", "NavSettings");
         settingsButton.Click += (_, _) => NavigateToPage(typeof(SettingsPage), settingsButton);
+        updateIndicatorButton.Click += (_, _) => NavigateToPage(typeof(SettingsPage), settingsButton);
         navigation.Children.Add(settingsButton);
 
         navigationHost.Child = navigation;
@@ -183,7 +191,54 @@ public sealed partial class ShellPage : Page
         };
 
         Content = root;
-        return (contentFrame, homeButton, browseButton, favoritesButton, settingsButton, navigationHost, navigationColumn);
+        return (contentFrame, homeButton, browseButton, favoritesButton, settingsButton, updateIndicatorButton, navigationHost, navigationColumn);
+    }
+
+    private static Button CreateUpdateIndicatorButton()
+    {
+        var icon = new FontIcon
+        {
+            Glyph = "\uE895",
+            FontFamily = new FontFamily("Segoe MDL2 Assets"),
+            FontSize = 14,
+            Foreground = FluentTheme.Accent,
+        };
+
+        var button = new Button
+        {
+            Content = icon,
+            Width = 34,
+            Height = 34,
+            MinWidth = 34,
+            MinHeight = 34,
+            Padding = new Thickness(0),
+            CornerRadius = new CornerRadius(17),
+            Background = FluentTheme.AccentSoft,
+            BorderBrush = FluentTheme.AccentSoft,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            Visibility = Visibility.Collapsed,
+        };
+        AutomationProperties.SetAutomationId(button, "NavUpdateIndicator");
+        AutomationProperties.SetName(button, "发现新版本");
+        ToolTipService.SetToolTip(button, "发现新版本");
+        return button;
+    }
+
+    private async System.Threading.Tasks.Task RefreshUpdateIndicatorAsync()
+    {
+        try
+        {
+            var result = await Services.AppServices.Updates.CheckForUpdatesAsync();
+            _updateIndicatorButton.Visibility = Services.UpdateIndicatorState.ShouldShow(result)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+        catch (Exception ex)
+        {
+            Services.ShellLogger.Error(ex, "Failed to refresh shell update indicator.");
+            _updateIndicatorButton.Visibility = Visibility.Collapsed;
+        }
     }
 
     private static Button CreateNavigationButton(string label, string automationId)

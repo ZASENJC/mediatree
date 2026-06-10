@@ -1943,7 +1943,7 @@ public sealed partial class PlayerPage : Page
             return;
         }
 
-        var flyout = new MenuFlyout();
+        var flyout = FluentTheme.ApplyMenuFlyout(new MenuFlyout());
         var off = new MenuFlyoutItem { Text = _state.SubtitleId <= 0 ? "* 关闭字幕" : "关闭字幕" };
         off.Click += async (_, _) => await SelectSubtitleAsync(0, "字幕已关闭");
         flyout.Items.Add(off);
@@ -1986,7 +1986,7 @@ public sealed partial class PlayerPage : Page
             return;
         }
 
-        var flyout = new MenuFlyout();
+        var flyout = FluentTheme.ApplyMenuFlyout(new MenuFlyout());
         var auto = new MenuFlyoutItem { Text = _state.AudioId <= 0 ? "* 自动" : "自动" };
         auto.Click += async (_, _) => await SelectAudioAsync(0, "音轨 自动");
         flyout.Items.Add(auto);

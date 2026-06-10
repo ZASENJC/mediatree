@@ -1282,58 +1282,7 @@ public sealed partial class SettingsPage : Page
 
     private void OnAddLibraryClicked(object sender, RoutedEventArgs args)
     {
-        _ = AddLibraryFromSettingsAsync(sender as Button);
-    }
-
-    private async System.Threading.Tasks.Task AddLibraryFromSettingsAsync(Button? button)
-    {
-        try
-        {
-            if (button is not null)
-            {
-                button.IsEnabled = false;
-            }
-
-            var picker = new FolderPicker
-            {
-                SuggestedStartLocation = PickerLocationId.VideosLibrary,
-            };
-            picker.FileTypeFilter.Add("*");
-            if (AppServices.MainWindow is not null)
-            {
-                InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(AppServices.MainWindow));
-            }
-
-            var folder = await picker.PickSingleFolderAsync();
-            if (folder is null)
-            {
-                _libraryStatusText.Foreground = FluentTheme.TextSecondary;
-                _libraryStatusText.Text = "已取消选择。";
-                return;
-            }
-
-            _libraryStatusText.Foreground = FluentTheme.TextSecondary;
-            _libraryStatusText.Text = "正在添加媒体库...";
-            var added = await AppServices.Library.AddLibraryRootAsync(folder.Path, "auto");
-            await LoadLibrarySettingsAsync();
-            _libraryStatusText.Foreground = FluentTheme.Accent;
-            _libraryStatusText.Text = added
-                ? "已添加媒体库，建议先保存刮削器设置后重新扫描。"
-                : "该媒体库已存在，已刷新列表。";
-        }
-        catch (Exception ex)
-        {
-            ShellLogger.Error(ex, "Failed to add native library from settings.");
-            _libraryStatusText.Foreground = FluentTheme.Error;
-            _libraryStatusText.Text = $"添加媒体库失败：{ex.Message}";
-        }
-        finally
-        {
-            if (button is not null)
-            {
-                button.IsEnabled = true;
-            }
-        }
+        ShellPage.Current?.NavigateToSetup();
     }
 
     private void ShowGlobalStatus(string message, bool isError)

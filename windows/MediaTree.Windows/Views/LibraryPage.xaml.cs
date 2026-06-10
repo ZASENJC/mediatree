@@ -17,18 +17,26 @@ namespace MediaTree.Windows.Views;
 
 public sealed partial class LibraryPage : Page
 {
+    public const double HeaderInputWidth = 220;
+
     private readonly ComboBox _libraryBox;
     private readonly Button _folderTabButton;
     private readonly GridView _folderGrid;
+    private readonly Button _addButton;
+    private readonly Grid _headerGrid;
     private readonly TextBlock _headerSubtitleText;
     private readonly TextBlock _headerTitleText;
     private readonly TextBlock _loadingText;
     private readonly Button _moviesBackButton;
     private readonly GridView _moviesGrid;
     private readonly Button _recentTabButton;
+    private readonly Grid _rootGrid;
+    private readonly Button _scanButton;
     private readonly TextBox _searchBox;
     private readonly TextBlock _scanInfoText;
     private readonly ComboBox _sortBox;
+    private readonly StackPanel _tabs;
+    private readonly Grid _toolbar;
     private readonly DispatcherTimer _scanTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private string _activeMediaRoot = "";
     private string _activeFolderPath = "";
@@ -40,13 +48,13 @@ public sealed partial class LibraryPage : Page
 
     public LibraryPage()
     {
-        (_libraryBox, _searchBox, _sortBox, _scanInfoText, _loadingText, _folderGrid, _moviesGrid, _headerTitleText, _headerSubtitleText, _folderTabButton, _recentTabButton, _moviesBackButton) = BuildContent();
+        (_rootGrid, _headerGrid, _tabs, _toolbar, _libraryBox, _searchBox, _sortBox, _scanButton, _addButton, _scanInfoText, _loadingText, _folderGrid, _moviesGrid, _headerTitleText, _headerSubtitleText, _folderTabButton, _recentTabButton, _moviesBackButton) = BuildContent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         _scanTimer.Tick += OnScanTimerTick;
     }
 
-    private (ComboBox libraryBox, TextBox searchBox, ComboBox sortBox, TextBlock scanInfoText, TextBlock loadingText, GridView folderGrid, GridView moviesGrid, TextBlock headerTitleText, TextBlock headerSubtitleText, Button folderTabButton, Button recentTabButton, Button moviesBackButton) BuildContent()
+    private (Grid root, Grid header, StackPanel tabs, Grid toolbar, ComboBox libraryBox, TextBox searchBox, ComboBox sortBox, Button scanButton, Button addButton, TextBlock scanInfoText, TextBlock loadingText, GridView folderGrid, GridView moviesGrid, TextBlock headerTitleText, TextBlock headerSubtitleText, Button folderTabButton, Button recentTabButton, Button moviesBackButton) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "LibraryPage");
 
@@ -112,10 +120,15 @@ public sealed partial class LibraryPage : Page
         header.Children.Add(tabs);
         headerStack.Children.Add(header);
 
-        var toolbar = new Grid { ColumnSpacing = 12 };
+        var toolbar = new Grid
+        {
+            ColumnSpacing = 12,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
         toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
-        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -137,7 +150,8 @@ public sealed partial class LibraryPage : Page
         var libraryBox = FluentTheme.ApplyComboBox(new ComboBox
         {
             Header = "文件夹",
-            MinWidth = 240,
+            Width = HeaderInputWidth,
+            HorizontalAlignment = HorizontalAlignment.Left,
         });
         AutomationProperties.SetAutomationId(libraryBox, "LibrarySelector");
         libraryBox.SelectionChanged += OnLibraryChanged;
@@ -148,6 +162,8 @@ public sealed partial class LibraryPage : Page
         {
             Header = "搜索影片",
             PlaceholderText = "输入标题或关键字",
+            Width = HeaderInputWidth,
+            HorizontalAlignment = HorizontalAlignment.Left,
         });
         AutomationProperties.SetAutomationId(searchBox, "LibrarySearchBox");
         searchBox.KeyDown += OnSearchKeyDown;
@@ -164,7 +180,7 @@ public sealed partial class LibraryPage : Page
         sortBox.Items.Add(new ComboBoxItem { Content = "发布日期", Tag = "release_date_desc" });
         sortBox.SelectedIndex = 0;
         sortBox.SelectionChanged += OnSortChanged;
-        Grid.SetColumn(sortBox, 3);
+        Grid.SetColumn(sortBox, 4);
         toolbar.Children.Add(sortBox);
 
         var scanButton = FluentTheme.ApplyButton(new Button
@@ -174,7 +190,7 @@ public sealed partial class LibraryPage : Page
         });
         AutomationProperties.SetAutomationId(scanButton, "LibraryScanButton");
         scanButton.Click += OnScanClicked;
-        Grid.SetColumn(scanButton, 4);
+        Grid.SetColumn(scanButton, 5);
         toolbar.Children.Add(scanButton);
 
         var addButton = FluentTheme.ApplyButton(new Button
@@ -184,7 +200,7 @@ public sealed partial class LibraryPage : Page
         }, FluentButtonStyle.Accent);
         AutomationProperties.SetAutomationId(addButton, "LibraryAddFolderButton");
         addButton.Click += OnAddLibraryClicked;
-        Grid.SetColumn(addButton, 5);
+        Grid.SetColumn(addButton, 6);
         toolbar.Children.Add(addButton);
 
         headerStack.Children.Add(toolbar);
@@ -250,7 +266,28 @@ public sealed partial class LibraryPage : Page
 
         root.Children.Add(content);
         Content = root;
-        return (libraryBox, searchBox, sortBox, scanInfoText, loadingText, folderGrid, moviesGrid, headerTitleText, headerSubtitleText, folderTabButton, recentTabButton, moviesBackButton);
+        return (root, header, tabs, toolbar, libraryBox, searchBox, sortBox, scanButton, addButton, scanInfoText, loadingText, folderGrid, moviesGrid, headerTitleText, headerSubtitleText, folderTabButton, recentTabButton, moviesBackButton);
+    }
+
+    private void ApplyCurrentLayout()
+    {
+        if (_rootGrid.ActualWidth <= 0)
+        {
+            return;
+        }
+
+        ApplyLibraryResponsiveLayout(
+            _rootGrid.ActualWidth,
+            _rootGrid,
+            _headerGrid,
+            _tabs,
+            _toolbar,
+            _moviesBackButton,
+            _libraryBox,
+            _searchBox,
+            _sortBox,
+            _scanButton,
+            _addButton);
     }
 
     private static void ApplyLibraryResponsiveLayout(
@@ -278,25 +315,32 @@ public sealed partial class LibraryPage : Page
 
         toolbar.RowSpacing = compactToolbar ? 10 : 0;
         toolbar.ColumnDefinitions[0].Width = compactToolbar ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
-        toolbar.ColumnDefinitions[1].Width = compactToolbar ? new GridLength(0) : new GridLength(2, GridUnitType.Star);
-        toolbar.ColumnDefinitions[2].Width = compactToolbar ? new GridLength(0) : new GridLength(3, GridUnitType.Star);
-        toolbar.ColumnDefinitions[3].Width = compactToolbar ? new GridLength(0) : GridLength.Auto;
+        toolbar.ColumnDefinitions[1].Width = compactToolbar ? new GridLength(0) : GridLength.Auto;
+        toolbar.ColumnDefinitions[2].Width = compactToolbar ? new GridLength(0) : GridLength.Auto;
+        toolbar.ColumnDefinitions[3].Width = compactToolbar ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
         toolbar.ColumnDefinitions[4].Width = compactToolbar ? new GridLength(0) : GridLength.Auto;
         toolbar.ColumnDefinitions[5].Width = compactToolbar ? new GridLength(0) : GridLength.Auto;
+        toolbar.ColumnDefinitions[6].Width = compactToolbar ? new GridLength(0) : GridLength.Auto;
         for (var i = 1; i < toolbar.RowDefinitions.Count; i++)
         {
             toolbar.RowDefinitions[i].Height = compactToolbar ? GridLength.Auto : new GridLength(0);
         }
 
         var controls = new FrameworkElement[] { moviesBackButton, libraryBox, searchBox, sortBox, scanButton, addButton };
+        var expandedColumns = moviesBackButton.Visibility == Visibility.Visible
+            ? new[] { 0, 1, 2, 4, 5, 6 }
+            : new[] { 0, 0, 1, 4, 5, 6 };
         for (var i = 0; i < controls.Length; i++)
         {
-            Grid.SetColumn(controls[i], compactToolbar ? 0 : i);
+            Grid.SetColumn(controls[i], compactToolbar ? 0 : expandedColumns[i]);
             Grid.SetRow(controls[i], compactToolbar ? i : 0);
             controls[i].HorizontalAlignment = compactToolbar ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         }
 
-        libraryBox.MinWidth = compactToolbar ? 0 : 240;
+        libraryBox.Width = compactToolbar ? double.NaN : HeaderInputWidth;
+        searchBox.Width = compactToolbar ? double.NaN : HeaderInputWidth;
+        libraryBox.MinWidth = 0;
+        searchBox.MinWidth = 0;
         sortBox.MinWidth = compactToolbar ? 0 : 160;
     }
 
@@ -780,6 +824,7 @@ public sealed partial class LibraryPage : Page
         _moviesBackButton.Visibility = Visibility.Collapsed;
         _activeView = "folders";
         ApplyTabStyles();
+        ApplyCurrentLayout();
     }
 
     private void ShowMoviesView(bool recent)
@@ -789,6 +834,7 @@ public sealed partial class LibraryPage : Page
         _moviesBackButton.Visibility = recent ? Visibility.Collapsed : Visibility.Visible;
         _activeView = recent ? "recent" : "movies";
         ApplyTabStyles();
+        ApplyCurrentLayout();
     }
 
     private void ApplyTabStyles()

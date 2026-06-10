@@ -227,6 +227,49 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void UpdateIndicatorShowsOnlyWhenUpdateExists()
+    {
+        Assert.False(UpdateIndicatorState.ShouldShow(null));
+        Assert.False(UpdateIndicatorState.ShouldShow(new UpdateCheckResultDto { HasUpdate = false }));
+        Assert.True(UpdateIndicatorState.ShouldShow(new UpdateCheckResultDto { HasUpdate = true }));
+    }
+
+    [Fact]
+    public void LibraryHeaderInputsUseMatchedCompactWidth()
+    {
+        Assert.Equal(220, MediaTree.Windows.Views.LibraryPage.HeaderInputWidth);
+    }
+
+    [Fact]
+    public void ScrapeResultPresenterBuildsCompactDisplayState()
+    {
+        var result = new ScrapeSearchResultDto
+        {
+            Source = "tmdb",
+            SourceId = "movie/12:34",
+            MediaType = "movie",
+            Year = "2026",
+            OriginalTitle = "",
+            PosterUrl = "/api/poster.jpg",
+        };
+
+        Assert.Equal("movie/12:34", ScrapeResultPresenter.DisplayTitle(result));
+        Assert.Equal(new[] { "tmdb", "movie", "2026" }, ScrapeResultPresenter.MetadataParts(result));
+        Assert.True(ScrapeResultPresenter.HasPoster(result));
+        Assert.Equal("movie_12_34", ScrapeResultPresenter.SanitizeAutomationId(result.SourceId));
+    }
+
+    [Fact]
+    public void ScrapeResultPresenterKeepsReturnedScraperOrAppliesFallback()
+    {
+        var missingScraper = new ScrapeSearchResultDto { Scraper = "" };
+        var explicitScraper = new ScrapeSearchResultDto { Scraper = "tmdb_tv" };
+
+        Assert.Equal("auto", ScrapeResultPresenter.NormalizeScraper(missingScraper, "auto").Scraper);
+        Assert.Equal("tmdb_tv", ScrapeResultPresenter.NormalizeScraper(explicitScraper, "auto").Scraper);
+    }
+
+    [Fact]
     public void ScrapeSearchDtoAcceptsTmdbCollectionCandidates()
     {
         var json = """

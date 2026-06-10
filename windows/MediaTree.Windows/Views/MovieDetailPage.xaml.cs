@@ -424,7 +424,7 @@ public sealed partial class MovieDetailPage : Page
         {
             SelectionMode = ListViewSelectionMode.Single,
             IsItemClickEnabled = true,
-            MaxHeight = 420,
+            MaxHeight = 360,
         });
         AutomationProperties.SetAutomationId(resultList, "ManualScrapeResults");
 
@@ -459,9 +459,11 @@ public sealed partial class MovieDetailPage : Page
                 resultList.Items.Clear();
                 var scraper = SelectedScraper(scraperBox);
                 var response = await AppServices.Movie.SearchScrapeAsync(query, scraper, movie.MediaRoot);
-                foreach (var result in response.Results.Select(result => NormalizeScrapeResult(result, scraper)))
+                foreach (var result in response.Results)
                 {
-                    resultList.Items.Add(CreateScrapeResultRow(result));
+                    resultList.Items.Add(await MediaContextMenuService.CreateScrapeResultRowAsync(
+                        ScrapeResultPresenter.NormalizeScraper(result, scraper),
+                        "ManualScrapeResult"));
                 }
 
                 statusText.Text = response.Results.Count == 0 ? "没有找到匹配结果。" : $"找到 {response.Results.Count} 个候选结果。";
@@ -478,50 +480,42 @@ public sealed partial class MovieDetailPage : Page
             }
         };
 
-        var form = new StackPanel { Spacing = 12 };
+        var form = new StackPanel
+        {
+            Spacing = 12,
+            MaxWidth = 720,
+        };
         form.Children.Add(queryBox);
         form.Children.Add(scraperBox);
         form.Children.Add(searchButton);
         form.Children.Add(statusText);
         form.Children.Add(resultList);
 
-        var dialog = FluentTheme.ApplyContentDialog(new ContentDialog
-        {
-            Title = "手动刮削",
-            Content = new ScrollViewer { Content = form },
-            PrimaryButtonText = "应用所选结果",
-            CloseButtonText = "取消",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = XamlRoot,
-        });
-
-        dialog.PrimaryButtonClick += async (_, eventArgs) =>
+        var dialog = new WindowModalDialog("手动刮削", form, "应用所选结果");
+        dialog.PrimaryActionAsync = async () =>
         {
             if (resultList.SelectedItem is not FrameworkElement { Tag: ScrapeSearchResultDto selected })
             {
-                eventArgs.Cancel = true;
                 statusText.Foreground = FluentTheme.Error;
                 statusText.Text = "请先选择一个候选结果。";
-                return;
+                return false;
             }
 
-            eventArgs.Cancel = true;
             try
             {
-                dialog.IsPrimaryButtonEnabled = false;
                 statusText.Foreground = FluentTheme.TextSecondary;
                 statusText.Text = "正在应用刮削结果...";
                 var scraper = string.IsNullOrWhiteSpace(selected.Scraper) ? SelectedScraper(scraperBox) : selected.Scraper;
                 await AppServices.Movie.ManualScrapeMovieAsync(movie.Id, selected.Title, selected.SourceId, selected.MediaType, scraper);
-                dialog.Hide();
                 await LoadAsync();
+                return true;
             }
             catch (Exception ex)
             {
                 ShellLogger.Error(ex, "Failed to apply native manual scrape candidate.");
                 statusText.Foreground = FluentTheme.Error;
                 statusText.Text = $"应用失败：{ex.Message}";
-                dialog.IsPrimaryButtonEnabled = true;
+                return false;
             }
         };
 
@@ -539,81 +533,6 @@ public sealed partial class MovieDetailPage : Page
 
     private static string SelectedScraper(ComboBox box)
         => box.SelectedItem is ComboBoxItem { Tag: string value } ? value : "auto";
-
-    private static ScrapeSearchResultDto NormalizeScrapeResult(ScrapeSearchResultDto result, string fallbackScraper)
-    {
-        if (string.IsNullOrWhiteSpace(result.Scraper))
-        {
-            result.Scraper = fallbackScraper;
-        }
-
-        return result;
-    }
-
-    private static FrameworkElement CreateScrapeResultRow(ScrapeSearchResultDto result)
-    {
-        var stack = new StackPanel
-        {
-            Padding = new Thickness(10),
-            Spacing = 4,
-        };
-        stack.Children.Add(new TextBlock
-        {
-            Text = string.IsNullOrWhiteSpace(result.Title) ? result.SourceId : result.Title,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = FluentTheme.TextPrimary,
-            TextWrapping = TextWrapping.WrapWholeWords,
-        });
-
-        var meta = new List<string>();
-        if (!string.IsNullOrWhiteSpace(result.Source))
-        {
-            meta.Add(result.Source);
-        }
-
-        if (!string.IsNullOrWhiteSpace(result.MediaType))
-        {
-            meta.Add(result.MediaType);
-        }
-
-        if (!string.IsNullOrWhiteSpace(result.Year))
-        {
-            meta.Add(result.Year);
-        }
-
-        if (!string.IsNullOrWhiteSpace(result.OriginalTitle))
-        {
-            meta.Add(result.OriginalTitle);
-        }
-
-        stack.Children.Add(new TextBlock
-        {
-            Text = string.Join(" · ", meta),
-            Foreground = FluentTheme.TextSecondary,
-            TextWrapping = TextWrapping.WrapWholeWords,
-        });
-        if (!string.IsNullOrWhiteSpace(result.Overview))
-        {
-            stack.Children.Add(new TextBlock
-            {
-                Text = result.Overview,
-                MaxLines = 3,
-                Foreground = FluentTheme.TextTertiary,
-                TextWrapping = TextWrapping.WrapWholeWords,
-            });
-        }
-
-        return new Border
-        {
-            CornerRadius = FluentTheme.CardCornerRadius,
-            Background = FluentTheme.LayerAlt,
-            BorderBrush = FluentTheme.Border,
-            BorderThickness = new Thickness(1),
-            Margin = new Thickness(0, 0, 0, 8),
-            Child = stack,
-            Tag = result,
-        };
-    }
 
     private void ShowDetailError(string message)
     {
