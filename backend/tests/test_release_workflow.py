@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "release-tag.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 LOCAL_DOCKER_PUSH = ROOT / "scripts" / "push-docker-release.sh"
+TELEGRAM_NOTIFY = ROOT / ".github" / "scripts" / "notify-telegram-release.sh"
 DOCKERFILE = ROOT / "Dockerfile"
 
 
@@ -43,6 +44,26 @@ class ReleaseWorkflowTest(unittest.TestCase):
 
         self.assertLess(app_package_pos, update_tag_pos)
         self.assertLess(update_tag_pos, github_release_pos)
+
+    def test_release_workflow_notifies_telegram_after_github_release(self):
+        github_release_pos = self.workflow.index("- name: Update GitHub Release")
+        telegram_pos = self.workflow.index("- name: Notify Telegram")
+        notify_step = self._step_block("Notify Telegram")
+
+        self.assertLess(github_release_pos, telegram_pos)
+        self.assertIn("TG_BOT_TOKEN", notify_step)
+        self.assertIn("TG_CHAT_ID", notify_step)
+        self.assertIn("VERSION: ${{ steps.version.outputs.version }}", notify_step)
+        self.assertIn("bash .github/scripts/notify-telegram-release.sh", notify_step)
+
+    def test_telegram_notification_is_message_only(self):
+        script = TELEGRAM_NOTIFY.read_text(encoding="utf-8")
+
+        self.assertIn("sendMessage", script)
+        self.assertNotIn("sendDocument", script)
+        self.assertNotIn("document=@", script)
+        self.assertNotIn("app_package.outputs.archive", script)
+        self.assertNotIn("mediatree-app-$VERSION.tar.gz", script)
 
     def test_workflows_use_node24_compatible_action_versions(self):
         workflows = self.workflow + "\n" + self.ci_workflow
