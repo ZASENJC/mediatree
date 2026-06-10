@@ -37,6 +37,11 @@ class ReleaseWorkflowTest(unittest.TestCase):
         for marker in forbidden:
             self.assertNotIn(marker, self.workflow)
 
+    def test_release_workflow_is_manual_only(self):
+        self.assertIn("workflow_dispatch:", self.workflow)
+        self.assertNotIn("\n  push:", self.workflow)
+        self.assertNotIn("\n    branches:\n      - main", self.workflow)
+
     def test_release_workflow_publishes_app_package_before_tag_and_release(self):
         app_package_pos = self.workflow.index("- name: Build app update package")
         update_tag_pos = self.workflow.index("- name: Update tag after validation")
