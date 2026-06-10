@@ -141,6 +141,9 @@ public sealed class VersionEntryDto
     [JsonPropertyName("requires_windows_base_update")]
     public bool RequiresWindowsBaseUpdate { get; set; }
 
+    [JsonPropertyName("required_image_version")]
+    public string RequiredImageVersion { get; set; } = "";
+
     [JsonPropertyName("reason")]
     public string Reason { get; set; } = "";
 

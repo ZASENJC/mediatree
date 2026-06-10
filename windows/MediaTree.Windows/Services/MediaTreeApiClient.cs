@@ -73,10 +73,6 @@ public sealed class MediaTreeApiClient : IDisposable
         => await PostJsonAsync<JsonElement>("/config", new
         {
             javdb_enabled = config.JavdbEnabled,
-            javdb_cache_hours = config.JavdbCacheHours,
-            tmdb_cache_hours = config.TmdbCacheHours,
-            bangumi_cache_hours = config.BangumiCacheHours,
-            javdb_request_interval = config.JavdbRequestInterval,
             tmdb_api_key = config.TmdbApiKey,
             tmdb_access_token = NormalizeTmdbAccessToken(config.TmdbAccessToken),
             update_check_enabled = config.UpdateCheckEnabled,
@@ -359,8 +355,8 @@ public sealed class MediaTreeApiClient : IDisposable
     public async Task<VersionInfoDto> GetVersionAsync(CancellationToken cancellationToken = default)
         => await GetAsync<VersionInfoDto>("/version", cancellationToken);
 
-    public async Task<UpdateCheckResultDto> CheckForUpdatesAsync(CancellationToken cancellationToken = default)
-        => await GetAsync<UpdateCheckResultDto>("/update/check", cancellationToken);
+    public async Task<UpdateCheckResultDto> CheckForUpdatesAsync(bool includeRegistrySync = false, CancellationToken cancellationToken = default)
+        => await GetAsync<UpdateCheckResultDto>($"/update/check{(includeRegistrySync ? "?include_registry_sync=true" : "")}", cancellationToken);
 
     public async Task<UpdateStatusDto> GetUpdateStatusAsync(CancellationToken cancellationToken = default)
         => await GetAsync<UpdateStatusDto>("/update/status", cancellationToken);

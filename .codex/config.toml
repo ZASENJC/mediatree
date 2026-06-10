@@ -1,8 +1,6 @@
 # Project-local Codex baseline for MediaTree.
 # User credentials and personal MCP env values belong in ~/.codex/config.toml.
 
-model = "gpt-5.4"
-model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 
 [features]

@@ -17,6 +17,7 @@ namespace MediaTree.Windows;
 
 public sealed partial class MainWindow : Window
 {
+    private const string DefaultWindowTitle = "MediaTree";
     private readonly BackendProcessService _backend = new();
     private readonly Frame _rootFrame;
     private readonly Grid _loadingOverlay;
@@ -29,7 +30,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         ShellLogger.Info("Creating native main window.");
-        Title = "MediaTree";
+        Title = DefaultWindowTitle;
         Closed += OnClosed;
         (_rootFrame, _loadingOverlay, _statusText, _startupActions) = BuildContent();
     }
@@ -69,6 +70,23 @@ public sealed partial class MainWindow : Window
 
         appWindow.SetPresenter(enabled ? AppWindowPresenterKind.FullScreen : AppWindowPresenterKind.Overlapped);
         _isFullScreen = enabled;
+    }
+
+    public void SetPlaybackWindowTitle(string? title, bool paused)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            RestoreDefaultWindowTitle();
+            return;
+        }
+
+        var playbackTitle = title.Trim();
+        Title = $"{(paused ? "⏸" : "▶")} {playbackTitle} - {DefaultWindowTitle}";
+    }
+
+    public void RestoreDefaultWindowTitle()
+    {
+        Title = DefaultWindowTitle;
     }
 
     private AppWindow GetAppWindow()

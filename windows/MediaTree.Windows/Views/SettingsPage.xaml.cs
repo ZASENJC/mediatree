@@ -46,13 +46,9 @@ public sealed partial class SettingsPage : Page
     private readonly TextBox _oldUsernameBox;
     private readonly CheckBox _showSourceNameBox;
     private readonly TextBlock _backupStatusText;
-    private readonly TextBox _bangumiCacheHoursBox;
-    private readonly TextBox _javdbCacheHoursBox;
-    private readonly TextBox _javdbRequestIntervalBox;
     private readonly ListView _librarySettingsList;
     private readonly TextBlock _libraryStatusText;
     private readonly TextBox _tmdbApiKeyBox;
-    private readonly TextBox _tmdbCacheHoursBox;
     private readonly PasswordBox _tmdbTokenBox;
     private readonly TextBlock _tmdbTokenStatusText;
     private readonly DispatcherTimer _scanStatusTimer = new() { Interval = TimeSpan.FromSeconds(2) };
@@ -84,10 +80,6 @@ public sealed partial class SettingsPage : Page
             _authStatusText,
             _librarySettingsList,
             _libraryStatusText,
-            _javdbCacheHoursBox,
-            _tmdbCacheHoursBox,
-            _bangumiCacheHoursBox,
-            _javdbRequestIntervalBox,
             _tmdbApiKeyBox,
             _tmdbTokenBox,
             _tmdbTokenStatusText,
@@ -103,7 +95,7 @@ public sealed partial class SettingsPage : Page
         Unloaded += OnUnloaded;
     }
 
-    private (TextBlock globalStatusText, CheckBox hideHomeTitleTextBox, CheckBox showSourceNameBox, TextBox oldUsernameBox, PasswordBox oldPasswordBox, TextBox newUsernameBox, PasswordBox newPasswordBox, TextBlock authStatusText, ListView librarySettingsList, TextBlock libraryStatusText, TextBox javdbCacheHoursBox, TextBox tmdbCacheHoursBox, TextBox bangumiCacheHoursBox, TextBox javdbRequestIntervalBox, TextBox tmdbApiKeyBox, PasswordBox tmdbTokenBox, TextBlock tmdbTokenStatusText, TextBlock backupStatusText, TextBlock versionText, TextBlock updateProgressText, TextBlock updateStatusText, StackPanel updateVersionsStack) BuildContent()
+    private (TextBlock globalStatusText, CheckBox hideHomeTitleTextBox, CheckBox showSourceNameBox, TextBox oldUsernameBox, PasswordBox oldPasswordBox, TextBox newUsernameBox, PasswordBox newPasswordBox, TextBlock authStatusText, ListView librarySettingsList, TextBlock libraryStatusText, TextBox tmdbApiKeyBox, PasswordBox tmdbTokenBox, TextBlock tmdbTokenStatusText, TextBlock backupStatusText, TextBlock versionText, TextBlock updateProgressText, TextBlock updateStatusText, StackPanel updateVersionsStack) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "SettingsPage");
 
@@ -236,12 +228,6 @@ public sealed partial class SettingsPage : Page
 
         var scraperStack = new StackPanel { Spacing = 12 };
         scraperStack.Children.Add(SectionTitle("刮削器", "SettingsScraperCard"));
-        var javdbCacheHoursBox = TextInput("Javdatabase 缓存（小时）", "SettingsJavdbCacheHours", "24");
-        var tmdbCacheHoursBox = TextInput("TMDB 缓存（小时）", "SettingsTmdbCacheHours", "168");
-        var bangumiCacheHoursBox = TextInput("Bangumi 缓存（小时）", "SettingsBangumiCacheHours", "168");
-        scraperStack.Children.Add(ThreeColumnRow(javdbCacheHoursBox, tmdbCacheHoursBox, bangumiCacheHoursBox));
-        var javdbRequestIntervalBox = TextInput("请求间隔（秒）", "SettingsJavdbRequestInterval", "3");
-        scraperStack.Children.Add(javdbRequestIntervalBox);
         var tmdbApiKeyBox = TextInput("TMDB API Key", "SettingsTmdbApiKey");
         tmdbApiKeyBox.PlaceholderText = "去 themoviedb.org 免费申请";
         scraperStack.Children.Add(tmdbApiKeyBox);
@@ -335,10 +321,6 @@ public sealed partial class SettingsPage : Page
             authStatusText,
             librarySettingsList,
             libraryStatusText,
-            javdbCacheHoursBox,
-            tmdbCacheHoursBox,
-            bangumiCacheHoursBox,
-            javdbRequestIntervalBox,
             tmdbApiKeyBox,
             tmdbTokenBox,
             tmdbTokenStatusText,
@@ -404,10 +386,6 @@ public sealed partial class SettingsPage : Page
         {
             var config = await AppServices.Api.GetConfigAsync();
             _loadedConfig = config;
-            _javdbCacheHoursBox.Text = config.JavdbCacheHours.ToString();
-            _tmdbCacheHoursBox.Text = config.TmdbCacheHours.ToString();
-            _bangumiCacheHoursBox.Text = config.BangumiCacheHours.ToString();
-            _javdbRequestIntervalBox.Text = config.JavdbRequestInterval.ToString();
             _tmdbApiKeyBox.Text = config.TmdbApiKey ?? "";
             _tmdbTokenBox.Password = config.TmdbAccessToken ?? "";
             ShowTmdbStatus(config.TmdbConfigured ? "TMDB 已配置。保存全局设置即可替换令牌。" : "未配置 TMDB 令牌。选择 TMDB 刮削器前建议先填写。", false);
@@ -451,10 +429,6 @@ public sealed partial class SettingsPage : Page
         await AppServices.Api.SaveGlobalConfigAsync(new ConfigDto
         {
             JavdbEnabled = _loadedConfig.JavdbEnabled,
-            JavdbCacheHours = ReadInt(_javdbCacheHoursBox.Text, 24),
-            TmdbCacheHours = ReadInt(_tmdbCacheHoursBox.Text, 168),
-            BangumiCacheHours = ReadInt(_bangumiCacheHoursBox.Text, 168),
-            JavdbRequestInterval = ReadInt(_javdbRequestIntervalBox.Text, 3),
             TmdbApiKey = _tmdbApiKeyBox.Text.Trim(),
             TmdbAccessToken = _tmdbTokenBox.Password,
             UpdateCheckEnabled = _loadedConfig.UpdateCheckEnabled,
@@ -892,7 +866,7 @@ public sealed partial class SettingsPage : Page
         try
         {
             ShowUpdateStatus("正在检查更新...", false);
-            var result = await AppServices.Updates.CheckForUpdatesAsync();
+            var result = await AppServices.Updates.CheckForUpdatesAsync(includeRegistrySync: true);
             _lastUpdateResult = result;
             await LoadUpdateStatusAsync();
             if (!result.HasUpdate)
@@ -927,7 +901,7 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
-            _lastUpdateResult = await AppServices.Updates.CheckForUpdatesAsync();
+            _lastUpdateResult = await AppServices.Updates.CheckForUpdatesAsync(includeRegistrySync: true);
             RenderUpdateVersions();
             if (_lastUpdateResult.HasUpdate)
             {
@@ -1137,9 +1111,10 @@ public sealed partial class SettingsPage : Page
             : version.RequiresImageUpdate
                 ? "需要完整镜像更新"
                 : "应用包更新";
+        var sizeText = version.RequiresWindowsBaseUpdate || version.RequiresImageUpdate ? "" : $" · {FormatSize(version.Size)}";
         var meta = new TextBlock
         {
-            Text = $"{typeText} · {FormatSize(version.Size)}{FormatReason(version)}",
+            Text = $"{typeText}{sizeText}{FormatReason(version)}",
             Foreground = FluentTheme.TextSecondary,
             TextWrapping = TextWrapping.WrapWholeWords,
         };
@@ -1157,7 +1132,7 @@ public sealed partial class SettingsPage : Page
 
         if (CanRollbackTo(version))
         {
-            var rollbackButton = FluentTheme.ApplyButton(new Button { Content = "回滚到此版本" });
+            var rollbackButton = FluentTheme.ApplyButton(new Button { Content = "回滚此版本" });
             AutomationProperties.SetAutomationId(rollbackButton, $"SettingsRollbackUpdate_{SanitizeAutomationId(version.Version)}");
             rollbackButton.Click += (_, _) => _ = RollbackUpdateAsync(version);
             actions.Children.Add(rollbackButton);
@@ -1171,11 +1146,12 @@ public sealed partial class SettingsPage : Page
         }
         else if (!IsCurrentVersion(version) && version.RequiresImageUpdate)
         {
-            actions.Children.Add(FluentTheme.Body("完整镜像更新请在宿主机执行，Windows 桌面端不直接替换镜像。", 12));
+            var dockerTarget = string.IsNullOrWhiteSpace(version.RequiredImageVersion) ? version.Version : version.RequiredImageVersion;
+            actions.Children.Add(FluentTheme.Body($"完整镜像更新请在宿主机执行到 {dockerTarget}，Windows 桌面端不直接替换镜像。", 12));
         }
         else if (!IsCurrentVersion(version))
         {
-            var updateButton = FluentTheme.ApplyButton(new Button { Content = "下载并更新" }, FluentButtonStyle.Accent);
+            var updateButton = FluentTheme.ApplyButton(new Button { Content = IsOlderVersion(version) ? "回滚此版本" : "下载并更新" }, FluentButtonStyle.Accent);
             AutomationProperties.SetAutomationId(updateButton, $"SettingsPerformUpdate_{SanitizeAutomationId(version.Version)}");
             updateButton.IsEnabled = !IsUpdateBusy(_lastUpdateStatus);
             updateButton.Click += (_, _) => _ = PerformUpdateAsync(version);
@@ -1190,26 +1166,27 @@ public sealed partial class SettingsPage : Page
 
     private async System.Threading.Tasks.Task PerformUpdateAsync(VersionEntryDto version)
     {
+        var isOlderVersion = IsOlderVersion(version);
         try
         {
-            ShowUpdateStatus("正在发起应用包更新...", false);
+            ShowUpdateStatus(isOlderVersion ? "正在发起版本回滚..." : "正在发起应用包更新...", false);
             _lastUpdateStatus = new UpdateStatusDto
             {
                 Status = "downloading",
                 Version = version.Version,
-                Message = "正在发起应用包更新...",
+                Message = isOlderVersion ? "正在发起版本回滚..." : "正在发起应用包更新...",
                 UpdateType = "app-package",
             };
             RenderUpdateStatus(_lastUpdateStatus);
             RenderUpdateVersions();
             _updateStatusTimer.Start();
             var result = await AppServices.Updates.PerformUpdateAsync(version.Version, "app-package");
-            ShowUpdateStatus(string.IsNullOrWhiteSpace(result.Message) ? "更新已触发。" : result.Message, false);
+            ShowUpdateStatus(string.IsNullOrWhiteSpace(result.Message) ? (isOlderVersion ? "回滚已触发。" : "更新已触发。") : result.Message, false);
         }
         catch (Exception ex)
         {
             ShellLogger.Error(ex, "Failed to perform native Windows app update.");
-            ShowUpdateStatus($"更新失败：{ex.Message}", true);
+            ShowUpdateStatus($"{(isOlderVersion ? "回滚" : "更新")}失败：{ex.Message}", true);
         }
         finally
         {
@@ -1271,7 +1248,10 @@ public sealed partial class SettingsPage : Page
         => status?.Status is "downloading" or "verifying" or "installing" or "restarting";
 
     private bool IsCurrentVersion(VersionEntryDto version)
-        => string.Equals(NormalizeVersion(version.Version), NormalizeVersion(_lastUpdateResult?.CurrentVersion), StringComparison.OrdinalIgnoreCase);
+        => CompareVersions(version.Version, _lastUpdateResult?.EffectiveVersion ?? _lastUpdateResult?.CurrentVersion) == 0;
+
+    private bool IsOlderVersion(VersionEntryDto version)
+        => CompareVersions(version.Version, _lastUpdateResult?.EffectiveVersion ?? _lastUpdateResult?.CurrentVersion) < 0;
 
     private bool CanRollbackTo(VersionEntryDto version)
         => _lastUpdateStatus?.CanRollback == true
@@ -1300,6 +1280,24 @@ public sealed partial class SettingsPage : Page
 
     private static string NormalizeVersion(string? version)
         => (version ?? "").Trim().TrimStart('v', 'V');
+
+    private static int CompareVersions(string? left, string? right)
+    {
+        var leftParts = NormalizeVersion(left).Split(['.', '-'], StringSplitOptions.RemoveEmptyEntries);
+        var rightParts = NormalizeVersion(right).Split(['.', '-'], StringSplitOptions.RemoveEmptyEntries);
+        var length = Math.Max(leftParts.Length, rightParts.Length);
+        for (var i = 0; i < length; i++)
+        {
+            var leftPart = i < leftParts.Length && int.TryParse(leftParts[i], out var leftNumber) ? leftNumber : 0;
+            var rightPart = i < rightParts.Length && int.TryParse(rightParts[i], out var rightNumber) ? rightNumber : 0;
+            if (leftPart != rightPart)
+            {
+                return leftPart > rightPart ? 1 : -1;
+            }
+        }
+
+        return 0;
+    }
 
     private static string FormatSize(long size)
     {
@@ -1842,11 +1840,6 @@ public sealed partial class SettingsPage : Page
                 Grid.SetRow(child, i / columns);
             }
         }
-    }
-
-    private static int ReadInt(string value, int fallback)
-    {
-        return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
     }
 
     private static string NormalizeScraper(string? scraper)

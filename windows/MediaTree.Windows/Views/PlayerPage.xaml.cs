@@ -1005,6 +1005,7 @@ public sealed partial class PlayerPage : Page
         var progress = await AppServices.Movie.GetProgressAsync(_movieId);
         _movie = movie;
         _titleText.Text = movie.BestTitle;
+        UpdatePlaybackWindowTitle(paused: true);
         _statusText.Visibility = Visibility.Collapsed;
         UpdateDetail(movie, progress);
 
@@ -1070,6 +1071,7 @@ public sealed partial class PlayerPage : Page
             RenderEpisodePanel();
             _ = RenderDetailEpisodesAsync();
             UpdateEpisodePanelVisibility();
+            UpdatePlaybackWindowTitle(_state.Paused);
         });
     }
 
@@ -1337,6 +1339,7 @@ public sealed partial class PlayerPage : Page
         var progress = await AppServices.Movie.GetProgressAsync(_movieId);
         _movie = movie;
         _titleText.Text = movie.BestTitle;
+        UpdatePlaybackWindowTitle(_state.Paused);
         UpdateDetail(movie, progress);
         _ = LoadEpisodesAsync(movie);
         _ = LoadSpecialsAsync(movie);
@@ -1703,6 +1706,7 @@ public sealed partial class PlayerPage : Page
             SelectSpeedBox(state.Speed);
             UpdatePlaybackLabels(state);
             UpdateTrackLabels(state);
+            UpdatePlaybackWindowTitle(state.Paused);
             ScheduleResumePromptAutoHide(state);
         });
     }
@@ -2205,6 +2209,7 @@ public sealed partial class PlayerPage : Page
         CloseVolumePanel();
         _detailHost.Visibility = Visibility.Visible;
         ShellPage.Current?.SetNavigationChromeVisible(true);
+        AppServices.MainWindow?.RestoreDefaultWindowTitle();
     }
 
     private async Task SaveProgressAsync(bool stopped)
@@ -2579,6 +2584,24 @@ public sealed partial class PlayerPage : Page
         }
 
         return $"{prefix} {title}";
+    }
+
+    private string PlaybackWindowTitle()
+    {
+        var activeEpisode = _episodes.FirstOrDefault(episode => episode.Id == _movieId);
+        if (activeEpisode is not null)
+        {
+            return EpisodeLabel(activeEpisode);
+        }
+
+        return _movie is null
+            ? "MediaTree"
+            : _movie.IsSpecial ? SpecialMovieTitle(_movie) : _movie.BestTitle;
+    }
+
+    private void UpdatePlaybackWindowTitle(bool paused)
+    {
+        AppServices.MainWindow?.SetPlaybackWindowTitle(PlaybackWindowTitle(), paused);
     }
 
     private static string EpisodeMeta(MovieDto movie)

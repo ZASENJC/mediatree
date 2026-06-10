@@ -181,6 +181,38 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void UpdateDtoAcceptsImageGateAndWindowsBaseFields()
+    {
+        var json = """
+            {
+              "current_version": "1.0.12",
+              "effective_version": "1.0.12",
+              "has_update": true,
+              "versions": [
+                {
+                  "version": "1.0.14",
+                  "display_version": "1.0.14",
+                  "requires_image_update": true,
+                  "required_image_version": "1.0.13",
+                  "requires_windows_base_update": true,
+                  "reason": "需要完整镜像更新",
+                  "windows_reason": "需要更新 Windows 桌面版基础运行时"
+                }
+              ]
+            }
+            """;
+
+        var response = JsonSerializer.Deserialize<UpdateCheckResultDto>(json);
+
+        var version = Assert.Single(response!.Versions);
+        Assert.Equal("1.0.12", response.EffectiveVersion);
+        Assert.True(version.RequiresImageUpdate);
+        Assert.Equal("1.0.13", version.RequiredImageVersion);
+        Assert.True(version.RequiresWindowsBaseUpdate);
+        Assert.Equal("需要更新 Windows 桌面版基础运行时", version.WindowsReason);
+    }
+
+    [Fact]
     public void ScrapeSearchDtoAcceptsTmdbCollectionCandidates()
     {
         var json = """
