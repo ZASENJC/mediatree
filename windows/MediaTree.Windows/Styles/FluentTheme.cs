@@ -110,6 +110,11 @@ public static class FluentTheme
                 button.Foreground = AccentText;
                 button.BorderBrush = Brush(0xFF, 0xFF, 0xFF, 0x24);
                 break;
+            case FluentButtonStyle.Danger:
+                button.Background = Error;
+                button.Foreground = AccentText;
+                button.BorderBrush = Error;
+                break;
             default:
                 button.Background = Control;
                 button.Foreground = TextPrimary;
@@ -233,4 +238,5 @@ public enum FluentButtonStyle
     Accent,
     Subtle,
     Overlay,
+    Danger,
 }

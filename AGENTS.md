@@ -130,6 +130,7 @@ scripts/push-docker-release.sh
 - Windows 侧冒烟至少确认 portable 解压后 `MediaTree.Windows.exe` 可启动、主窗口出现、内置后端启动成功、关键页面可访问、日志没有明显 crash；涉及播放器或更新流程时必须覆盖对应路径。
 - Windows 设置页更新只保留两种用户路径：`应用包更新` 和 `全量更新`。应用包更新在软件内下载 `mediatree-app-<version>.tar.gz`、替换当前应用包、清理旧包并自动重启本机后端；全量更新只跳转下载新的 Windows 完整包，不显示 Docker/镜像更新说明。
 - Windows 端和 Web 端不复用前端：Web 使用 `frontend/` React，Windows 使用 `windows/MediaTree.Windows/` WinUI 原生前端；只有后端 FastAPI / 数据模型 / 业务逻辑应保持复用或迁移一致。
+- Win 端前端/UI 任务不得新增、删除或修改后端 API 接口；Windows 项目里的后端代码只用于迁移和适配 Web 端既有后端能力。若 WinUI 功能缺少接口，优先用现有 API/配置路径实现，或先向用户确认 Web 端后端是否需要独立演进。
 - 当用户要求“Win 端同步 Web 端更新”时，必须先检查 Web 端新增 UI/交互是否能在 WinUI 原生前端落地：纯 Web UI 改动不会自动进入 Windows；需要用户可见的 Windows 前端特性时，要在 WinUI 中单独适配、构建并验证 portable 包。
 
 ## Security Without Hooks

@@ -108,6 +108,19 @@ public sealed class LibraryService
     public Task SaveLibrarySettingAsync(LibrarySettingDto setting, CancellationToken cancellationToken = default)
         => _api.SaveLibrarySettingAsync(setting, cancellationToken);
 
+    public async Task<BasicActionResultDto> DeleteLibraryAsync(string mediaRoot, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(mediaRoot))
+        {
+            throw new ArgumentException("mediaRoot is required.", nameof(mediaRoot));
+        }
+
+        var config = await _api.GetConfigAsync(cancellationToken);
+        var roots = RemoveLibraryRootFromConfig(config.ExtraMediaRoots ?? [], mediaRoot);
+        await _api.SaveConfigAsync(roots, cancellationToken);
+        return new BasicActionResultDto { Ok = true, Deleted = 1 };
+    }
+
     public Task SetLibraryPasswordAsync(string mediaRoot, string password, CancellationToken cancellationToken = default)
         => _api.SetLibraryPasswordAsync(mediaRoot, password, cancellationToken);
 
@@ -136,5 +149,36 @@ public sealed class LibraryService
             "tmdb_movie" or "tmdb_tv" or "tmdb_collection" or "bangumi" or "javdatabase" or "auto" or "none" => value,
             _ => "auto",
         };
+    }
+
+    public static List<string> RemoveLibraryRootFromConfig(IEnumerable<string> roots, string mediaRoot)
+    {
+        var normalizedTarget = NormalizePathForComparison(mediaRoot);
+        return roots
+            .Where(root => !string.Equals(NormalizePathForComparison(root), normalizedTarget, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    public static bool RootsMatch(string left, string right)
+        => string.Equals(NormalizePathForComparison(left), NormalizePathForComparison(right), StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizePathForComparison(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+        catch (ArgumentException)
+        {
+            return (path ?? "").Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+        catch (NotSupportedException)
+        {
+            return (path ?? "").Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+        catch (PathTooLongException)
+        {
+            return (path ?? "").Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
     }
 }

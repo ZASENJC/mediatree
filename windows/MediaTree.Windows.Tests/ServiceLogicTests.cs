@@ -241,6 +241,39 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void SettingsLibraryScraperHeaderUsesWinUiLabel()
+    {
+        Assert.Equal("刮削器", MediaTree.Windows.Views.SettingsPage.LibraryScraperHeader);
+    }
+
+    [Fact]
+    public void SettingsAddLibraryButtonUsesCompactLabel()
+    {
+        Assert.Equal("添加本机目录", MediaTree.Windows.Views.SettingsPage.AddLibraryButtonText);
+    }
+
+    [Fact]
+    public void SettingsDeleteLibraryButtonUsesCompactDangerLabel()
+    {
+        Assert.Equal("删除", MediaTree.Windows.Views.SettingsPage.DeleteLibraryButtonText);
+    }
+
+    [Fact]
+    public void LibraryServiceRemovesMatchingRootFromConfig()
+    {
+        var roots = new[]
+        {
+            @"\\SAMNAS\o2\test",
+            @"D:\Movies",
+        };
+
+        var remaining = LibraryService.RemoveLibraryRootFromConfig(roots, @"\\SAMNAS\o2\test\");
+
+        Assert.Equal([@"D:\Movies"], remaining);
+        Assert.True(LibraryService.RootsMatch(@"\\SAMNAS\o2\test", @"\\SAMNAS\o2\test\"));
+    }
+
+    [Fact]
     public void ScrapeResultPresenterBuildsCompactDisplayState()
     {
         var result = new ScrapeSearchResultDto
@@ -373,6 +406,55 @@ public sealed class ServiceLogicTests
         var folder = Assert.Single(response!.Tree);
         Assert.Equal(0, folder.ProgressPercent);
         Assert.Equal("S01", folder.BestTitle);
+    }
+
+    [Fact]
+    public void BrowseFolderTreePresenterIncludesEmptyParentFolders()
+    {
+        var tree = new[]
+        {
+            new FolderNodeDto
+            {
+                Name = "Series",
+                Path = "Series",
+                MovieCount = 0,
+                Children =
+                [
+                    new FolderNodeDto
+                    {
+                        Name = "Season 1",
+                        Path = "Series/Season 1",
+                        MovieCount = 12,
+                    },
+                    new FolderNodeDto
+                    {
+                        Name = "Extras",
+                        Path = "Series/Extras",
+                        MovieCount = 0,
+                    },
+                ],
+            },
+        };
+
+        var items = BrowseFolderTreePresenter.FlattenAll(tree);
+
+        Assert.Collection(
+            items,
+            item =>
+            {
+                Assert.Equal("Series", item.Folder.Path);
+                Assert.Equal(0, item.Depth);
+            },
+            item =>
+            {
+                Assert.Equal("Series/Season 1", item.Folder.Path);
+                Assert.Equal(1, item.Depth);
+            },
+            item =>
+            {
+                Assert.Equal("Series/Extras", item.Folder.Path);
+                Assert.Equal(1, item.Depth);
+            });
     }
 
     [Fact]

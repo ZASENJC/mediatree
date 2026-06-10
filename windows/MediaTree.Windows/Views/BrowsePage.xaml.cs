@@ -279,9 +279,9 @@ public sealed partial class BrowsePage : Page
         try
         {
             var response = await AppServices.Library.GetFoldersAsync(_activeMediaRoot);
-            foreach (var folder in SortFolders(response.Tree))
+            foreach (var item in BrowseFolderTreePresenter.FlattenAll(response.Tree, SortFolders))
             {
-                AddFolderButtons(folder, 0);
+                _folderList.Items.Add(CreateFolderButton(item.Folder.Name, item.Folder.Path, item.Depth));
             }
         }
         catch (Exception ex)
@@ -324,19 +324,6 @@ public sealed partial class BrowsePage : Page
         {
             ShellLogger.Error(ex, "Failed to load native browse movies.");
             ShowStatus($"加载影片失败：{ex.Message}", true);
-        }
-    }
-
-    private void AddFolderButtons(FolderNodeDto folder, int depth)
-    {
-        if (folder.MovieCount > 0)
-        {
-            _folderList.Items.Add(CreateFolderButton(folder.Name, folder.Path, depth));
-        }
-
-        foreach (var child in SortFolders(folder.Children))
-        {
-            AddFolderButtons(child, depth + 1);
         }
     }
 

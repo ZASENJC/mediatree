@@ -17,6 +17,10 @@ namespace MediaTree.Windows.Views;
 
 public sealed partial class SettingsPage : Page
 {
+    public const string AddLibraryButtonText = "添加本机目录";
+    public const string DeleteLibraryButtonText = "删除";
+    public const string LibraryScraperHeader = "刮削器";
+
     private const double SettingsColumnMaxWidth = 520;
     private const double SettingsColumnSpacing = 20;
 
@@ -203,13 +207,13 @@ public sealed partial class SettingsPage : Page
         libraryHeader.Children.Add(SectionTitle("媒体库", "SettingsLibraryCard"));
         var addLibraryButton = FluentTheme.ApplyButton(new Button
         {
-            Content = "添加本机目录",
+            Content = AddLibraryButtonText,
+            HorizontalAlignment = HorizontalAlignment.Right,
         }, FluentButtonStyle.Accent);
         AutomationProperties.SetAutomationId(addLibraryButton, "SettingsAddLibrary");
         addLibraryButton.Click += OnAddLibraryClicked;
         Grid.SetColumn(addLibraryButton, 1);
         libraryHeader.Children.Add(addLibraryButton);
-        libraryHeader.SizeChanged += (_, args) => ApplyHeaderActionLayout(args.NewSize.Width, libraryHeader, addLibraryButton);
         libraryStack.Children.Add(libraryHeader);
         libraryStack.Children.Add(FluentTheme.Body("Windows 桌面版可直接选择本机文件夹作为媒体库。", 13));
         var librarySettingsList = FluentTheme.ApplyListView(new ListView
@@ -495,8 +499,10 @@ public sealed partial class SettingsPage : Page
             _scanRows.Clear();
 
             var roots = await AppServices.Library.GetMediaRootsAsync();
-            var settings = await AppServices.Library.GetLibrarySettingsAsync();
-            var settingMap = settings.ToDictionary(s => s.MediaRoot, StringComparer.OrdinalIgnoreCase);
+            var librarySettings = await AppServices.Library.GetLibrarySettingsAsync();
+            var config = await AppServices.Api.GetConfigAsync();
+            var settingMap = librarySettings.ToDictionary(s => s.MediaRoot, StringComparer.OrdinalIgnoreCase);
+            var removableRoots = config.ExtraMediaRoots ?? [];
             var orderedRoots = roots.Items
                 .OrderBy(root => string.IsNullOrWhiteSpace(root.Label) ? root.Path : root.Label, StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
@@ -511,7 +517,8 @@ public sealed partial class SettingsPage : Page
             {
                 var root = orderedRoots[i];
                 settingMap.TryGetValue(root.Path, out var setting);
-                _librarySettingsList.Items.Add(CreateLibrarySettingsRow(root, setting, i));
+                var canDelete = removableRoots.Any(extraRoot => LibraryService.RootsMatch(extraRoot, root.Path));
+                _librarySettingsList.Items.Add(CreateLibrarySettingsRow(root, setting, i, canDelete));
             }
             ApplyLoadedLibraryRowWidths(_settingsColumnWidth);
 
@@ -527,7 +534,7 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private UIElement CreateLibrarySettingsRow(MediaRootDto root, LibrarySettingDto? setting, int index)
+    private UIElement CreateLibrarySettingsRow(MediaRootDto root, LibrarySettingDto? setting, int index, bool canDelete)
     {
         var row = new Border
         {
@@ -547,9 +554,7 @@ public sealed partial class SettingsPage : Page
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
         grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
 
@@ -579,12 +584,19 @@ public sealed partial class SettingsPage : Page
         var scraperStack = new StackPanel
         {
             Spacing = 6,
-            Width = 230,
         };
+        var inputGrid = new Grid
+        {
+            ColumnSpacing = 10,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         var scraperBox = FluentTheme.ApplyComboBox(new ComboBox
         {
-            Header = "资料来源",
+            Header = LibraryScraperHeader,
             MinWidth = 0,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         });
         AutomationProperties.SetAutomationId(scraperBox, $"SettingsLibraryScraper_{index}");
         foreach (var option in ScraperOptions)
@@ -607,20 +619,22 @@ public sealed partial class SettingsPage : Page
         {
             descriptionText.Text = GetScraperDescription(GetSelectedScraper(scraperBox));
         };
-        scraperStack.Children.Add(scraperBox);
-        scraperStack.Children.Add(descriptionText);
-        Grid.SetColumn(scraperStack, 1);
-        grid.Children.Add(scraperStack);
 
         var passwordBox = FluentTheme.ApplyPasswordInput(new PasswordBox
         {
             Header = "密码",
             PlaceholderText = "可选",
-            Width = 120,
+            MinWidth = 0,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         });
         AutomationProperties.SetAutomationId(passwordBox, $"SettingsLibraryPassword_{index}");
-        Grid.SetColumn(passwordBox, 2);
-        grid.Children.Add(passwordBox);
+        inputGrid.Children.Add(scraperBox);
+        Grid.SetColumn(passwordBox, 1);
+        inputGrid.Children.Add(passwordBox);
+        scraperStack.Children.Add(inputGrid);
+        scraperStack.Children.Add(descriptionText);
+        Grid.SetColumn(scraperStack, 1);
+        grid.Children.Add(scraperStack);
 
         var actions = new StackPanel { Spacing = 8 };
         var rowStatusText = StatusText($"SettingsLibraryRowStatus_{index}");
@@ -650,8 +664,20 @@ public sealed partial class SettingsPage : Page
         AutomationProperties.SetAutomationId(scanButton, $"SettingsScanLibrary_{index}");
         scanButton.Click += OnScanLibraryClicked;
         actions.Children.Add(scanButton);
+
+        if (canDelete)
+        {
+            var deleteButton = FluentTheme.ApplyButton(new Button
+            {
+                Content = DeleteLibraryButtonText,
+                Tag = root.Path,
+            }, FluentButtonStyle.Danger);
+            AutomationProperties.SetAutomationId(deleteButton, $"SettingsDeleteLibrary_{index}");
+            deleteButton.Click += OnDeleteLibraryClicked;
+            actions.Children.Add(deleteButton);
+        }
         _scanRows[root.Path] = new LibraryScanRowUi(rowStatusText, rowLogText, scanButton);
-        Grid.SetColumn(actions, 3);
+        Grid.SetColumn(actions, 2);
         grid.Children.Add(actions);
 
         row.SizeChanged += (_, args) => ApplyLibrarySettingsRowLayout(
@@ -659,7 +685,7 @@ public sealed partial class SettingsPage : Page
             grid,
             info,
             scraperStack,
-            passwordBox,
+            inputGrid,
             actions);
 
         row.Child = grid;
@@ -738,6 +764,60 @@ public sealed partial class SettingsPage : Page
         {
             button.IsEnabled = !_activeScanRoots.Contains(context.MediaRoot);
         }
+    }
+
+    private async void OnDeleteLibraryClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button button || button.Tag is not string mediaRoot || string.IsNullOrWhiteSpace(mediaRoot))
+        {
+            return;
+        }
+
+        var statusText = StatusText("SettingsDeleteLibraryDialogStatus", visible: true);
+        statusText.Text = "此操作只会从 Windows 桌面版的已添加本机目录列表移除此媒体库，不会删除本机文件夹或影片文件。";
+        statusText.Foreground = FluentTheme.TextSecondary;
+
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(WrapText("确定要删除这个本机媒体库目录吗？"));
+        content.Children.Add(new TextBlock
+        {
+            Text = mediaRoot,
+            Foreground = FluentTheme.TextPrimary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+            FontFamily = new FontFamily("Consolas"),
+        });
+        content.Children.Add(statusText);
+
+        var dialog = new WindowModalDialog("删除媒体库", content, "删除", "取消")
+        {
+            MaxWidth = 560,
+            ContentMaxWidth = 500,
+        };
+        dialog.PrimaryActionAsync = async () =>
+        {
+            try
+            {
+                statusText.Foreground = FluentTheme.TextSecondary;
+                statusText.Text = "正在删除媒体库...";
+                await AppServices.Library.DeleteLibraryAsync(mediaRoot);
+                _activeScanRoots.Remove(mediaRoot);
+                _scanPollCounts.Remove(mediaRoot);
+                _scanRows.Remove(mediaRoot);
+                _libraryStatusText.Foreground = FluentTheme.Accent;
+                _libraryStatusText.Text = "媒体库已从已添加目录中移除。";
+                await LoadLibrarySettingsAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ShellLogger.Error(ex, "Failed to delete native library.");
+                statusText.Foreground = FluentTheme.Error;
+                statusText.Text = $"删除失败：{ex.Message}";
+                return false;
+            }
+        };
+
+        await dialog.ShowAsync();
     }
 
     private async System.Threading.Tasks.Task SaveLibrarySettingAsync(LibrarySettingsRowContext context)
@@ -1526,14 +1606,13 @@ public sealed partial class SettingsPage : Page
         Grid grid,
         FrameworkElement info,
         StackPanel scraperStack,
-        PasswordBox passwordBox,
+        Grid inputGrid,
         StackPanel actions)
     {
         var compact = width < 720;
         grid.RowSpacing = compact ? 12 : 0;
         grid.ColumnDefinitions[1].Width = compact ? new GridLength(0) : GridLength.Auto;
         grid.ColumnDefinitions[2].Width = compact ? new GridLength(0) : GridLength.Auto;
-        grid.ColumnDefinitions[3].Width = compact ? new GridLength(0) : GridLength.Auto;
         for (var i = 1; i < grid.RowDefinitions.Count; i++)
         {
             grid.RowDefinitions[i].Height = compact ? GridLength.Auto : new GridLength(0);
@@ -1543,16 +1622,13 @@ public sealed partial class SettingsPage : Page
         Grid.SetRow(info, 0);
         Grid.SetColumn(scraperStack, compact ? 0 : 1);
         Grid.SetRow(scraperStack, compact ? 1 : 0);
-        Grid.SetColumn(passwordBox, compact ? 0 : 2);
-        Grid.SetRow(passwordBox, compact ? 2 : 0);
-        Grid.SetColumn(actions, compact ? 0 : 3);
-        Grid.SetRow(actions, compact ? 3 : 0);
+        Grid.SetColumn(actions, compact ? 0 : 2);
+        Grid.SetRow(actions, compact ? 2 : 0);
 
         info.MinWidth = compact ? 0 : 220;
-        scraperStack.Width = compact ? double.NaN : 230;
-        passwordBox.Width = compact ? double.NaN : 120;
+        scraperStack.Width = compact ? double.NaN : 300;
+        inputGrid.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star);
         scraperStack.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
-        passwordBox.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         actions.Orientation = compact && width >= 520 ? Orientation.Horizontal : Orientation.Vertical;
         foreach (var button in actions.Children.OfType<FrameworkElement>())
         {
