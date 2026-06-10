@@ -448,27 +448,48 @@ public sealed partial class BrowsePage : Page
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var expandButton = FluentTheme.ApplyButton(new Button
+        if (hasChildren)
         {
-            Content = hasChildren ? (state.IsExpanded ? "\uE70D" : "\uE76C") : "",
-            FontFamily = new FontFamily("Segoe Fluent Icons"),
-            FontSize = 11,
-            Width = 28,
-            MinWidth = 28,
-            MinHeight = 28,
-            Padding = new Thickness(0),
-            IsEnabled = hasChildren,
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Center,
-        }, FluentButtonStyle.Subtle);
-        AutomationProperties.SetAutomationId(expandButton, $"BrowseFolderToggle_{SanitizeAutomationId(BrowseFolderTreePresenter.FolderKey(folder))}");
-        ToolTipService.SetToolTip(expandButton, state.IsExpanded ? "收起" : "展开");
-        expandButton.Click += async (_, _) =>
+            var expandIcon = new FontIcon
+            {
+                Glyph = state.IsExpanded ? "\uE70D" : "\uE76C",
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 11,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            var expandButton = FluentTheme.ApplyButton(new Button
+            {
+                Content = expandIcon,
+                Width = 28,
+                MinWidth = 28,
+                Height = 28,
+                MinHeight = 28,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                VerticalContentAlignment = VerticalAlignment.Center,
+            }, FluentButtonStyle.Subtle);
+            expandButton.Padding = new Thickness(0);
+            ApplyFolderToggleTheme(expandButton, expandIcon);
+            AutomationProperties.SetAutomationId(expandButton, $"BrowseFolderToggle_{SanitizeAutomationId(BrowseFolderTreePresenter.FolderKey(folder))}");
+            ToolTipService.SetToolTip(expandButton, state.IsExpanded ? "收起" : "展开");
+            expandButton.Click += async (_, _) =>
+            {
+                BrowseFolderTreePresenter.ToggleExpanded(_expandedFolderKeys, _collapsedFolderKeys, folder, state.Depth);
+                await LoadFoldersAsync();
+            };
+            root.Children.Add(expandButton);
+        }
+        else
         {
-            BrowseFolderTreePresenter.ToggleExpanded(_expandedFolderKeys, _collapsedFolderKeys, folder, state.Depth);
-            await LoadFoldersAsync();
-        };
-        root.Children.Add(expandButton);
+            root.Children.Add(new Border
+            {
+                Width = 28,
+                Height = 28,
+                Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            });
+        }
 
         var includeBox = FluentTheme.ApplyCheckBox(new CheckBox
         {
@@ -535,6 +556,24 @@ public sealed partial class BrowsePage : Page
         }
 
         return root;
+    }
+
+    private static void ApplyFolderToggleTheme(Button button, FontIcon icon)
+    {
+        void Refresh()
+        {
+            var foreground = button.ActualTheme == ElementTheme.Dark
+                ? FluentTheme.Brush(0xD6, 0xDA, 0xE0)
+                : FluentTheme.Brush(0x3B, 0x42, 0x4C);
+            button.Foreground = foreground;
+            icon.Foreground = foreground;
+            button.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            button.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        }
+
+        button.Loaded += (_, _) => Refresh();
+        button.ActualThemeChanged += (_, _) => Refresh();
+        Refresh();
     }
 
     private bool IsFolderSelected(FolderNodeDto folder)
