@@ -28,6 +28,9 @@ public sealed partial class BrowsePage : Page
     private readonly TextBlock _subtitleText;
     private readonly TextBlock _titleText;
     private IReadOnlyList<MediaRootDto> _activeMediaRoots = [];
+    private readonly HashSet<string> _excludedFolderPaths = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _expandedFolderKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _collapsedFolderKeys = new(StringComparer.OrdinalIgnoreCase);
     private string _activeFolderPath = "";
     private string _activeFolderMediaRoot = "";
     private string _activeMediaRoot = "";
@@ -307,9 +310,15 @@ public sealed partial class BrowsePage : Page
             foreach (var root in GetSelectedMediaRoots())
             {
                 var response = await AppServices.Library.GetFoldersAsync(root.Path);
-                foreach (var item in BrowseFolderTreePresenter.FlattenForMediaRoot(root.Path, response.Tree, SortFolders))
+                foreach (var state in BrowseFolderTreePresenter.VisibleNodeStatesForMediaRoot(
+                    root.Path,
+                    response.Tree,
+                    _excludedFolderPaths,
+                    _expandedFolderKeys,
+                    _collapsedFolderKeys,
+                    SortFolders))
                 {
-                    _folderList.Items.Add(CreateFolderButton(item.Folder.Name, item.Folder.Path, item.Folder.MediaRoot, item.Depth));
+                    _folderList.Items.Add(CreateFolderRow(state));
                 }
             }
         }
@@ -361,12 +370,14 @@ public sealed partial class BrowsePage : Page
         var search = _searchBox.Text.Trim();
         if (!string.IsNullOrWhiteSpace(_activeMediaRoot))
         {
-            return await AppServices.Movie.GetMoviesAsync(_activeMediaRoot, _activeFolderPath, search, sort, limit, 0);
+            var response = await AppServices.Movie.GetMoviesAsync(_activeMediaRoot, _activeFolderPath, search, sort, limit, 0);
+            return BrowseLibraryPresenter.FilterExcludedMovies(response, _excludedFolderPaths);
         }
 
         if (!string.IsNullOrWhiteSpace(_activeFolderPath) && !string.IsNullOrWhiteSpace(_activeFolderMediaRoot))
         {
-            return await AppServices.Movie.GetMoviesAsync(_activeFolderMediaRoot, _activeFolderPath, search, sort, limit, 0);
+            var response = await AppServices.Movie.GetMoviesAsync(_activeFolderMediaRoot, _activeFolderPath, search, sort, limit, 0);
+            return BrowseLibraryPresenter.FilterExcludedMovies(response, _excludedFolderPaths);
         }
 
         var roots = _activeMediaRoots.ToList();
@@ -376,7 +387,7 @@ public sealed partial class BrowsePage : Page
         }
 
         var responses = await Task.WhenAll(roots.Select(root => AppServices.Movie.GetMoviesAsync(root.Path, "", search, sort, limit, 0)));
-        return BrowseLibraryPresenter.MergeMovieResponses(responses, sort, limit);
+        return BrowseLibraryPresenter.FilterExcludedMovies(BrowseLibraryPresenter.MergeMovieResponses(responses, sort, limit), _excludedFolderPaths);
     }
 
     private IEnumerable<MediaRootDto> GetSelectedMediaRoots()
@@ -421,6 +432,150 @@ public sealed partial class BrowsePage : Page
         return button;
     }
 
+    private UIElement CreateFolderRow(BrowseFolderTreeNodeState state)
+    {
+        var folder = state.Folder;
+        var hasChildren = BrowseFolderTreePresenter.HasChildren(folder);
+        var root = new Grid
+        {
+            ColumnSpacing = 6,
+            MinHeight = 34,
+            Padding = new Thickness(Math.Min(state.Depth, 6) * 16 + 6, 2, 6, 2),
+            Opacity = state.IsIncluded ? 1 : 0.45,
+        };
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var expandButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = hasChildren ? (state.IsExpanded ? "\uE70D" : "\uE76C") : "",
+            FontFamily = new FontFamily("Segoe Fluent Icons"),
+            FontSize = 11,
+            Width = 28,
+            MinWidth = 28,
+            MinHeight = 28,
+            Padding = new Thickness(0),
+            IsEnabled = hasChildren,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+        }, FluentButtonStyle.Subtle);
+        AutomationProperties.SetAutomationId(expandButton, $"BrowseFolderToggle_{SanitizeAutomationId(BrowseFolderTreePresenter.FolderKey(folder))}");
+        ToolTipService.SetToolTip(expandButton, state.IsExpanded ? "收起" : "展开");
+        expandButton.Click += async (_, _) =>
+        {
+            BrowseFolderTreePresenter.ToggleExpanded(_expandedFolderKeys, _collapsedFolderKeys, folder, state.Depth);
+            await LoadFoldersAsync();
+        };
+        root.Children.Add(expandButton);
+
+        var includeBox = FluentTheme.ApplyCheckBox(new CheckBox
+        {
+            MinWidth = 28,
+            MinHeight = 28,
+            Padding = new Thickness(0),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        includeBox.IsChecked = state.IsIncluded;
+        AutomationProperties.SetAutomationId(includeBox, $"BrowseFolderInclude_{SanitizeAutomationId(BrowseFolderTreePresenter.FolderKey(folder))}");
+        ToolTipService.SetToolTip(includeBox, state.IsIncluded ? "包含此文件夹" : "排除此文件夹");
+        includeBox.Checked += async (_, _) => await SetFolderIncludedAsync(folder.Path, true);
+        includeBox.Unchecked += async (_, _) => await SetFolderIncludedAsync(folder.Path, false);
+        Grid.SetColumn(includeBox, 1);
+        root.Children.Add(includeBox);
+
+        var labelButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = new TextBlock
+            {
+                Text = folder.Name,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = state.IsIncluded ? FluentTheme.TextPrimary : FluentTheme.TextTertiary,
+            },
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            MinHeight = 30,
+            Padding = new Thickness(6, 4, 8, 4),
+            Tag = new FolderSelection(folder.Path, folder.MediaRoot),
+        }, IsFolderSelected(folder) ? FluentButtonStyle.Accent : FluentButtonStyle.Subtle);
+        AutomationProperties.SetAutomationId(labelButton, $"BrowseFolder_{SanitizeAutomationId(BrowseFolderTreePresenter.FolderKey(folder))}");
+        labelButton.Click += async (_, _) =>
+        {
+            if (labelButton.Tag is not FolderSelection selection)
+            {
+                return;
+            }
+
+            _activeFolderPath = selection.Path;
+            _activeFolderMediaRoot = selection.MediaRoot;
+            await LoadMoviesAsync();
+        };
+        Grid.SetColumn(labelButton, 2);
+        root.Children.Add(labelButton);
+
+        if (folder.MovieCount > 0)
+        {
+            var countBadge = new Border
+            {
+                Padding = new Thickness(7, 2, 7, 3),
+                CornerRadius = new CornerRadius(10),
+                Background = FluentTheme.ControlAlt,
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = new TextBlock
+                {
+                    Text = folder.MovieCount.ToString(),
+                    FontSize = 11,
+                    Foreground = FluentTheme.TextTertiary,
+                },
+            };
+            Grid.SetColumn(countBadge, 3);
+            root.Children.Add(countBadge);
+        }
+
+        return root;
+    }
+
+    private bool IsFolderSelected(FolderNodeDto folder)
+        => string.Equals(_activeFolderPath, folder.Path, StringComparison.OrdinalIgnoreCase)
+            && (string.IsNullOrWhiteSpace(_activeMediaRoot)
+                ? LibraryService.RootsMatch(_activeFolderMediaRoot, folder.MediaRoot)
+                : LibraryService.RootsMatch(_activeMediaRoot, folder.MediaRoot));
+
+    private async Task SetFolderIncludedAsync(string path, bool included)
+    {
+        BrowseFolderTreePresenter.SetIncluded(_excludedFolderPaths, path, included);
+        SaveExcludedFolders();
+        if (BrowseLibraryPresenter.IsFolderPathExcluded(_activeFolderPath, _excludedFolderPaths))
+        {
+            _activeFolderPath = "";
+            _activeFolderMediaRoot = "";
+        }
+
+        await LoadFoldersAsync();
+        await LoadMoviesAsync();
+    }
+
+    private void LoadExcludedFolders()
+    {
+        _excludedFolderPaths.Clear();
+        foreach (var path in UiPreferenceStore.Load().ExcludedFolders)
+        {
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                _excludedFolderPaths.Add(path);
+            }
+        }
+    }
+
+    private void SaveExcludedFolders()
+    {
+        var preferences = UiPreferenceStore.Load();
+        preferences.ExcludedFolders = _excludedFolderPaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToList();
+        UiPreferenceStore.Save(preferences);
+    }
+
     private async void OnLibraryChanged(object sender, SelectionChangedEventArgs args)
     {
         if (_suppressLibrarySelectionChanged)
@@ -440,6 +595,7 @@ public sealed partial class BrowsePage : Page
     {
         AppServices.Library.LibrariesChanged -= OnLibrariesChanged;
         AppServices.Library.LibrariesChanged += OnLibrariesChanged;
+        LoadExcludedFolders();
         await LoadLibrariesAsync();
     }
 

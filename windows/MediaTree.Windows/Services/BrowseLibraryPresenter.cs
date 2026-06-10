@@ -45,6 +45,49 @@ public static class BrowseLibraryPresenter
         };
     }
 
+    public static MoviesResponseDto FilterExcludedMovies(MoviesResponseDto response, IEnumerable<string> excludedFolders)
+    {
+        var movies = response.Movies
+            .Where(movie => !IsFolderPathExcluded(movie.FolderForSpecials, excludedFolders))
+            .ToList();
+        return new MoviesResponseDto
+        {
+            Movies = movies,
+            Total = movies.Count,
+        };
+    }
+
+    public static IReadOnlyList<FolderNodeDto> FilterExcludedFolders(IEnumerable<FolderNodeDto> folders, IEnumerable<string> excludedFolders)
+        => folders
+            .Where(folder => !IsFolderPathExcluded(folder.Path, excludedFolders))
+            .ToList();
+
+    public static bool IsFolderPathExcluded(string path, IEnumerable<string> excludedFolders)
+    {
+        var normalizedPath = NormalizeFolderPath(path);
+        if (string.IsNullOrWhiteSpace(normalizedPath))
+        {
+            return false;
+        }
+
+        foreach (var excluded in excludedFolders)
+        {
+            var normalizedExcluded = NormalizeFolderPath(excluded);
+            if (string.IsNullOrWhiteSpace(normalizedExcluded))
+            {
+                continue;
+            }
+
+            if (string.Equals(normalizedPath, normalizedExcluded, StringComparison.OrdinalIgnoreCase)
+                || normalizedPath.StartsWith(normalizedExcluded + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static IEnumerable<MovieDto> SortMovies(IEnumerable<MovieDto> movies, string sort)
     {
         return sort switch
@@ -72,4 +115,7 @@ public static class BrowseLibraryPresenter
 
         return "";
     }
+
+    private static string NormalizeFolderPath(string path)
+        => (path ?? "").Replace("\\", "/").Trim().Trim('/');
 }

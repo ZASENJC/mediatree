@@ -316,6 +316,34 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void BrowsePresenterFiltersExcludedFoldersAndDescendantMovies()
+    {
+        var folders = new[]
+        {
+            new FolderNodeDto { Path = "Series", MovieCount = 2 },
+            new FolderNodeDto { Path = "Other", MovieCount = 1 },
+        };
+        var movies = new MoviesResponseDto
+        {
+            Movies =
+            [
+                new MovieDto { Id = 1, FolderLevels = "Series" },
+                new MovieDto { Id = 2, FolderLevels = "Series/Season 1" },
+                new MovieDto { Id = 3, FolderLevels = "Other" },
+            ],
+            Total = 3,
+        };
+        var excluded = new HashSet<string> { "Series" };
+
+        var visibleFolders = BrowseLibraryPresenter.FilterExcludedFolders(folders, excluded);
+        var visibleMovies = BrowseLibraryPresenter.FilterExcludedMovies(movies, excluded);
+
+        Assert.Equal(["Other"], visibleFolders.Select(folder => folder.Path).ToList());
+        Assert.Equal([3], visibleMovies.Movies.Select(movie => movie.Id).ToList());
+        Assert.Equal(1, visibleMovies.Total);
+    }
+
+    [Fact]
     public void ScrapeResultPresenterBuildsCompactDisplayState()
     {
         var result = new ScrapeSearchResultDto
@@ -525,6 +553,59 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void BrowseFolderTreePresenterBuildsWebLikeNodeState()
+    {
+        var folder = new FolderNodeDto { Name = "Season 1", Path = "Series/Season 1", MediaRoot = @"D:\Movies" };
+        var item = new BrowseFolderTreeItem(folder, 2);
+        var excluded = new HashSet<string> { "Series/Season 1" };
+        var expanded = new HashSet<string>();
+        var collapsed = new HashSet<string>();
+
+        var collapsedState = BrowseFolderTreePresenter.CreateNodeState(item, excluded, expanded, collapsed);
+        BrowseFolderTreePresenter.ToggleExpanded(expanded, collapsed, folder, item.Depth);
+        var expandedState = BrowseFolderTreePresenter.CreateNodeState(item, excluded, expanded, collapsed);
+        BrowseFolderTreePresenter.ToggleIncluded(excluded, folder.Path);
+        var includedState = BrowseFolderTreePresenter.CreateNodeState(item, excluded, expanded, collapsed);
+        BrowseFolderTreePresenter.SetIncluded(excluded, folder.Path, false);
+        var excludedAgainState = BrowseFolderTreePresenter.CreateNodeState(item, excluded, expanded, collapsed);
+
+        Assert.False(collapsedState.IsExpanded);
+        Assert.False(collapsedState.IsIncluded);
+        Assert.True(expandedState.IsExpanded);
+        Assert.True(includedState.IsIncluded);
+        Assert.False(excludedAgainState.IsIncluded);
+    }
+
+    [Fact]
+    public void BrowseFolderTreePresenterCanCollapseDefaultExpandedNodes()
+    {
+        var folder = new FolderNodeDto
+        {
+            Name = "Series",
+            Path = "Series",
+            MediaRoot = @"D:\Movies",
+            Children =
+            [
+                new FolderNodeDto { Name = "Season 1", Path = "Series/Season 1", MediaRoot = @"D:\Movies" },
+            ],
+        };
+        var item = new BrowseFolderTreeItem(folder, 0);
+        var expanded = new HashSet<string>();
+        var collapsed = new HashSet<string>();
+
+        var initialState = BrowseFolderTreePresenter.CreateNodeState(item, new HashSet<string>(), expanded, collapsed);
+        var initialVisible = BrowseFolderTreePresenter.VisibleNodeStatesForMediaRoot(@"D:\Movies", [folder], new HashSet<string>(), expanded, collapsed);
+        BrowseFolderTreePresenter.ToggleExpanded(expanded, collapsed, folder, item.Depth);
+        var toggledState = BrowseFolderTreePresenter.CreateNodeState(item, new HashSet<string>(), expanded, collapsed);
+        var toggledVisible = BrowseFolderTreePresenter.VisibleNodeStatesForMediaRoot(@"D:\Movies", [folder], new HashSet<string>(), expanded, collapsed);
+
+        Assert.True(initialState.IsExpanded);
+        Assert.Equal(["Series", "Series/Season 1"], initialVisible.Select(state => state.Folder.Path).ToList());
+        Assert.False(toggledState.IsExpanded);
+        Assert.Equal(["Series"], toggledVisible.Select(state => state.Folder.Path).ToList());
+    }
+
+    [Fact]
     public void ConfigDtosAcceptIntegerFieldsFromFloatOrStringJson()
     {
         var json = """
@@ -554,15 +635,18 @@ public sealed class ServiceLogicTests
             {
                 HideHomeTitleText = true,
                 ShowSourceName = true,
+                ExcludedFolders = ["Series/Season 1"],
             }, path);
 
             var json = File.ReadAllText(path);
             Assert.Contains("hideHomeTitleText", json);
             Assert.Contains("showSourceName", json);
+            Assert.Contains("excludedFolders", json);
 
             var preferences = UiPreferenceStore.Load(path);
             Assert.True(preferences.HideHomeTitleText);
             Assert.True(preferences.ShowSourceName);
+            Assert.Equal(["Series/Season 1"], preferences.ExcludedFolders);
         }
         finally
         {

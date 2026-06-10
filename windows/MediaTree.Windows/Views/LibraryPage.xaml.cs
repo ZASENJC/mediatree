@@ -44,6 +44,7 @@ public sealed partial class LibraryPage : Page
     private int _movieLoadGeneration;
     private bool _hideHomeTitleText;
     private bool _showSourceName;
+    private IReadOnlyList<string> _excludedFolderPaths = [];
     private bool _suppressLibrarySelectionChanged;
 
     public LibraryPage()
@@ -382,6 +383,7 @@ public sealed partial class LibraryPage : Page
         var preferences = UiPreferenceStore.Load();
         _hideHomeTitleText = preferences.HideHomeTitleText;
         _showSourceName = preferences.ShowSourceName;
+        _excludedFolderPaths = preferences.ExcludedFolders;
     }
 
     private async Task LoadLibrariesAsync()
@@ -455,7 +457,9 @@ public sealed partial class LibraryPage : Page
                 return;
             }
 
-            var folders = SortFolders(response.Tree).Where(folder => folder.MovieCount > 0).ToList();
+            var folders = SortFolders(BrowseLibraryPresenter.FilterExcludedFolders(response.Tree, _excludedFolderPaths))
+                .Where(folder => folder.MovieCount > 0)
+                .ToList();
             var cards = new List<Button>();
             foreach (var folder in folders)
             {
