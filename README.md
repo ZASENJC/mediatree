@@ -125,7 +125,9 @@ Docker Hub 镜像：`zasenjc/mediatree:latest`
 
 Windows 桌面版面向 Windows 10 19041+ / Windows 11 x64。它不是外部浏览器启动器，而是一个 WinUI 3 原生客户端：应用会在后台启动本地 `mediatree-server.exe`，主界面使用 Windows 原生导航、媒体库网格、详情页和内置 libmpv 播放器。
 
-桌面版数据默认保存在 `%APPDATA%\MediaTree\data`，日志保存在 `%LOCALAPPDATA%\MediaTree\logs`。日常 FastAPI / React 更新仍复用 GitHub Release 中的 `mediatree-app-<version>.tar.gz` 应用包；只有 Python 依赖、ffmpeg/libmpv、WinUI 原生客户端或 PyInstaller 基础运行时变化时，才需要下载新的 `MediaTree-Windows-<version>.msix` / `.appinstaller`。
+桌面版数据默认保存在 `%APPDATA%\MediaTree\data`，日志保存在 `%LOCALAPPDATA%\MediaTree\logs`。Windows 设置页只保留两种更新：共享后端 / 应用代码更新可使用 `应用包更新`，会在软件内下载 `mediatree-app-<version>.tar.gz`、替换当前应用包、清理旧包并自动重启本机服务；当 Windows 原生 UI、Python 依赖、ffmpeg/libmpv、PyInstaller 打包或其他本机运行时变化时，设置页显示 `全量更新` 并跳转下载新的 Windows 完整包。当前发布包优先交付 portable zip，若 release 中提供 `.exe`，桌面端会优先打开 `.exe` 下载链接。
+
+Windows 桌面版不复用 Web 端 React 前端。Web 使用 `frontend/`，Windows 使用 `windows/MediaTree.Windows/` WinUI 原生前端；只有 FastAPI 后端、数据模型和业务逻辑保持复用或迁移一致。因此 Web 端 UI/交互更新不会自动同步到 Windows。需要同等 Windows 用户体验时，必须在 WinUI 原生前端单独适配并发布 Windows 全量更新。
 
 维护者本地构建 Windows 版：
 
@@ -154,9 +156,9 @@ pwsh packaging/windows/build-windows.ps1 -Configuration Release
 
 发布应用包更新时，维护者会在本地构建并推送 `zasenjc/mediatree:latest`，不再通过 GitHub Actions 同步 DockerHub。这样新安装用户仍会拿到最新应用基线，已安装用户则继续走设置页里的应用包更新。
 
-Windows 桌面版也使用同一套应用包更新。发布时如果只改 FastAPI / React，`.github/release-metadata.json` 保持 `requires_windows_base_update: false`；如果改 Python 依赖、ffmpeg/libmpv、WinUI 原生客户端或 PyInstaller 打包，则把对应版本标记为 `requires_windows_base_update: true` 并发布新的 MSIX/.appinstaller。
+Windows 桌面版不显示 Docker/镜像更新入口，只显示 `应用包更新` 和 `全量更新`。发布时如果 Windows 影响面只限共享后端 / 应用代码，并且可运行在现有 bundled runtime 上、无需修改 WinUI 页面或 Windows DTO/API 消费，`.github/release-metadata.json` 保持 `requires_windows_base_update: false`；如果 Web 新特性需要落地到 Windows 原生前端，或改了 Python 依赖、bundled binaries、ffmpeg/libmpv、WinUI 原生客户端、PyInstaller 打包、启动/会话逻辑或其他 native/runtime surface，则标记 `requires_windows_base_update: true` 并发布新的 Windows 完整包。
 
-少数更新会提示“需要完整镜像更新”，通常是因为运行环境也变了，例如 Python、ffmpeg、字体或启动流程。这时最简单的做法是在宿主机执行下面两条命令。如果想让设置页也能自动完成这类完整镜像更新，可以在 `docker-compose.yml` 里挂载 `/var/run/docker.sock:/var/run/docker.sock`；但这会让容器获得控制宿主机 Docker 的能力，不确定时建议不要挂载。
+容器部署中，少数更新会提示“需要完整镜像更新”，通常是因为运行环境也变了，例如 Python、ffmpeg、字体或启动流程。这时最简单的做法是在宿主机执行下面两条命令。如果想让设置页也能自动完成这类完整镜像更新，可以在 `docker-compose.yml` 里挂载 `/var/run/docker.sock:/var/run/docker.sock`；但这会让容器获得控制宿主机 Docker 的能力，不确定时建议不要挂载。
 
 完整镜像更新：
 

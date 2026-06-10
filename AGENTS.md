@@ -121,6 +121,9 @@ scripts/push-docker-release.sh
 - 远端固定复用目录：`C:\Users\Administrator\Documents\code\mediatree-codex-win-live`。
 - 后续 Windows 构建以 `portable` 为主目标，优先验证和交付“一个文件打开就能用”的体验。
 - 除非用户明确要求 MSIX / `.appinstaller`，Windows 构建、验证和交付说明都默认围绕 portable 包展开。
+- Windows 设置页更新只保留两种用户路径：`应用包更新` 和 `全量更新`。应用包更新在软件内下载 `mediatree-app-<version>.tar.gz`、替换当前应用包、清理旧包并自动重启本机后端；全量更新只跳转下载新的 Windows 完整包，不显示 Docker/镜像更新说明。
+- Windows 端和 Web 端不复用前端：Web 使用 `frontend/` React，Windows 使用 `windows/MediaTree.Windows/` WinUI 原生前端；只有后端 FastAPI / 数据模型 / 业务逻辑应保持复用或迁移一致。
+- 当用户要求“Win 端同步 Web 端更新”时，必须先检查 Web 端新增 UI/交互是否能在 WinUI 原生前端落地：纯 Web UI 改动不会自动进入 Windows；需要用户可见的 Windows 前端特性时，要在 WinUI 中单独适配、构建并验证 portable 包。
 
 ## Security Without Hooks
 
@@ -146,5 +149,10 @@ Codex does not provide Claude Code hooks in this repo, so enforce security throu
 - Unless the user explicitly overrides it, automatically choose the release/update path before push or release work:
   - Use `app-package` when the change is limited to application code or built frontend assets and does not require a new base image/runtime layer.
   - Use full Docker image update when the change touches the runtime/base image surface, including Dockerfile, system packages, Python version or pinned dependency layer, ffmpeg/fonts, container user/permissions, entrypoint/bootstrap behavior, Docker self-update prerequisites, or any change that cannot be delivered safely by replacing only the app package.
+- For Windows releases, make the same decision as `应用包更新` vs `全量更新` before publishing:
+  - Use Windows `应用包更新` only when the Windows-impacting change is limited to shared backend/application code that can run on the existing bundled Python/libmpv/WinUI/PyInstaller runtime, without changing WinUI views, DTO contracts, bundled dependencies, or native/runtime surfaces; keep `requires_windows_base_update: false`.
+  - Treat Web React UI changes as Web-only unless the same feature is explicitly implemented in `windows/MediaTree.Windows/`; if a Web UI feature must appear in Windows, adapt it in WinUI and use Windows `全量更新`.
+  - Use Windows `全量更新` when the change touches WinUI pages/components, Windows DTO/API consumption, player UI, settings UI, Python dependencies, bundled binaries, ffmpeg/libmpv, PyInstaller packaging, Windows bootstrap/session behavior, or any native/runtime surface; set `requires_windows_base_update: true` and publish a new Windows full package asset.
+  - For shared backend changes, check whether Windows API consumers and DTOs still match. If no Windows frontend/native change is needed, app-package can sync the backend; if Windows models/pages must change, ship the backend change together with a Windows full package.
 - Every release must refresh DockerHub `zasenjc/mediatree:latest` so new Docker installs start from the newest application baseline. Do this from a local build/push with `scripts/push-docker-release.sh`, not GitHub Actions. App-package releases publish only `latest`; full Docker image releases publish both `zasenjc/mediatree:<version>` and `latest`.
 - When the chosen path is full Docker image update, keep Settings/release messaging aligned so users are guided to host-side `docker compose pull && docker compose up -d` when in-container image replacement is unavailable.

@@ -124,7 +124,9 @@ Docker Hub image: `zasenjc/mediatree:latest`
 
 The first Windows desktop build targets Windows 10 19041+ / Windows 11 x64. It is not an external browser launcher: the app starts a local `mediatree-server.exe` backend and opens `http://127.0.0.1:<random-port>` inside an embedded WebView2 hosted by a WinUI 3 window.
 
-Desktop data is stored under `%APPDATA%\MediaTree\data`, and logs are stored under `%LOCALAPPDATA%\MediaTree\logs`. Routine FastAPI / React updates reuse the same `mediatree-app-<version>.tar.gz` app package from GitHub Releases. A new `MediaTree-Windows-<version>.msix` / `.appinstaller` is only needed when Python dependencies, ffmpeg, the WinUI shell, the WebView2 bridge, or the PyInstaller base runtime changes.
+Desktop data is stored under `%APPDATA%\MediaTree\data`, and logs are stored under `%LOCALAPPDATA%\MediaTree\logs`. Windows Settings exposes only two update paths: shared backend/application-code updates can use an in-app `app package update`, which downloads `mediatree-app-<version>.tar.gz`, replaces the current app package, removes old packages, and restarts the local service automatically; Windows native UI, Python dependency, ffmpeg/libmpv, PyInstaller packaging, or other native runtime changes use a `full update` that opens the Windows full-package download. Current releases primarily deliver a portable zip; if a release also provides an `.exe`, the desktop updater prefers the `.exe` download link.
+
+The Windows desktop build does not reuse the Web React frontend. The Web app lives under `frontend/`, while Windows uses the WinUI native frontend under `windows/MediaTree.Windows/`; only the FastAPI backend, data models, and business logic are shared or migrated consistently. Web UI and interaction changes therefore do not automatically appear in Windows. When the same feature must appear in Windows, it must be adapted in the WinUI frontend and shipped as a Windows full update.
 
 Maintainer local Windows build:
 
@@ -153,9 +155,9 @@ Most updates can be installed directly from Settings. MediaTree downloads a smal
 
 For app-package releases, maintainers now build and push `zasenjc/mediatree:latest` locally instead of syncing DockerHub through GitHub Actions. Existing installs keep using the Settings app-package path, while new installs still start from the latest application baseline.
 
-The Windows desktop build uses the same app-package update stream. If a release only changes FastAPI / React code, keep `.github/release-metadata.json` at `requires_windows_base_update: false`; if it changes Python dependencies, ffmpeg, the WinUI shell, or PyInstaller packaging, mark that version with `requires_windows_base_update: true` and publish a new MSIX/.appinstaller.
+The Windows desktop build does not show Docker/image update actions. It only shows `app package update` and `full update`. If the Windows impact is limited to shared backend/application code that can run on the existing bundled runtime without changing WinUI pages or Windows DTO/API consumption, keep `.github/release-metadata.json` at `requires_windows_base_update: false`; if a Web feature must land in the Windows native frontend, or the release changes Python dependencies, bundled binaries, ffmpeg/libmpv, the WinUI shell, PyInstaller packaging, bootstrap/session behavior, or another native/runtime surface, mark that version with `requires_windows_base_update: true` and publish a new Windows full package.
 
-Some releases show "full image update required". That usually means the runtime changed too, such as Python, ffmpeg, fonts, or startup behavior. The simplest path is to run the two host-side commands below. If you want Settings to perform full image updates automatically, mount `/var/run/docker.sock:/var/run/docker.sock` in `docker-compose.yml`; this gives the container control over Docker on the host, so leave it unmounted if you are unsure.
+For container deployments, some releases show "full image update required". That usually means the runtime changed too, such as Python, ffmpeg, fonts, or startup behavior. The simplest path is to run the two host-side commands below. If you want Settings to perform full image updates automatically, mount `/var/run/docker.sock:/var/run/docker.sock` in `docker-compose.yml`; this gives the container control over Docker on the host, so leave it unmounted if you are unsure.
 
 For full image updates:
 

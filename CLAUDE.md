@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Before each push, sync `CLAUDE.md`, `AGENTS.md`, `CHANGELOG.md`, and `README.md` to reflect the current code state.
 - Include documentation updates in the same commit; do not commit them separately.
 - Version rule: use `0.0.00` three-level format without `v` prefix (e.g., `1.0.01`, `1.0.02`), increment sequentially, no more skipping major/minor version numbers. When updating the version number, also create a corresponding GitHub Release (`gh release create 1.0.00`) synced with the CHANGELOG entry for that version.
-- Default release decision rule: unless the user explicitly overrides it, automatically decide whether a change should ship as `app-package` or require a full Docker image update. Use `app-package` for pure application/frontend changes; require a full image update for Dockerfile/runtime/system-package/python/entrypoint/self-update capability changes or anything unsafe to deliver as an app package. Treat app-package and image releases as sharing one version baseline rather than two separate tracks. Every release refreshes DockerHub `zasenjc/mediatree:latest` from a local build/push (`scripts/push-docker-release.sh`), not GitHub Actions; only full Docker image updates also publish a versioned DockerHub tag such as `zasenjc/mediatree:1.0.10`.
+- Default release decision rule: unless the user explicitly overrides it, automatically decide whether a change should ship as `app-package` or require a full Docker image update. Use `app-package` for pure application/frontend changes; require a full image update for Dockerfile/runtime/system-package/python/entrypoint/self-update capability changes or anything unsafe to deliver as an app package. Treat app-package and image releases as sharing one version baseline rather than two separate tracks. Every release refreshes DockerHub `zasenjc/mediatree:latest` from a local build/push (`scripts/push-docker-release.sh`), not GitHub Actions; only full Docker image updates also publish a versioned DockerHub tag such as `zasenjc/mediatree:1.0.10`. For Windows releases, make a separate `应用包更新` vs `全量更新` decision before publishing: keep `requires_windows_base_update: false` only for shared backend/application changes that can run on the existing bundled runtime without changing WinUI views, Windows DTO/API consumption, dependencies, packaging, or native/runtime surfaces. Web React UI changes are Web-only unless separately implemented in `windows/MediaTree.Windows/`; when a Web feature must appear in Windows, adapt it in WinUI and set `requires_windows_base_update: true` so a Windows full package is published.
 
 ## Interaction Language Rules
 
@@ -84,7 +84,7 @@ In production, the backend serves the built frontend at `/`. In development, run
 - `stream.py` — Video streaming with HTTP Range support (byte-range seeking), ffmpeg transcoding, media info extraction via ffprobe.
 - `covers.py` — Cover image management: download, compress (Pillow, max 500px, JPEG q=80), episode still generation.
 - `title_match.py` — Title matching utilities: code extraction, TMDB ID token parsing, CJK/romaji extraction, season inference, folder clean name generation.
-- `updater.py` — Two-tier self-update system. App-package mode: downloads `mediatree-app-<version>.tar.gz` into `data/releases/`, supports rollback to previous version, and cleans older packages after successful restart. Docker mode: `get_available_versions()` polls DockerHub tags, `perform_update()` pulls target image then restarts via `docker compose up -d`. `fetch_github_release_body()` fetches full GitHub release notes for the CHANGELOG modal.
+- `updater.py` — Two-tier self-update system. App-package mode: downloads `mediatree-app-<version>.tar.gz` into `data/releases/`, supports rollback to previous version, and cleans older packages after successful restart. Docker mode is retained for web/container deployments. Windows maps any runtime/native requirement to `windows-full-required` and exposes a Windows full-package download URL instead of Docker actions. `fetch_github_release_body()` fetches full GitHub release notes for the CHANGELOG modal.
 
 ### Scraper plugin system (`backend/app/scrapers/`)
 - `base.py` — `BaseScraper` abstract class with `search() -> ScrapeCandidate` and `get_detail() -> ScrapeResult`. Dataclasses defined here.
@@ -131,11 +131,12 @@ In production, the backend serves the built frontend at `/`. In development, run
 - GitHub Actions publishes the app package for every release. DockerHub sync is local-only: run `scripts/push-docker-release.sh` after release validation to refresh `zasenjc/mediatree:latest`; full image releases additionally publish `zasenjc/mediatree:<version>`
 - App-package flow: `GET /api/update/check` → `POST /api/update/perform` downloads `mediatree-app-<version>.tar.gz` into `data/releases/` → `mark_update_success_after_restart()` on next startup marks success and cleans older packages → `POST /api/update/rollback` to revert to previous version
 - Docker flow: `docker pull zasenjc/mediatree:<tag>` + `docker compose up -d` restart
+- Windows flow: Settings only shows `应用包更新` and `全量更新`. App-package updates download/install in-app, restart the bundled backend, then rely on `mark_update_success_after_restart()` to mark success and clean old packages. Full updates open the Windows full-package asset from the GitHub Release; the Windows UI must not show Docker/image update instructions.
 - `GET /api/version` — return the user-visible current version (highest installed version), plus runtime/image details for internal update decisions (public, no auth)
 - `GET /api/update/changelog?version=0.0.00` — fetch full GitHub release body for CHANGELOG modal
 - `GET /api/update/status` — return current app-package update status
 - Frontend auto-checks every 15 minutes in `App.tsx`, shows red dot on Settings nav when update available
-- Settings page update panel: version list with "更新日志" (modal), app-package "下载并更新", old-version "回滚此版本", and full-image "完整镜像更新" actions
+- Settings page update panel: version list with "更新日志" (modal), app-package "下载并更新", old-version "回滚此版本", and full-image "完整镜像更新" actions. Windows native Settings uses only "下载并更新" for app packages and "下载全量更新" for Windows full packages.
 - CHANGELOG modal: full-screen darkened backdrop (`bg-black/60 backdrop-blur-sm`), centered `glass-modal` panel
 - Docker self-upgrade requires `docker.sock` access and a Docker-CLI-capable image; app-package mode does not require Docker socket access
 - Update comparisons must use the higher of the app-package version and image base version as the effective baseline, so image/package releases do not drift into separate version tracks
@@ -204,6 +205,11 @@ scan_media(root)
 - Also includes: theater/cinema mode styles (`.theater-active`), player customizations, scroll optimization (content-visibility, will-change), markdown changelog rendering styles
 - Navigation header: two separate glass capsules (brand+nav left, actions right). On mobile (<380px), "MediaTree" abbreviates to "MT". Favorites/Settings hidden in "..." dropdown on mobile.
 - Search: desktop inline search in actions capsule; mobile standalone search bar triggered by magnifying glass icon. Both share same results panel (`glass-popover`).
+
+### Windows native frontend
+- Windows desktop does not reuse the Web React frontend. It has an independent WinUI native frontend under `windows/MediaTree.Windows/`; only the FastAPI backend behavior, data models, and business logic are shared or migrated consistently.
+- When the user asks to sync Web changes to Windows, first inspect what changed in `frontend/`, then decide whether the feature can land through existing Windows API data or needs new WinUI implementation. User-visible Windows UI/interaction changes require WinUI work, portable-package verification, and Windows full package publishing.
+- Shared backend changes may ship to Windows through app-package only when existing Windows DTOs and native pages remain compatible. If API contracts, DTOs, Settings, Library, Detail, Player, or other Windows native consumers need changes, ship the backend change together with the Windows adaptation as a Windows full update.
 
 ### Android / Capacitor native app
 - `capacitor.config.ts` — Capacitor 8 config: `appId: com.zasenjc.mediatree`, web dir is `dist/`
