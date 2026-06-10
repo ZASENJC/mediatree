@@ -117,10 +117,17 @@ scripts/push-docker-release.sh
 
 ### Windows Desktop Build
 
+- Treat Mac Codex as the editing, analysis, refactoring, and orchestration environment; treat the Windows host as the source of truth for WinUI runtime behavior, packaging, startup, file paths, permissions, tray/notification behavior, embedded backend behavior, and update UX.
 - Windows 构建固定连接本地 `mediatree-windows` 主机：`Administrator@192.168.100.102:22`。
 - 远端固定复用目录：`C:\Users\Administrator\Documents\code\mediatree-codex-win-live`。
+- 从 Mac 同步到 Windows 时优先使用 Git/SSH，让 Windows 侧在固定目录内执行 `git fetch`/`git pull` 或检出同一提交；避免用手工复制作为长期流程。若必须临时复制文件，最终仍要用 Git diff 确认源码状态。
+- Windows 构建入口固定使用 `packaging/windows/build-windows.ps1`。脚本必须可从项目根或任意当前目录调用、失败返回非 0、输出清晰阶段名，并把产物写入 `dist/windows/`。
+- 典型远端构建命令：`ssh mediatree-windows 'cd C:\Users\Administrator\Documents\code\mediatree-codex-win-live; pwsh packaging\windows\build-windows.ps1 -Configuration Release'`。
 - 后续 Windows 构建以 `portable` 为主目标，优先验证和交付“一个文件打开就能用”的体验。
 - 除非用户明确要求 MSIX / `.appinstaller`，Windows 构建、验证和交付说明都默认围绕 portable 包展开。
+- 不要声称 Windows 专属行为已经修复，除非已经在 Windows 主机上验证，或在汇报中明确标为“仅完成代码级检查，尚未 Windows 验证”。涉及 UI 时保留截图、UI 自动化结果、窗口树、日志或人工验收记录；涉及打包时记录 portable/MSIX 产物路径和关键日志。
+- Mac 端可先运行通用 backend/frontend 检查；WinUI、`.csproj`、PyInstaller、libmpv、portable zip、MSIX、自动更新、安装器和真实启动冒烟必须在 Windows 环境验证。
+- Windows 侧冒烟至少确认 portable 解压后 `MediaTree.Windows.exe` 可启动、主窗口出现、内置后端启动成功、关键页面可访问、日志没有明显 crash；涉及播放器或更新流程时必须覆盖对应路径。
 - Windows 设置页更新只保留两种用户路径：`应用包更新` 和 `全量更新`。应用包更新在软件内下载 `mediatree-app-<version>.tar.gz`、替换当前应用包、清理旧包并自动重启本机后端；全量更新只跳转下载新的 Windows 完整包，不显示 Docker/镜像更新说明。
 - Windows 端和 Web 端不复用前端：Web 使用 `frontend/` React，Windows 使用 `windows/MediaTree.Windows/` WinUI 原生前端；只有后端 FastAPI / 数据模型 / 业务逻辑应保持复用或迁移一致。
 - 当用户要求“Win 端同步 Web 端更新”时，必须先检查 Web 端新增 UI/交互是否能在 WinUI 原生前端落地：纯 Web UI 改动不会自动进入 Windows；需要用户可见的 Windows 前端特性时，要在 WinUI 中单独适配、构建并验证 portable 包。
