@@ -66,11 +66,11 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "requires_windows_base_update=$($requires.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
-      - name: Stop when Windows base update is not required
+      - name: Stop when Windows full update is not required
         if: ${{ github.event_name != 'workflow_dispatch' && steps.metadata.outputs.requires_windows_base_update != 'true' }}
         shell: pwsh
         run: |
-          Write-Host "Windows base update is not required for ${{ steps.metadata.outputs.version }}. Skipping MSIX build."
+          Write-Host "Windows full update is not required for ${{ steps.metadata.outputs.version }}. Skipping Windows package build."
 
       - name: Build Windows package
         if: ${{ github.event_name == 'workflow_dispatch' || steps.metadata.outputs.requires_windows_base_update == 'true' }}

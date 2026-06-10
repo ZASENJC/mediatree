@@ -346,10 +346,14 @@ class WindowsPackagingTest(unittest.TestCase):
         self.assertIn("SettingsPerformUpdate_", settings_page_cs)
         self.assertIn("SettingsRollbackUpdate_", settings_page_cs)
         self.assertIn("SettingsUpdateChangelog_", settings_page_cs)
-        self.assertIn("SettingsDownloadWindowsUpdate_", settings_page_cs)
+        self.assertIn("SettingsDownloadFullUpdate_", settings_page_cs)
+        self.assertIn("RestartBackendAfterAppPackageUpdateAsync", settings_page_cs)
         self.assertIn("CheckUpdatesOnLoadAsync", settings_page_cs)
         self.assertIn("Timeout = TimeSpan.FromMinutes(10)", api_client)
-        self.assertIn("requires_image_update", (ROOT / "windows" / "MediaTree.Windows" / "Models" / "UpdateDtos.cs").read_text(encoding="utf-8"))
+        update_dtos = (ROOT / "windows" / "MediaTree.Windows" / "Models" / "UpdateDtos.cs").read_text(encoding="utf-8")
+        self.assertIn("windows-full-required", update_dtos)
+        self.assertIn("windows_download_url", update_dtos)
+        self.assertNotIn("requires_image_update", update_dtos)
         self.assertIn("tmdb_access_token", api_client)
         self.assertIn("tmdb_api_key", api_client)
         self.assertIn("TmdbAccessToken", (ROOT / "windows" / "MediaTree.Windows" / "Models" / "LibraryDtos.cs").read_text(encoding="utf-8"))
@@ -601,7 +605,7 @@ class WindowsPackagingTest(unittest.TestCase):
         self.assertIn("SanitizeAutomationId", library_page)
         self.assertIn("Replace(\":\", \"_\")", library_page)
 
-    def test_windows_release_workflow_builds_only_when_base_update_required_or_manual(self):
+    def test_windows_release_workflow_builds_only_when_full_update_required_or_manual(self):
         workflow = WINDOWS_WORKFLOW.read_text(encoding="utf-8")
 
         self.assertIn("requires_windows_base_update", workflow)

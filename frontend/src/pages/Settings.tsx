@@ -155,8 +155,8 @@ export default function Settings() {
   }
 
   const getWindowsUpdateGuide = (v?: any) => {
-    const reason = v?.reason || v?.windows_reason || '该版本需要更新 Windows 桌面版基础运行时。'
-    return `${reason} 请从该版本 GitHub Release 下载并安装 MediaTree-Windows-${v?.version || '新版'}.msix 或 .appinstaller。日常 FastAPI/React 更新仍会继续使用应用包更新。`
+    const reason = v?.windows_reason || v?.reason || '该版本需要下载 Windows 桌面版全量更新包。'
+    return `${reason} 请下载新的 Windows 完整包后重新启动应用。日常 FastAPI/React 更新仍会继续使用应用包更新。`
   }
 
   const stopUpdatePolling = () => {
@@ -789,6 +789,8 @@ export default function Settings() {
                   const result = updateResult
                   if (!result) return null
                   const versionKey = normalizeVersion(v.version)
+                  const requiresWindowsFull = Boolean(windowsShell && (v.requires_windows_base_update || v.update_type === 'windows-full-required'))
+                  const requiresImageUpdate = Boolean(!windowsShell && v.requires_image_update)
                   const dockerTargetVersion = v.required_image_version || v.version
                   const dockerTargetKey = normalizeVersion(dockerTargetVersion)
                   const currentVersion = result.effective_version || result.current_version
@@ -799,14 +801,13 @@ export default function Settings() {
                     && !isCurrent
                     && (
                       normalizeVersion(updateProgress.version) === versionKey
-                      || (v.requires_image_update && normalizeVersion(updateProgress.version) === dockerTargetKey)
+                      || (requiresImageUpdate && normalizeVersion(updateProgress.version) === dockerTargetKey)
                     )
                     && updateProgress.status !== 'idle'
                     && updateProgress.status !== 'success'
                     ? updateProgress
                     : null
-                  const isDockerUpdate = Boolean(activeUpdate && (activeUpdate.update_type === 'docker-image' || v.requires_image_update))
-                  const requiresWindowsBase = Boolean(windowsShell && v.requires_windows_base_update)
+                  const isDockerUpdate = Boolean(activeUpdate && (activeUpdate.update_type === 'docker-image' || requiresImageUpdate))
                   const isAppUpdate = Boolean(activeUpdate && !isDockerUpdate)
                   const progressPercent = activeUpdate?.total
                     ? Math.min(100, Math.round((activeUpdate.downloaded / activeUpdate.total) * 100))
@@ -840,13 +841,13 @@ export default function Settings() {
                           )}
                           <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
                             <span className={`inline-flex rounded-full border px-2 py-0.5 ${
-                              v.requires_image_update || requiresWindowsBase
+                              requiresImageUpdate || requiresWindowsFull
                                 ? 'border-apple-yellow/30 bg-apple-yellow/10 text-apple-yellow'
                                 : 'border-apple-mint/30 bg-apple-mint/10 text-apple-mint'
                             }`}>
-                              {requiresWindowsBase ? '需要 Windows 桌面版更新' : v.requires_image_update ? '需要完整镜像更新' : '应用包更新'}
+                              {requiresWindowsFull ? '全量更新' : requiresImageUpdate ? '需要完整镜像更新' : '应用包更新'}
                             </span>
-                            {!v.requires_image_update && !requiresWindowsBase && (
+                            {!requiresImageUpdate && !requiresWindowsFull && (
                               <span>{formatSize(v.size)}</span>
                             )}
                             {v.reason && (
@@ -890,10 +891,11 @@ export default function Settings() {
                             >
                               {updatePerforming === v.version ? '回滚中...' : '回滚此版本'}
                             </button>
-                          ) : !isCurrent && !v.requires_image_update && !requiresWindowsBase ? (
+                          ) : !isCurrent && !requiresImageUpdate && !requiresWindowsFull ? (
                             <button
                               onClick={async () => {
-                                if (!confirm(`确定要${isOlderVersion ? '回滚到' : '切换到'} ${v.display_version || v.version} 吗？容器将自动重启。`)) return
+                                const restartTarget = windowsShell ? '本机服务' : '容器'
+                                if (!confirm(`确定要${isOlderVersion ? '回滚到' : '切换到'} ${v.display_version || v.version} 吗？${restartTarget}将自动重启。`)) return
                                 setUpdatePerforming(v.version)
                                 setUpdateMsg('')
                                 setUpdateProgress({
@@ -922,17 +924,17 @@ export default function Settings() {
                                 ? (isOlderVersion ? '回滚中...' : '更新中...')
                                 : (isOlderVersion ? '回滚此版本' : '下载并更新')}
                             </button>
-                          ) : !isCurrent && requiresWindowsBase ? (
+                          ) : !isCurrent && requiresWindowsFull ? (
                             <a
-                              href={v.html_url}
+                              href={v.windows_download_url || v.html_url}
                               target="_blank"
                               rel="noreferrer"
                               title={getWindowsUpdateGuide(v)}
                               className={`${btnDark} text-xs px-2 py-1`}
                             >
-                              下载桌面新版
+                              下载全量更新
                             </a>
-                          ) : !isCurrent && v.requires_image_update ? (
+                          ) : !isCurrent && requiresImageUpdate ? (
                             <button
                               onClick={async () => {
                                 if (!confirm(`确定要执行完整镜像更新到 ${dockerTargetVersion} 吗？该操作需要已挂载 Docker socket。`)) return

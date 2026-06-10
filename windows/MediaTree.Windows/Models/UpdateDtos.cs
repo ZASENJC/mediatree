@@ -48,71 +48,8 @@ public sealed class UpdateCheckResultDto
     [JsonPropertyName("has_update")]
     public bool HasUpdate { get; set; }
 
-    [JsonPropertyName("dockerhub_latest")]
-    public DockerHubLatestBaselineDto? DockerHubLatest { get; set; }
-
-    [JsonPropertyName("latest_sync_warning")]
-    public LatestSyncWarningDto? LatestSyncWarning { get; set; }
-
     [JsonPropertyName("versions")]
     public List<VersionEntryDto> Versions { get; set; } = [];
-}
-
-public sealed class DockerHubLatestBaselineDto
-{
-    [JsonPropertyName("version")]
-    public string Version { get; set; } = "";
-
-    [JsonPropertyName("display_version")]
-    public string DisplayVersion { get; set; } = "";
-
-    [JsonPropertyName("published_at")]
-    public string PublishedAt { get; set; } = "";
-
-    [JsonPropertyName("html_url")]
-    public string HtmlUrl { get; set; } = "";
-
-    [JsonPropertyName("source")]
-    public string Source { get; set; } = "";
-
-    [JsonPropertyName("status")]
-    public string Status { get; set; } = "";
-
-    [JsonPropertyName("reason")]
-    public string Reason { get; set; } = "";
-}
-
-public sealed class LatestSyncWarningDto
-{
-    [JsonPropertyName("type")]
-    public string Type { get; set; } = "";
-
-    [JsonPropertyName("severity")]
-    public string Severity { get; set; } = "";
-
-    [JsonPropertyName("release_version")]
-    public string ReleaseVersion { get; set; } = "";
-
-    [JsonPropertyName("release_display_version")]
-    public string ReleaseDisplayVersion { get; set; } = "";
-
-    [JsonPropertyName("release_published_at")]
-    public string ReleasePublishedAt { get; set; } = "";
-
-    [JsonPropertyName("dockerhub_latest_version")]
-    public string DockerHubLatestVersion { get; set; } = "";
-
-    [JsonPropertyName("dockerhub_latest_updated_at")]
-    public string DockerHubLatestUpdatedAt { get; set; } = "";
-
-    [JsonPropertyName("evidence")]
-    public string Evidence { get; set; } = "";
-
-    [JsonPropertyName("message")]
-    public string Message { get; set; } = "";
-
-    [JsonPropertyName("action")]
-    public string Action { get; set; } = "";
 }
 
 public sealed class VersionEntryDto
@@ -135,20 +72,31 @@ public sealed class VersionEntryDto
     [JsonPropertyName("size")]
     public long Size { get; set; }
 
-    [JsonPropertyName("requires_image_update")]
-    public bool RequiresImageUpdate { get; set; }
-
     [JsonPropertyName("requires_windows_base_update")]
     public bool RequiresWindowsBaseUpdate { get; set; }
-
-    [JsonPropertyName("required_image_version")]
-    public string RequiredImageVersion { get; set; } = "";
 
     [JsonPropertyName("reason")]
     public string Reason { get; set; } = "";
 
     [JsonPropertyName("windows_reason")]
     public string WindowsReason { get; set; } = "";
+
+    [JsonPropertyName("windows_download_url")]
+    public string WindowsDownloadUrl { get; set; } = "";
+
+    [JsonIgnore]
+    public bool RequiresFullUpdate =>
+        RequiresWindowsBaseUpdate || string.Equals(UpdateType, "windows-full-required", StringComparison.OrdinalIgnoreCase);
+
+    [JsonIgnore]
+    public string FullUpdateReason => !string.IsNullOrWhiteSpace(WindowsReason)
+        ? WindowsReason
+        : !string.IsNullOrWhiteSpace(Reason)
+            ? Reason
+            : "该版本需要下载新版 Windows 桌面版完整安装包。";
+
+    [JsonIgnore]
+    public string FullUpdateUrl => !string.IsNullOrWhiteSpace(WindowsDownloadUrl) ? WindowsDownloadUrl : HtmlUrl;
 }
 
 public sealed class UpdateStatusDto

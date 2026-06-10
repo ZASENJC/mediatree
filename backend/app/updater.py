@@ -724,6 +724,39 @@ def _find_asset(assets: list[dict], version: str, suffix: str) -> dict | None:
     return None
 
 
+def _find_windows_full_update_asset(assets: list[dict], version: str) -> dict | None:
+    version = version.lstrip("vV")
+    preferred_names = (
+        f"MediaTree-Windows-{version}.exe",
+        f"MediaTree-Windows-v{version}.exe",
+        f"MediaTree-Windows-{version}-portable.zip",
+        f"MediaTree-Windows-v{version}-portable.zip",
+        f"MediaTree-Windows-{version}.appinstaller",
+        f"MediaTree-Windows-v{version}.appinstaller",
+        f"MediaTree-Windows-{version}.msix",
+        f"MediaTree-Windows-v{version}.msix",
+    )
+    for expected in preferred_names:
+        for asset in assets:
+            if asset.get("name", "") == expected:
+                return asset
+
+    for suffix in (".exe", "-portable.zip", ".appinstaller", ".msix", ".zip"):
+        for asset in assets:
+            name = asset.get("name", "")
+            if name.startswith("MediaTree-Windows-") and name.endswith(suffix):
+                return asset
+    return None
+
+
+def _windows_full_update_reason(entry: dict) -> str:
+    return (
+        entry.get("windows_reason")
+        or entry.get("reason")
+        or "该版本需要下载新版 Windows 桌面版完整安装包。"
+    )
+
+
 async def _fetch_json_url(url: str) -> dict:
     async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
         resp = await client.get(
@@ -740,6 +773,7 @@ async def _build_release_entry(release: dict) -> dict:
     manifest_asset = _find_asset(assets, version, ".manifest.json")
     archive_asset = _find_asset(assets, version, ".tar.gz")
     sha_asset = _find_asset(assets, version, ".sha256")
+    windows_asset = _find_windows_full_update_asset(assets, version)
     manifest = {}
     reason = ""
 
@@ -757,16 +791,22 @@ async def _build_release_entry(release: dict) -> dict:
         reason = manifest.get("reason", "")
     windows_reason = manifest.get("windows_reason", "") if manifest else ""
     base_api = int(manifest.get("base_api") or BASE_API_VERSION)
-    if not requires_image and base_api > BASE_API_VERSION:
+    base_api_requires_full = base_api > BASE_API_VERSION
+    if base_api_requires_full:
         requires_image = True
         reason = "该应用包需要更新的基础镜像版本，请使用完整镜像更新。"
-    if not requires_image and not archive_asset:
+    missing_archive = archive_asset is None
+    if not requires_image and missing_archive:
         requires_image = True
         reason = "release 中缺少应用包 tar.gz，请使用完整镜像更新。"
     update_type = "docker-image-required" if requires_image else "app-package"
-    if UPDATE_PLATFORM == "windows" and requires_windows_base:
-        update_type = "windows-base-required"
-        reason = windows_reason or reason or "该版本需要更新 Windows 桌面版基础运行时。"
+    if UPDATE_PLATFORM == "windows":
+        windows_full_required = requires_windows_base or base_api_requires_full or missing_archive or not manifest
+        update_type = "windows-full-required" if windows_full_required else "app-package"
+        if windows_full_required:
+            reason = windows_reason or "该版本需要下载新版 Windows 桌面版完整安装包。"
+        else:
+            reason = windows_reason or "应用包更新；可在软件内完成。"
 
     return {
         "version": version,
@@ -786,6 +826,7 @@ async def _build_release_entry(release: dict) -> dict:
         "manifest_url": manifest_asset.get("browser_download_url") if manifest_asset else "",
         "archive_url": archive_asset.get("browser_download_url") if archive_asset else "",
         "sha256_url": sha_asset.get("browser_download_url") if sha_asset else "",
+        "windows_download_url": windows_asset.get("browser_download_url") if windows_asset else "",
         "sha256": manifest.get("sha256", ""),
         "base_api": base_api,
     }
@@ -793,6 +834,11 @@ async def _build_release_entry(release: dict) -> dict:
 
 def _public_release_entry(entry: dict) -> dict:
     """Return only the stable API fields used by the frontend."""
+    requires_image_update = bool(entry.get("requires_image_update"))
+    required_image_version = entry.get("required_image_version", "")
+    if UPDATE_PLATFORM == "windows":
+        requires_image_update = False
+        required_image_version = ""
     return {
         "version": entry.get("version", ""),
         "display_version": entry.get("display_version", ""),
@@ -801,11 +847,12 @@ def _public_release_entry(entry: dict) -> dict:
         "source": entry.get("source", "github-release"),
         "update_type": entry.get("update_type", "docker-image-required"),
         "size": entry.get("size", 0),
-        "requires_image_update": bool(entry.get("requires_image_update")),
+        "requires_image_update": requires_image_update,
         "requires_windows_base_update": bool(entry.get("requires_windows_base_update")),
-        "required_image_version": entry.get("required_image_version", ""),
+        "required_image_version": required_image_version,
         "reason": entry.get("reason", ""),
         "windows_reason": entry.get("windows_reason", ""),
+        "windows_download_url": entry.get("windows_download_url", ""),
     }
 
 
@@ -831,6 +878,31 @@ def _find_blocking_image_release(
     return max(blocking, key=lambda entry: _normalize_version(entry.get("version", "")))
 
 
+def _find_blocking_windows_full_release(
+    entries: list[dict],
+    base_version: str,
+    target_version: str,
+) -> dict | None:
+    """Find Windows full-update releases between the bundled base and target app."""
+    base_norm = _normalize_version(base_version)
+    target_norm = _normalize_version(target_version)
+    if not target_norm or target_norm <= base_norm:
+        return None
+
+    blocking = [
+        entry
+        for entry in entries
+        if (
+            entry.get("requires_windows_base_update")
+            or entry.get("update_type") == "windows-full-required"
+        )
+        and base_norm < _normalize_version(entry.get("version", "")) <= target_norm
+    ]
+    if not blocking:
+        return None
+    return max(blocking, key=lambda entry: _normalize_version(entry.get("version", "")))
+
+
 def _image_gate_reason(base_version: str, target_entry: dict, blocking_entry: dict) -> str:
     target_display = target_entry.get("display_version") or target_entry.get("version", "")
     blocking_display = blocking_entry.get("display_version") or blocking_entry.get("version", "")
@@ -844,11 +916,38 @@ def _image_gate_reason(base_version: str, target_entry: dict, blocking_entry: di
     return reason
 
 
+def _windows_full_gate_reason(base_version: str, target_entry: dict, blocking_entry: dict) -> str:
+    target_display = target_entry.get("display_version") or target_entry.get("version", "")
+    blocking_display = blocking_entry.get("display_version") or blocking_entry.get("version", "")
+    blocking_reason = blocking_entry.get("windows_reason") or blocking_entry.get("reason", "")
+    reason = (
+        f"从当前安装包内置版本 {base_version or 'unknown'} 升级到 {target_display} "
+        f"会跨过需要 Windows 全量更新的 {blocking_display}，请先下载安装新的 Windows 完整包。"
+    )
+    if blocking_reason:
+        reason += f" {blocking_reason}"
+    return reason
+
+
 def _apply_image_update_gate(entries: list[dict], base_version: str) -> list[dict]:
     """Mark app-package releases as image-required when an older image is installed."""
     gated_entries: list[dict] = []
     for entry in entries:
         gated = dict(entry)
+        if UPDATE_PLATFORM == "windows":
+            if not gated.get("requires_windows_base_update") and gated.get("update_type") == "app-package":
+                blocking = _find_blocking_windows_full_release(entries, base_version, gated.get("version", ""))
+                if blocking:
+                    gated["requires_windows_base_update"] = True
+                    gated["update_type"] = "windows-full-required"
+                    gated["windows_download_url"] = (
+                        gated.get("windows_download_url") or blocking.get("windows_download_url", "")
+                    )
+                    gated["windows_reason"] = _windows_full_gate_reason(base_version, gated, blocking)
+                    gated["reason"] = gated["windows_reason"]
+            gated_entries.append(gated)
+            continue
+
         if not gated.get("requires_image_update"):
             blocking = _find_blocking_image_release(entries, base_version, gated.get("version", ""))
             if blocking:
@@ -889,7 +988,7 @@ async def get_available_versions(include_registry_sync: bool = False) -> dict:
     latest_entry = entries[0] if entries else None
     dockerhub_latest = None
     latest_sync_warning = None
-    if include_registry_sync and _is_app_package_release(latest_entry):
+    if UPDATE_PLATFORM != "windows" and include_registry_sync and _is_app_package_release(latest_entry):
         dockerhub_latest = await fetch_dockerhub_latest_baseline()
         latest_sync_warning = _build_latest_sync_warning(latest_entry, dockerhub_latest)
 
@@ -973,13 +1072,25 @@ async def perform_app_package_update(version: str) -> dict:
     entry = await _get_release_entry(version_tag)
     if not entry:
         return {"ok": False, "error": f"未找到版本 {version_tag} 的 release。"}
-    if entry.get("requires_image_update"):
+    if UPDATE_PLATFORM == "windows" and (
+        entry.get("requires_windows_base_update")
+        or entry.get("update_type") == "windows-full-required"
+    ):
+        return {
+            "ok": False,
+            "error": _windows_full_update_reason(entry),
+            "requires_windows_base_update": True,
+        }
+    if UPDATE_PLATFORM != "windows" and entry.get("requires_image_update"):
         reason = entry.get("reason") or "该版本需要完整镜像更新。"
         return {"ok": False, "error": reason, "requires_image_update": True}
-    if UPDATE_PLATFORM == "windows" and entry.get("requires_windows_base_update"):
-        reason = entry.get("reason") or entry.get("windows_reason") or "该版本需要更新 Windows 桌面版基础运行时。"
-        return {"ok": False, "error": reason, "requires_windows_base_update": True}
     if int(entry.get("base_api") or 0) > BASE_API_VERSION:
+        if UPDATE_PLATFORM == "windows":
+            return {
+                "ok": False,
+                "error": _windows_full_update_reason(entry),
+                "requires_windows_base_update": True,
+            }
         return {
             "ok": False,
             "error": "该应用包需要更新的基础镜像版本，请使用完整镜像更新。",

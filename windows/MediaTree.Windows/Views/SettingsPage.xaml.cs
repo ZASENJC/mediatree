@@ -866,7 +866,7 @@ public sealed partial class SettingsPage : Page
         try
         {
             ShowUpdateStatus("正在检查更新...", false);
-            var result = await AppServices.Updates.CheckForUpdatesAsync(includeRegistrySync: true);
+            var result = await AppServices.Updates.CheckForUpdatesAsync();
             _lastUpdateResult = result;
             await LoadUpdateStatusAsync();
             if (!result.HasUpdate)
@@ -876,9 +876,10 @@ public sealed partial class SettingsPage : Page
             else
             {
                 var next = result.Versions.Count > 0 ? result.Versions[0] : null;
-                var message = next?.RequiresWindowsBaseUpdate == true
-                    ? $"发现新版本 {next.DisplayVersion}。这次更新需要安装新的 Windows 桌面版安装包。{next.WindowsReason}"
-                    : $"发现新版本 {next?.DisplayVersion}。可以直接在应用内更新。";
+                var nextDisplay = next is null ? "" : DisplayVersionOrVersion(next);
+                var message = next?.RequiresFullUpdate == true
+                    ? $"发现新版本 {nextDisplay}。该版本需要下载全量更新安装包。{next.FullUpdateReason}"
+                    : $"发现新版本 {nextDisplay}。可以直接在应用内更新。";
                 ShowUpdateStatus(message, false);
             }
             RenderUpdateVersions();
@@ -901,7 +902,7 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
-            _lastUpdateResult = await AppServices.Updates.CheckForUpdatesAsync(includeRegistrySync: true);
+            _lastUpdateResult = await AppServices.Updates.CheckForUpdatesAsync();
             RenderUpdateVersions();
             if (_lastUpdateResult.HasUpdate)
             {
@@ -1006,84 +1007,11 @@ public sealed partial class SettingsPage : Page
     private void RenderUpdateVersions()
     {
         _updateVersionsStack.Children.Clear();
-        if (_lastUpdateResult?.LatestSyncWarning is { } warning)
-        {
-            _updateVersionsStack.Children.Add(CreateLatestSyncWarningRow(warning));
-        }
-
         var versions = (_lastUpdateResult?.Versions ?? []).Take(3).ToList();
         foreach (var version in versions)
         {
             _updateVersionsStack.Children.Add(CreateUpdateVersionRow(version));
         }
-    }
-
-    private static UIElement CreateLatestSyncWarningRow(LatestSyncWarningDto warning)
-    {
-        var stack = new StackPanel { Spacing = 6 };
-        stack.Children.Add(new TextBlock
-        {
-            Text = string.IsNullOrWhiteSpace(warning.Message) ? "DockerHub latest 可能未同步到最新应用包版本。" : warning.Message,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = FluentTheme.Error,
-            TextWrapping = TextWrapping.WrapWholeWords,
-        });
-        if (!string.IsNullOrWhiteSpace(warning.Action))
-        {
-            stack.Children.Add(new TextBlock
-            {
-                Text = warning.Action,
-                Foreground = FluentTheme.TextSecondary,
-                TextWrapping = TextWrapping.WrapWholeWords,
-            });
-        }
-
-        var evidence = FormatLatestSyncEvidence(warning);
-        if (!string.IsNullOrWhiteSpace(evidence))
-        {
-            stack.Children.Add(new TextBlock
-            {
-                Text = evidence,
-                FontSize = 12,
-                Foreground = FluentTheme.TextTertiary,
-                TextWrapping = TextWrapping.WrapWholeWords,
-            });
-        }
-
-        var row = new Border
-        {
-            Padding = new Thickness(12),
-            CornerRadius = FluentTheme.CardCornerRadius,
-            Background = FluentTheme.LayerAlt,
-            BorderBrush = FluentTheme.Error,
-            BorderThickness = new Thickness(1),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            Child = stack,
-        };
-        AutomationProperties.SetAutomationId(row, "SettingsLatestSyncWarning");
-        return row;
-    }
-
-    private static string FormatLatestSyncEvidence(LatestSyncWarningDto warning)
-    {
-        var release = string.IsNullOrWhiteSpace(warning.ReleaseDisplayVersion) ? warning.ReleaseVersion : warning.ReleaseDisplayVersion;
-        var docker = warning.DockerHubLatestVersion;
-        if (string.IsNullOrWhiteSpace(release) && string.IsNullOrWhiteSpace(docker))
-        {
-            return "";
-        }
-
-        if (string.IsNullOrWhiteSpace(docker))
-        {
-            return $"GitHub 最新版本：{release}";
-        }
-
-        if (string.IsNullOrWhiteSpace(release))
-        {
-            return $"DockerHub latest：{docker}";
-        }
-
-        return $"GitHub 最新版本：{release} · DockerHub latest：{docker}";
     }
 
     private UIElement CreateUpdateVersionRow(VersionEntryDto version)
@@ -1106,12 +1034,8 @@ public sealed partial class SettingsPage : Page
             Foreground = FluentTheme.TextPrimary,
             TextWrapping = TextWrapping.WrapWholeWords,
         });
-        var typeText = version.RequiresWindowsBaseUpdate
-            ? "需要 Windows 桌面版更新"
-            : version.RequiresImageUpdate
-                ? "需要完整镜像更新"
-                : "应用包更新";
-        var sizeText = version.RequiresWindowsBaseUpdate || version.RequiresImageUpdate ? "" : $" · {FormatSize(version.Size)}";
+        var typeText = version.RequiresFullUpdate ? "全量更新" : "应用包更新";
+        var sizeText = version.RequiresFullUpdate ? "" : $" · {FormatSize(version.Size)}";
         var meta = new TextBlock
         {
             Text = $"{typeText}{sizeText}{FormatReason(version)}",
@@ -1137,17 +1061,12 @@ public sealed partial class SettingsPage : Page
             rollbackButton.Click += (_, _) => _ = RollbackUpdateAsync(version);
             actions.Children.Add(rollbackButton);
         }
-        else if (!IsCurrentVersion(version) && version.RequiresWindowsBaseUpdate)
+        else if (!IsCurrentVersion(version) && version.RequiresFullUpdate)
         {
-            var downloadButton = FluentTheme.ApplyButton(new Button { Content = "下载桌面新版" });
-            AutomationProperties.SetAutomationId(downloadButton, $"SettingsDownloadWindowsUpdate_{SanitizeAutomationId(version.Version)}");
-            downloadButton.Click += (_, _) => OpenUrl(version.HtmlUrl);
+            var downloadButton = FluentTheme.ApplyButton(new Button { Content = "下载全量更新" }, FluentButtonStyle.Accent);
+            AutomationProperties.SetAutomationId(downloadButton, $"SettingsDownloadFullUpdate_{SanitizeAutomationId(version.Version)}");
+            downloadButton.Click += (_, _) => OpenUrl(version.FullUpdateUrl);
             actions.Children.Add(downloadButton);
-        }
-        else if (!IsCurrentVersion(version) && version.RequiresImageUpdate)
-        {
-            var dockerTarget = string.IsNullOrWhiteSpace(version.RequiredImageVersion) ? version.Version : version.RequiredImageVersion;
-            actions.Children.Add(FluentTheme.Body($"完整镜像更新请在宿主机执行到 {dockerTarget}，Windows 桌面端不直接替换镜像。", 12));
         }
         else if (!IsCurrentVersion(version))
         {
@@ -1182,6 +1101,9 @@ public sealed partial class SettingsPage : Page
             _updateStatusTimer.Start();
             var result = await AppServices.Updates.PerformUpdateAsync(version.Version, "app-package");
             ShowUpdateStatus(string.IsNullOrWhiteSpace(result.Message) ? (isOlderVersion ? "回滚已触发。" : "更新已触发。") : result.Message, false);
+            await RestartBackendAfterAppPackageUpdateAsync(
+                isOlderVersion ? "已切换版本，正在重启本机服务..." : "应用包已安装，正在重启本机服务...",
+                isOlderVersion ? "版本切换完成。" : "应用包更新完成。");
         }
         catch (Exception ex)
         {
@@ -1202,6 +1124,7 @@ public sealed partial class SettingsPage : Page
             _updateStatusTimer.Start();
             var result = await AppServices.Updates.RollbackAsync();
             ShowUpdateStatus(string.IsNullOrWhiteSpace(result.Message) ? "已触发回滚。" : result.Message, false);
+            await RestartBackendAfterAppPackageUpdateAsync("已切换版本，正在重启本机服务...", "版本切换完成。");
         }
         catch (Exception ex)
         {
@@ -1212,6 +1135,26 @@ public sealed partial class SettingsPage : Page
         {
             RenderUpdateVersions();
         }
+    }
+
+    private async System.Threading.Tasks.Task RestartBackendAfterAppPackageUpdateAsync(string restartingMessage, string completedMessage)
+    {
+        _updateStatusTimer.Stop();
+        _lastUpdateStatus = new UpdateStatusDto
+        {
+            Status = "restarting",
+            Message = restartingMessage,
+            UpdateType = "app-package",
+        };
+        RenderUpdateStatus(_lastUpdateStatus);
+        ShowUpdateStatus(restartingMessage, false);
+
+        await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(1.5));
+        var backendUri = await AppServices.Backend.RestartAsync();
+        AppServices.Api.SetBackendUri(backendUri);
+        await LoadVersionAsync();
+        await LoadUpdateStatusAsync();
+        ShowUpdateStatus(completedMessage, false);
     }
 
     private async System.Threading.Tasks.Task ShowChangelogAsync(VersionEntryDto version)
@@ -1273,9 +1216,9 @@ public sealed partial class SettingsPage : Page
 
     private static string FormatVersionLine(string version, string currentSource, string baseVersion, string statusNote = "")
     {
-        var source = currentSource == "app-package" ? "应用包" : currentSource == "docker-image" ? "Docker 镜像" : "安装包内置";
+        var source = currentSource == "app-package" ? "应用包" : "安装包内置";
         var note = string.IsNullOrWhiteSpace(statusNote) ? "" : $"    {statusNote}";
-        return $"当前版本：{version}    运行来源：Windows · {source}    镜像内置版本：{baseVersion}{note}";
+        return $"当前版本：{version}    运行来源：Windows · {source}    安装包内置版本：{baseVersion}{note}";
     }
 
     private static string NormalizeVersion(string? version)
@@ -1316,9 +1259,7 @@ public sealed partial class SettingsPage : Page
 
     private static string FormatReason(VersionEntryDto version)
     {
-        var reason = version.RequiresWindowsBaseUpdate && !string.IsNullOrWhiteSpace(version.WindowsReason)
-            ? version.WindowsReason
-            : version.Reason;
+        var reason = version.RequiresFullUpdate ? version.FullUpdateReason : version.Reason;
         return string.IsNullOrWhiteSpace(reason) ? "" : $" · {reason}";
     }
 

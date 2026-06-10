@@ -153,22 +153,22 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
-    public void UpdateDtoAcceptsDockerHubLatestSyncWarning()
+    public void UpdateDtoIgnoresRemovedSyncFields()
     {
         var json = """
             {
               "current_version": "1.0.12",
               "has_update": true,
-              "dockerhub_latest": {
+              "remote_latest": {
                 "version": "1.0.11",
                 "published_at": "2026-06-09T00:00:00Z"
               },
               "latest_sync_warning": {
-                "type": "dockerhub-latest-outdated",
+                "type": "remote-latest-outdated",
                 "severity": "warning",
                 "release_version": "1.0.13",
                 "message": "latest 未同步",
-                "action": "请同步 DockerHub latest"
+                "action": "请同步 latest"
               },
               "versions": []
             }
@@ -176,12 +176,11 @@ public sealed class ServiceLogicTests
 
         var response = JsonSerializer.Deserialize<UpdateCheckResultDto>(json);
 
-        Assert.Equal("1.0.11", response!.DockerHubLatest!.Version);
-        Assert.Equal("latest 未同步", response.LatestSyncWarning!.Message);
+        Assert.Empty(response!.Versions);
     }
 
     [Fact]
-    public void UpdateDtoAcceptsImageGateAndWindowsBaseFields()
+    public void UpdateDtoMapsWindowsFullUpdateFields()
     {
         var json = """
             {
@@ -192,11 +191,11 @@ public sealed class ServiceLogicTests
                 {
                   "version": "1.0.14",
                   "display_version": "1.0.14",
-                  "requires_image_update": true,
-                  "required_image_version": "1.0.13",
+                  "update_type": "windows-full-required",
                   "requires_windows_base_update": true,
-                  "reason": "需要完整镜像更新",
-                  "windows_reason": "需要更新 Windows 桌面版基础运行时"
+                  "reason": "需要全量更新",
+                  "windows_reason": "需要更新 Windows 桌面版基础运行时",
+                  "windows_download_url": "https://example.invalid/MediaTree-Windows-1.0.14.exe"
                 }
               ]
             }
@@ -206,10 +205,25 @@ public sealed class ServiceLogicTests
 
         var version = Assert.Single(response!.Versions);
         Assert.Equal("1.0.12", response.EffectiveVersion);
-        Assert.True(version.RequiresImageUpdate);
-        Assert.Equal("1.0.13", version.RequiredImageVersion);
+        Assert.True(version.RequiresFullUpdate);
         Assert.True(version.RequiresWindowsBaseUpdate);
-        Assert.Equal("需要更新 Windows 桌面版基础运行时", version.WindowsReason);
+        Assert.Equal("需要更新 Windows 桌面版基础运行时", version.FullUpdateReason);
+        Assert.Equal("https://example.invalid/MediaTree-Windows-1.0.14.exe", version.FullUpdateUrl);
+    }
+
+    [Fact]
+    public void UpdateDtoKeepsAppPackageUpdatesInApp()
+    {
+        var version = new VersionEntryDto
+        {
+            Version = "1.0.15",
+            UpdateType = "app-package",
+            HtmlUrl = "https://example.invalid/release",
+            WindowsDownloadUrl = "",
+        };
+
+        Assert.False(version.RequiresFullUpdate);
+        Assert.Equal("https://example.invalid/release", version.FullUpdateUrl);
     }
 
     [Fact]

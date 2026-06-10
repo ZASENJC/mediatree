@@ -355,8 +355,8 @@ public sealed class MediaTreeApiClient : IDisposable
     public async Task<VersionInfoDto> GetVersionAsync(CancellationToken cancellationToken = default)
         => await GetAsync<VersionInfoDto>("/version", cancellationToken);
 
-    public async Task<UpdateCheckResultDto> CheckForUpdatesAsync(bool includeRegistrySync = false, CancellationToken cancellationToken = default)
-        => await GetAsync<UpdateCheckResultDto>($"/update/check{(includeRegistrySync ? "?include_registry_sync=true" : "")}", cancellationToken);
+    public async Task<UpdateCheckResultDto> CheckForUpdatesAsync(CancellationToken cancellationToken = default)
+        => await GetAsync<UpdateCheckResultDto>("/update/check", cancellationToken);
 
     public async Task<UpdateStatusDto> GetUpdateStatusAsync(CancellationToken cancellationToken = default)
         => await GetAsync<UpdateStatusDto>("/update/status", cancellationToken);

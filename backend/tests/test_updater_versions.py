@@ -87,6 +87,10 @@ class UpdaterVersionStateTest(unittest.IsolatedAsyncioTestCase):
                     "browser_download_url": "https://example.com/archive.tar.gz",
                     "size": 123,
                 },
+                {
+                    "name": "MediaTree-Windows-1.0.11.exe",
+                    "browser_download_url": "https://example.com/MediaTree-Windows-1.0.11.exe",
+                },
             ],
         }
         manifest = {
@@ -104,10 +108,135 @@ class UpdaterVersionStateTest(unittest.IsolatedAsyncioTestCase):
                 patch.object(updater, "_fetch_json_url", AsyncMock(return_value=manifest)):
             entry = await updater._build_release_entry(release)
 
-        self.assertEqual(entry["update_type"], "windows-base-required")
+        self.assertEqual(entry["update_type"], "windows-full-required")
         self.assertTrue(entry["requires_windows_base_update"])
         self.assertFalse(entry["requires_image_update"])
         self.assertEqual(entry["reason"], "Windows runtime changed.")
+        self.assertEqual(entry["windows_download_url"], "https://example.com/MediaTree-Windows-1.0.11.exe")
+
+    async def test_build_release_entry_keeps_windows_app_package_for_docker_only_image_release(self):
+        release = {
+            "version": "1.0.13",
+            "display_version": "v1.0.13",
+            "name": "v1.0.13",
+            "published_at": "2026-06-09T00:00:00Z",
+            "html_url": "https://example.com/release/v1.0.13",
+            "body": "",
+            "source": "github",
+            "assets": [
+                {
+                    "name": "mediatree-app-1.0.13.manifest.json",
+                    "browser_download_url": "https://example.com/manifest.json",
+                },
+                {
+                    "name": "mediatree-app-1.0.13.tar.gz",
+                    "browser_download_url": "https://example.com/mediatree-app-1.0.13.tar.gz",
+                    "size": 456,
+                },
+                {
+                    "name": "MediaTree-Windows-1.0.13-portable.zip",
+                    "browser_download_url": "https://example.com/MediaTree-Windows-1.0.13-portable.zip",
+                },
+            ],
+        }
+        manifest = {
+            "version": "1.0.13",
+            "base_api": 1,
+            "requires_image_update": True,
+            "requires_windows_base_update": False,
+            "reason": "Docker runtime changed.",
+            "windows_reason": "",
+            "sha256": "abc",
+            "size": 456,
+        }
+
+        with patch.object(updater, "UPDATE_PLATFORM", "windows"), \
+                patch.object(updater, "_fetch_json_url", AsyncMock(return_value=manifest)):
+            entry = await updater._build_release_entry(release)
+
+        self.assertEqual(entry["update_type"], "app-package")
+        self.assertTrue(entry["requires_image_update"])
+        self.assertFalse(entry["requires_windows_base_update"])
+        self.assertEqual(entry["reason"], "应用包更新；可在软件内完成。")
+        self.assertEqual(entry["archive_url"], "https://example.com/mediatree-app-1.0.13.tar.gz")
+        self.assertEqual(entry["windows_download_url"], "https://example.com/MediaTree-Windows-1.0.13-portable.zip")
+
+    async def test_build_release_entry_marks_windows_full_update_when_base_api_requires_new_runtime(self):
+        release = {
+            "version": "1.0.14",
+            "display_version": "v1.0.14",
+            "name": "v1.0.14",
+            "published_at": "2026-06-09T00:00:00Z",
+            "html_url": "https://example.com/release/v1.0.14",
+            "body": "",
+            "source": "github",
+            "assets": [
+                {
+                    "name": "mediatree-app-1.0.14.manifest.json",
+                    "browser_download_url": "https://example.com/manifest.json",
+                },
+                {
+                    "name": "mediatree-app-1.0.14.tar.gz",
+                    "browser_download_url": "https://example.com/mediatree-app-1.0.14.tar.gz",
+                    "size": 456,
+                },
+                {
+                    "name": "MediaTree-Windows-1.0.14-portable.zip",
+                    "browser_download_url": "https://example.com/MediaTree-Windows-1.0.14-portable.zip",
+                },
+            ],
+        }
+        manifest = {
+            "version": "1.0.14",
+            "base_api": updater.BASE_API_VERSION + 1,
+            "requires_image_update": False,
+            "requires_windows_base_update": False,
+            "reason": "Base API changed.",
+            "windows_reason": "",
+            "sha256": "abc",
+            "size": 456,
+        }
+
+        with patch.object(updater, "UPDATE_PLATFORM", "windows"), \
+                patch.object(updater, "_fetch_json_url", AsyncMock(return_value=manifest)):
+            entry = await updater._build_release_entry(release)
+
+        self.assertEqual(entry["update_type"], "windows-full-required")
+        self.assertTrue(entry["requires_image_update"])
+        self.assertFalse(entry["requires_windows_base_update"])
+        self.assertEqual(entry["reason"], "该版本需要下载新版 Windows 桌面版完整安装包。")
+        self.assertEqual(entry["windows_download_url"], "https://example.com/MediaTree-Windows-1.0.14-portable.zip")
+
+    async def test_build_release_entry_marks_windows_full_update_without_manifest(self):
+        release = {
+            "version": "1.0.15",
+            "display_version": "v1.0.15",
+            "name": "v1.0.15",
+            "published_at": "2026-06-09T00:00:00Z",
+            "html_url": "https://example.com/release/v1.0.15",
+            "body": "",
+            "source": "github",
+            "assets": [
+                {
+                    "name": "mediatree-app-1.0.15.tar.gz",
+                    "browser_download_url": "https://example.com/mediatree-app-1.0.15.tar.gz",
+                    "size": 456,
+                },
+                {
+                    "name": "MediaTree-Windows-1.0.15-portable.zip",
+                    "browser_download_url": "https://example.com/MediaTree-Windows-1.0.15-portable.zip",
+                },
+            ],
+        }
+
+        with patch.object(updater, "UPDATE_PLATFORM", "windows"):
+            entry = await updater._build_release_entry(release)
+
+        self.assertEqual(entry["update_type"], "windows-full-required")
+        self.assertTrue(entry["requires_image_update"])
+        self.assertFalse(entry["requires_windows_base_update"])
+        self.assertEqual(entry["reason"], "该版本需要下载新版 Windows 桌面版完整安装包。")
+        self.assertEqual(entry["windows_download_url"], "https://example.com/MediaTree-Windows-1.0.15-portable.zip")
 
     async def test_build_release_entry_keeps_docker_app_package_when_only_windows_base_required(self):
         release = {
@@ -282,6 +411,52 @@ class UpdaterVersionStateTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(warning["dockerhub_latest_version"], "1.0.04")
         self.assertIn("scripts/push-docker-release.sh 1.0.05", warning["action"])
 
+    async def test_get_available_versions_skips_dockerhub_sync_on_windows_platform(self):
+        latest_release = {
+            "version": "1.0.05",
+            "display_version": "v1.0.05",
+            "name": "v1.0.05",
+            "published_at": "2026-06-08T00:00:00Z",
+            "html_url": "https://example.com/release/v1.0.05",
+            "body": "",
+            "source": "github",
+            "assets": [],
+        }
+        release_entry = {
+            "version": "1.0.05",
+            "display_version": "v1.0.05",
+            "published_at": "2026-06-08T00:00:00Z",
+            "html_url": "https://example.com/release/v1.0.05",
+            "source": "github-release",
+            "update_type": "app-package",
+            "size": 1024,
+            "requires_image_update": False,
+            "requires_windows_base_update": False,
+            "reason": "应用包更新；可在软件内完成。",
+        }
+        version_state = {
+            "current_version": "1.0.04",
+            "runtime_version": "1.0.04",
+            "current_source": "base",
+            "base_version": "1.0.04",
+            "effective_version": "1.0.04",
+            "overlay_active": False,
+            "overlay_is_outdated": False,
+            "status_note": "当前已更新到 1.0.04。",
+        }
+
+        with patch.object(updater, "UPDATE_PLATFORM", "windows"), \
+                patch.object(updater, "get_version_state", return_value=version_state), \
+                patch.object(updater, "fetch_github_releases", AsyncMock(return_value=[latest_release])), \
+                patch.object(updater, "_build_release_entry", AsyncMock(return_value=release_entry)), \
+                patch.object(updater, "fetch_dockerhub_latest_baseline", AsyncMock()) as dockerhub_latest:
+            result = await updater.get_available_versions(include_registry_sync=True)
+
+        dockerhub_latest.assert_not_awaited()
+        self.assertIsNone(result["dockerhub_latest"])
+        self.assertIsNone(result["latest_sync_warning"])
+        self.assertEqual(result["versions"][0]["update_type"], "app-package")
+
     async def test_get_available_versions_requires_image_when_crossing_image_release(self):
         releases = [
             {
@@ -354,6 +529,87 @@ class UpdaterVersionStateTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(latest["required_image_version"], "1.0.13")
         self.assertIn("v1.0.13", latest["reason"])
         self.assertIn("完整镜像更新", latest["reason"])
+
+    async def test_get_available_versions_requires_windows_full_when_crossing_full_release(self):
+        releases = [
+            {
+                "version": "1.0.14",
+                "display_version": "v1.0.14",
+                "name": "v1.0.14",
+                "published_at": "2026-06-09T00:00:00Z",
+                "html_url": "https://example.com/release/v1.0.14",
+                "body": "",
+                "source": "github",
+                "assets": [],
+            },
+            {
+                "version": "1.0.13",
+                "display_version": "v1.0.13",
+                "name": "v1.0.13",
+                "published_at": "2026-06-08T00:00:00Z",
+                "html_url": "https://example.com/release/v1.0.13",
+                "body": "",
+                "source": "github",
+                "assets": [],
+            },
+        ]
+        release_entries = {
+            "1.0.14": {
+                "version": "1.0.14",
+                "display_version": "v1.0.14",
+                "published_at": "2026-06-09T00:00:00Z",
+                "html_url": "https://example.com/release/v1.0.14",
+                "source": "github-release",
+                "update_type": "app-package",
+                "size": 1024,
+                "requires_image_update": False,
+                "requires_windows_base_update": False,
+                "reason": "应用包更新；可在软件内完成。",
+                "windows_download_url": "https://example.com/MediaTree-Windows-1.0.14-portable.zip",
+            },
+            "1.0.13": {
+                "version": "1.0.13",
+                "display_version": "v1.0.13",
+                "published_at": "2026-06-08T00:00:00Z",
+                "html_url": "https://example.com/release/v1.0.13",
+                "source": "github-release",
+                "update_type": "windows-full-required",
+                "size": 0,
+                "requires_image_update": False,
+                "requires_windows_base_update": True,
+                "reason": "Windows runtime changed.",
+                "windows_reason": "Windows runtime changed.",
+                "windows_download_url": "https://example.com/MediaTree-Windows-1.0.13-portable.zip",
+            },
+        }
+        version_state = {
+            "current_version": "1.0.12",
+            "runtime_version": "1.0.12",
+            "current_source": "base",
+            "base_version": "1.0.12",
+            "effective_version": "1.0.12",
+            "overlay_active": False,
+            "overlay_is_outdated": False,
+            "status_note": "当前已更新到 1.0.12。",
+        }
+
+        async def build_entry(release):
+            return dict(release_entries[release["version"]])
+
+        with patch.object(updater, "UPDATE_PLATFORM", "windows"), \
+                patch.object(updater, "get_version_state", return_value=version_state), \
+                patch.object(updater, "fetch_github_releases", AsyncMock(return_value=releases)), \
+                patch.object(updater, "_build_release_entry", AsyncMock(side_effect=build_entry)):
+            result = await updater.get_available_versions()
+
+        latest = result["versions"][0]
+        self.assertFalse(latest["requires_image_update"])
+        self.assertEqual(latest["required_image_version"], "")
+        self.assertTrue(latest["requires_windows_base_update"])
+        self.assertEqual(latest["update_type"], "windows-full-required")
+        self.assertIn("v1.0.13", latest["reason"])
+        self.assertIn("Windows 全量更新", latest["reason"])
+        self.assertEqual(latest["windows_download_url"], "https://example.com/MediaTree-Windows-1.0.14-portable.zip")
 
     async def test_perform_app_package_update_rejects_when_crossing_image_release(self):
         target_entry = {

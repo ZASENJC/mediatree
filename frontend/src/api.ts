@@ -851,13 +851,14 @@ export interface VersionEntry {
   html_url: string
   body?: string
   source: 'github-release' | string
-  update_type?: 'app-package' | 'docker-image-required' | 'windows-base-required'
+  update_type?: 'app-package' | 'docker-image-required' | 'windows-full-required'
   size?: number
   requires_image_update?: boolean
   requires_windows_base_update?: boolean
   required_image_version?: string
   reason?: string
   windows_reason?: string
+  windows_download_url?: string
 }
 
 export interface DockerHubLatestBaseline {
