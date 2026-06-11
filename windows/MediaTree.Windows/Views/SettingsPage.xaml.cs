@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using MediaTree.Windows.Models;
+using MediaTree.Windows.Providers;
 using MediaTree.Windows.Services;
 using MediaTree.Windows.Styles;
 using Microsoft.UI.Xaml;
@@ -18,13 +19,20 @@ namespace MediaTree.Windows.Views;
 
 public sealed partial class SettingsPage : Page
 {
-    public const string AddLibraryButtonText = "添加本机目录";
+    public const string AddLibraryButtonText = "添加";
     public const string DeleteLibraryButtonText = "删除";
     public const string LibraryScraperHeader = "刮削器";
     public const string RemoteAccessTitle = "移动端访问";
     public const string RemoteLoginUsernameHeader = "登录用户名";
     public const string RemoteLoginPasswordHeader = "登录密码";
     public const string SaveRemoteAccessButtonText = "保存账号并重启本机服务";
+    public static readonly IReadOnlyList<string> AddLibrarySourceOptions =
+    [
+        "本地目录",
+        "MediaTree 远程",
+        "Jellyfin",
+        "Emby",
+    ];
 
     private const double SettingsColumnPreferredWidth = 400;
     private const double SettingsColumnMinWidth = 340;
@@ -252,7 +260,7 @@ public sealed partial class SettingsPage : Page
         Grid.SetColumn(addLibraryButton, 1);
         libraryHeader.Children.Add(addLibraryButton);
         libraryStack.Children.Add(libraryHeader);
-        libraryStack.Children.Add(FluentTheme.Body("Windows 桌面版可直接选择本机文件夹作为媒体库。", 13));
+        libraryStack.Children.Add(FluentTheme.Body("可添加本机目录，也可以先保存远程 MediaTree、Jellyfin 或 Emby 的连接配置。", 13));
         var librarySettingsList = FluentTheme.ApplyListView(new ListView
         {
             SelectionMode = ListViewSelectionMode.None,
@@ -1459,16 +1467,155 @@ public sealed partial class SettingsPage : Page
         });
     }
 
-    private async void OnAddLibraryClicked(object sender, RoutedEventArgs args)
+    private void OnAddLibraryClicked(object sender, RoutedEventArgs args)
     {
-        await AddLibraryFromSettingsAsync();
+        if (sender is not Button button)
+        {
+            return;
+        }
+
+        var flyout = FluentTheme.ApplyMenuFlyout(new MenuFlyout());
+        foreach (var option in AddLibrarySourceOptions)
+        {
+            var item = new MenuFlyoutItem
+            {
+                Text = option,
+            };
+            item.Click += (_, _) => _ = HandleAddLibrarySourceAsync(option);
+            flyout.Items.Add(item);
+        }
+
+        flyout.ShowAt(button);
     }
 
-    private static System.Threading.Tasks.Task AddLibraryFromSettingsAsync()
+    private async System.Threading.Tasks.Task HandleAddLibrarySourceAsync(string option)
     {
-        ShellPage.Current?.NavigateToSetup();
-        return System.Threading.Tasks.Task.CompletedTask;
+        switch (option)
+        {
+            case "本地目录":
+                await AddLocalLibraryFromSettingsAsync();
+                break;
+            case "MediaTree 远程":
+                await ShowExternalMediaSourceDialogAsync(MediaSourceKind.RemoteMediaTree);
+                break;
+            case "Jellyfin":
+                await ShowExternalMediaSourceDialogAsync(MediaSourceKind.Jellyfin);
+                break;
+            case "Emby":
+                await ShowExternalMediaSourceDialogAsync(MediaSourceKind.Emby);
+                break;
+        }
     }
+
+    private async System.Threading.Tasks.Task AddLocalLibraryFromSettingsAsync()
+    {
+        try
+        {
+            var picker = new FolderPicker
+            {
+                SuggestedStartLocation = PickerLocationId.VideosLibrary,
+            };
+            picker.FileTypeFilter.Add("*");
+            if (AppServices.MainWindow is not null)
+            {
+                InitializeWithWindow.Initialize(picker, WindowNative.GetWindowHandle(AppServices.MainWindow));
+            }
+
+            var folder = await picker.PickSingleFolderAsync();
+            if (folder is null)
+            {
+                _libraryStatusText.Foreground = FluentTheme.TextSecondary;
+                _libraryStatusText.Text = "已取消添加。";
+                return;
+            }
+
+            _libraryStatusText.Foreground = FluentTheme.TextSecondary;
+            _libraryStatusText.Text = "正在添加本机目录...";
+            var added = await AppServices.MediaTree.Library.AddLibraryRootAsync(folder.Path);
+            _libraryStatusText.Foreground = FluentTheme.Accent;
+            _libraryStatusText.Text = added ? "本机目录已添加。可在列表中设置刮削器并重新扫描。" : "该本机目录已存在。";
+            await LoadLibrarySettingsAsync();
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to add native local library from settings.");
+            _libraryStatusText.Foreground = FluentTheme.Error;
+            _libraryStatusText.Text = $"添加本机目录失败：{ex.Message}";
+        }
+    }
+
+    private async System.Threading.Tasks.Task ShowExternalMediaSourceDialogAsync(MediaSourceKind kind)
+    {
+        var sourceName = DisplaySourceKind(kind);
+        var nameBox = TextInput("名称", $"SettingsSourceName_{kind}", sourceName);
+        var endpointBox = TextInput("地址", $"SettingsSourceEndpoint_{kind}");
+        endpointBox.PlaceholderText = kind == MediaSourceKind.RemoteMediaTree
+            ? "http://192.168.1.10:27581"
+            : "http://192.168.1.10:8096";
+        var statusText = StatusText($"SettingsSourceStatus_{kind}", visible: true);
+        statusText.Text = "保存后会出现在媒体源配置中；实际连接将在后续 Provider 步骤启用。";
+
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(nameBox);
+        content.Children.Add(endpointBox);
+        content.Children.Add(statusText);
+
+        var dialog = new WindowModalDialog($"添加{sourceName}", content, "保存", "取消")
+        {
+            MaxWidth = 560,
+            ContentMaxWidth = 500,
+        };
+        dialog.PrimaryActionAsync = () =>
+        {
+            try
+            {
+                var endpoint = NormalizeEndpoint(endpointBox.Text);
+                var saved = MediaSourceProfileStore.UpsertExternalSource(kind, nameBox.Text, endpoint);
+                _libraryStatusText.Foreground = FluentTheme.Accent;
+                _libraryStatusText.Text = $"已保存 {saved.DisplayName}。远程连接会在 Provider 实现完成后启用。";
+                return System.Threading.Tasks.Task.FromResult(true);
+            }
+            catch (Exception ex)
+            {
+                ShellLogger.Error(ex, "Failed to save external media source from settings.");
+                statusText.Foreground = FluentTheme.Error;
+                statusText.Text = $"保存失败：{ex.Message}";
+                return System.Threading.Tasks.Task.FromResult(false);
+            }
+        };
+
+        await dialog.ShowAsync();
+    }
+
+    private static Uri NormalizeEndpoint(string value)
+    {
+        var endpoint = (value ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(endpoint))
+        {
+            throw new ArgumentException("请填写地址。");
+        }
+
+        if (!endpoint.Contains("://", StringComparison.Ordinal))
+        {
+            endpoint = $"http://{endpoint}";
+        }
+
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https"))
+        {
+            throw new ArgumentException("地址必须是 http 或 https。");
+        }
+
+        return uri;
+    }
+
+    private static string DisplaySourceKind(MediaSourceKind kind)
+        => kind switch
+        {
+            MediaSourceKind.RemoteMediaTree => "MediaTree 远程",
+            MediaSourceKind.Jellyfin => "Jellyfin",
+            MediaSourceKind.Emby => "Emby",
+            _ => "本地目录",
+        };
 
     private void ShowGlobalStatus(string message, bool isError)
     {

@@ -253,7 +253,15 @@ public sealed class ServiceLogicTests
     [Fact]
     public void SettingsAddLibraryButtonUsesCompactLabel()
     {
-        Assert.Equal("添加本机目录", MediaTree.Windows.Views.SettingsPage.AddLibraryButtonText);
+        Assert.Equal("添加", MediaTree.Windows.Views.SettingsPage.AddLibraryButtonText);
+    }
+
+    [Fact]
+    public void SettingsAddLibrarySourceOptionsExposeAllPlannedProviders()
+    {
+        Assert.Equal(
+            ["本地目录", "MediaTree 远程", "Jellyfin", "Emby"],
+            MediaTree.Windows.Views.SettingsPage.AddLibrarySourceOptions);
     }
 
     [Fact]
@@ -428,6 +436,62 @@ public sealed class ServiceLogicTests
 
         Assert.Contains(kind.ToString(), exception.Message);
         Assert.Contains("not implemented", exception.Message);
+    }
+
+    [Fact]
+    public void MediaSourceProfileStoreDefaultsToLocalMediaTree()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"mediatree-sources-{Guid.NewGuid():N}.json");
+
+        var state = MediaSourceProfileStore.Load(path);
+
+        var source = Assert.Single(state.Sources);
+        Assert.Equal(MediaSourceProfileStore.LocalSourceId, state.ActiveSourceId);
+        Assert.Equal(MediaSourceProfileStore.LocalSourceId, source.Id);
+        Assert.Equal(MediaSourceKind.LocalMediaTree, source.Kind);
+        Assert.Equal("本机 MediaTree", source.DisplayName);
+        Assert.True(source.RequiresBundledBackend);
+        Assert.Equal("", source.Endpoint);
+    }
+
+    [Fact]
+    public void MediaSourceProfileStoreUpsertsExternalSources()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"mediatree-sources-{Guid.NewGuid():N}.json");
+        try
+        {
+            var remote = MediaSourceProfileStore.UpsertExternalSource(
+                MediaSourceKind.RemoteMediaTree,
+                " NAS MediaTree ",
+                new Uri("https://media.example.invalid/"),
+                path);
+            var jellyfin = MediaSourceProfileStore.UpsertExternalSource(
+                MediaSourceKind.Jellyfin,
+                "Jellyfin",
+                new Uri("https://jellyfin.example.invalid/"),
+                path);
+
+            var state = MediaSourceProfileStore.Load(path);
+            Assert.Equal(MediaSourceProfileStore.LocalSourceId, state.ActiveSourceId);
+            Assert.Equal(3, state.Sources.Count);
+            Assert.Equal("NAS MediaTree", remote.DisplayName);
+            Assert.False(remote.RequiresBundledBackend);
+            Assert.Equal(remote, state.Sources.First(source => source.Id == remote.Id));
+            Assert.Equal(jellyfin, state.Sources.First(source => source.Id == jellyfin.Id));
+            Assert.Contains("RemoteMediaTree", File.ReadAllText(path));
+            Assert.Throws<ArgumentException>(() => MediaSourceProfileStore.UpsertExternalSource(
+                MediaSourceKind.LocalMediaTree,
+                "Local",
+                new Uri("http://127.0.0.1:27580/"),
+                path));
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
     }
 
     [Fact]
