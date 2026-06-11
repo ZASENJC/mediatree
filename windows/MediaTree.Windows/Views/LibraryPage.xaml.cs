@@ -18,6 +18,7 @@ namespace MediaTree.Windows.Views;
 public sealed partial class LibraryPage : Page
 {
     public const double HeaderInputWidth = 220;
+    private const double CompactSortMinWidth = 108;
 
     private readonly ComboBox _libraryBox;
     private readonly Button _folderTabButton;
@@ -304,45 +305,97 @@ public sealed partial class LibraryPage : Page
         Button scanButton,
         Button addButton)
     {
-        var compactHeader = width < FluentTheme.CompactBreakpoint;
         var compactToolbar = width < FluentTheme.MediumBreakpoint;
+        var backButtonVisible = moviesBackButton.Visibility == Visibility.Visible;
         root.Padding = FluentTheme.PagePadding(width);
 
-        header.ColumnDefinitions[1].Width = compactHeader ? new GridLength(0) : GridLength.Auto;
-        header.RowDefinitions[1].Height = compactHeader ? GridLength.Auto : new GridLength(0);
-        Grid.SetColumn(tabs, compactHeader ? 0 : 1);
-        Grid.SetRow(tabs, compactHeader ? 1 : 0);
-        tabs.HorizontalAlignment = compactHeader ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        header.ColumnDefinitions[1].Width = GridLength.Auto;
+        header.RowDefinitions[1].Height = new GridLength(0);
+        Grid.SetColumn(tabs, 1);
+        Grid.SetRow(tabs, 0);
+        tabs.HorizontalAlignment = HorizontalAlignment.Right;
 
-        toolbar.RowSpacing = compactToolbar ? 10 : 0;
-        toolbar.ColumnDefinitions[0].Width = compactToolbar ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
-        toolbar.ColumnDefinitions[1].Width = compactToolbar ? new GridLength(0) : GridLength.Auto;
-        toolbar.ColumnDefinitions[2].Width = compactToolbar ? new GridLength(0) : GridLength.Auto;
-        toolbar.ColumnDefinitions[3].Width = compactToolbar ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
-        toolbar.ColumnDefinitions[4].Width = compactToolbar ? new GridLength(0) : GridLength.Auto;
-        toolbar.ColumnDefinitions[5].Width = compactToolbar ? new GridLength(0) : GridLength.Auto;
-        toolbar.ColumnDefinitions[6].Width = compactToolbar ? new GridLength(0) : GridLength.Auto;
+        toolbar.RowSpacing = 0;
         for (var i = 1; i < toolbar.RowDefinitions.Count; i++)
         {
-            toolbar.RowDefinitions[i].Height = compactToolbar ? GridLength.Auto : new GridLength(0);
+            toolbar.RowDefinitions[i].Height = new GridLength(0);
         }
 
         var controls = new FrameworkElement[] { moviesBackButton, libraryBox, searchBox, sortBox, scanButton, addButton };
-        var expandedColumns = moviesBackButton.Visibility == Visibility.Visible
-            ? new[] { 0, 1, 2, 4, 5, 6 }
-            : new[] { 0, 0, 1, 4, 5, 6 };
-        for (var i = 0; i < controls.Length; i++)
+        if (compactToolbar)
         {
-            Grid.SetColumn(controls[i], compactToolbar ? 0 : expandedColumns[i]);
-            Grid.SetRow(controls[i], compactToolbar ? i : 0);
-            controls[i].HorizontalAlignment = compactToolbar ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+            ApplyCompressedToolbarLayout(toolbar, controls, backButtonVisible);
+        }
+        else
+        {
+            ApplyWideToolbarLayout(toolbar, controls, backButtonVisible);
         }
 
         libraryBox.Width = compactToolbar ? double.NaN : HeaderInputWidth;
         searchBox.Width = compactToolbar ? double.NaN : HeaderInputWidth;
+        sortBox.Width = double.NaN;
         libraryBox.MinWidth = 0;
         searchBox.MinWidth = 0;
-        sortBox.MinWidth = compactToolbar ? 0 : 160;
+        sortBox.MinWidth = compactToolbar ? CompactSortMinWidth : 160;
+    }
+
+    private static void ApplyCompressedToolbarLayout(Grid toolbar, IReadOnlyList<FrameworkElement> controls, bool backButtonVisible)
+    {
+        if (backButtonVisible)
+        {
+            toolbar.ColumnDefinitions[0].Width = GridLength.Auto;
+            toolbar.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star);
+            toolbar.ColumnDefinitions[2].Width = new GridLength(1.25, GridUnitType.Star);
+            toolbar.ColumnDefinitions[3].Width = new GridLength(0.72, GridUnitType.Star);
+            toolbar.ColumnDefinitions[4].Width = GridLength.Auto;
+            toolbar.ColumnDefinitions[5].Width = GridLength.Auto;
+            toolbar.ColumnDefinitions[6].Width = new GridLength(0);
+            ApplyToolbarControlPositions(controls, [0, 1, 2, 3, 4, 5]);
+        }
+        else
+        {
+            toolbar.ColumnDefinitions[0].Width = new GridLength(1, GridUnitType.Star);
+            toolbar.ColumnDefinitions[1].Width = new GridLength(1.25, GridUnitType.Star);
+            toolbar.ColumnDefinitions[2].Width = new GridLength(0.72, GridUnitType.Star);
+            toolbar.ColumnDefinitions[3].Width = GridLength.Auto;
+            toolbar.ColumnDefinitions[4].Width = GridLength.Auto;
+            toolbar.ColumnDefinitions[5].Width = new GridLength(0);
+            toolbar.ColumnDefinitions[6].Width = new GridLength(0);
+            ApplyToolbarControlPositions(controls, [0, 0, 1, 2, 3, 4]);
+        }
+
+        controls[0].HorizontalAlignment = HorizontalAlignment.Left;
+        controls[1].HorizontalAlignment = HorizontalAlignment.Stretch;
+        controls[2].HorizontalAlignment = HorizontalAlignment.Stretch;
+        controls[3].HorizontalAlignment = HorizontalAlignment.Stretch;
+        controls[4].HorizontalAlignment = HorizontalAlignment.Left;
+        controls[5].HorizontalAlignment = HorizontalAlignment.Left;
+    }
+
+    private static void ApplyWideToolbarLayout(Grid toolbar, IReadOnlyList<FrameworkElement> controls, bool backButtonVisible)
+    {
+        toolbar.ColumnDefinitions[0].Width = GridLength.Auto;
+        toolbar.ColumnDefinitions[1].Width = GridLength.Auto;
+        toolbar.ColumnDefinitions[2].Width = GridLength.Auto;
+        toolbar.ColumnDefinitions[3].Width = new GridLength(1, GridUnitType.Star);
+        toolbar.ColumnDefinitions[4].Width = GridLength.Auto;
+        toolbar.ColumnDefinitions[5].Width = GridLength.Auto;
+        toolbar.ColumnDefinitions[6].Width = GridLength.Auto;
+        ApplyToolbarControlPositions(controls, backButtonVisible ? [0, 1, 2, 4, 5, 6] : [0, 0, 1, 4, 5, 6]);
+
+        foreach (var control in controls)
+        {
+            control.HorizontalAlignment = HorizontalAlignment.Left;
+        }
+    }
+
+    private static void ApplyToolbarControlPositions(IReadOnlyList<FrameworkElement> controls, IReadOnlyList<int> columns)
+    {
+        for (var i = 0; i < controls.Count; i++)
+        {
+            Grid.SetColumn(controls[i], columns[i]);
+            Grid.SetRow(controls[i], 0);
+        }
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs args)
