@@ -26,8 +26,9 @@ public sealed partial class SettingsPage : Page
     public const string RemoteLoginPasswordHeader = "登录密码";
     public const string SaveRemoteAccessButtonText = "保存账号并重启本机服务";
 
-    private const double SettingsColumnMaxWidth = 480;
-    private const double SettingsColumnSpacing = 20;
+    private const double SettingsColumnPreferredWidth = 400;
+    private const double SettingsColumnMinWidth = 340;
+    private const double SettingsColumnSpacing = 18;
 
     private sealed record ScraperOption(string Value, string Label, string Description, bool HasKey);
 
@@ -1575,9 +1576,9 @@ public sealed partial class SettingsPage : Page
         root.Padding = FluentTheme.SpaciousPagePadding(viewportWidth);
         var contentWidth = Math.Max(0, viewportWidth - root.Padding.Left - root.Padding.Right);
         var columnCount = CalculateSettingsColumnCount(contentWidth, _settingsCards.Count);
-        var totalSpacing = (columnCount - 1) * SettingsColumnSpacing;
-        var columnWidth = Math.Min(SettingsColumnMaxWidth, Math.Max(0, (contentWidth - totalSpacing) / columnCount));
+        var columnWidth = CalculateSettingsColumnWidth(contentWidth, columnCount);
         _settingsColumnWidth = columnWidth;
+        var totalSpacing = (columnCount - 1) * SettingsColumnSpacing;
         var gridWidth = columnCount * columnWidth + totalSpacing;
         settingsGrid.Width = gridWidth;
 
@@ -1636,8 +1637,20 @@ public sealed partial class SettingsPage : Page
             return 1;
         }
 
-        var columnWithSpacing = SettingsColumnMaxWidth + SettingsColumnSpacing;
+        var columnWithSpacing = SettingsColumnMinWidth + SettingsColumnSpacing;
         return Math.Min(maxColumns, Math.Max(1, (int)Math.Floor((contentWidth + SettingsColumnSpacing) / columnWithSpacing)));
+    }
+
+    private static double CalculateSettingsColumnWidth(double contentWidth, int columnCount)
+    {
+        if (contentWidth <= 0 || columnCount <= 0)
+        {
+            return 0;
+        }
+
+        var totalSpacing = (columnCount - 1) * SettingsColumnSpacing;
+        var availableColumnWidth = Math.Max(0, (contentWidth - totalSpacing) / columnCount);
+        return Math.Min(SettingsColumnPreferredWidth, availableColumnWidth);
     }
 
     private void ApplyLoadedLibraryRowWidths(double columnWidth)
