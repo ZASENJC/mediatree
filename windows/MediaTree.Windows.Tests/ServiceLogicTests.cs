@@ -495,6 +495,106 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void MediaSourceProfileStoreCanActivateSavedSources()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"mediatree-sources-{Guid.NewGuid():N}.json");
+        try
+        {
+            var remote = MediaSourceProfileStore.UpsertExternalSource(
+                MediaSourceKind.RemoteMediaTree,
+                "NAS MediaTree",
+                new Uri("https://media.example.invalid/"),
+                path);
+
+            var active = MediaSourceProfileStore.SetActiveSource(remote.Id, path);
+
+            Assert.Equal(remote.Id, active.ActiveSourceId);
+            Assert.Equal(remote.Id, MediaSourceProfileStore.Load(path).ActiveSourceId);
+            Assert.Equal(MediaSourceProfileStore.LocalSourceId, MediaSourceProfileStore.SetActiveSource(MediaSourceProfileStore.LocalSourceId, path).ActiveSourceId);
+            Assert.Throws<ArgumentException>("sourceId", () => MediaSourceProfileStore.SetActiveSource("missing-source", path));
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public void MediaSourceCredentialStoreProtectsExternalSourceSecrets()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"mediatree-source-credentials-{Guid.NewGuid():N}.json");
+        var sourceId = "RemoteMediaTree:https://media.example.invalid/";
+        try
+        {
+            var credentials = new MediaSourceCredentials("admin-user", "sample-password");
+
+            MediaSourceCredentialStore.Save(sourceId, credentials, path);
+
+            var json = File.ReadAllText(path);
+            Assert.Contains("Payload", json);
+            Assert.DoesNotContain("admin-user", json);
+            Assert.DoesNotContain("sample-password", json);
+            Assert.Equal(credentials, MediaSourceCredentialStore.Load(sourceId, path));
+
+            MediaSourceCredentialStore.Clear(sourceId, path);
+
+            Assert.Null(MediaSourceCredentialStore.Load(sourceId, path));
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task MediaSourceConnectionTesterChecksRemoteMediaTreeHealthAndLogin()
+    {
+        using var server = new OneShotJsonServer(
+            new OneShotJsonResponse(200, """{"status":"ok"}"""),
+            new OneShotJsonResponse(200, """{"token":"remote-token"}"""));
+        using var tester = new MediaSourceConnectionTester();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        var result = await tester.TestAsync(
+            MediaSourceKind.RemoteMediaTree,
+            server.BaseUri,
+            new MediaSourceCredentials("admin", "password"),
+            cancellation.Token);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal(["/api/health", "/api/auth/login"], server.RequestPaths);
+        Assert.Contains("\"username\":\"admin\"", server.RequestBodies[1]);
+        Assert.Contains("\"password\":\"password\"", server.RequestBodies[1]);
+    }
+
+    [Theory]
+    [InlineData(MediaSourceKind.Jellyfin)]
+    [InlineData(MediaSourceKind.Emby)]
+    public async Task MediaSourceConnectionTesterChecksJellyfinCompatibleLogin(MediaSourceKind kind)
+    {
+        using var server = new OneShotJsonServer(new OneShotJsonResponse(200, """{"AccessToken":"media-token"}"""));
+        using var tester = new MediaSourceConnectionTester();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        var result = await tester.TestAsync(
+            kind,
+            server.BaseUri,
+            new MediaSourceCredentials("media-user", "media-password"),
+            cancellation.Token);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Equal("/Users/AuthenticateByName", server.RequestPath);
+        Assert.Contains("\"Username\":\"media-user\"", server.RequestBodies[0]);
+        Assert.Contains("\"Pw\":\"media-password\"", server.RequestBodies[0]);
+    }
+
+    [Fact]
     public void LocalMediaTreeProviderExposesExistingServiceLayer()
     {
         using var api = new MediaTreeApiClient(new Uri("http://127.0.0.1:27580/"));
@@ -987,6 +1087,11 @@ file sealed class OneShotJsonServer : IDisposable
     private readonly Task _task;
 
     public OneShotJsonServer(string responseJson)
+        : this(new OneShotJsonResponse(200, responseJson))
+    {
+    }
+
+    public OneShotJsonServer(params OneShotJsonResponse[] responses)
     {
         _listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
         _listener.Start();
@@ -994,27 +1099,63 @@ file sealed class OneShotJsonServer : IDisposable
         BaseUri = new Uri($"http://127.0.0.1:{port}/");
         _task = Task.Run(async () =>
         {
-            using var client = await _listener.AcceptTcpClientAsync();
-            await using var stream = client.GetStream();
-            using var reader = new StreamReader(stream, leaveOpen: true);
-            var requestLine = await reader.ReadLineAsync();
-            RequestPath = requestLine?.Split(' ', StringSplitOptions.RemoveEmptyEntries).ElementAtOrDefault(1) ?? "";
-            while (!string.IsNullOrEmpty(await reader.ReadLineAsync()))
+            foreach (var response in responses)
             {
-            }
+                using var client = await _listener.AcceptTcpClientAsync();
+                await using var stream = client.GetStream();
+                using var reader = new StreamReader(stream, leaveOpen: true);
+                var requestLine = await reader.ReadLineAsync();
+                RequestPaths.Add(requestLine?.Split(' ', StringSplitOptions.RemoveEmptyEntries).ElementAtOrDefault(1) ?? "");
+                var contentLength = 0;
+                string? header;
+                while (!string.IsNullOrEmpty(header = await reader.ReadLineAsync()))
+                {
+                    if (header.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase)
+                        && int.TryParse(header["Content-Length:".Length..].Trim(), out var parsedLength))
+                    {
+                        contentLength = parsedLength;
+                    }
+                }
 
-            var responseBytes = System.Text.Encoding.UTF8.GetBytes(responseJson);
-            using var writer = new StreamWriter(stream, leaveOpen: true);
-            await writer.WriteAsync(
-                $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {responseBytes.Length}\r\nConnection: close\r\n\r\n");
-            await writer.FlushAsync();
-            await stream.WriteAsync(responseBytes);
+                if (contentLength > 0)
+                {
+                    var body = new char[contentLength];
+                    var read = 0;
+                    while (read < contentLength)
+                    {
+                        var count = await reader.ReadAsync(body, read, contentLength - read);
+                        if (count == 0)
+                        {
+                            break;
+                        }
+
+                        read += count;
+                    }
+
+                    RequestBodies.Add(new string(body, 0, read));
+                }
+                else
+                {
+                    RequestBodies.Add("");
+                }
+
+                var responseBytes = System.Text.Encoding.UTF8.GetBytes(response.Json);
+                using var writer = new StreamWriter(stream, leaveOpen: true);
+                await writer.WriteAsync(
+                    $"HTTP/1.1 {response.StatusCode} OK\r\nContent-Type: application/json\r\nContent-Length: {responseBytes.Length}\r\nConnection: close\r\n\r\n");
+                await writer.FlushAsync();
+                await stream.WriteAsync(responseBytes);
+            }
         });
     }
 
     public Uri BaseUri { get; }
 
-    public string RequestPath { get; private set; } = "";
+    public List<string> RequestPaths { get; } = [];
+
+    public List<string> RequestBodies { get; } = [];
+
+    public string RequestPath => RequestPaths.FirstOrDefault() ?? "";
 
     public void Dispose()
     {
@@ -1028,3 +1169,5 @@ file sealed class OneShotJsonServer : IDisposable
         }
     }
 }
+
+file sealed record OneShotJsonResponse(int StatusCode, string Json);

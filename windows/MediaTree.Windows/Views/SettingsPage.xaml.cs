@@ -1552,15 +1552,87 @@ public sealed partial class SettingsPage : Page
         endpointBox.PlaceholderText = kind == MediaSourceKind.RemoteMediaTree
             ? "http://192.168.1.10:27581"
             : "http://192.168.1.10:8096";
+        var usernameBox = TextInput("用户名", $"SettingsSourceUsername_{kind}");
+        var secretBox = PasswordInput("密码 / token", $"SettingsSourceSecret_{kind}");
+        secretBox.PlaceholderText = "保存在当前 Windows 用户凭据中";
         var statusText = StatusText($"SettingsSourceStatus_{kind}", visible: true);
-        statusText.Text = "保存后会出现在媒体源配置中；实际连接将在后续 Provider 步骤启用。";
+        statusText.Text = "凭据会使用 Windows DPAPI 保存；实际浏览接入将在后续 Provider 步骤启用。";
+
+        var testButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = "测试连接",
+            HorizontalAlignment = HorizontalAlignment.Left,
+        });
+        AutomationProperties.SetAutomationId(testButton, $"SettingsTestMediaSource_{kind}");
+        testButton.Click += async (_, _) =>
+        {
+            try
+            {
+                testButton.IsEnabled = false;
+                ShowSourceDialogStatus(statusText, "正在测试连接...", false);
+                var endpoint = NormalizeEndpoint(endpointBox.Text);
+                var credentials = ReadExternalSourceCredentials(usernameBox, secretBox);
+                using var tester = new MediaSourceConnectionTester();
+                var result = await tester.TestAsync(kind, endpoint, credentials);
+                ShowSourceDialogStatus(statusText, result.Message, !result.Succeeded);
+            }
+            catch (Exception ex)
+            {
+                ShellLogger.Error(ex, "Failed to test external media source from settings.");
+                ShowSourceDialogStatus(statusText, $"测试失败：{ex.Message}", true);
+            }
+            finally
+            {
+                testButton.IsEnabled = true;
+            }
+        };
+
+        WindowModalDialog? dialog = null;
+        var activateButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = "设为当前",
+            HorizontalAlignment = HorizontalAlignment.Left,
+        });
+        AutomationProperties.SetAutomationId(activateButton, $"SettingsActivateMediaSource_{kind}");
+        activateButton.Click += (_, _) =>
+        {
+            try
+            {
+                activateButton.IsEnabled = false;
+                var saved = SaveExternalMediaSource(kind, nameBox, endpointBox, usernameBox, secretBox, activate: true);
+                _libraryStatusText.Foreground = FluentTheme.Accent;
+                _libraryStatusText.Text = $"已保存并设为当前：{saved.DisplayName}。远程浏览将在对应 Provider 接入后启用。";
+                dialog?.Hide();
+            }
+            catch (Exception ex)
+            {
+                ShellLogger.Error(ex, "Failed to activate external media source from settings.");
+                ShowSourceDialogStatus(statusText, $"设为当前失败：{ex.Message}", true);
+            }
+            finally
+            {
+                activateButton.IsEnabled = true;
+            }
+        };
+
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+        };
+        actions.Children.Add(testButton);
+        actions.Children.Add(activateButton);
+        actions.SizeChanged += (_, args) => ApplyActionStackLayout(args.NewSize.Width, actions);
 
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(nameBox);
         content.Children.Add(endpointBox);
+        content.Children.Add(usernameBox);
+        content.Children.Add(secretBox);
+        content.Children.Add(actions);
         content.Children.Add(statusText);
 
-        var dialog = new WindowModalDialog($"添加{sourceName}", content, "保存", "取消")
+        dialog = new WindowModalDialog($"添加{sourceName}", content, "保存", "取消")
         {
             MaxWidth = 560,
             ContentMaxWidth = 500,
@@ -1569,22 +1641,59 @@ public sealed partial class SettingsPage : Page
         {
             try
             {
-                var endpoint = NormalizeEndpoint(endpointBox.Text);
-                var saved = MediaSourceProfileStore.UpsertExternalSource(kind, nameBox.Text, endpoint);
+                var saved = SaveExternalMediaSource(kind, nameBox, endpointBox, usernameBox, secretBox, activate: false);
                 _libraryStatusText.Foreground = FluentTheme.Accent;
-                _libraryStatusText.Text = $"已保存 {saved.DisplayName}。远程连接会在 Provider 实现完成后启用。";
+                _libraryStatusText.Text = $"已保存 {saved.DisplayName}。远程浏览将在对应 Provider 接入后启用。";
                 return System.Threading.Tasks.Task.FromResult(true);
             }
             catch (Exception ex)
             {
                 ShellLogger.Error(ex, "Failed to save external media source from settings.");
-                statusText.Foreground = FluentTheme.Error;
-                statusText.Text = $"保存失败：{ex.Message}";
+                ShowSourceDialogStatus(statusText, $"保存失败：{ex.Message}", true);
                 return System.Threading.Tasks.Task.FromResult(false);
             }
         };
 
         await dialog.ShowAsync();
+    }
+
+    private static MediaSourceProfileRecord SaveExternalMediaSource(
+        MediaSourceKind kind,
+        TextBox nameBox,
+        TextBox endpointBox,
+        TextBox usernameBox,
+        PasswordBox secretBox,
+        bool activate)
+    {
+        var endpoint = NormalizeEndpoint(endpointBox.Text);
+        var credentials = ReadExternalSourceCredentials(usernameBox, secretBox);
+        var saved = MediaSourceProfileStore.UpsertExternalSource(kind, nameBox.Text, endpoint);
+        MediaSourceCredentialStore.Save(saved.Id, credentials);
+        if (activate)
+        {
+            MediaSourceProfileStore.SetActiveSource(saved.Id);
+        }
+
+        return saved;
+    }
+
+    private static MediaSourceCredentials ReadExternalSourceCredentials(TextBox usernameBox, PasswordBox secretBox)
+    {
+        var username = (usernameBox.Text ?? "").Trim();
+        var secret = secretBox.Password ?? "";
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(secret))
+        {
+            throw new ArgumentException("请填写用户名和密码 / token。");
+        }
+
+        return new MediaSourceCredentials(username, secret);
+    }
+
+    private static void ShowSourceDialogStatus(TextBlock statusText, string message, bool isError)
+    {
+        statusText.Text = message;
+        statusText.Foreground = isError ? FluentTheme.Error : FluentTheme.TextSecondary;
+        statusText.Visibility = Visibility.Visible;
     }
 
     private static Uri NormalizeEndpoint(string value)

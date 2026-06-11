@@ -82,6 +82,24 @@ public static class MediaSourceProfileStore
         return record;
     }
 
+    public static MediaSourceProfileState SetActiveSource(string sourceId)
+        => SetActiveSource(sourceId, SourcesFilePath);
+
+    public static MediaSourceProfileState SetActiveSource(string sourceId, string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourceId))
+        {
+            throw new ArgumentException("Media source id is required.", nameof(sourceId));
+        }
+
+        var state = Load(filePath);
+        var active = state.Sources.FirstOrDefault(source => string.Equals(source.Id, sourceId, StringComparison.OrdinalIgnoreCase))
+            ?? throw new ArgumentException("Media source must be saved before it can be activated.", nameof(sourceId));
+        var next = new MediaSourceProfileState(active.Id, state.Sources);
+        Save(next, filePath);
+        return Load(filePath);
+    }
+
     private static void Save(MediaSourceProfileState state, string filePath)
     {
         var directory = Path.GetDirectoryName(filePath);
