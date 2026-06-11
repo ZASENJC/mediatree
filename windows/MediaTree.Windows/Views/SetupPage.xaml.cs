@@ -65,7 +65,7 @@ public sealed partial class SetupPage : Page
             HorizontalAlignment = HorizontalAlignment.Left,
         };
         header.Children.Add(FluentTheme.Title("添加你的影片文件夹", 34));
-        header.Children.Add(FluentTheme.Body("选择一个存放影片或剧集的本机文件夹。MediaTree 会自动扫描里面的视频，并整理成方便浏览的媒体库。", 15));
+        header.Children.Add(FluentTheme.Body("选择一个存放影片或剧集的本机文件夹。MediaTree 会自动扫描里面的视频，并刮削成方便浏览的媒体库。", 15));
         root.Children.Add(header);
 
         var form = new StackPanel
@@ -155,7 +155,7 @@ public sealed partial class SetupPage : Page
 
         var addLibraryButton = FluentTheme.ApplyButton(new Button
         {
-            Content = "添加并开始整理",
+            Content = "添加并开始刮削",
             IsEnabled = false,
         }, FluentButtonStyle.Accent);
         AutomationProperties.SetAutomationId(addLibraryButton, "AddLibraryButton");
@@ -255,7 +255,7 @@ public sealed partial class SetupPage : Page
         {
             _addLibraryButton.IsEnabled = false;
             _statusText.Foreground = FluentTheme.TextSecondary;
-            _statusText.Text = "正在添加文件夹并开始整理，请稍候...";
+            _statusText.Text = "正在添加文件夹并开始刮削，请稍候...";
 
             await AppServices.Library.AddLibraryAsync(
                 _selectedFolder,
@@ -264,7 +264,7 @@ public sealed partial class SetupPage : Page
                 _tmdbTokenBox.Password);
 
             _statusText.Foreground = FluentTheme.Accent;
-            _statusText.Text = "文件夹已添加，MediaTree 正在整理里面的视频。";
+            _statusText.Text = "文件夹已添加，MediaTree 正在刮削里面的视频。";
             ShellPage.Current?.NavigateToLibrary();
         }
         catch (Exception ex)

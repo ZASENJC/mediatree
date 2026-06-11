@@ -19,6 +19,8 @@ public sealed partial class LibraryPage : Page
 {
     public const double HeaderInputWidth = 220;
     private const double CompactSortMinWidth = 108;
+    private const double ScanProgressRowHeight = 20;
+    private const double ScanProgressWidth = 220;
 
     private readonly ComboBox _libraryBox;
     private readonly Button _folderTabButton;
@@ -35,28 +37,33 @@ public sealed partial class LibraryPage : Page
     private readonly Button _scanButton;
     private readonly TextBox _searchBox;
     private readonly TextBlock _scanInfoText;
+    private readonly Border _scanProgressFill;
+    private readonly Border _scanProgressTrack;
     private readonly ComboBox _sortBox;
     private readonly StackPanel _tabs;
     private readonly Grid _toolbar;
-    private readonly DispatcherTimer _scanTimer = new() { Interval = TimeSpan.FromSeconds(3) };
+    private readonly DispatcherTimer _scanTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private string _activeMediaRoot = "";
     private string _activeFolderPath = "";
     private string _activeView = "folders";
+    private string _activeScanMediaRoot = "";
     private int _movieLoadGeneration;
+    private int _scanProgressGeneration;
     private bool _hideHomeTitleText;
     private bool _showSourceName;
+    private bool _scanHasObservedActiveStatus;
     private IReadOnlyList<string> _excludedFolderPaths = [];
     private bool _suppressLibrarySelectionChanged;
 
     public LibraryPage()
     {
-        (_rootGrid, _headerGrid, _tabs, _toolbar, _libraryBox, _searchBox, _sortBox, _scanButton, _addButton, _scanInfoText, _loadingText, _folderGrid, _moviesGrid, _headerTitleText, _headerSubtitleText, _folderTabButton, _recentTabButton, _moviesBackButton) = BuildContent();
+        (_rootGrid, _headerGrid, _tabs, _toolbar, _libraryBox, _searchBox, _sortBox, _scanButton, _addButton, _scanInfoText, _scanProgressTrack, _scanProgressFill, _loadingText, _folderGrid, _moviesGrid, _headerTitleText, _headerSubtitleText, _folderTabButton, _recentTabButton, _moviesBackButton) = BuildContent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         _scanTimer.Tick += OnScanTimerTick;
     }
 
-    private (Grid root, Grid header, StackPanel tabs, Grid toolbar, ComboBox libraryBox, TextBox searchBox, ComboBox sortBox, Button scanButton, Button addButton, TextBlock scanInfoText, TextBlock loadingText, GridView folderGrid, GridView moviesGrid, TextBlock headerTitleText, TextBlock headerSubtitleText, Button folderTabButton, Button recentTabButton, Button moviesBackButton) BuildContent()
+    private (Grid root, Grid header, StackPanel tabs, Grid toolbar, ComboBox libraryBox, TextBox searchBox, ComboBox sortBox, Button scanButton, Button addButton, TextBlock scanInfoText, Border scanProgressTrack, Border scanProgressFill, TextBlock loadingText, GridView folderGrid, GridView moviesGrid, TextBlock headerTitleText, TextBlock headerSubtitleText, Button folderTabButton, Button recentTabButton, Button moviesBackButton) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "LibraryPage");
 
@@ -68,7 +75,7 @@ public sealed partial class LibraryPage : Page
             RequestedTheme = ElementTheme.Light,
         };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(ScanProgressRowHeight) });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
         var headerStack = new StackPanel { Spacing = 14 };
@@ -187,7 +194,7 @@ public sealed partial class LibraryPage : Page
 
         var scanButton = FluentTheme.ApplyButton(new Button
         {
-            Content = "重新整理",
+            Content = "重新刮削",
             VerticalAlignment = VerticalAlignment.Bottom,
         });
         AutomationProperties.SetAutomationId(scanButton, "LibraryScanButton");
@@ -214,10 +221,38 @@ public sealed partial class LibraryPage : Page
             Visibility = Visibility.Collapsed,
             TextWrapping = TextWrapping.WrapWholeWords,
             Foreground = FluentTheme.TextSecondary,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            MaxWidth = 360,
+            TextTrimming = TextTrimming.CharacterEllipsis,
         };
         AutomationProperties.SetAutomationId(scanInfoText, "LibraryScanInfoText");
         Grid.SetRow(scanInfoText, 1);
         root.Children.Add(scanInfoText);
+
+        var scanProgressFill = new Border
+        {
+            Width = 0,
+            Height = 4,
+            CornerRadius = new CornerRadius(2),
+            Background = FluentTheme.Accent,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        AutomationProperties.SetAutomationId(scanProgressFill, "LibraryScanProgressFill");
+        var scanProgressTrack = new Border
+        {
+            Width = ScanProgressWidth,
+            Height = 4,
+            CornerRadius = new CornerRadius(2),
+            Background = FluentTheme.AccentSoft,
+            Child = scanProgressFill,
+            Visibility = Visibility.Collapsed,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        AutomationProperties.SetAutomationId(scanProgressTrack, "LibraryScanProgressTrack");
+        Grid.SetRow(scanProgressTrack, 1);
+        root.Children.Add(scanProgressTrack);
 
         var content = new Grid();
         Grid.SetRow(content, 2);
@@ -226,6 +261,7 @@ public sealed partial class LibraryPage : Page
         {
             IsItemClickEnabled = true,
             SelectionMode = ListViewSelectionMode.None,
+            Margin = new Thickness(-6, 0, -6, 0),
         });
         AutomationProperties.SetAutomationId(folderGrid, "FolderGrid");
         folderGrid.ItemClick += OnFolderItemClick;
@@ -236,6 +272,7 @@ public sealed partial class LibraryPage : Page
             IsItemClickEnabled = true,
             SelectionMode = ListViewSelectionMode.None,
             Visibility = Visibility.Collapsed,
+            Margin = new Thickness(-6, 0, -6, 0),
         });
         AutomationProperties.SetAutomationId(moviesGrid, "MoviesGrid");
         moviesGrid.ItemClick += OnMovieItemClick;
@@ -268,7 +305,7 @@ public sealed partial class LibraryPage : Page
 
         root.Children.Add(content);
         Content = root;
-        return (root, header, tabs, toolbar, libraryBox, searchBox, sortBox, scanButton, addButton, scanInfoText, loadingText, folderGrid, moviesGrid, headerTitleText, headerSubtitleText, folderTabButton, recentTabButton, moviesBackButton);
+        return (root, header, tabs, toolbar, libraryBox, searchBox, sortBox, scanButton, addButton, scanInfoText, scanProgressTrack, scanProgressFill, loadingText, folderGrid, moviesGrid, headerTitleText, headerSubtitleText, folderTabButton, recentTabButton, moviesBackButton);
     }
 
     private void ApplyCurrentLayout()
@@ -708,22 +745,19 @@ public sealed partial class LibraryPage : Page
 
     private async void OnScanClicked(object sender, RoutedEventArgs args)
     {
-        if (string.IsNullOrWhiteSpace(_activeMediaRoot))
+        var mediaRoot = _activeMediaRoot;
+        if (string.IsNullOrWhiteSpace(mediaRoot))
         {
             return;
         }
 
-        try
-        {
-            await AppServices.Library.ScanAsync(_activeMediaRoot);
-            ShowInfo("已开始整理这个文件夹。你可以继续浏览，整理完成后列表会自动刷新。", InfoBarSeverity.Informational);
-            _scanTimer.Start();
-        }
-        catch (Exception ex)
-        {
-            ShellLogger.Error(ex, "Failed to start native library scan.");
-            ShowInfo($"整理启动失败：{ex.Message}", InfoBarSeverity.Error);
-        }
+        _scanButton.IsEnabled = false;
+        _activeScanMediaRoot = mediaRoot;
+        _scanHasObservedActiveStatus = false;
+        ShowScanProgress();
+        _scanTimer.Start();
+        _ = StartLibraryScanInBackgroundAsync(mediaRoot);
+        await RefreshScanProgressAsync(mediaRoot);
     }
 
     private void OnAddLibraryClicked(object sender, RoutedEventArgs args)
@@ -811,24 +845,61 @@ public sealed partial class LibraryPage : Page
     }
 
     private async void OnScanTimerTick(object? sender, object args)
+        => await RefreshActiveScanProgressAsync();
+
+    private async Task RefreshActiveScanProgressAsync()
     {
-        if (string.IsNullOrWhiteSpace(_activeMediaRoot))
+        var mediaRoot = string.IsNullOrWhiteSpace(_activeScanMediaRoot) ? _activeMediaRoot : _activeScanMediaRoot;
+        if (string.IsNullOrWhiteSpace(mediaRoot))
         {
             return;
         }
 
         try
         {
-            var status = await AppServices.Library.GetScanStatusAsync(_activeMediaRoot);
+            await RefreshScanProgressAsync(mediaRoot);
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to poll native library scan status.");
+            _scanButton.IsEnabled = true;
+            _scanTimer.Stop();
+        }
+    }
+
+    private async Task RefreshScanProgressAsync(string mediaRoot)
+    {
+        try
+        {
+            var status = await AppServices.Library.GetScanStatusAsync(mediaRoot);
             if (string.IsNullOrWhiteSpace(status.Status) || status.Status == "idle")
             {
                 return;
             }
 
-            ShowInfo(FormatScanStatus(status), InfoBarSeverity.Informational);
-            if (status.Status is "done" or "disabled" or "cancelled")
+            if (IsActiveScanStatus(status.Status))
             {
+                _scanHasObservedActiveStatus = true;
+            }
+
+            var terminalStatus = IsTerminalScanStatus(status.Status);
+            if (terminalStatus && mediaRoot == _activeScanMediaRoot && !_scanHasObservedActiveStatus)
+            {
+                return;
+            }
+
+            if (terminalStatus)
+            {
+                ShowCompletedScanProgress(status);
                 _scanTimer.Stop();
+                _scanButton.IsEnabled = true;
+                _activeScanMediaRoot = "";
+                _scanHasObservedActiveStatus = false;
+                if (mediaRoot != _activeMediaRoot)
+                {
+                    return;
+                }
+
                 if (_activeView == "folders")
                 {
                     await LoadFoldersAsync();
@@ -837,20 +908,108 @@ public sealed partial class LibraryPage : Page
                 {
                     await LoadMoviesAsync(_activeFolderPath, _activeView == "recent");
                 }
+
+                return;
             }
+
+            UpdateScanProgress(status);
         }
         catch (Exception ex)
         {
             ShellLogger.Error(ex, "Failed to poll native library scan status.");
+            _scanButton.IsEnabled = true;
             _scanTimer.Stop();
+        }
+    }
+
+    private async Task StartLibraryScanInBackgroundAsync(string mediaRoot)
+    {
+        try
+        {
+            await AppServices.Library.ScanAsync(mediaRoot);
+            if (mediaRoot == _activeScanMediaRoot)
+            {
+                _scanHasObservedActiveStatus = true;
+                await RefreshScanProgressAsync(mediaRoot);
+            }
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to start native library scan.");
+            if (mediaRoot == _activeScanMediaRoot)
+            {
+                _scanButton.IsEnabled = true;
+                _activeScanMediaRoot = "";
+                _scanHasObservedActiveStatus = false;
+                _scanTimer.Stop();
+                if (mediaRoot == _activeMediaRoot)
+                {
+                    ShowInfo($"刮削启动失败：{ex.Message}", InfoBarSeverity.Error);
+                }
+            }
         }
     }
 
     private void ShowInfo(string message, InfoBarSeverity severity)
     {
+        _scanProgressGeneration++;
         _scanInfoText.Text = message;
         _scanInfoText.Foreground = severity == InfoBarSeverity.Error ? FluentTheme.Error : FluentTheme.TextSecondary;
         _scanInfoText.Visibility = Visibility.Visible;
+        _scanProgressTrack.Visibility = Visibility.Collapsed;
+    }
+
+    private void ShowScanProgress()
+    {
+        _scanProgressGeneration++;
+        _scanInfoText.Visibility = Visibility.Collapsed;
+        _scanInfoText.Text = "";
+        UpdateScanProgressFill(0, 0);
+        _scanProgressTrack.Visibility = Visibility.Visible;
+    }
+
+    private void UpdateScanProgress(ScanStatusDto status)
+    {
+        if (status.Status is "done" or "disabled" or "cancelled")
+        {
+            _scanProgressTrack.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        _scanInfoText.Visibility = Visibility.Collapsed;
+        _scanProgressTrack.Visibility = Visibility.Visible;
+        UpdateScanProgressFill(status.Done, status.Total);
+    }
+
+    private void ShowCompletedScanProgress(ScanStatusDto status)
+    {
+        _scanInfoText.Visibility = Visibility.Collapsed;
+        _scanProgressTrack.Visibility = Visibility.Visible;
+        if (status.Status == "done" && status.Total > 0)
+        {
+            UpdateScanProgressFill(status.Total, status.Total);
+        }
+        else
+        {
+            UpdateScanProgressFill(status.Done, status.Total);
+        }
+
+        _ = HideScanProgressAfterCompletionAsync(_scanProgressGeneration);
+    }
+
+    private async Task HideScanProgressAfterCompletionAsync(int generation)
+    {
+        await Task.Delay(1200);
+        if (generation == _scanProgressGeneration)
+        {
+            _scanProgressTrack.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void UpdateScanProgressFill(int done, int total)
+    {
+        var ratio = total > 0 ? Math.Clamp(done / (double)total, 0, 1) : 0;
+        _scanProgressFill.Width = _scanProgressTrack.Width * ratio;
     }
 
     private void SetLoading(bool isLoading)
@@ -1130,18 +1289,11 @@ public sealed partial class LibraryPage : Page
     private static string SanitizeAutomationId(string value)
         => value.Replace("\\", "_").Replace("/", "_").Replace(":", "_");
 
-    private static string FormatScanStatus(ScanStatusDto status)
-    {
-        var progress = status.Total > 0 ? $"（{status.Done}/{status.Total}）" : "";
-        return status.Status switch
-        {
-            "done" => "整理完成，媒体库已更新。",
-            "cancelled" => "整理已取消。",
-            "disabled" => "这个文件夹暂未启用整理。",
-            "running" or "scanning" => $"正在整理文件夹 {progress}",
-            _ => $"正在整理文件夹 {progress}".Trim(),
-        };
-    }
+    private static bool IsActiveScanStatus(string status)
+        => status is "running" or "scanning" or "scanned" or "scraping";
+
+    private static bool IsTerminalScanStatus(string status)
+        => status is "done" or "disabled" or "cancelled";
 
     private static string FolderTitleFromPath(string folderPath)
     {

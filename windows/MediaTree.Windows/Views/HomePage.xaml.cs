@@ -29,7 +29,7 @@ public sealed partial class HomePage : Page
 
         var header = new StackPanel { Spacing = 8 };
         header.Children.Add(FluentTheme.Title("MediaTree", 36));
-        header.Children.Add(FluentTheme.Body("把电脑里的影片和剧集整理成一个本地媒体库。", 16));
+        header.Children.Add(FluentTheme.Body("把电脑里的影片和剧集刮削成一个本地媒体库。", 16));
         root.Children.Add(header);
 
         var cards = new Grid { ColumnSpacing = 16, RowSpacing = 16 };
@@ -39,11 +39,11 @@ public sealed partial class HomePage : Page
         cards.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Grid.SetRow(cards, 1);
 
-        var openLibrary = CreateActionButton("打开媒体库", "查看已经整理好的影片和剧集", "HomeOpenLibrary");
+        var openLibrary = CreateActionButton("打开媒体库", "查看已经刮削好的影片和剧集", "HomeOpenLibrary");
         openLibrary.Click += OnOpenLibraryClicked;
         cards.Children.Add(openLibrary);
 
-        var addLibrary = CreateActionButton("添加文件夹", "选择本机视频目录开始整理", "HomeAddLibrary");
+        var addLibrary = CreateActionButton("添加文件夹", "选择本机视频目录开始刮削", "HomeAddLibrary");
         addLibrary.Click += OnAddLibraryClicked;
         Grid.SetColumn(addLibrary, 1);
         cards.Children.Add(addLibrary);

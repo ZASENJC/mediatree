@@ -317,6 +317,14 @@ public static class FluentTheme
         return slider;
     }
 
+    public static ProgressBar ApplyProgressBar(ProgressBar progressBar)
+    {
+        progressBar.CornerRadius = new CornerRadius(2);
+        progressBar.Foreground = Accent;
+        progressBar.Background = AccentSoft;
+        return progressBar;
+    }
+
     public static Flyout ApplyFlyout(Flyout flyout)
     {
         var presenterStyle = new Style(typeof(FlyoutPresenter));

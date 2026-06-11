@@ -30,7 +30,7 @@ public sealed partial class SetupRequiredPage : Page
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         stack.Children.Add(FluentTheme.Title("先添加一个影片文件夹", 30));
-        stack.Children.Add(FluentTheme.Body("媒体库还没有内容。请选择电脑上存放影片或剧集的文件夹，MediaTree 会自动整理后再显示媒体库和最近观看。", 15));
+        stack.Children.Add(FluentTheme.Body("媒体库还没有内容。请选择电脑上存放影片或剧集的文件夹，MediaTree 会自动刮削后再显示媒体库和最近观看。", 15));
 
         var addButton = FluentTheme.ApplyButton(new Button
         {

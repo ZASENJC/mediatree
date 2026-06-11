@@ -40,7 +40,7 @@ public sealed partial class SettingsPage : Page
     [
         new("tmdb_movie", "TMDB 电影", "适合电影库；tmdbid 调用 /movie 精确刮削", true),
         new("tmdb_tv", "TMDB 剧集/番剧", "适合剧集、番剧、电视剧库；tmdbid 调用 /tv 精确刮削", true),
-        new("tmdb_collection", "TMDB 合集", "适合电影合集库；按合集条目整理系列电影元数据", true),
+        new("tmdb_collection", "TMDB 合集", "适合电影合集库；按合集条目刮削系列电影元数据", true),
         new("bangumi", "Bangumi", "适合番剧、动画、二次元条目，数据可能不全", false),
         new("javdatabase", "Javdatabase", "适合 JAV 番号识别和刮削", false),
         new("auto", "自动", "自动判断刮削源，但可能效果不好", true),
@@ -194,12 +194,20 @@ public sealed partial class SettingsPage : Page
         });
         AutomationProperties.SetAutomationId(allowRemoteBackendBox, "SettingsAllowRemoteBackend");
         remoteStack.Children.Add(allowRemoteBackendBox);
+        var remoteAccessContent = new StackPanel
+        {
+            Spacing = 12,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        AutomationProperties.SetAutomationId(remoteAccessContent, "SettingsRemoteAccessContent");
         var remoteBackendPortBox = TextInput("端口", "SettingsRemoteBackendPort", BackendAccessSettings.DefaultRemotePort.ToString());
         remoteBackendPortBox.InputScope = NumberInputScope();
-        remoteStack.Children.Add(remoteBackendPortBox);
+        remoteAccessContent.Children.Add(remoteBackendPortBox);
         var remoteLoginUsernameBox = TextInput(RemoteLoginUsernameHeader, "SettingsRemoteLoginUsername");
         var remoteLoginPasswordBox = PasswordInput(RemoteLoginPasswordHeader, "SettingsRemoteLoginPassword");
-        remoteStack.Children.Add(TwoColumnRow(remoteLoginUsernameBox, remoteLoginPasswordBox));
+        remoteAccessContent.Children.Add(remoteLoginUsernameBox);
+        remoteAccessContent.Children.Add(remoteLoginPasswordBox);
+        remoteStack.Children.Add(remoteAccessContent);
         remoteStack.Children.Add(FluentTheme.Body("保存后会重启本机后端。然后在 mediatree-app 里选择 MediaTree，填入下面地址，并用这里设置的账号登录。", 13));
         var remoteBackendUrlText = new TextBlock
         {
@@ -261,15 +269,22 @@ public sealed partial class SettingsPage : Page
 
         var scraperStack = new StackPanel { Spacing = 12 };
         scraperStack.Children.Add(SectionTitle("刮削器", "SettingsScraperCard"));
+        var scraperContent = new StackPanel
+        {
+            Spacing = 12,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        AutomationProperties.SetAutomationId(scraperContent, "SettingsScraperContent");
         var tmdbApiKeyBox = TextInput("TMDB API Key", "SettingsTmdbApiKey");
         tmdbApiKeyBox.PlaceholderText = "去 themoviedb.org 免费申请";
-        scraperStack.Children.Add(tmdbApiKeyBox);
+        scraperContent.Children.Add(tmdbApiKeyBox);
         var tmdbTokenBox = PasswordInput("TMDB 读访问令牌（推荐，优先使用）", "SettingsTmdbAccessToken");
         tmdbTokenBox.PlaceholderText = "Bearer Token";
-        scraperStack.Children.Add(tmdbTokenBox);
+        scraperContent.Children.Add(tmdbTokenBox);
         var tmdbTokenStatusText = StatusText("SettingsTmdbTokenStatusText");
-        scraperStack.Children.Add(tmdbTokenStatusText);
-        scraperStack.Children.Add(ScraperDescriptionGrid());
+        scraperContent.Children.Add(tmdbTokenStatusText);
+        scraperContent.Children.Add(ScraperDescriptionGrid());
+        scraperStack.Children.Add(scraperContent);
         _settingsCards.Add(SectionCard(scraperStack, "SettingsScraperCard"));
 
         var backupStack = new StackPanel { Spacing = 12 };
@@ -606,7 +621,7 @@ public sealed partial class SettingsPage : Page
             }
             ApplyLoadedLibraryRowWidths(_settingsColumnWidth);
 
-            _libraryStatusText.Text = "选择刮削器后点击保存。需要重新整理时可直接重新扫描。";
+            _libraryStatusText.Text = "选择刮削器后点击保存。需要重新刮削时可直接重新扫描。";
         }
         catch (Exception ex)
         {
@@ -1767,6 +1782,8 @@ public sealed partial class SettingsPage : Page
         {
             Header = header,
             Text = value,
+            Width = double.NaN,
+            MaxWidth = double.PositiveInfinity,
             MinWidth = 0,
             HorizontalAlignment = HorizontalAlignment.Stretch,
         });
@@ -1779,6 +1796,8 @@ public sealed partial class SettingsPage : Page
         var box = FluentTheme.ApplyPasswordInput(new PasswordBox
         {
             Header = header,
+            Width = double.NaN,
+            MaxWidth = double.PositiveInfinity,
             MinWidth = 0,
             HorizontalAlignment = HorizontalAlignment.Stretch,
         });
@@ -1851,6 +1870,9 @@ public sealed partial class SettingsPage : Page
         {
             ColumnSpacing = 10,
             RowSpacing = 10,
+            Width = double.NaN,
+            MaxWidth = double.PositiveInfinity,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -1874,6 +1896,9 @@ public sealed partial class SettingsPage : Page
                 TextWrapping = TextWrapping.WrapWholeWords,
             });
             var card = FluentTheme.Card(stack, new Thickness(12));
+            card.Width = double.NaN;
+            card.MaxWidth = double.PositiveInfinity;
+            card.HorizontalAlignment = HorizontalAlignment.Stretch;
             Grid.SetColumn(card, i % 3);
             Grid.SetRow(card, i / 3);
             if (i % 3 == 0)
@@ -1904,6 +1929,9 @@ public sealed partial class SettingsPage : Page
         {
             if (grid.Children[i] is FrameworkElement child)
             {
+                child.Width = double.NaN;
+                child.MaxWidth = double.PositiveInfinity;
+                child.HorizontalAlignment = HorizontalAlignment.Stretch;
                 Grid.SetColumn(child, i % columns);
                 Grid.SetRow(child, i / columns);
             }
