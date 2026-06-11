@@ -97,7 +97,7 @@ public sealed partial class ShellPage : Page
 
         try
         {
-            var setup = await Services.AppServices.Library.GetSetupStatusAsync();
+            var setup = await Services.AppServices.MediaTree.Library.GetSetupStatusAsync();
             if (setup.NeedsSetup)
             {
                 NavigateToSetup();
@@ -229,7 +229,7 @@ public sealed partial class ShellPage : Page
     {
         try
         {
-            var result = await Services.AppServices.Updates.CheckForUpdatesAsync();
+            var result = await Services.AppServices.MediaTree.Updates.CheckForUpdatesAsync();
             _updateIndicatorButton.Visibility = Services.UpdateIndicatorState.ShouldShow(result)
                 ? Visibility.Visible
                 : Visibility.Collapsed;
@@ -298,7 +298,7 @@ public sealed partial class ShellPage : Page
     {
         try
         {
-            var setup = await Services.AppServices.Library.GetSetupStatusAsync();
+            var setup = await Services.AppServices.MediaTree.Library.GetSetupStatusAsync();
             return !setup.NeedsSetup;
         }
         catch

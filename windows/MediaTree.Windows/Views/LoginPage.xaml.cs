@@ -89,7 +89,7 @@ public sealed partial class LoginPage : Page
         {
             _loginButton.IsEnabled = false;
             _errorText.Visibility = Visibility.Collapsed;
-            await Services.AppServices.Auth.LoginAndPersistAsync(_usernameBox.Text.Trim(), _passwordBox.Password);
+            await Services.AppServices.MediaTree.Auth.LoginAndPersistAsync(_usernameBox.Text.Trim(), _passwordBox.Password);
             Services.AppServices.MainWindow?.NavigateToShell();
         }
         catch (Exception ex)

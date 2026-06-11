@@ -237,10 +237,10 @@ public sealed partial class FolderPage : Page
             _showSpecials = false;
 
             var sort = CurrentSort();
-            var response = await AppServices.Movie.GetMoviesAsync(_mediaRoot, _folderPath, "", sort, 2000, 0);
+            var response = await AppServices.MediaTree.Movie.GetMoviesAsync(_mediaRoot, _folderPath, "", sort, 2000, 0);
             var specials = string.IsNullOrWhiteSpace(_folderPath)
                 ? new FolderSpecialsResponseDto()
-                : await AppServices.Movie.GetFolderSpecialsAsync(_folderPath, _mediaRoot, includeMovies: true);
+                : await AppServices.MediaTree.Movie.GetFolderSpecialsAsync(_folderPath, _mediaRoot, includeMovies: true);
             if (generation != _loadGeneration)
             {
                 return;
@@ -326,8 +326,8 @@ public sealed partial class FolderPage : Page
         {
             if (!_showSpecials && !string.IsNullOrWhiteSpace(_folderPath))
             {
-                await AppServices.Movie.SetFolderSpecialsAsync(_folderPath, _mediaRoot, true);
-                var specials = await AppServices.Movie.GetFolderSpecialsAsync(_folderPath, _mediaRoot, includeMovies: true);
+                await AppServices.MediaTree.Movie.SetFolderSpecialsAsync(_folderPath, _mediaRoot, true);
+                var specials = await AppServices.MediaTree.Movie.GetFolderSpecialsAsync(_folderPath, _mediaRoot, includeMovies: true);
                 _showSpecials = specials.ShowSpecials;
                 _specialCount = specials.SpecialCount;
                 _specialMovies = SortMovies(specials.Movies, CurrentSort()).ToList();

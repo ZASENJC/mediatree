@@ -389,12 +389,12 @@ public sealed class ServiceLogicTests
         Assert.Same(services, AppServices.MediaTree);
         Assert.Same(provider, AppServices.ActiveMediaTreeProvider);
         Assert.Same(provider, AppServices.ActiveProvider);
-        Assert.Same(services.Api, AppServices.Api);
-        Assert.Same(services.Auth, AppServices.Auth);
-        Assert.Same(services.Library, AppServices.Library);
-        Assert.Same(services.Movie, AppServices.Movie);
-        Assert.Same(services.Updates, AppServices.Updates);
-        Assert.Same(services.PlaybackProgress, AppServices.PlaybackProgress);
+        Assert.Same(services.Api, AppServices.MediaTree.Api);
+        Assert.Same(services.Auth, AppServices.MediaTree.Auth);
+        Assert.Same(services.Library, AppServices.MediaTree.Library);
+        Assert.Same(services.Movie, AppServices.MediaTree.Movie);
+        Assert.Same(services.Updates, AppServices.MediaTree.Updates);
+        Assert.Same(services.PlaybackProgress, AppServices.MediaTree.PlaybackProgress);
     }
 
     [Fact]

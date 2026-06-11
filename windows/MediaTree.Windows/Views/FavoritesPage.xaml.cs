@@ -174,7 +174,7 @@ public sealed partial class FavoritesPage : Page
         {
             _libraryBox.Items.Clear();
             _libraryBox.Items.Add(new ComboBoxItem { Content = "全部媒体库", Tag = "" });
-            var roots = await AppServices.Library.GetMediaRootsAsync();
+            var roots = await AppServices.MediaTree.Library.GetMediaRootsAsync();
             _activeMediaRoots = BrowseLibraryPresenter.DistinctMediaRoots(roots.Items);
             foreach (var root in _activeMediaRoots)
             {
@@ -227,7 +227,7 @@ public sealed partial class FavoritesPage : Page
                 var cover = "";
                 try
                 {
-                    cover = await AppServices.Api.BuildCoverUrlAsync(movie.Id);
+                    cover = await AppServices.MediaTree.Api.BuildCoverUrlAsync(movie.Id);
                 }
                 catch (Exception ex)
                 {
@@ -255,7 +255,7 @@ public sealed partial class FavoritesPage : Page
     {
         if (!string.IsNullOrWhiteSpace(_activeMediaRoot))
         {
-            return await AppServices.Movie.GetFavoritesAsync(_activeMediaRoot, sort, limit, 0);
+            return await AppServices.MediaTree.Movie.GetFavoritesAsync(_activeMediaRoot, sort, limit, 0);
         }
 
         var roots = _activeMediaRoots.ToList();
@@ -264,7 +264,7 @@ public sealed partial class FavoritesPage : Page
             return new MoviesResponseDto();
         }
 
-        var responses = await System.Threading.Tasks.Task.WhenAll(roots.Select(root => AppServices.Movie.GetFavoritesAsync(root.Path, sort, limit, 0)));
+        var responses = await System.Threading.Tasks.Task.WhenAll(roots.Select(root => AppServices.MediaTree.Movie.GetFavoritesAsync(root.Path, sort, limit, 0)));
         return BrowseLibraryPresenter.MergeMovieResponses(responses, sort, limit);
     }
 
@@ -292,7 +292,7 @@ public sealed partial class FavoritesPage : Page
     {
         try
         {
-            await AppServices.Movie.RemoveTagAsync(movieId, "favorite");
+            await AppServices.MediaTree.Movie.RemoveTagAsync(movieId, "favorite");
             await LoadFavoritesAsync();
         }
         catch (Exception ex)
@@ -330,14 +330,14 @@ public sealed partial class FavoritesPage : Page
 
     private async void OnLoaded(object sender, RoutedEventArgs args)
     {
-        AppServices.Library.LibrariesChanged -= OnLibrariesChanged;
-        AppServices.Library.LibrariesChanged += OnLibrariesChanged;
+        AppServices.MediaTree.Library.LibrariesChanged -= OnLibrariesChanged;
+        AppServices.MediaTree.Library.LibrariesChanged += OnLibrariesChanged;
         await LoadLibrariesAsync();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
-        AppServices.Library.LibrariesChanged -= OnLibrariesChanged;
+        AppServices.MediaTree.Library.LibrariesChanged -= OnLibrariesChanged;
     }
 
     private void OnLibrariesChanged(object? sender, EventArgs args)

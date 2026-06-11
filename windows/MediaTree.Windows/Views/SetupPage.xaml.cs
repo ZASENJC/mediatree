@@ -257,7 +257,7 @@ public sealed partial class SetupPage : Page
             _statusText.Foreground = FluentTheme.TextSecondary;
             _statusText.Text = "正在添加文件夹并开始刮削，请稍候...";
 
-            await AppServices.Library.AddLibraryAsync(
+            await AppServices.MediaTree.Library.AddLibraryAsync(
                 _selectedFolder,
                 _selectedScraper,
                 _libraryPasswordBox.Password,

@@ -10,14 +10,8 @@ public static class AppServices
     public static IMediaTreeProvider ActiveMediaTreeProvider { get; private set; } = null!;
     public static BackendProcessService Backend { get; private set; } = null!;
     public static MediaTreeServices MediaTree { get; private set; } = null!;
-    public static MediaTreeApiClient Api { get; private set; } = null!;
-    public static AuthSessionService Auth { get; private set; } = null!;
-    public static LibraryService Library { get; private set; } = null!;
-    public static MovieService Movie { get; private set; } = null!;
-    public static UpdateService Updates { get; private set; } = null!;
-    public static PlaybackProgressService PlaybackProgress { get; private set; } = null!;
 
-    public static bool IsReady => Api != null && ActiveProvider != null;
+    public static bool IsReady => MediaTree != null && ActiveProvider != null;
 
     public static void Initialize(
         BackendProcessService backend,
@@ -27,19 +21,13 @@ public static class AppServices
         ActiveProvider = provider ?? throw new ArgumentNullException(nameof(provider));
         ActiveMediaTreeProvider = provider;
         MediaTree = provider.Services;
-        Api = MediaTree.Api;
-        Auth = MediaTree.Auth;
-        Library = MediaTree.Library;
-        Movie = MediaTree.Movie;
-        Updates = MediaTree.Updates;
-        PlaybackProgress = MediaTree.PlaybackProgress;
     }
 
     public static void Dispose()
     {
         try
         {
-            Api?.Dispose();
+            MediaTree?.Api.Dispose();
         }
         catch
         {

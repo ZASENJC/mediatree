@@ -436,7 +436,7 @@ public sealed partial class SettingsPage : Page
             {
                 ValidateRemoteLoginInput();
                 ShowRemoteBackendSettings(settings, "正在更新移动端登录账号...", false);
-                await AppServices.Auth.ChangeStoredSessionCredentialsAsync(
+                await AppServices.MediaTree.Auth.ChangeStoredSessionCredentialsAsync(
                     _remoteLoginUsernameBox.Text.Trim(),
                     _remoteLoginPasswordBox.Password);
                 _remoteLoginUsernameBox.Text = "";
@@ -446,7 +446,7 @@ public sealed partial class SettingsPage : Page
             BackendAccessSettingsStore.Save(settings);
             ShowRemoteBackendSettings(settings, "正在重启本机后端...", false);
             var backendUri = await AppServices.Backend.RestartAsync();
-            AppServices.Api.SetBackendUri(backendUri);
+            AppServices.MediaTree.Api.SetBackendUri(backendUri);
             ShowRemoteBackendSettings(BackendAccessSettingsStore.Load(), "已保存账号并重启本机后端。", false);
         }
         catch (Exception ex)
@@ -500,7 +500,7 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
-            var version = await AppServices.Updates.GetVersionAsync();
+            var version = await AppServices.MediaTree.Updates.GetVersionAsync();
             _versionText.Text = FormatVersionLine(
                 version.Version,
                 version.CurrentSource,
@@ -517,7 +517,7 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
-            var config = await AppServices.Api.GetConfigAsync();
+            var config = await AppServices.MediaTree.Api.GetConfigAsync();
             _loadedConfig = config;
             _tmdbApiKeyBox.Text = config.TmdbApiKey ?? "";
             _tmdbTokenBox.Password = config.TmdbAccessToken ?? "";
@@ -559,7 +559,7 @@ public sealed partial class SettingsPage : Page
 
     private async System.Threading.Tasks.Task SaveGlobalConfigAsync()
     {
-        await AppServices.Api.SaveGlobalConfigAsync(new ConfigDto
+        await AppServices.MediaTree.Api.SaveGlobalConfigAsync(new ConfigDto
         {
             JavdbEnabled = _loadedConfig.JavdbEnabled,
             TmdbApiKey = _tmdbApiKeyBox.Text.Trim(),
@@ -597,9 +597,9 @@ public sealed partial class SettingsPage : Page
             _librarySettingsList.Items.Clear();
             _scanRows.Clear();
 
-            var roots = await AppServices.Library.GetMediaRootsAsync();
-            var librarySettings = await AppServices.Library.GetLibrarySettingsAsync();
-            var config = await AppServices.Api.GetConfigAsync();
+            var roots = await AppServices.MediaTree.Library.GetMediaRootsAsync();
+            var librarySettings = await AppServices.MediaTree.Library.GetLibrarySettingsAsync();
+            var config = await AppServices.MediaTree.Api.GetConfigAsync();
             var settingMap = librarySettings.ToDictionary(s => s.MediaRoot, StringComparer.OrdinalIgnoreCase);
             var removableRoots = config.ExtraMediaRoots ?? [];
             var orderedRoots = roots.Items
@@ -843,7 +843,7 @@ public sealed partial class SettingsPage : Page
             context.LogText.Visibility = Visibility.Collapsed;
             context.LogText.Text = "";
             await SaveLibrarySettingAsync(context);
-            await AppServices.Library.ClearLibraryAsync(context.MediaRoot);
+            await AppServices.MediaTree.Library.ClearLibraryAsync(context.MediaRoot);
             _ = StartLibraryScanInBackgroundAsync(context.MediaRoot);
             _activeScanRoots.Add(context.MediaRoot);
             _scanPollCounts[context.MediaRoot] = 0;
@@ -898,7 +898,7 @@ public sealed partial class SettingsPage : Page
             {
                 statusText.Foreground = FluentTheme.TextSecondary;
                 statusText.Text = "正在删除媒体库...";
-                await AppServices.Library.DeleteLibraryAsync(mediaRoot);
+                await AppServices.MediaTree.Library.DeleteLibraryAsync(mediaRoot);
                 _activeScanRoots.Remove(mediaRoot);
                 _scanPollCounts.Remove(mediaRoot);
                 _scanRows.Remove(mediaRoot);
@@ -921,7 +921,7 @@ public sealed partial class SettingsPage : Page
 
     private async System.Threading.Tasks.Task SaveLibrarySettingAsync(LibrarySettingsRowContext context)
     {
-        await AppServices.Library.SaveLibrarySettingAsync(new LibrarySettingDto
+        await AppServices.MediaTree.Library.SaveLibrarySettingAsync(new LibrarySettingDto
         {
             MediaRoot = context.MediaRoot,
             Scraper = GetSelectedScraper(context.ScraperBox),
@@ -930,7 +930,7 @@ public sealed partial class SettingsPage : Page
         });
         if (!string.IsNullOrWhiteSpace(context.PasswordBox.Password))
         {
-            await AppServices.Library.SetLibraryPasswordAsync(context.MediaRoot, context.PasswordBox.Password);
+            await AppServices.MediaTree.Library.SetLibraryPasswordAsync(context.MediaRoot, context.PasswordBox.Password);
             context.PasswordBox.Password = "";
         }
     }
@@ -971,7 +971,7 @@ public sealed partial class SettingsPage : Page
                 return;
             }
 
-            var bytes = await AppServices.Api.DownloadBackupAsync(backupType);
+            var bytes = await AppServices.MediaTree.Api.DownloadBackupAsync(backupType);
             CachedFileManager.DeferUpdates(file);
             await FileIO.WriteBytesAsync(file, bytes);
             await CachedFileManager.CompleteUpdatesAsync(file);
@@ -1020,7 +1020,7 @@ public sealed partial class SettingsPage : Page
 
             button.IsEnabled = false;
             ShowBackupStatus("正在恢复备份...", false);
-            await AppServices.Api.RestoreBackupAsync(file.Path);
+            await AppServices.MediaTree.Api.RestoreBackupAsync(file.Path);
             ShowBackupStatus("恢复成功。请重新打开应用查看最新数据。", false);
         }
         catch (Exception ex)
@@ -1045,7 +1045,7 @@ public sealed partial class SettingsPage : Page
         try
         {
             ShowUpdateStatus("正在检查更新...", false);
-            var result = await AppServices.Updates.CheckForUpdatesAsync();
+            var result = await AppServices.MediaTree.Updates.CheckForUpdatesAsync();
             _lastUpdateResult = result;
             await LoadUpdateStatusAsync();
             if (!result.HasUpdate)
@@ -1081,7 +1081,7 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
-            _lastUpdateResult = await AppServices.Updates.CheckForUpdatesAsync();
+            _lastUpdateResult = await AppServices.MediaTree.Updates.CheckForUpdatesAsync();
             RenderUpdateVersions();
             if (_lastUpdateResult.HasUpdate)
             {
@@ -1099,7 +1099,7 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
-            await AppServices.Library.ScanAsync(mediaRoot);
+            await AppServices.MediaTree.Library.ScanAsync(mediaRoot);
         }
         catch (Exception ex)
         {
@@ -1129,7 +1129,7 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
-            _lastUpdateStatus = await AppServices.Updates.GetStatusAsync();
+            _lastUpdateStatus = await AppServices.MediaTree.Updates.GetStatusAsync();
             RenderUpdateStatus(_lastUpdateStatus);
             RenderUpdateVersions();
             if (IsUpdateBusy(_lastUpdateStatus))
@@ -1152,7 +1152,7 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
-            _lastUpdateStatus = await AppServices.Updates.GetStatusAsync();
+            _lastUpdateStatus = await AppServices.MediaTree.Updates.GetStatusAsync();
             RenderUpdateStatus(_lastUpdateStatus);
             RenderUpdateVersions();
             if (!IsUpdateBusy(_lastUpdateStatus))
@@ -1278,7 +1278,7 @@ public sealed partial class SettingsPage : Page
             RenderUpdateStatus(_lastUpdateStatus);
             RenderUpdateVersions();
             _updateStatusTimer.Start();
-            var result = await AppServices.Updates.PerformUpdateAsync(version.Version, "app-package");
+            var result = await AppServices.MediaTree.Updates.PerformUpdateAsync(version.Version, "app-package");
             ShowUpdateStatus(string.IsNullOrWhiteSpace(result.Message) ? (isOlderVersion ? "回滚已触发。" : "更新已触发。") : result.Message, false);
             await RestartBackendAfterAppPackageUpdateAsync(
                 isOlderVersion ? "已切换版本，正在重启本机服务..." : "应用包已安装，正在重启本机服务...",
@@ -1301,7 +1301,7 @@ public sealed partial class SettingsPage : Page
         {
             ShowUpdateStatus("正在触发回滚...", false);
             _updateStatusTimer.Start();
-            var result = await AppServices.Updates.RollbackAsync();
+            var result = await AppServices.MediaTree.Updates.RollbackAsync();
             ShowUpdateStatus(string.IsNullOrWhiteSpace(result.Message) ? "已触发回滚。" : result.Message, false);
             await RestartBackendAfterAppPackageUpdateAsync("已切换版本，正在重启本机服务...", "版本切换完成。");
         }
@@ -1330,7 +1330,7 @@ public sealed partial class SettingsPage : Page
 
         await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(1.5));
         var backendUri = await AppServices.Backend.RestartAsync();
-        AppServices.Api.SetBackendUri(backendUri);
+        AppServices.MediaTree.Api.SetBackendUri(backendUri);
         await LoadVersionAsync();
         await LoadUpdateStatusAsync();
         ShowUpdateStatus(completedMessage, false);
@@ -1340,7 +1340,7 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
-            var changelog = await AppServices.Updates.GetChangelogAsync(version.Version);
+            var changelog = await AppServices.MediaTree.Updates.GetChangelogAsync(version.Version);
             var text = FluentTheme.ApplyTextInput(new TextBox
             {
                 Text = string.IsNullOrWhiteSpace(changelog.Body) ? "暂无更新日志" : changelog.Body,
@@ -1530,13 +1530,13 @@ public sealed partial class SettingsPage : Page
         _scanPollCounts[mediaRoot] = _scanPollCounts.TryGetValue(mediaRoot, out var count) ? count + 1 : 1;
         try
         {
-            var status = await AppServices.Library.GetScanStatusAsync(mediaRoot);
+            var status = await AppServices.MediaTree.Library.GetScanStatusAsync(mediaRoot);
             var message = FormatScanStatus(status);
             row.StatusText.Text = message;
             row.StatusText.Foreground = status.Status == "done" ? FluentTheme.Accent : FluentTheme.TextSecondary;
             row.StatusText.Visibility = Visibility.Visible;
 
-            var log = await AppServices.Library.GetScanLogAsync(mediaRoot, 20);
+            var log = await AppServices.MediaTree.Library.GetScanLogAsync(mediaRoot, 20);
             if (log.Lines.Count > 0)
             {
                 row.LogText.Text = string.Join(Environment.NewLine, log.Lines);

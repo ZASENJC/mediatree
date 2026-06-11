@@ -221,7 +221,12 @@ class WindowsPackagingTest(unittest.TestCase):
         self.assertIn("public MediaTreeServices Services { get; }", local_media_tree_provider)
         self.assertIn("public static MediaTreeServices MediaTree", app_services)
         self.assertIn("MediaTree = provider.Services", app_services)
-        self.assertIn("Api = MediaTree.Api", app_services)
+        self.assertNotIn("public static MediaTreeApiClient Api", app_services)
+        self.assertNotIn("public static AuthSessionService Auth", app_services)
+        self.assertNotIn("public static LibraryService Library", app_services)
+        self.assertNotIn("public static MovieService Movie", app_services)
+        self.assertNotIn("public static UpdateService Updates", app_services)
+        self.assertNotIn("public static PlaybackProgressService PlaybackProgress", app_services)
         self.assertIn("BackendAccessSettingsStore.Load", backend_service)
         self.assertIn("--host {_accessSettings.BindHost}", backend_service)
         self.assertIn("WindowsStateDirectory", app_paths)
@@ -689,9 +694,26 @@ class WindowsPackagingTest(unittest.TestCase):
         self.assertIn("mediaTree.Library.GetMediaRootsAsync", recent_page)
         self.assertIn("mediaTree.Movie.GetRecentWatchedAsync", recent_page)
         self.assertIn("mediaTree.Api.BuildCoverUrlAsync", recent_page)
-        self.assertNotIn("AppServices.Library", recent_page)
-        self.assertNotIn("AppServices.Movie", recent_page)
-        self.assertNotIn("AppServices.Api", recent_page)
+        forbidden_app_service_shortcuts = (
+            "AppServices.Api",
+            "AppServices.Auth",
+            "AppServices.Library",
+            "AppServices.Movie",
+            "AppServices.Updates",
+            "AppServices.PlaybackProgress",
+            "Services.AppServices.Api",
+            "Services.AppServices.Auth",
+            "Services.AppServices.Library",
+            "Services.AppServices.Movie",
+            "Services.AppServices.Updates",
+            "Services.AppServices.PlaybackProgress",
+        )
+        windows_csharp = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in (ROOT / "windows" / "MediaTree.Windows").rglob("*.cs")
+        )
+        for shortcut in forbidden_app_service_shortcuts:
+            self.assertNotIn(shortcut, windows_csharp)
         self.assertIn("FluentTheme.CardCornerRadius", settings_page)
         self.assertIn("SanitizeAutomationId", browse_page)
         self.assertIn("Replace(\":\", \"_\")", browse_page)
