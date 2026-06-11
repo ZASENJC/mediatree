@@ -1,12 +1,13 @@
 using System;
 using System.Threading.Tasks;
+using MediaTree.Windows.Services;
 using MediaTree.Windows.Styles;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 
-namespace MediaTree.Windows.Services;
+namespace MediaTree.Windows.Platform;
 
 public sealed class WindowModalDialog
 {

@@ -3,7 +3,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace MediaTree.Windows.Services;
+namespace MediaTree.Windows.Platform;
 
 public sealed class BackendAccessSettings
 {

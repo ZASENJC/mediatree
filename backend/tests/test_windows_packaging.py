@@ -4,11 +4,30 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WINDOWS_PROJECT = ROOT / "windows" / "MediaTree.Windows" / "MediaTree.Windows.csproj"
+WINDOWS_APP = ROOT / "windows" / "MediaTree.Windows"
 WINDOWS_MANIFEST = ROOT / "windows" / "MediaTree.Windows" / "Package.appxmanifest"
 WINDOWS_WORKFLOW = ROOT / ".github" / "workflows" / "windows-release.yml"
 WINDOWS_BUILD_SCRIPT = ROOT / "packaging" / "windows" / "build-windows.ps1"
 WINDOWS_PREPARE_MPV_SCRIPT = ROOT / "packaging" / "windows" / "prepare-mpv.ps1"
 PYINSTALLER_SPEC = ROOT / "packaging" / "windows" / "mediatree-server.spec"
+
+
+def read_windows_source(*parts):
+    return (WINDOWS_APP.joinpath(*parts)).read_text(encoding="utf-8")
+
+
+def read_mediatree_api_client_source():
+    return "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((WINDOWS_APP / "Services").glob("MediaTreeApiClient*.cs"))
+    )
+
+
+def assert_windows_platform_source(test_case, file_name):
+    source = read_windows_source("Platform", file_name)
+    test_case.assertIn("namespace MediaTree.Windows.Platform;", source)
+    test_case.assertFalse((WINDOWS_APP / "Services" / file_name).exists())
+    return source
 
 
 class WindowsPackagingTest(unittest.TestCase):
@@ -142,36 +161,40 @@ class WindowsPackagingTest(unittest.TestCase):
         self.assertNotIn("GenerateAppxPackageOnBuild=true", script)
 
     def test_windows_shell_uses_native_pages_api_client_and_libmpv(self):
-        api_client = (ROOT / "windows" / "MediaTree.Windows" / "Services" / "MediaTreeApiClient.cs").read_text(encoding="utf-8")
-        auth_service = (ROOT / "windows" / "MediaTree.Windows" / "Services" / "AuthSessionService.cs").read_text(encoding="utf-8")
-        backend_service = (ROOT / "windows" / "MediaTree.Windows" / "Services" / "BackendProcessService.cs").read_text(encoding="utf-8")
-        backend_access_store = (ROOT / "windows" / "MediaTree.Windows" / "Services" / "BackendAccessSettingsStore.cs").read_text(encoding="utf-8")
-        mpv_native = (ROOT / "windows" / "MediaTree.Windows" / "Interop" / "MpvNative.cs").read_text(encoding="utf-8")
-        mpv_control = (ROOT / "windows" / "MediaTree.Windows" / "Controls" / "MpvPlayerControl.xaml.cs").read_text(encoding="utf-8")
-        app = (ROOT / "windows" / "MediaTree.Windows" / "App.xaml.cs").read_text(encoding="utf-8")
-        main_window = (ROOT / "windows" / "MediaTree.Windows" / "MainWindow.xaml.cs").read_text(encoding="utf-8")
-        main_window_xaml = (ROOT / "windows" / "MediaTree.Windows" / "MainWindow.xaml").read_text(encoding="utf-8")
-        fluent_theme = (ROOT / "windows" / "MediaTree.Windows" / "Styles" / "FluentTheme.cs").read_text(encoding="utf-8")
-        shell_page = (ROOT / "windows" / "MediaTree.Windows" / "Views" / "ShellPage.xaml").read_text(encoding="utf-8")
-        shell_page_cs = (ROOT / "windows" / "MediaTree.Windows" / "Views" / "ShellPage.xaml.cs").read_text(encoding="utf-8")
-        setup_required_page = (ROOT / "windows" / "MediaTree.Windows" / "Views" / "SetupRequiredPage.xaml.cs").read_text(encoding="utf-8")
-        setup_page = (ROOT / "windows" / "MediaTree.Windows" / "Views" / "SetupPage.xaml").read_text(encoding="utf-8")
-        setup_page_cs = (ROOT / "windows" / "MediaTree.Windows" / "Views" / "SetupPage.xaml.cs").read_text(encoding="utf-8")
-        library_page = (ROOT / "windows" / "MediaTree.Windows" / "Views" / "LibraryPage.xaml").read_text(encoding="utf-8")
-        library_page_cs = (ROOT / "windows" / "MediaTree.Windows" / "Views" / "LibraryPage.xaml.cs").read_text(encoding="utf-8")
-        folder_page = (ROOT / "windows" / "MediaTree.Windows" / "Views" / "FolderPage.xaml").read_text(encoding="utf-8")
-        folder_page_cs = (ROOT / "windows" / "MediaTree.Windows" / "Views" / "FolderPage.xaml.cs").read_text(encoding="utf-8")
-        folder_card_item = (ROOT / "windows" / "MediaTree.Windows" / "ViewModels" / "FolderCardItem.cs").read_text(encoding="utf-8")
-        browse_page_cs = (ROOT / "windows" / "MediaTree.Windows" / "Views" / "BrowsePage.xaml.cs").read_text(encoding="utf-8")
-        favorites_page_cs = (ROOT / "windows" / "MediaTree.Windows" / "Views" / "FavoritesPage.xaml.cs").read_text(encoding="utf-8")
-        settings_page_cs = (ROOT / "windows" / "MediaTree.Windows" / "Views" / "SettingsPage.xaml.cs").read_text(encoding="utf-8")
-        ui_preference_store = (ROOT / "windows" / "MediaTree.Windows" / "Services" / "UiPreferenceStore.cs").read_text(encoding="utf-8")
-        movie_detail_page_cs = (ROOT / "windows" / "MediaTree.Windows" / "Views" / "MovieDetailPage.xaml.cs").read_text(encoding="utf-8")
-        navigation_parameters = (ROOT / "windows" / "MediaTree.Windows" / "Models" / "NavigationParameters.cs").read_text(encoding="utf-8")
-        movie_dtos = (ROOT / "windows" / "MediaTree.Windows" / "Models" / "MovieDtos.cs").read_text(encoding="utf-8")
-        movie_card_item = (ROOT / "windows" / "MediaTree.Windows" / "ViewModels" / "MovieCardItem.cs").read_text(encoding="utf-8")
-        player_page = (ROOT / "windows" / "MediaTree.Windows" / "Views" / "PlayerPage.xaml").read_text(encoding="utf-8")
-        player_page_cs = (ROOT / "windows" / "MediaTree.Windows" / "Views" / "PlayerPage.xaml.cs").read_text(encoding="utf-8")
+        api_client = read_mediatree_api_client_source()
+        auth_service = read_windows_source("Services", "AuthSessionService.cs")
+        backend_service = read_windows_source("Services", "BackendProcessService.cs")
+        app_paths = assert_windows_platform_source(self, "AppPaths.cs")
+        backend_access_store = assert_windows_platform_source(self, "BackendAccessSettingsStore.cs")
+        port_allocator = assert_windows_platform_source(self, "PortAllocator.cs")
+        shell_logger = assert_windows_platform_source(self, "ShellLogger.cs")
+        ui_preference_store = assert_windows_platform_source(self, "UiPreferenceStore.cs")
+        window_modal_dialog = assert_windows_platform_source(self, "WindowModalDialog.cs")
+        mpv_native = read_windows_source("Interop", "MpvNative.cs")
+        mpv_control = read_windows_source("Controls", "MpvPlayerControl.xaml.cs")
+        app = read_windows_source("App.xaml.cs")
+        main_window = read_windows_source("MainWindow.xaml.cs")
+        main_window_xaml = read_windows_source("MainWindow.xaml")
+        fluent_theme = read_windows_source("Styles", "FluentTheme.cs")
+        shell_page = read_windows_source("Views", "ShellPage.xaml")
+        shell_page_cs = read_windows_source("Views", "ShellPage.xaml.cs")
+        setup_required_page = read_windows_source("Views", "SetupRequiredPage.xaml.cs")
+        setup_page = read_windows_source("Views", "SetupPage.xaml")
+        setup_page_cs = read_windows_source("Views", "SetupPage.xaml.cs")
+        library_page = read_windows_source("Views", "LibraryPage.xaml")
+        library_page_cs = read_windows_source("Views", "LibraryPage.xaml.cs")
+        folder_page = read_windows_source("Views", "FolderPage.xaml")
+        folder_page_cs = read_windows_source("Views", "FolderPage.xaml.cs")
+        folder_card_item = read_windows_source("ViewModels", "FolderCardItem.cs")
+        browse_page_cs = read_windows_source("Views", "BrowsePage.xaml.cs")
+        favorites_page_cs = read_windows_source("Views", "FavoritesPage.xaml.cs")
+        settings_page_cs = read_windows_source("Views", "SettingsPage.xaml.cs")
+        movie_detail_page_cs = read_windows_source("Views", "MovieDetailPage.xaml.cs")
+        navigation_parameters = read_windows_source("Models", "NavigationParameters.cs")
+        movie_dtos = read_windows_source("Models", "MovieDtos.cs")
+        movie_card_item = read_windows_source("ViewModels", "MovieCardItem.cs")
+        player_page = read_windows_source("Views", "PlayerPage.xaml")
+        player_page_cs = read_windows_source("Views", "PlayerPage.xaml.cs")
 
         self.assertNotIn("WebView2", main_window_xaml)
         self.assertNotIn("Microsoft.Web.WebView2", main_window)
@@ -182,6 +205,10 @@ class WindowsPackagingTest(unittest.TestCase):
         self.assertIn("ShellPage", main_window)
         self.assertIn("BackendAccessSettingsStore.Load", backend_service)
         self.assertIn("--host {_accessSettings.BindHost}", backend_service)
+        self.assertIn("WindowsStateDirectory", app_paths)
+        self.assertIn("GetFreeLoopbackPort", port_allocator)
+        self.assertIn("LogFile", shell_logger)
+        self.assertIn("public WindowModalDialog(", window_modal_dialog)
         self.assertIn("0.0.0.0", backend_access_store)
         self.assertIn("DefaultRemotePort = 27581", backend_access_store)
         self.assertIn("args.Handled = true", app)

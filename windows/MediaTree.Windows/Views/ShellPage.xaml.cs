@@ -32,9 +32,9 @@ public sealed partial class ShellPage : Page
 
     public void NavigateToSetup()
     {
-        Services.ShellLogger.Info("Navigating shell content to setup page.");
+        ShellLogger.Info("Navigating shell content to setup page.");
         _contentFrame.Navigate(typeof(SetupPage));
-        Services.ShellLogger.Info("Setup page navigation requested.");
+        ShellLogger.Info("Setup page navigation requested.");
     }
 
     public void NavigateToLibrary()
@@ -236,7 +236,7 @@ public sealed partial class ShellPage : Page
         }
         catch (Exception ex)
         {
-            Services.ShellLogger.Error(ex, "Failed to refresh shell update indicator.");
+            ShellLogger.Error(ex, "Failed to refresh shell update indicator.");
             _updateIndicatorButton.Visibility = Visibility.Collapsed;
         }
     }

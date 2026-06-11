@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace MediaTree.Windows.Services;
+namespace MediaTree.Windows.Platform;
 
 public static class AppPaths
 {

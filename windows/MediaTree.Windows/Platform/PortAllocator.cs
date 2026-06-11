@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 
-namespace MediaTree.Windows.Services;
+namespace MediaTree.Windows.Platform;
 
 public static class PortAllocator
 {
