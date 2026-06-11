@@ -17,6 +17,17 @@
             <CornerRadius x:Key="ComboBoxItemCornerRadius">6</CornerRadius>
             <CornerRadius x:Key="GridViewItemCheckBoxCornerRadius">4</CornerRadius>
             <CornerRadius x:Key="ListViewItemCheckBoxCornerRadius">4</CornerRadius>
+            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#F4F7FA" />
+            <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#E9EDF3" />
+            <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#3D005FB8" />
+            <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#33005FB8" />
+            <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#1A1A1A" />
+            <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#1A1A1A" />
+            <Style TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
+                <Setter Property="MinHeight" Value="36" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+            </Style>
             <Style TargetType="CheckBox" BasedOn="{StaticResource DefaultCheckBoxStyle}">
                 <Setter Property="CornerRadius" Value="{StaticResource ControlCornerRadius}" />
                 <Setter Property="MinHeight" Value="36" />
