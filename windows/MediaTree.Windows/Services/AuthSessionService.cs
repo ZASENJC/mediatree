@@ -59,6 +59,18 @@ public sealed class AuthSessionService
         return new AuthSessionResult(AuthSessionState.Ready, "已保存 Windows 本机会话。");
     }
 
+    public async Task<AuthSessionResult> ChangeStoredSessionCredentialsAsync(
+        string newUsername,
+        string newPassword,
+        CancellationToken cancellationToken = default)
+    {
+        var stored = LoadStoredCredentials()
+            ?? throw new InvalidOperationException("这台电脑没有可用的已保存本机会话，请使用当前账号密码修改。");
+
+        await _api.ChangePasswordAsync(stored.Username, stored.Password, newUsername, newPassword, cancellationToken);
+        return await LoginAndPersistAsync(newUsername, newPassword, cancellationToken);
+    }
+
     private static string GenerateSecret()
     {
         var bytes = RandomNumberGenerator.GetBytes(32);

@@ -6,6 +6,20 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## 1.0.15 (2026-06-11)
+
+### Windows Desktop
+
+- Added a Settings option to expose the bundled Windows backend on the LAN so `mediatree-app` can connect to the Windows desktop backend
+- Kept the default backend listener loopback-only, and only binds `0.0.0.0` after the user enables mobile access and restarts the local service from Settings
+- Moved the login username/password fields into the mobile access area so the Windows app and `mediatree-app` use the same configured backend account after saving
+
+### Release Type
+
+- Windows full update required because this changes WinUI Settings, backend launch behavior, and the Windows runtime surface
+
+---
+
 ## 1.0.14 (2026-06-10)
 
 ### Playback

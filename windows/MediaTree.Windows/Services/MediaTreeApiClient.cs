@@ -28,7 +28,6 @@ public sealed class MediaTreeApiClient : IDisposable
         BackendUri = backendUri;
         _httpClient = new HttpClient
         {
-            BaseAddress = new Uri(backendUri, "api/"),
             Timeout = TimeSpan.FromMinutes(10),
         };
     }
@@ -38,7 +37,6 @@ public sealed class MediaTreeApiClient : IDisposable
     public void SetBackendUri(Uri backendUri)
     {
         BackendUri = backendUri;
-        _httpClient.BaseAddress = new Uri(backendUri, "api/");
     }
 
     public void SetBearerToken(string token)
@@ -512,7 +510,8 @@ public sealed class MediaTreeApiClient : IDisposable
     private HttpRequestMessage CreateRequest(HttpMethod method, string path)
     {
         var normalized = path.TrimStart('/');
-        var request = new HttpRequestMessage(method, normalized);
+        var apiBase = new Uri(BackendUri, "api/");
+        var request = new HttpRequestMessage(method, new Uri(apiBase, normalized));
         if (!string.IsNullOrWhiteSpace(_token))
         {
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);

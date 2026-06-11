@@ -2,6 +2,9 @@ using MediaTree.Windows.Models;
 using MediaTree.Windows.Services;
 using System;
 using System.IO;
+using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Text.Json;
 using Xunit;
 
@@ -256,6 +259,110 @@ public sealed class ServiceLogicTests
     public void SettingsDeleteLibraryButtonUsesCompactDangerLabel()
     {
         Assert.Equal("删除", MediaTree.Windows.Views.SettingsPage.DeleteLibraryButtonText);
+    }
+
+    [Fact]
+    public void SettingsMovesMobileLoginIntoRemoteAccess()
+    {
+        Assert.Equal("移动端访问", MediaTree.Windows.Views.SettingsPage.RemoteAccessTitle);
+        Assert.Equal("登录用户名", MediaTree.Windows.Views.SettingsPage.RemoteLoginUsernameHeader);
+        Assert.Equal("登录密码", MediaTree.Windows.Views.SettingsPage.RemoteLoginPasswordHeader);
+        Assert.Equal("保存账号并重启本机服务", MediaTree.Windows.Views.SettingsPage.SaveRemoteAccessButtonText);
+    }
+
+    [Fact]
+    public void SettingsDoesNotExposeSeparateAccountSecurityCard()
+    {
+        Assert.DoesNotContain("账号安全", MediaTree.Windows.Views.SettingsPage.RemoteAccessTitle);
+        Assert.DoesNotContain("当前用户名", MediaTree.Windows.Views.SettingsPage.RemoteLoginUsernameHeader);
+        Assert.DoesNotContain("新用户名", MediaTree.Windows.Views.SettingsPage.RemoteLoginUsernameHeader);
+    }
+
+    [Fact]
+    public void BackendAccessSettingsDefaultToLoopbackOnly()
+    {
+        var settings = new BackendAccessSettings();
+
+        Assert.False(settings.AllowRemoteAccess);
+        Assert.Equal(BackendAccessSettings.DefaultRemotePort, settings.RemotePort);
+        Assert.Equal("127.0.0.1", settings.BindHost);
+        Assert.Equal("本机访问", settings.AccessModeLabel);
+    }
+
+    [Fact]
+    public void BackendAccessSettingsUseFixedPublicPortWhenEnabled()
+    {
+        var settings = new BackendAccessSettings
+        {
+            AllowRemoteAccess = true,
+            RemotePort = 27581,
+        };
+
+        Assert.Equal("0.0.0.0", settings.BindHost);
+        Assert.Equal(27581, settings.EffectivePort(43000));
+        Assert.Equal("局域网访问", settings.AccessModeLabel);
+        Assert.Contains(":27581", settings.DisplayUrl("192.168.100.102"));
+    }
+
+    [Fact]
+    public void BackendAccessSettingsClampInvalidPorts()
+    {
+        Assert.Equal(
+            BackendAccessSettings.DefaultRemotePort,
+            new BackendAccessSettings { AllowRemoteAccess = true, RemotePort = 20 }.EffectivePort(43000));
+        Assert.Equal(
+            BackendAccessSettings.DefaultRemotePort,
+            new BackendAccessSettings { AllowRemoteAccess = true, RemotePort = 70000 }.EffectivePort(43000));
+    }
+
+    [Fact]
+    public void BackendAccessSettingsRoundTrip()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"mediatree-backend-access-{Guid.NewGuid():N}.json");
+        try
+        {
+            BackendAccessSettingsStore.Save(new BackendAccessSettings
+            {
+                AllowRemoteAccess = true,
+                RemotePort = 27581,
+            }, path);
+
+            var json = File.ReadAllText(path);
+            Assert.Contains("allowRemoteAccess", json);
+            Assert.Contains("remotePort", json);
+
+            var settings = BackendAccessSettingsStore.Load(path);
+            Assert.True(settings.AllowRemoteAccess);
+            Assert.Equal(27581, settings.RemotePort);
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ApiClientCanChangeBackendUriAfterRequestsHaveStarted()
+    {
+        using var firstBackend = new OneShotJsonServer("""{"needs_setup":true,"roots":["first"]}""");
+        using var secondBackend = new OneShotJsonServer("""{"needs_setup":false,"roots":["second"]}""");
+        using var client = new MediaTreeApiClient(firstBackend.BaseUri);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        var firstStatus = await client.GetSetupStatusAsync(cancellation.Token);
+        client.SetBackendUri(secondBackend.BaseUri);
+        var secondStatus = await client.GetSetupStatusAsync(cancellation.Token);
+
+        Assert.True(firstStatus.NeedsSetup);
+        Assert.Equal(["first"], firstStatus.Roots);
+        Assert.False(secondStatus.NeedsSetup);
+        Assert.Equal(["second"], secondStatus.Roots);
+        Assert.Equal(secondBackend.BaseUri, client.BackendUri);
+        Assert.Equal("/api/setup/status", firstBackend.RequestPath);
+        Assert.Equal("/api/setup/status", secondBackend.RequestPath);
     }
 
     [Fact]
@@ -654,6 +761,54 @@ public sealed class ServiceLogicTests
             {
                 File.Delete(path);
             }
+        }
+    }
+}
+
+file sealed class OneShotJsonServer : IDisposable
+{
+    private readonly System.Net.Sockets.TcpListener _listener;
+    private readonly Task _task;
+
+    public OneShotJsonServer(string responseJson)
+    {
+        _listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        _listener.Start();
+        var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
+        BaseUri = new Uri($"http://127.0.0.1:{port}/");
+        _task = Task.Run(async () =>
+        {
+            using var client = await _listener.AcceptTcpClientAsync();
+            await using var stream = client.GetStream();
+            using var reader = new StreamReader(stream, leaveOpen: true);
+            var requestLine = await reader.ReadLineAsync();
+            RequestPath = requestLine?.Split(' ', StringSplitOptions.RemoveEmptyEntries).ElementAtOrDefault(1) ?? "";
+            while (!string.IsNullOrEmpty(await reader.ReadLineAsync()))
+            {
+            }
+
+            var responseBytes = System.Text.Encoding.UTF8.GetBytes(responseJson);
+            using var writer = new StreamWriter(stream, leaveOpen: true);
+            await writer.WriteAsync(
+                $"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {responseBytes.Length}\r\nConnection: close\r\n\r\n");
+            await writer.FlushAsync();
+            await stream.WriteAsync(responseBytes);
+        });
+    }
+
+    public Uri BaseUri { get; }
+
+    public string RequestPath { get; private set; } = "";
+
+    public void Dispose()
+    {
+        _listener.Stop();
+        try
+        {
+            _task.Wait(TimeSpan.FromSeconds(1));
+        }
+        catch
+        {
         }
     }
 }

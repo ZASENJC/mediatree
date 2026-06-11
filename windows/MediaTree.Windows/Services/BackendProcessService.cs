@@ -2,6 +2,8 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -12,8 +14,10 @@ public sealed class BackendProcessService : IDisposable
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(2) };
     private Process? _process;
     private int _port;
+    private BackendAccessSettings _accessSettings = new();
 
     public Uri BackendUri => new($"http://127.0.0.1:{_port}/");
+    public BackendAccessSettings AccessSettings => _accessSettings;
 
     public async Task<Uri> StartAsync(CancellationToken cancellationToken = default)
     {
@@ -23,14 +27,15 @@ public sealed class BackendProcessService : IDisposable
             throw new FileNotFoundException("Cannot find bundled backend executable.", AppPaths.ServerExe);
         }
 
-        _port = PortAllocator.GetFreeLoopbackPort();
+        _accessSettings = BackendAccessSettingsStore.Load();
+        _port = _accessSettings.EffectivePort(PortAllocator.GetFreeLoopbackPort());
         var stdoutLog = Path.Combine(AppPaths.LogsDirectory, "backend.stdout.log");
         var stderrLog = Path.Combine(AppPaths.LogsDirectory, "backend.stderr.log");
 
         var startInfo = new ProcessStartInfo
         {
             FileName = AppPaths.ServerExe,
-            Arguments = $"--host 127.0.0.1 --port {_port} --data-dir \"{AppPaths.DataDirectory}\" --media-root \"{AppPaths.MediaDirectory}\"",
+            Arguments = $"--host {_accessSettings.BindHost} --port {_port} --data-dir \"{AppPaths.DataDirectory}\" --media-root \"{AppPaths.MediaDirectory}\"",
             WorkingDirectory = AppPaths.ServerDirectory,
             UseShellExecute = false,
             RedirectStandardOutput = true,
@@ -40,7 +45,7 @@ public sealed class BackendProcessService : IDisposable
         startInfo.Environment["MEDIATREE_RUNTIME"] = "windows";
         startInfo.Environment["MEDIATREE_UPDATE_PLATFORM"] = "windows";
 
-        ShellLogger.Info($"Starting backend: {AppPaths.ServerExe} {startInfo.Arguments}");
+        ShellLogger.Info($"Starting backend ({_accessSettings.AccessModeLabel}): {AppPaths.ServerExe} {startInfo.Arguments}");
         _process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start backend process.");
         _ = Task.Run(() => PipeToFileAsync(_process.StandardOutput, stdoutLog, cancellationToken), cancellationToken);
         _ = Task.Run(() => PipeToFileAsync(_process.StandardError, stderrLog, cancellationToken), cancellationToken);
@@ -53,6 +58,47 @@ public sealed class BackendProcessService : IDisposable
     {
         Stop();
         return await StartAsync();
+    }
+
+    public string RemoteAccessUrl => _accessSettings.DisplayUrl(GetPreferredLanAddress());
+
+    public static string GetPreferredLanAddress()
+    {
+        try
+        {
+            foreach (var networkInterface in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (networkInterface.OperationalStatus != OperationalStatus.Up)
+                {
+                    continue;
+                }
+
+                if (networkInterface.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel)
+                {
+                    continue;
+                }
+
+                foreach (var address in networkInterface.GetIPProperties().UnicastAddresses)
+                {
+                    if (address.Address.AddressFamily != AddressFamily.InterNetwork)
+                    {
+                        continue;
+                    }
+
+                    var value = address.Address.ToString();
+                    if (!value.StartsWith("169.254.", StringComparison.Ordinal))
+                    {
+                        return value;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Best-effort display helper for Settings.
+        }
+
+        return "";
     }
 
     private async Task WaitForHealthAsync(CancellationToken cancellationToken)

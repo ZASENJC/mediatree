@@ -8,6 +8,7 @@ using MediaTree.Windows.Styles;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -20,8 +21,12 @@ public sealed partial class SettingsPage : Page
     public const string AddLibraryButtonText = "添加本机目录";
     public const string DeleteLibraryButtonText = "删除";
     public const string LibraryScraperHeader = "刮削器";
+    public const string RemoteAccessTitle = "移动端访问";
+    public const string RemoteLoginUsernameHeader = "登录用户名";
+    public const string RemoteLoginPasswordHeader = "登录密码";
+    public const string SaveRemoteAccessButtonText = "保存账号并重启本机服务";
 
-    private const double SettingsColumnMaxWidth = 520;
+    private const double SettingsColumnMaxWidth = 480;
     private const double SettingsColumnSpacing = 20;
 
     private sealed record ScraperOption(string Value, string Label, string Description, bool HasKey);
@@ -41,13 +46,14 @@ public sealed partial class SettingsPage : Page
         new("none", "不刮削", "只扫描本地文件，不联网刮削元数据", false),
     ];
 
-    private readonly TextBlock _authStatusText;
     private readonly TextBlock _globalStatusText;
     private readonly CheckBox _hideHomeTitleTextBox;
-    private readonly PasswordBox _newPasswordBox;
-    private readonly TextBox _newUsernameBox;
-    private readonly PasswordBox _oldPasswordBox;
-    private readonly TextBox _oldUsernameBox;
+    private readonly CheckBox _allowRemoteBackendBox;
+    private readonly TextBox _remoteBackendPortBox;
+    private readonly TextBlock _remoteBackendUrlText;
+    private readonly TextBlock _remoteBackendStatusText;
+    private readonly TextBox _remoteLoginUsernameBox;
+    private readonly PasswordBox _remoteLoginPasswordBox;
     private readonly CheckBox _showSourceNameBox;
     private readonly TextBlock _backupStatusText;
     private readonly ListView _librarySettingsList;
@@ -76,12 +82,13 @@ public sealed partial class SettingsPage : Page
         (
             _globalStatusText,
             _hideHomeTitleTextBox,
+            _allowRemoteBackendBox,
+            _remoteBackendPortBox,
+            _remoteBackendUrlText,
+            _remoteBackendStatusText,
             _showSourceNameBox,
-            _oldUsernameBox,
-            _oldPasswordBox,
-            _newUsernameBox,
-            _newPasswordBox,
-            _authStatusText,
+            _remoteLoginUsernameBox,
+            _remoteLoginPasswordBox,
             _librarySettingsList,
             _libraryStatusText,
             _tmdbApiKeyBox,
@@ -99,7 +106,7 @@ public sealed partial class SettingsPage : Page
         Unloaded += OnUnloaded;
     }
 
-    private (TextBlock globalStatusText, CheckBox hideHomeTitleTextBox, CheckBox showSourceNameBox, TextBox oldUsernameBox, PasswordBox oldPasswordBox, TextBox newUsernameBox, PasswordBox newPasswordBox, TextBlock authStatusText, ListView librarySettingsList, TextBlock libraryStatusText, TextBox tmdbApiKeyBox, PasswordBox tmdbTokenBox, TextBlock tmdbTokenStatusText, TextBlock backupStatusText, TextBlock versionText, TextBlock updateProgressText, TextBlock updateStatusText, StackPanel updateVersionsStack) BuildContent()
+    private (TextBlock globalStatusText, CheckBox hideHomeTitleTextBox, CheckBox allowRemoteBackendBox, TextBox remoteBackendPortBox, TextBlock remoteBackendUrlText, TextBlock remoteBackendStatusText, CheckBox showSourceNameBox, TextBox remoteLoginUsernameBox, PasswordBox remoteLoginPasswordBox, ListView librarySettingsList, TextBlock libraryStatusText, TextBox tmdbApiKeyBox, PasswordBox tmdbTokenBox, TextBlock tmdbTokenStatusText, TextBlock backupStatusText, TextBlock versionText, TextBlock updateProgressText, TextBlock updateStatusText, StackPanel updateVersionsStack) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "SettingsPage");
 
@@ -178,25 +185,46 @@ public sealed partial class SettingsPage : Page
         uiPrefsStack.Children.Add(showSourceNameBox);
         _settingsCards.Add(SectionCard(uiPrefsStack, "SettingsUiPrefsCard"));
 
-        var authStack = new StackPanel { Spacing = 12 };
-        authStack.Children.Add(SectionTitle("账号安全", "SettingsAuthCard"));
-        var oldUsernameBox = TextInput("当前用户名", "SettingsOldUsername");
-        var oldPasswordBox = PasswordInput("当前密码", "SettingsOldPassword");
-        var newUsernameBox = TextInput("新用户名", "SettingsNewUsername");
-        var newPasswordBox = PasswordInput("新密码", "SettingsNewPassword");
-        authStack.Children.Add(TwoColumnRow(oldUsernameBox, oldPasswordBox));
-        authStack.Children.Add(TwoColumnRow(newUsernameBox, newPasswordBox));
-        var changePasswordButton = FluentTheme.ApplyButton(new Button
+        var remoteStack = new StackPanel { Spacing = 12 };
+        remoteStack.Children.Add(SectionTitle(RemoteAccessTitle, "SettingsRemoteBackendCard"));
+        var allowRemoteBackendBox = FluentTheme.ApplyCheckBox(new CheckBox
         {
-            Content = "修改用户名/密码",
-            HorizontalAlignment = HorizontalAlignment.Left,
+            Content = WrapText("开放本机后端给局域网设备连接。"),
+        });
+        AutomationProperties.SetAutomationId(allowRemoteBackendBox, "SettingsAllowRemoteBackend");
+        remoteStack.Children.Add(allowRemoteBackendBox);
+        var remoteBackendPortBox = TextInput("端口", "SettingsRemoteBackendPort", BackendAccessSettings.DefaultRemotePort.ToString());
+        remoteBackendPortBox.InputScope = NumberInputScope();
+        remoteStack.Children.Add(remoteBackendPortBox);
+        var remoteLoginUsernameBox = TextInput(RemoteLoginUsernameHeader, "SettingsRemoteLoginUsername");
+        var remoteLoginPasswordBox = PasswordInput(RemoteLoginPasswordHeader, "SettingsRemoteLoginPassword");
+        remoteStack.Children.Add(TwoColumnRow(remoteLoginUsernameBox, remoteLoginPasswordBox));
+        remoteStack.Children.Add(FluentTheme.Body("保存后会重启本机后端。然后在 mediatree-app 里选择 MediaTree，填入下面地址，并用这里设置的账号登录。", 13));
+        var remoteBackendUrlText = new TextBlock
+        {
+            TextWrapping = TextWrapping.WrapWholeWords,
+            FontFamily = new FontFamily("Consolas"),
+            Foreground = FluentTheme.TextPrimary,
+        };
+        AutomationProperties.SetAutomationId(remoteBackendUrlText, "SettingsRemoteBackendUrl");
+        remoteStack.Children.Add(remoteBackendUrlText);
+        var remoteActions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+        };
+        var saveRemoteBackendButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = SaveRemoteAccessButtonText,
         }, FluentButtonStyle.Accent);
-        AutomationProperties.SetAutomationId(changePasswordButton, "SettingsChangePassword");
-        changePasswordButton.Click += OnChangePasswordClicked;
-        authStack.Children.Add(changePasswordButton);
-        var authStatusText = StatusText("SettingsAuthStatusText");
-        authStack.Children.Add(authStatusText);
-        _settingsCards.Add(SectionCard(authStack, "SettingsAuthCard"));
+        AutomationProperties.SetAutomationId(saveRemoteBackendButton, "SettingsSaveRemoteBackend");
+        saveRemoteBackendButton.Click += OnSaveRemoteBackendClicked;
+        remoteActions.Children.Add(saveRemoteBackendButton);
+        remoteActions.SizeChanged += (_, args) => ApplyActionStackLayout(args.NewSize.Width, remoteActions);
+        remoteStack.Children.Add(remoteActions);
+        var remoteBackendStatusText = StatusText("SettingsRemoteBackendStatusText", visible: true);
+        remoteStack.Children.Add(remoteBackendStatusText);
+        _settingsCards.Add(SectionCard(remoteStack, "SettingsRemoteBackendCard"));
 
         var libraryStack = new StackPanel { Spacing = 12 };
         var libraryHeader = new Grid { ColumnSpacing = 12, RowSpacing = 10 };
@@ -317,12 +345,13 @@ public sealed partial class SettingsPage : Page
         return (
             globalStatusText,
             hideHomeTitleTextBox,
+            allowRemoteBackendBox,
+            remoteBackendPortBox,
+            remoteBackendUrlText,
+            remoteBackendStatusText,
             showSourceNameBox,
-            oldUsernameBox,
-            oldPasswordBox,
-            newUsernameBox,
-            newPasswordBox,
-            authStatusText,
+            remoteLoginUsernameBox,
+            remoteLoginPasswordBox,
             librarySettingsList,
             libraryStatusText,
             tmdbApiKeyBox,
@@ -339,6 +368,7 @@ public sealed partial class SettingsPage : Page
     private async void OnLoaded(object sender, RoutedEventArgs args)
     {
         LoadUiPreferences();
+        LoadBackendAccessSettings();
         await LoadVersionAsync();
         await LoadTmdbConfigAsync();
         await LoadLibrarySettingsAsync();
@@ -365,6 +395,89 @@ public sealed partial class SettingsPage : Page
         {
             _suppressUiPreferenceSave = false;
         }
+    }
+
+    private void LoadBackendAccessSettings()
+    {
+        var settings = BackendAccessSettingsStore.Load();
+        _allowRemoteBackendBox.IsChecked = settings.AllowRemoteAccess;
+        _remoteBackendPortBox.Text = BackendAccessSettings.NormalizePort(settings.RemotePort).ToString();
+        ShowRemoteBackendSettings(settings, $"当前为{settings.AccessModeLabel}。", false);
+    }
+
+    private async void OnSaveRemoteBackendClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button button)
+        {
+            return;
+        }
+
+        try
+        {
+            button.IsEnabled = false;
+            var settings = ReadBackendAccessSettingsFromUi();
+            if (HasRemoteLoginInput())
+            {
+                ValidateRemoteLoginInput();
+                ShowRemoteBackendSettings(settings, "正在更新移动端登录账号...", false);
+                await AppServices.Auth.ChangeStoredSessionCredentialsAsync(
+                    _remoteLoginUsernameBox.Text.Trim(),
+                    _remoteLoginPasswordBox.Password);
+                _remoteLoginUsernameBox.Text = "";
+                _remoteLoginPasswordBox.Password = "";
+            }
+
+            BackendAccessSettingsStore.Save(settings);
+            ShowRemoteBackendSettings(settings, "正在重启本机后端...", false);
+            var backendUri = await AppServices.Backend.RestartAsync();
+            AppServices.Api.SetBackendUri(backendUri);
+            ShowRemoteBackendSettings(BackendAccessSettingsStore.Load(), "已保存账号并重启本机后端。", false);
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to save native backend access settings.");
+            ShowRemoteBackendSettings(ReadBackendAccessSettingsFromUi(), $"保存失败：{ex.Message}", true);
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
+    }
+
+    private bool HasRemoteLoginInput()
+        => !string.IsNullOrWhiteSpace(_remoteLoginUsernameBox.Text) || !string.IsNullOrEmpty(_remoteLoginPasswordBox.Password);
+
+    private void ValidateRemoteLoginInput()
+    {
+        if (string.IsNullOrWhiteSpace(_remoteLoginUsernameBox.Text) || string.IsNullOrEmpty(_remoteLoginPasswordBox.Password))
+        {
+            throw new InvalidOperationException("登录用户名和登录密码需要一起填写。");
+        }
+    }
+
+    private BackendAccessSettings ReadBackendAccessSettingsFromUi()
+    {
+        var port = int.TryParse(_remoteBackendPortBox.Text.Trim(), out var parsedPort)
+            ? BackendAccessSettings.NormalizePort(parsedPort)
+            : BackendAccessSettings.DefaultRemotePort;
+        _remoteBackendPortBox.Text = port.ToString();
+        return new BackendAccessSettings
+        {
+            AllowRemoteAccess = _allowRemoteBackendBox.IsChecked == true,
+            RemotePort = port,
+        };
+    }
+
+    private void ShowRemoteBackendSettings(BackendAccessSettings settings, string message, bool isError)
+    {
+        _remoteBackendUrlText.Text = settings.AllowRemoteAccess
+            ? settings.DisplayUrl(BackendProcessService.GetPreferredLanAddress())
+            : $"局域网未开放；开启后地址：{settings.DisplayUrl("此电脑IP")}";
+        _remoteBackendStatusText.Text = settings.AllowRemoteAccess
+            ? $"{message} Windows 防火墙若弹出提示，需要允许专用网络访问。"
+            : message;
+        _remoteBackendStatusText.Foreground = isError ? FluentTheme.Error : FluentTheme.TextSecondary;
+        _remoteBackendStatusText.Visibility = Visibility.Visible;
     }
 
     private async System.Threading.Tasks.Task LoadVersionAsync()
@@ -457,36 +570,6 @@ public sealed partial class SettingsPage : Page
             HideHomeTitleText = _hideHomeTitleTextBox.IsChecked == true,
             ShowSourceName = _showSourceNameBox.IsChecked == true,
         });
-    }
-
-    private async void OnChangePasswordClicked(object sender, RoutedEventArgs args)
-    {
-        if (sender is not Button button)
-        {
-            return;
-        }
-
-        try
-        {
-            button.IsEnabled = false;
-            ShowAuthStatus("正在更新账号...", false);
-            await AppServices.Api.ChangePasswordAsync(_oldUsernameBox.Text, _oldPasswordBox.Password, _newUsernameBox.Text, _newPasswordBox.Password);
-            var session = await AppServices.Auth.LoginAndPersistAsync(_newUsernameBox.Text, _newPasswordBox.Password);
-            _oldUsernameBox.Text = "";
-            _oldPasswordBox.Password = "";
-            _newUsernameBox.Text = "";
-            _newPasswordBox.Password = "";
-            ShowAuthStatus($"密码已更新。{session.Message}", false);
-        }
-        catch (Exception ex)
-        {
-            ShellLogger.Error(ex, "Failed to change native account password.");
-            ShowAuthStatus($"更新失败：{ex.Message}", true);
-        }
-        finally
-        {
-            button.IsEnabled = true;
-        }
     }
 
     private async System.Threading.Tasks.Task LoadLibrarySettingsAsync()
@@ -1360,9 +1443,15 @@ public sealed partial class SettingsPage : Page
         });
     }
 
-    private void OnAddLibraryClicked(object sender, RoutedEventArgs args)
+    private async void OnAddLibraryClicked(object sender, RoutedEventArgs args)
+    {
+        await AddLibraryFromSettingsAsync();
+    }
+
+    private static System.Threading.Tasks.Task AddLibraryFromSettingsAsync()
     {
         ShellPage.Current?.NavigateToSetup();
+        return System.Threading.Tasks.Task.CompletedTask;
     }
 
     private void ShowGlobalStatus(string message, bool isError)
@@ -1370,13 +1459,6 @@ public sealed partial class SettingsPage : Page
         _globalStatusText.Text = message;
         _globalStatusText.Foreground = isError ? FluentTheme.Error : FluentTheme.Accent;
         _globalStatusText.Visibility = Visibility.Visible;
-    }
-
-    private void ShowAuthStatus(string message, bool isError)
-    {
-        _authStatusText.Text = message;
-        _authStatusText.Foreground = isError ? FluentTheme.Error : FluentTheme.Accent;
-        _authStatusText.Visibility = Visibility.Visible;
     }
 
     private void ShowTmdbStatus(string message, bool isError)
@@ -1689,6 +1771,13 @@ public sealed partial class SettingsPage : Page
         });
         AutomationProperties.SetAutomationId(box, automationId);
         return box;
+    }
+
+    private static InputScope NumberInputScope()
+    {
+        var scope = new InputScope();
+        scope.Names.Add(new InputScopeName(InputScopeNameValue.Number));
+        return scope;
     }
 
     private static Grid TwoColumnRow(FrameworkElement first, FrameworkElement second)

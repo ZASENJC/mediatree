@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app import windows_runtime
+from app import windows_entry
 
 
 def make_app_dir(root: Path, version: str) -> Path:
@@ -20,6 +21,15 @@ def make_app_dir(root: Path, version: str) -> Path:
 
 
 class WindowsRuntimeTest(unittest.TestCase):
+    def test_windows_entry_allows_public_bind_for_lan_access(self):
+        self.assertEqual(windows_entry.normalize_bind_host("0.0.0.0"), "0.0.0.0")
+        self.assertEqual(windows_entry.normalize_bind_host("localhost"), "127.0.0.1")
+        self.assertEqual(windows_entry.normalize_bind_host(""), "127.0.0.1")
+
+    def test_windows_entry_rejects_arbitrary_bind_hosts(self):
+        with self.assertRaises(ValueError):
+            windows_entry.normalize_bind_host("192.168.100.102")
+
     def test_choose_app_dir_prefers_current_app_package_when_newer_than_base(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

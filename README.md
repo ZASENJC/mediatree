@@ -125,7 +125,7 @@ Docker Hub 镜像：`zasenjc/mediatree:latest`
 
 Windows 桌面版面向 Windows 10 19041+ / Windows 11 x64。它不是外部浏览器启动器，而是一个 WinUI 3 原生客户端：应用会在后台启动本地 `mediatree-server.exe`，主界面使用 Windows 原生导航、媒体库网格、详情页和内置 libmpv 播放器。
 
-桌面版数据默认保存在 `%APPDATA%\MediaTree\data`，日志保存在 `%LOCALAPPDATA%\MediaTree\logs`。Windows 设置页只保留两种更新：共享后端 / 应用代码更新可使用 `应用包更新`，会在软件内下载 `mediatree-app-<version>.tar.gz`、替换当前应用包、清理旧包并自动重启本机服务；当 Windows 原生 UI、Python 依赖、ffmpeg/libmpv、PyInstaller 打包或其他本机运行时变化时，设置页显示 `全量更新` 并跳转下载新的 Windows 完整包。当前发布包优先交付 portable zip，若 release 中提供 `.exe`，桌面端会优先打开 `.exe` 下载链接。
+桌面版数据默认保存在 `%APPDATA%\MediaTree\data`，日志保存在 `%LOCALAPPDATA%\MediaTree\logs`。需要让 Android 客户端连接 Windows 内置后端时，在 Windows 设置页的 `移动端访问` 中开启局域网访问，并在同一区域设置登录用户名和密码；保存后会重启本机后端并显示给 `mediatree-app` 填写的 `http://<此电脑IP>:27581` 地址，后续 Windows 本机和移动端都会使用这组账号访问本地后端。Windows 设置页只保留两种更新：共享后端 / 应用代码更新可使用 `应用包更新`，会在软件内下载 `mediatree-app-<version>.tar.gz`、替换当前应用包、清理旧包并自动重启本机服务；当 Windows 原生 UI、Python 依赖、ffmpeg/libmpv、PyInstaller 打包或其他本机运行时变化时，设置页显示 `全量更新` 并跳转下载新的 Windows 完整包。当前发布包优先交付 portable zip，若 release 中提供 `.exe`，桌面端会优先打开 `.exe` 下载链接。
 
 Windows 桌面版不复用 Web 端 React 前端。Web 使用 `frontend/`，Windows 使用 `windows/MediaTree.Windows/` WinUI 原生前端；只有 FastAPI 后端、数据模型和业务逻辑保持复用或迁移一致。因此 Web 端 UI/交互更新不会自动同步到 Windows。需要同等 Windows 用户体验时，必须在 WinUI 原生前端单独适配并发布 Windows 全量更新。
 
