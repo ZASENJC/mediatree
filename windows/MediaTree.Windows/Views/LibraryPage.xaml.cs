@@ -346,22 +346,22 @@ public sealed partial class LibraryPage : Page
             toolbar.ColumnDefinitions[0].Width = GridLength.Auto;
             toolbar.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star);
             toolbar.ColumnDefinitions[2].Width = new GridLength(1.25, GridUnitType.Star);
-            toolbar.ColumnDefinitions[3].Width = new GridLength(0.72, GridUnitType.Star);
+            toolbar.ColumnDefinitions[3].Width = new GridLength(1, GridUnitType.Star);
             toolbar.ColumnDefinitions[4].Width = GridLength.Auto;
             toolbar.ColumnDefinitions[5].Width = GridLength.Auto;
-            toolbar.ColumnDefinitions[6].Width = new GridLength(0);
-            ApplyToolbarControlPositions(controls, [0, 1, 2, 3, 4, 5]);
+            toolbar.ColumnDefinitions[6].Width = GridLength.Auto;
+            ApplyToolbarControlPositions(controls, [0, 1, 2, 4, 5, 6]);
         }
         else
         {
             toolbar.ColumnDefinitions[0].Width = new GridLength(1, GridUnitType.Star);
             toolbar.ColumnDefinitions[1].Width = new GridLength(1.25, GridUnitType.Star);
-            toolbar.ColumnDefinitions[2].Width = new GridLength(0.72, GridUnitType.Star);
+            toolbar.ColumnDefinitions[2].Width = new GridLength(1, GridUnitType.Star);
             toolbar.ColumnDefinitions[3].Width = GridLength.Auto;
             toolbar.ColumnDefinitions[4].Width = GridLength.Auto;
-            toolbar.ColumnDefinitions[5].Width = new GridLength(0);
-            toolbar.ColumnDefinitions[6].Width = new GridLength(0);
-            ApplyToolbarControlPositions(controls, [0, 0, 1, 2, 3, 4]);
+            toolbar.ColumnDefinitions[5].Width = GridLength.Auto;
+            toolbar.ColumnDefinitions[6].Width = GridLength.Auto;
+            ApplyToolbarControlPositions(controls, [0, 0, 1, 4, 5, 6]);
         }
 
         controls[0].HorizontalAlignment = HorizontalAlignment.Left;

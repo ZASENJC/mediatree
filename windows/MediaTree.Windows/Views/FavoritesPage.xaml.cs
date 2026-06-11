@@ -74,13 +74,14 @@ public sealed partial class FavoritesPage : Page
         titleStack.Children.Add(subtitleText);
         header.Children.Add(titleStack);
 
-        var controls = new StackPanel
+        var controls = new Grid
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 10,
+            ColumnSpacing = 10,
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Bottom,
         };
+        controls.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        controls.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var libraryBox = FluentTheme.ApplyComboBox(new ComboBox
         {
             Header = "媒体库",
@@ -99,6 +100,7 @@ public sealed partial class FavoritesPage : Page
         BrowsePage.AddSortOptions(sortBox, browseLabels: false);
         sortBox.SelectedIndex = 0;
         sortBox.SelectionChanged += OnSortChanged;
+        Grid.SetColumn(sortBox, 1);
         controls.Children.Add(sortBox);
 
         Grid.SetColumn(controls, 1);
@@ -144,7 +146,7 @@ public sealed partial class FavoritesPage : Page
         double width,
         Grid root,
         Grid header,
-        StackPanel controls,
+        Grid controls,
         ComboBox libraryBox,
         ComboBox sortBox)
     {
@@ -154,10 +156,12 @@ public sealed partial class FavoritesPage : Page
         header.RowDefinitions[1].Height = compact ? GridLength.Auto : new GridLength(0);
         Grid.SetColumn(controls, compact ? 0 : 1);
         Grid.SetRow(controls, compact ? 1 : 0);
-        controls.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
         controls.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
+        Grid.SetColumnSpan(controls, compact ? 2 : 1);
+        controls.ColumnDefinitions[0].Width = compact ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+        controls.ColumnDefinitions[1].Width = compact ? new GridLength(0.72, GridUnitType.Star) : GridLength.Auto;
         libraryBox.MinWidth = compact ? 0 : 220;
-        sortBox.MinWidth = compact ? 0 : 160;
+        sortBox.MinWidth = compact ? 108 : 160;
         libraryBox.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         sortBox.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
     }

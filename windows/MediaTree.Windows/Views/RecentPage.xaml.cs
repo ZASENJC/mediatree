@@ -35,17 +35,19 @@ public sealed partial class RecentPage : Page
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-        var header = new StackPanel
+        var header = new Grid
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 12,
+            ColumnSpacing = 12,
         };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.Children.Add(new TextBlock
         {
             Text = "最近观看",
             FontSize = 30,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = FluentTheme.TextPrimary,
+            TextTrimming = TextTrimming.CharacterEllipsis,
         });
 
         var refreshButton = FluentTheme.ApplyButton(new Button
@@ -54,13 +56,12 @@ public sealed partial class RecentPage : Page
         });
         AutomationProperties.SetAutomationId(refreshButton, "RecentRefreshButton");
         refreshButton.Click += OnRefreshClicked;
+        Grid.SetColumn(refreshButton, 1);
         header.Children.Add(refreshButton);
         root.Children.Add(header);
         root.SizeChanged += (_, args) =>
         {
-            var compact = args.NewSize.Width < FluentTheme.CompactBreakpoint;
             root.Padding = FluentTheme.PagePadding(args.NewSize.Width);
-            header.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
         };
 
         var recentGrid = FluentTheme.ApplyGridView(new GridView

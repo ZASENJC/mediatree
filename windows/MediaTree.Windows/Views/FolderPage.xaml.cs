@@ -75,6 +75,7 @@ public sealed partial class FolderPage : Page
 
         var titleStack = new StackPanel { Spacing = 4 };
         Grid.SetColumn(titleStack, 1);
+        titleStack.HorizontalAlignment = HorizontalAlignment.Stretch;
         titleStack.Children.Add(new TextBlock
         {
             Text = "Folder",
@@ -88,6 +89,7 @@ public sealed partial class FolderPage : Page
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = FluentTheme.TextPrimary,
             TextWrapping = TextWrapping.WrapWholeWords,
+            TextTrimming = TextTrimming.CharacterEllipsis,
         };
         AutomationProperties.SetAutomationId(headerTitleText, "FolderHeaderTitle");
         titleStack.Children.Add(headerTitleText);
@@ -189,21 +191,21 @@ public sealed partial class FolderPage : Page
     {
         var compact = width < FluentTheme.CompactBreakpoint;
         root.Padding = FluentTheme.PagePadding(width);
-        header.ColumnDefinitions[0].Width = compact ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
-        header.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
-        header.ColumnDefinitions[2].Width = compact ? new GridLength(0) : GridLength.Auto;
-        header.RowDefinitions[1].Height = compact ? GridLength.Auto : new GridLength(0);
-        header.RowDefinitions[2].Height = compact ? GridLength.Auto : new GridLength(0);
+        header.ColumnDefinitions[0].Width = GridLength.Auto;
+        header.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star);
+        header.ColumnDefinitions[2].Width = GridLength.Auto;
+        header.RowDefinitions[1].Height = new GridLength(0);
+        header.RowDefinitions[2].Height = new GridLength(0);
 
         Grid.SetColumn(backButton, 0);
         Grid.SetRow(backButton, 0);
-        Grid.SetColumn(titleStack, compact ? 0 : 1);
-        Grid.SetRow(titleStack, compact ? 1 : 0);
-        Grid.SetColumn(sortBox, compact ? 0 : 2);
-        Grid.SetRow(sortBox, compact ? 2 : 0);
-        backButton.HorizontalAlignment = compact ? HorizontalAlignment.Left : HorizontalAlignment.Left;
-        sortBox.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
-        sortBox.MinWidth = compact ? 0 : 160;
+        Grid.SetColumn(titleStack, 1);
+        Grid.SetRow(titleStack, 0);
+        Grid.SetColumn(sortBox, 2);
+        Grid.SetRow(sortBox, 0);
+        backButton.HorizontalAlignment = HorizontalAlignment.Left;
+        sortBox.HorizontalAlignment = HorizontalAlignment.Left;
+        sortBox.MinWidth = compact ? 108 : 160;
     }
 
     protected override async void OnNavigatedTo(NavigationEventArgs args)

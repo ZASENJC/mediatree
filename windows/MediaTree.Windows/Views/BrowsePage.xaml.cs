@@ -17,6 +17,9 @@ namespace MediaTree.Windows.Views;
 
 public sealed partial class BrowsePage : Page
 {
+    private const double FolderTreePreferredWidth = 260;
+    private const double FolderTreeCompactWidth = 220;
+
     private sealed record FolderSelection(string Path, string MediaRoot);
 
     private readonly ComboBox _libraryBox;
@@ -58,11 +61,10 @@ public sealed partial class BrowsePage : Page
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
+        var headerStack = new StackPanel { Spacing = 14 };
         var header = new Grid { ColumnSpacing = 16, RowSpacing = 12 };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        header.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
 
         var titleStack = new StackPanel { Spacing = 4 };
         titleStack.Children.Add(new TextBlock
@@ -90,43 +92,52 @@ public sealed partial class BrowsePage : Page
         AutomationProperties.SetAutomationId(subtitleText, "BrowseHeaderSubtitle");
         titleStack.Children.Add(subtitleText);
         header.Children.Add(titleStack);
+        headerStack.Children.Add(header);
 
-        var controls = new StackPanel
+        var toolbar = new Grid
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 10,
-            HorizontalAlignment = HorizontalAlignment.Right,
+            ColumnSpacing = 12,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Bottom,
         };
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        toolbar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        toolbar.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var libraryBox = FluentTheme.ApplyComboBox(new ComboBox
         {
             Header = "媒体库",
-            MinWidth = 220,
+            Width = LibraryPage.HeaderInputWidth,
+            HorizontalAlignment = HorizontalAlignment.Left,
         });
         AutomationProperties.SetAutomationId(libraryBox, "BrowseLibrarySelector");
         libraryBox.SelectionChanged += OnLibraryChanged;
-        controls.Children.Add(libraryBox);
+        toolbar.Children.Add(libraryBox);
 
         var searchBox = FluentTheme.ApplyTextInput(new TextBox
         {
             Header = "搜索",
             PlaceholderText = "标题或关键字",
-            MinWidth = 240,
+            Width = LibraryPage.HeaderInputWidth,
+            HorizontalAlignment = HorizontalAlignment.Left,
         });
         AutomationProperties.SetAutomationId(searchBox, "BrowseSearchBox");
         searchBox.KeyDown += OnSearchKeyDown;
-        controls.Children.Add(searchBox);
+        Grid.SetColumn(searchBox, 1);
+        toolbar.Children.Add(searchBox);
 
         var sortBox = FluentTheme.ApplyComboBox(new ComboBox
         {
             Header = "排序",
-            MinWidth = 160,
         });
         AutomationProperties.SetAutomationId(sortBox, "BrowseSort");
         AddSortOptions(sortBox, browseLabels: true);
         sortBox.SelectedIndex = 0;
         sortBox.SelectionChanged += OnSortChanged;
-        controls.Children.Add(sortBox);
+        Grid.SetColumn(sortBox, 3);
+        toolbar.Children.Add(sortBox);
 
         var searchButton = FluentTheme.ApplyButton(new Button
         {
@@ -135,11 +146,11 @@ public sealed partial class BrowsePage : Page
         }, FluentButtonStyle.Accent);
         AutomationProperties.SetAutomationId(searchButton, "BrowseSearchButton");
         searchButton.Click += async (_, _) => await LoadMoviesAsync();
-        controls.Children.Add(searchButton);
+        Grid.SetColumn(searchButton, 4);
+        toolbar.Children.Add(searchButton);
 
-        Grid.SetColumn(controls, 1);
-        header.Children.Add(controls);
-        root.Children.Add(FluentTheme.Card(header, new Thickness(16)));
+        headerStack.Children.Add(toolbar);
+        root.Children.Add(FluentTheme.Card(headerStack, new Thickness(16)));
 
         var content = new Grid { ColumnSpacing = 16 };
         content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(260) });
@@ -192,8 +203,7 @@ public sealed partial class BrowsePage : Page
         root.SizeChanged += (_, args) => ApplyBrowseResponsiveLayout(
             args.NewSize.Width,
             root,
-            header,
-            controls,
+            toolbar,
             content,
             folderHost,
             moviesHost,
@@ -210,8 +220,7 @@ public sealed partial class BrowsePage : Page
     private static void ApplyBrowseResponsiveLayout(
         double width,
         Grid root,
-        Grid header,
-        StackPanel controls,
+        Grid toolbar,
         Grid content,
         Border folderHost,
         Grid moviesHost,
@@ -223,30 +232,34 @@ public sealed partial class BrowsePage : Page
         var compact = width < FluentTheme.MediumBreakpoint;
         root.Padding = FluentTheme.PagePadding(width);
 
-        header.ColumnDefinitions[1].Width = compact ? new GridLength(0) : GridLength.Auto;
-        header.RowDefinitions[1].Height = compact ? GridLength.Auto : new GridLength(0);
-        Grid.SetColumn(controls, compact ? 0 : 1);
-        Grid.SetRow(controls, compact ? 1 : 0);
-        controls.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
-        controls.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
+        toolbar.ColumnDefinitions[0].Width = compact ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+        toolbar.ColumnDefinitions[1].Width = compact ? new GridLength(1.25, GridUnitType.Star) : GridLength.Auto;
+        toolbar.ColumnDefinitions[2].Width = new GridLength(1, GridUnitType.Star);
+        toolbar.ColumnDefinitions[3].Width = GridLength.Auto;
+        toolbar.ColumnDefinitions[4].Width = GridLength.Auto;
 
-        libraryBox.MinWidth = compact ? 0 : 220;
-        searchBox.MinWidth = compact ? 0 : 240;
-        sortBox.MinWidth = compact ? 0 : 160;
-        foreach (var control in new FrameworkElement[] { libraryBox, searchBox, sortBox, searchButton })
-        {
-            control.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
-        }
+        libraryBox.Width = compact ? double.NaN : LibraryPage.HeaderInputWidth;
+        searchBox.Width = compact ? double.NaN : LibraryPage.HeaderInputWidth;
+        sortBox.Width = double.NaN;
+        libraryBox.MinWidth = 0;
+        searchBox.MinWidth = 0;
+        sortBox.MinWidth = compact ? 108 : 160;
+        libraryBox.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        searchBox.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        sortBox.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        searchButton.HorizontalAlignment = HorizontalAlignment.Left;
 
-        content.RowSpacing = compact ? 16 : 0;
-        content.ColumnDefinitions[0].Width = compact ? new GridLength(1, GridUnitType.Star) : new GridLength(260);
-        content.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
-        content.RowDefinitions[0].Height = compact ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
-        content.RowDefinitions[1].Height = compact ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        var availableContentWidth = Math.Max(0, width - root.Padding.Left - root.Padding.Right);
+        var folderTreeWidth = availableContentWidth < 840 ? FolderTreeCompactWidth : FolderTreePreferredWidth;
+        content.RowSpacing = 0;
+        content.ColumnDefinitions[0].Width = new GridLength(folderTreeWidth);
+        content.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star);
+        content.RowDefinitions[0].Height = new GridLength(1, GridUnitType.Star);
+        content.RowDefinitions[1].Height = new GridLength(0);
         Grid.SetColumn(folderHost, 0);
         Grid.SetRow(folderHost, 0);
-        Grid.SetColumn(moviesHost, compact ? 0 : 1);
-        Grid.SetRow(moviesHost, compact ? 1 : 0);
+        Grid.SetColumn(moviesHost, 1);
+        Grid.SetRow(moviesHost, 0);
     }
 
     private async Task LoadLibrariesAsync()
