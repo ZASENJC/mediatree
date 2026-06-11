@@ -1,10 +1,13 @@
 using System;
+using MediaTree.Windows.Providers;
 
 namespace MediaTree.Windows.Services;
 
 public static class AppServices
 {
     public static MainWindow? MainWindow { get; set; }
+    public static IMediaProvider ActiveProvider { get; private set; } = null!;
+    public static IMediaTreeProvider ActiveMediaTreeProvider { get; private set; } = null!;
     public static BackendProcessService Backend { get; private set; } = null!;
     public static MediaTreeApiClient Api { get; private set; } = null!;
     public static AuthSessionService Auth { get; private set; } = null!;
@@ -13,24 +16,21 @@ public static class AppServices
     public static UpdateService Updates { get; private set; } = null!;
     public static PlaybackProgressService PlaybackProgress { get; private set; } = null!;
 
-    public static bool IsReady => Api != null;
+    public static bool IsReady => Api != null && ActiveProvider != null;
 
     public static void Initialize(
         BackendProcessService backend,
-        MediaTreeApiClient api,
-        AuthSessionService auth,
-        LibraryService library,
-        MovieService movie,
-        UpdateService updates,
-        PlaybackProgressService playbackProgress)
+        IMediaTreeProvider provider)
     {
-        Backend = backend;
-        Api = api;
-        Auth = auth;
-        Library = library;
-        Movie = movie;
-        Updates = updates;
-        PlaybackProgress = playbackProgress;
+        Backend = backend ?? throw new ArgumentNullException(nameof(backend));
+        ActiveProvider = provider ?? throw new ArgumentNullException(nameof(provider));
+        ActiveMediaTreeProvider = provider;
+        Api = provider.Api;
+        Auth = provider.Auth;
+        Library = provider.Library;
+        Movie = provider.Movie;
+        Updates = provider.Updates;
+        PlaybackProgress = provider.PlaybackProgress;
     }
 
     public static void Dispose()
@@ -53,4 +53,3 @@ public static class AppServices
         }
     }
 }
-

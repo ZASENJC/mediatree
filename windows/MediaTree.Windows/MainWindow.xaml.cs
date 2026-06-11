@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using MediaTree.Windows.Models;
+using MediaTree.Windows.Providers;
 using MediaTree.Windows.Services;
 using MediaTree.Windows.Styles;
 using MediaTree.Windows.Views;
@@ -192,14 +193,16 @@ public sealed partial class MainWindow : Window
 
             _statusText.Text = "正在准备登录状态";
             var api = new MediaTreeApiClient(backendUri);
+            var provider = new LocalMediaTreeProvider(
+                api,
+                new AuthSessionService(api),
+                new LibraryService(api),
+                new MovieService(api),
+                new UpdateService(api),
+                new PlaybackProgressService(api));
             AppServices.Initialize(
                 backend: _backend,
-                api: api,
-                auth: new AuthSessionService(api),
-                library: new LibraryService(api),
-                movie: new MovieService(api),
-                updates: new UpdateService(api),
-                playbackProgress: new PlaybackProgressService(api));
+                provider: provider);
 
             var session = await AppServices.Auth.EnsureLocalSessionAsync();
             ShellLogger.Info($"Native session result: {session.State}.");

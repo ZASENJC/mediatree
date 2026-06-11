@@ -1,4 +1,5 @@
 using MediaTree.Windows.Models;
+using MediaTree.Windows.Providers;
 using MediaTree.Windows.Services;
 using System;
 using System.IO;
@@ -342,6 +343,46 @@ public sealed class ServiceLogicTests
                 File.Delete(path);
             }
         }
+    }
+
+    [Fact]
+    public void LocalMediaTreeProviderDescribesBundledBackendSource()
+    {
+        using var api = new MediaTreeApiClient(new Uri("http://127.0.0.1:27580/"));
+        var provider = new LocalMediaTreeProvider(
+            api,
+            new AuthSessionService(api),
+            new LibraryService(api),
+            new MovieService(api),
+            new UpdateService(api),
+            new PlaybackProgressService(api));
+
+        Assert.Equal(MediaSourceKind.LocalMediaTree, provider.Profile.Kind);
+        Assert.Equal("本机 MediaTree", provider.Profile.DisplayName);
+        Assert.True(provider.Profile.RequiresBundledBackend);
+        Assert.Equal(api.BackendUri, provider.Profile.Endpoint);
+        Assert.IsAssignableFrom<IMediaProvider>(provider);
+        Assert.IsAssignableFrom<IMediaTreeProvider>(provider);
+    }
+
+    [Fact]
+    public void LocalMediaTreeProviderExposesExistingServiceLayer()
+    {
+        using var api = new MediaTreeApiClient(new Uri("http://127.0.0.1:27580/"));
+        var auth = new AuthSessionService(api);
+        var library = new LibraryService(api);
+        var movie = new MovieService(api);
+        var updates = new UpdateService(api);
+        var playbackProgress = new PlaybackProgressService(api);
+
+        var provider = new LocalMediaTreeProvider(api, auth, library, movie, updates, playbackProgress);
+
+        Assert.Same(api, provider.Api);
+        Assert.Same(auth, provider.Auth);
+        Assert.Same(library, provider.Library);
+        Assert.Same(movie, provider.Movie);
+        Assert.Same(updates, provider.Updates);
+        Assert.Same(playbackProgress, provider.PlaybackProgress);
     }
 
     [Fact]

@@ -135,6 +135,8 @@ scripts/push-docker-release.sh
 - Windows 端和 Web 端不复用前端：Web 使用 `frontend/` React，Windows 使用 `windows/MediaTree.Windows/` WinUI 原生前端；只有后端 FastAPI / 数据模型 / 业务逻辑应保持复用或迁移一致。
 - Win 端前端/UI 任务不得新增、删除或修改后端 API 接口；Windows 项目里的后端代码只用于迁移和适配 Web 端既有后端能力。若 WinUI 功能缺少接口，优先用现有 API/配置路径实现，或先向用户确认 Web 端后端是否需要独立演进。
 - 当用户要求“Win 端同步 Web 端更新”时，必须先检查 Web 端新增 UI/交互是否能在 WinUI 原生前端落地：纯 Web UI 改动不会自动进入 Windows；需要用户可见的 Windows 前端特性时，要在 WinUI 中单独适配、构建并验证 portable 包。
+- Windows 架构按三层管理：`windows/MediaTree.Windows/` 是独立 WinUI 前端；`backend/app/` 是 Web/Docker/Windows 共享的 MediaTree 后端逻辑，Windows 只通过 `windows_entry.py`、`windows_runtime.py`、打包脚本和环境变量做平台迁移；远程 MediaTree、Jellyfin、Emby 等外部媒体库连接放在 WinUI 的 Provider/媒体源适配层，不复用 `backend/app/jellyfin_compat.py` 这类“MediaTree 后端对外兼容 Jellyfin/Emby 客户端”的代码路径。
+- Windows 前端重构优先顺序：先拆分 MediaTree API 客户端和 DTO/服务边界，再建立 Provider contracts 与 `LocalMediaTreeProvider`，随后将页面逐步改为依赖 Provider 接口；远程 MediaTree Provider 优先于 Jellyfin/Emby Provider，因为它最接近现有 MediaTree API 语义。
 
 ## Security Without Hooks
 
