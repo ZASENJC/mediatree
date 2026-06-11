@@ -193,13 +193,14 @@ public sealed partial class MainWindow : Window
 
             _statusText.Text = "正在准备登录状态";
             var api = new MediaTreeApiClient(backendUri);
-            var provider = new LocalMediaTreeProvider(
+            var mediaTreeServices = new MediaTreeServices(
                 api,
                 new AuthSessionService(api),
                 new LibraryService(api),
                 new MovieService(api),
                 new UpdateService(api),
                 new PlaybackProgressService(api));
+            var provider = new LocalMediaTreeProvider(mediaTreeServices);
             AppServices.Initialize(
                 backend: _backend,
                 provider: provider);

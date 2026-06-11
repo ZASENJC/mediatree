@@ -9,6 +9,7 @@ public static class AppServices
     public static IMediaProvider ActiveProvider { get; private set; } = null!;
     public static IMediaTreeProvider ActiveMediaTreeProvider { get; private set; } = null!;
     public static BackendProcessService Backend { get; private set; } = null!;
+    public static MediaTreeServices MediaTree { get; private set; } = null!;
     public static MediaTreeApiClient Api { get; private set; } = null!;
     public static AuthSessionService Auth { get; private set; } = null!;
     public static LibraryService Library { get; private set; } = null!;
@@ -25,12 +26,13 @@ public static class AppServices
         Backend = backend ?? throw new ArgumentNullException(nameof(backend));
         ActiveProvider = provider ?? throw new ArgumentNullException(nameof(provider));
         ActiveMediaTreeProvider = provider;
-        Api = provider.Api;
-        Auth = provider.Auth;
-        Library = provider.Library;
-        Movie = provider.Movie;
-        Updates = provider.Updates;
-        PlaybackProgress = provider.PlaybackProgress;
+        MediaTree = provider.Services;
+        Api = MediaTree.Api;
+        Auth = MediaTree.Auth;
+        Library = MediaTree.Library;
+        Movie = MediaTree.Movie;
+        Updates = MediaTree.Updates;
+        PlaybackProgress = MediaTree.PlaybackProgress;
     }
 
     public static void Dispose()

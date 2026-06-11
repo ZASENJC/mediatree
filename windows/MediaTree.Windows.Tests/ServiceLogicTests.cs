@@ -349,13 +349,8 @@ public sealed class ServiceLogicTests
     public void LocalMediaTreeProviderDescribesBundledBackendSource()
     {
         using var api = new MediaTreeApiClient(new Uri("http://127.0.0.1:27580/"));
-        var provider = new LocalMediaTreeProvider(
-            api,
-            new AuthSessionService(api),
-            new LibraryService(api),
-            new MovieService(api),
-            new UpdateService(api),
-            new PlaybackProgressService(api));
+        var services = CreateMediaTreeServices(api);
+        var provider = new LocalMediaTreeProvider(services);
 
         Assert.Equal(MediaSourceKind.LocalMediaTree, provider.Profile.Kind);
         Assert.Equal("本机 MediaTree", provider.Profile.DisplayName);
@@ -369,20 +364,66 @@ public sealed class ServiceLogicTests
     public void LocalMediaTreeProviderExposesExistingServiceLayer()
     {
         using var api = new MediaTreeApiClient(new Uri("http://127.0.0.1:27580/"));
+        var services = CreateMediaTreeServices(api);
+
+        var provider = new LocalMediaTreeProvider(services);
+
+        Assert.Same(services, provider.Services);
+        Assert.Same(services.Api, provider.Api);
+        Assert.Same(services.Auth, provider.Auth);
+        Assert.Same(services.Library, provider.Library);
+        Assert.Same(services.Movie, provider.Movie);
+        Assert.Same(services.Updates, provider.Updates);
+        Assert.Same(services.PlaybackProgress, provider.PlaybackProgress);
+    }
+
+    [Fact]
+    public void AppServicesExposeActiveMediaTreeServices()
+    {
+        using var api = new MediaTreeApiClient(new Uri("http://127.0.0.1:27580/"));
+        var services = CreateMediaTreeServices(api);
+        var provider = new LocalMediaTreeProvider(services);
+
+        AppServices.Initialize(new BackendProcessService(), provider);
+
+        Assert.Same(services, AppServices.MediaTree);
+        Assert.Same(provider, AppServices.ActiveMediaTreeProvider);
+        Assert.Same(provider, AppServices.ActiveProvider);
+        Assert.Same(services.Api, AppServices.Api);
+        Assert.Same(services.Auth, AppServices.Auth);
+        Assert.Same(services.Library, AppServices.Library);
+        Assert.Same(services.Movie, AppServices.Movie);
+        Assert.Same(services.Updates, AppServices.Updates);
+        Assert.Same(services.PlaybackProgress, AppServices.PlaybackProgress);
+    }
+
+    [Fact]
+    public void MediaTreeServicesRequireAllServiceDependencies()
+    {
+        using var api = new MediaTreeApiClient(new Uri("http://127.0.0.1:27580/"));
         var auth = new AuthSessionService(api);
         var library = new LibraryService(api);
         var movie = new MovieService(api);
         var updates = new UpdateService(api);
         var playbackProgress = new PlaybackProgressService(api);
 
-        var provider = new LocalMediaTreeProvider(api, auth, library, movie, updates, playbackProgress);
+        Assert.Throws<ArgumentNullException>("api", () => new MediaTreeServices(null!, auth, library, movie, updates, playbackProgress));
+        Assert.Throws<ArgumentNullException>("auth", () => new MediaTreeServices(api, null!, library, movie, updates, playbackProgress));
+        Assert.Throws<ArgumentNullException>("library", () => new MediaTreeServices(api, auth, null!, movie, updates, playbackProgress));
+        Assert.Throws<ArgumentNullException>("movie", () => new MediaTreeServices(api, auth, library, null!, updates, playbackProgress));
+        Assert.Throws<ArgumentNullException>("updates", () => new MediaTreeServices(api, auth, library, movie, null!, playbackProgress));
+        Assert.Throws<ArgumentNullException>("playbackProgress", () => new MediaTreeServices(api, auth, library, movie, updates, null!));
+    }
 
-        Assert.Same(api, provider.Api);
-        Assert.Same(auth, provider.Auth);
-        Assert.Same(library, provider.Library);
-        Assert.Same(movie, provider.Movie);
-        Assert.Same(updates, provider.Updates);
-        Assert.Same(playbackProgress, provider.PlaybackProgress);
+    private static MediaTreeServices CreateMediaTreeServices(MediaTreeApiClient api)
+    {
+        return new MediaTreeServices(
+            api,
+            new AuthSessionService(api),
+            new LibraryService(api),
+            new MovieService(api),
+            new UpdateService(api),
+            new PlaybackProgressService(api));
     }
 
     [Fact]

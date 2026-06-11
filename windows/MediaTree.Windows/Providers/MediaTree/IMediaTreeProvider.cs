@@ -4,10 +4,11 @@ namespace MediaTree.Windows.Providers;
 
 public interface IMediaTreeProvider : IMediaProvider
 {
-    MediaTreeApiClient Api { get; }
-    AuthSessionService Auth { get; }
-    LibraryService Library { get; }
-    MovieService Movie { get; }
-    UpdateService Updates { get; }
-    PlaybackProgressService PlaybackProgress { get; }
+    MediaTreeServices Services { get; }
+    MediaTreeApiClient Api => Services.Api;
+    AuthSessionService Auth => Services.Auth;
+    LibraryService Library => Services.Library;
+    MovieService Movie => Services.Movie;
+    UpdateService Updates => Services.Updates;
+    PlaybackProgressService PlaybackProgress => Services.PlaybackProgress;
 }

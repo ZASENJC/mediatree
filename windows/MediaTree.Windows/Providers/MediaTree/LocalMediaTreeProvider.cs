@@ -5,27 +5,17 @@ namespace MediaTree.Windows.Providers;
 
 public sealed class LocalMediaTreeProvider : IMediaTreeProvider
 {
-    public LocalMediaTreeProvider(
-        MediaTreeApiClient api,
-        AuthSessionService auth,
-        LibraryService library,
-        MovieService movie,
-        UpdateService updates,
-        PlaybackProgressService playbackProgress)
+    public LocalMediaTreeProvider(MediaTreeServices services)
     {
-        Api = api ?? throw new ArgumentNullException(nameof(api));
-        Auth = auth ?? throw new ArgumentNullException(nameof(auth));
-        Library = library ?? throw new ArgumentNullException(nameof(library));
-        Movie = movie ?? throw new ArgumentNullException(nameof(movie));
-        Updates = updates ?? throw new ArgumentNullException(nameof(updates));
-        PlaybackProgress = playbackProgress ?? throw new ArgumentNullException(nameof(playbackProgress));
+        Services = services ?? throw new ArgumentNullException(nameof(services));
     }
 
-    public MediaSourceProfile Profile => MediaSourceProfile.LocalMediaTree(Api.BackendUri);
-    public MediaTreeApiClient Api { get; }
-    public AuthSessionService Auth { get; }
-    public LibraryService Library { get; }
-    public MovieService Movie { get; }
-    public UpdateService Updates { get; }
-    public PlaybackProgressService PlaybackProgress { get; }
+    public MediaSourceProfile Profile => MediaSourceProfile.LocalMediaTree(Services.Api.BackendUri);
+    public MediaTreeServices Services { get; }
+    public MediaTreeApiClient Api => Services.Api;
+    public AuthSessionService Auth => Services.Auth;
+    public LibraryService Library => Services.Library;
+    public MovieService Movie => Services.Movie;
+    public UpdateService Updates => Services.Updates;
+    public PlaybackProgressService PlaybackProgress => Services.PlaybackProgress;
 }
