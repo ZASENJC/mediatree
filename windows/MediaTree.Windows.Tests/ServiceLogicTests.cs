@@ -361,6 +361,76 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void MediaSourceProfilesDescribeEachPlannedSourceBoundary()
+    {
+        var localEndpoint = new Uri("http://127.0.0.1:27580/");
+        var remoteEndpoint = new Uri("https://media.example.invalid/");
+        var jellyfinEndpoint = new Uri("https://jellyfin.example.invalid/");
+        var embyEndpoint = new Uri("https://emby.example.invalid/");
+
+        var local = MediaSourceProfile.LocalMediaTree(localEndpoint);
+        var remote = MediaSourceProfile.RemoteMediaTree("NAS MediaTree", remoteEndpoint);
+        var jellyfin = MediaSourceProfile.Jellyfin("Living Room Jellyfin", jellyfinEndpoint);
+        var emby = MediaSourceProfile.Emby("Home Emby", embyEndpoint);
+
+        Assert.Equal(MediaSourceKind.LocalMediaTree, local.Kind);
+        Assert.Equal("本机 MediaTree", local.DisplayName);
+        Assert.True(local.RequiresBundledBackend);
+        Assert.Equal(localEndpoint, local.Endpoint);
+
+        Assert.Equal(MediaSourceKind.RemoteMediaTree, remote.Kind);
+        Assert.Equal("NAS MediaTree", remote.DisplayName);
+        Assert.False(remote.RequiresBundledBackend);
+        Assert.Equal(remoteEndpoint, remote.Endpoint);
+
+        Assert.Equal(MediaSourceKind.Jellyfin, jellyfin.Kind);
+        Assert.Equal("Living Room Jellyfin", jellyfin.DisplayName);
+        Assert.False(jellyfin.RequiresBundledBackend);
+        Assert.Equal(jellyfinEndpoint, jellyfin.Endpoint);
+
+        Assert.Equal(MediaSourceKind.Emby, emby.Kind);
+        Assert.Equal("Home Emby", emby.DisplayName);
+        Assert.False(emby.RequiresBundledBackend);
+        Assert.Equal(embyEndpoint, emby.Endpoint);
+    }
+
+    [Fact]
+    public void MediaSourceProfilesRejectInvalidRemoteInputs()
+    {
+        var endpoint = new Uri("https://media.example.invalid/");
+
+        Assert.Throws<ArgumentException>("displayName", () => MediaSourceProfile.RemoteMediaTree("", endpoint));
+        Assert.Throws<ArgumentNullException>("endpoint", () => MediaSourceProfile.Jellyfin("Jellyfin", null!));
+    }
+
+    [Fact]
+    public void MediaProviderFactoryCreatesLocalMediaTreeProvider()
+    {
+        using var api = new MediaTreeApiClient(new Uri("http://127.0.0.1:27580/"));
+        var services = CreateMediaTreeServices(api);
+
+        var provider = MediaProviderFactory.CreateLocalMediaTree(services);
+
+        var mediaTreeProvider = Assert.IsType<LocalMediaTreeProvider>(provider);
+        Assert.Same(services, mediaTreeProvider.Services);
+        Assert.Equal(MediaSourceKind.LocalMediaTree, mediaTreeProvider.Profile.Kind);
+    }
+
+    [Theory]
+    [InlineData(MediaSourceKind.RemoteMediaTree)]
+    [InlineData(MediaSourceKind.Jellyfin)]
+    [InlineData(MediaSourceKind.Emby)]
+    public void MediaProviderFactoryRejectsRemoteSourcesUntilImplemented(MediaSourceKind kind)
+    {
+        var profile = new MediaSourceProfile(kind, "Remote source", new Uri("https://media.example.invalid/"), RequiresBundledBackend: false);
+
+        var exception = Assert.Throws<NotSupportedException>(() => MediaProviderFactory.Create(profile));
+
+        Assert.Contains(kind.ToString(), exception.Message);
+        Assert.Contains("not implemented", exception.Message);
+    }
+
+    [Fact]
     public void LocalMediaTreeProviderExposesExistingServiceLayer()
     {
         using var api = new MediaTreeApiClient(new Uri("http://127.0.0.1:27580/"));

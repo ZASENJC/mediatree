@@ -200,7 +200,7 @@ public sealed partial class MainWindow : Window
                 new MovieService(api),
                 new UpdateService(api),
                 new PlaybackProgressService(api));
-            var provider = new LocalMediaTreeProvider(mediaTreeServices);
+            var provider = MediaProviderFactory.CreateLocalMediaTree(mediaTreeServices);
             AppServices.Initialize(
                 backend: _backend,
                 provider: provider);
