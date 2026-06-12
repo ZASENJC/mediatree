@@ -42,6 +42,13 @@ public sealed partial class ShellPage : Page
         _ = NavigateToHomeAsync();
     }
 
+    public void ReloadActiveMediaSource()
+    {
+        _contentFrame.BackStack.Clear();
+        NavigateToPage(typeof(LibraryPage), _homeButton, forceReload: true);
+        _ = RefreshUpdateIndicatorAsync();
+    }
+
     public void NavigateToMovie(int movieId)
     {
         _contentFrame.Navigate(typeof(MovieDetailPage), new MovieNavigationParameter(movieId));
@@ -307,10 +314,10 @@ public sealed partial class ShellPage : Page
         }
     }
 
-    private void NavigateToPage(Type page, Button selectedButton)
+    private void NavigateToPage(Type page, Button selectedButton, bool forceReload = false)
     {
         SelectButton(selectedButton);
-        if (_contentFrame.CurrentSourcePageType != page)
+        if (forceReload || _contentFrame.CurrentSourcePageType != page)
         {
             _contentFrame.Navigate(page);
         }

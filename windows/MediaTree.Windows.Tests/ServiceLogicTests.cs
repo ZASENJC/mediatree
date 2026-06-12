@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Text.Json;
@@ -707,6 +708,30 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public async Task JellyfinCompatibleClientCachesMediaRootsForStartupReuse()
+    {
+        using var server = new OneShotJsonServer(new OneShotJsonResponse(200, """
+            {
+              "Items": [
+                { "Id": "lib-1", "Name": "Movies", "CollectionType": "movies" }
+              ]
+            }
+            """));
+        using var api = new JellyfinCompatibleApiClient(server.BaseUri, MediaSourceKind.Jellyfin);
+        api.SetBearerToken("media-token");
+        api.SetUserId("user-id");
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        var setup = await api.GetSetupStatusAsync(cancellation.Token);
+        var roots = await api.GetMediaRootsAsync(cancellation.Token);
+
+        Assert.False(setup.NeedsSetup);
+        Assert.Equal(["lib-1"], setup.Roots);
+        Assert.Equal("Movies", Assert.Single(roots.Items).Label);
+        Assert.Equal(["/Users/user-id/Views"], server.RequestPaths);
+    }
+
+    [Fact]
     public async Task JellyfinCompatibleClientRejectsMediaTreeLibraryManagementWrites()
     {
         using var api = new JellyfinCompatibleApiClient(new Uri("https://jellyfin.example.invalid/"), MediaSourceKind.Jellyfin);
@@ -868,7 +893,7 @@ public sealed class ServiceLogicTests
     [InlineData(MediaSourceKind.Emby)]
     public async Task MediaSourceConnectionTesterChecksJellyfinCompatibleLogin(MediaSourceKind kind)
     {
-        using var server = new OneShotJsonServer(new OneShotJsonResponse(200, """{"AccessToken":"media-token"}"""));
+        using var server = new OneShotJsonServer(new OneShotJsonResponse(200, """{"AccessToken":"media-token","User":{"Id":"user-id"}}"""));
         using var tester = new MediaSourceConnectionTester();
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
@@ -882,6 +907,32 @@ public sealed class ServiceLogicTests
         Assert.Equal("/Users/AuthenticateByName", server.RequestPath);
         Assert.Contains("\"Username\":\"media-user\"", server.RequestBodies[0]);
         Assert.Contains("\"Pw\":\"media-password\"", server.RequestBodies[0]);
+    }
+
+    [Theory]
+    [InlineData(MediaSourceKind.Jellyfin, "X-Emby-Authorization", "MediaBrowser ")]
+    [InlineData(MediaSourceKind.Emby, "Authorization", "Emby ")]
+    public async Task MediaSourceConnectionTesterUsesJellyfinCompatibleClientAuthHeader(
+        MediaSourceKind kind,
+        string headerName,
+        string expectedPrefix)
+    {
+        using var server = new OneShotJsonServer(new OneShotJsonResponse(200, """{"AccessToken":"media-token","User":{"Id":"user-id"}}"""));
+        using var tester = new MediaSourceConnectionTester();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        var result = await tester.TestAsync(
+            kind,
+            server.BaseUri,
+            new MediaSourceCredentials("media-user", "media-password"),
+            cancellation.Token);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.True(server.RequestHeaders[0].TryGetValue(headerName, out var authorization));
+        Assert.StartsWith(expectedPrefix, authorization);
+        Assert.Contains("Client=\"MediaTree Windows\"", authorization);
+        Assert.Contains("Device=\"Windows\"", authorization);
+        Assert.DoesNotContain("media-password", authorization);
     }
 
     [Fact]
@@ -939,6 +990,82 @@ public sealed class ServiceLogicTests
         Assert.Same(services.Library, AppServices.Media.Library);
         Assert.Same(services.Movie, AppServices.Media.Movie);
         Assert.Same(services.PlaybackProgress, AppServices.Media.PlaybackProgress);
+    }
+
+    [Fact]
+    public void AppServicesCanSwitchActiveProviderWithoutRestart()
+    {
+        var localDisposed = false;
+        using var firstApi = new TrackingMediaApiClient(new Uri("http://127.0.0.1:27580/"), () => localDisposed = true);
+        using var secondApi = new TrackingMediaApiClient(new Uri("https://jellyfin.example.invalid/"), () => { });
+        var firstServices = CreateMediaTreeServices(firstApi);
+        var secondServices = CreateMediaTreeServices(secondApi);
+        var firstProvider = new LocalMediaTreeProvider(firstServices);
+        var secondProvider = new JellyfinCompatibleProvider(
+            MediaSourceProfile.Jellyfin("Jellyfin", secondApi.BackendUri),
+            secondServices,
+            new MediaSourceCredentials("user", "secret"));
+
+        AppServices.Initialize(new BackendProcessService(), firstProvider);
+
+        AppServices.SwitchProvider(secondProvider);
+
+        Assert.False(localDisposed);
+        Assert.Same(secondProvider, AppServices.ActiveProvider);
+        Assert.Null(AppServices.ActiveMediaTreeProvider);
+        Assert.Same(secondServices, AppServices.Media);
+    }
+
+    [Fact]
+    public void AppServicesCanSwitchBackToLocalMediaTreeWithoutRestart()
+    {
+        var remoteDisposed = false;
+        using var localApi = new TrackingMediaApiClient(new Uri("http://127.0.0.1:27580/"), () => { });
+        using var remoteApi = new TrackingMediaApiClient(new Uri("https://jellyfin.example.invalid/"), () => remoteDisposed = true);
+        var localServices = CreateMediaTreeServices(localApi);
+        var remoteServices = CreateMediaTreeServices(remoteApi);
+        var localProvider = new LocalMediaTreeProvider(localServices);
+        var remoteProvider = new JellyfinCompatibleProvider(
+            MediaSourceProfile.Jellyfin("Jellyfin", remoteApi.BackendUri),
+            remoteServices,
+            new MediaSourceCredentials("user", "secret"));
+
+        AppServices.Initialize(new BackendProcessService(), localProvider);
+        AppServices.SwitchProvider(remoteProvider);
+
+        AppServices.SwitchToLocalMediaTree();
+
+        Assert.True(remoteDisposed);
+        Assert.Same(localProvider, AppServices.ActiveProvider);
+        Assert.Same(localProvider, AppServices.ActiveMediaTreeProvider);
+        Assert.Same(localServices, AppServices.Media);
+    }
+
+    [Fact]
+    public async Task ConcurrentMediaItemLoaderPreservesOrderWhileLimitingConcurrency()
+    {
+        var inFlight = 0;
+        var maxInFlight = 0;
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        var stopwatch = Stopwatch.StartNew();
+        var results = await ConcurrentMediaItemLoader.MapAsync(
+            Enumerable.Range(1, 6).ToList(),
+            maxConcurrency: 3,
+            async (value, token) =>
+            {
+                var current = Interlocked.Increment(ref inFlight);
+                maxInFlight = Math.Max(maxInFlight, current);
+                await Task.Delay(120, token);
+                Interlocked.Decrement(ref inFlight);
+                return value * 10;
+            },
+            cancellation.Token);
+        stopwatch.Stop();
+
+        Assert.Equal([10, 20, 30, 40, 50, 60], results);
+        Assert.InRange(maxInFlight, 2, 3);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromMilliseconds(500), $"Expected concurrent loading, took {stopwatch.Elapsed}.");
     }
 
     [Fact]
@@ -1491,3 +1618,190 @@ file sealed class OneShotJsonServer : IDisposable
 }
 
 file sealed record OneShotJsonResponse(int StatusCode, string Json);
+
+file sealed class TrackingMediaApiClient(Uri backendUri, Action onDispose) : IMediaApiClient
+{
+    public Uri BackendUri { get; private set; } = backendUri;
+
+    public void SetBackendUri(Uri backendUri)
+    {
+        BackendUri = backendUri;
+    }
+
+    public void SetBearerToken(string token)
+    {
+    }
+
+    public Task<AuthStatusDto> GetAuthStatusAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new AuthStatusDto());
+
+    public Task<AuthResponseDto> LoginAsync(string username, string password, CancellationToken cancellationToken = default)
+        => Task.FromResult(new AuthResponseDto { Ok = true, Token = "token" });
+
+    public Task<AuthResponseDto> SetupAuthAsync(string username, string password, CancellationToken cancellationToken = default)
+        => LoginAsync(username, password, cancellationToken);
+
+    public Task ChangePasswordAsync(string oldUsername, string oldPassword, string newUsername, string newPassword, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task<SetupStatusDto> GetSetupStatusAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new SetupStatusDto());
+
+    public Task<MediaRootsResponseDto> GetMediaRootsAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new MediaRootsResponseDto());
+
+    public Task<List<LibrarySettingDto>> GetLibrarySettingsAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new List<LibrarySettingDto>());
+
+    public Task<FoldersResponseDto> GetFoldersAsync(string mediaRoot = "", CancellationToken cancellationToken = default)
+        => Task.FromResult(new FoldersResponseDto());
+
+    public Task SaveLibrarySettingAsync(LibrarySettingDto setting, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task SetLibraryPasswordAsync(string mediaRoot, string password, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task ScanAsync(string mediaRoot, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task ClearLibraryAsync(string mediaRoot, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task<ScanStatusDto> GetScanStatusAsync(string mediaRoot, CancellationToken cancellationToken = default)
+        => Task.FromResult(new ScanStatusDto());
+
+    public Task<ScanLogDto> GetScanLogAsync(string mediaRoot, int lines = 80, CancellationToken cancellationToken = default)
+        => Task.FromResult(new ScanLogDto());
+
+    public Task<ConfigDto> GetConfigAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new ConfigDto());
+
+    public Task SaveConfigAsync(IEnumerable<string> extraMediaRoots, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task SaveTmdbConfigAsync(string accessToken, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task SaveGlobalConfigAsync(ConfigDto config, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Uri BuildBackupUri(string backupType)
+        => BackendUri;
+
+    public Task<byte[]> DownloadBackupAsync(string backupType, CancellationToken cancellationToken = default)
+        => Task.FromResult(Array.Empty<byte>());
+
+    public Task RestoreBackupAsync(string filePath, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task<MoviesResponseDto> GetMoviesAsync(string mediaRoot, string folder, string search, string sort, int limit, int offset, CancellationToken cancellationToken = default)
+        => Task.FromResult(new MoviesResponseDto());
+
+    public Task<MoviesResponseDto> GetRecentWatchedAsync(string mediaRoot, int limit, int offset, CancellationToken cancellationToken = default)
+        => Task.FromResult(new MoviesResponseDto());
+
+    public Task<MoviesResponseDto> GetFavoritesAsync(string mediaRoot, string sort, int limit, int offset, CancellationToken cancellationToken = default)
+        => Task.FromResult(new MoviesResponseDto());
+
+    public Task<FolderSpecialsResponseDto> GetFolderSpecialsAsync(string folder, string mediaRoot, bool includeMovies = false, CancellationToken cancellationToken = default)
+        => Task.FromResult(new FolderSpecialsResponseDto());
+
+    public Task<FolderSpecialsResponseDto> SetFolderSpecialsAsync(string folder, string mediaRoot, bool showSpecials, CancellationToken cancellationToken = default)
+        => Task.FromResult(new FolderSpecialsResponseDto());
+
+    public Task<SearchScrapeResponseDto> SearchScrapeAsync(string query, string scraper, string mediaRoot, CancellationToken cancellationToken = default)
+        => Task.FromResult(new SearchScrapeResponseDto());
+
+    public Task<ManualScrapeResultDto> ManualScrapeMovieAsync(int movieId, string query, string sourceId, string mediaType, string scraper, CancellationToken cancellationToken = default)
+        => Task.FromResult(new ManualScrapeResultDto());
+
+    public Task<BasicActionResultDto> RescrapeMovieAsync(int movieId, CancellationToken cancellationToken = default)
+        => Task.FromResult(new BasicActionResultDto());
+
+    public Task<BasicActionResultDto> RescrapeFolderAsync(string folder, string mediaRoot, CancellationToken cancellationToken = default)
+        => Task.FromResult(new BasicActionResultDto());
+
+    public Task<BasicActionResultDto> ApplyFolderScrapeAsync(string folder, string mediaRoot, string sourceId, string source, string mediaType, CancellationToken cancellationToken = default)
+        => Task.FromResult(new BasicActionResultDto());
+
+    public Task<AlternativeCoversResponseDto> GetAlternativeCoversAsync(int movieId, CancellationToken cancellationToken = default)
+        => Task.FromResult(new AlternativeCoversResponseDto());
+
+    public Task<BasicActionResultDto> ChangeMovieCoverAsync(int movieId, string url, CancellationToken cancellationToken = default)
+        => Task.FromResult(new BasicActionResultDto());
+
+    public Task<BasicActionResultDto> UploadMovieCoverAsync(int movieId, string filePath, CancellationToken cancellationToken = default)
+        => Task.FromResult(new BasicActionResultDto());
+
+    public Task<BasicActionResultDto> ChangeFolderCoverAsync(string folder, string mediaRoot, string url, CancellationToken cancellationToken = default)
+        => Task.FromResult(new BasicActionResultDto());
+
+    public Task<BasicActionResultDto> EditMovieAsync(int movieId, string title, string code, string actress, string releaseDate, int? duration, CancellationToken cancellationToken = default)
+        => Task.FromResult(new BasicActionResultDto());
+
+    public Task<BasicActionResultDto> EditFolderAsync(string folder, string mediaRoot, string title, string code, string actress, string releaseDate, int? duration, CancellationToken cancellationToken = default)
+        => Task.FromResult(new BasicActionResultDto());
+
+    public Task<BasicActionResultDto> DeleteMovieAsync(int movieId, CancellationToken cancellationToken = default)
+        => Task.FromResult(new BasicActionResultDto());
+
+    public Task<BasicActionResultDto> DeleteFolderAsync(string folder, string mediaRoot, CancellationToken cancellationToken = default)
+        => Task.FromResult(new BasicActionResultDto());
+
+    public Task AddTagAsync(int movieId, string tag, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task RemoveTagAsync(int movieId, string tag, CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task<MovieDto> GetMovieDetailAsync(int movieId, CancellationToken cancellationToken = default)
+        => Task.FromResult(new MovieDto { Id = movieId });
+
+    public Task<ProgressDto> GetProgressAsync(int movieId, CancellationToken cancellationToken = default)
+        => Task.FromResult(new ProgressDto());
+
+    public Task<ProgressDto> SaveProgressAsync(int movieId, double position, double? duration, bool stopped, CancellationToken cancellationToken = default)
+        => Task.FromResult(new ProgressDto());
+
+    public Task<string> EnsureMediaTokenAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult("token");
+
+    public Task<string> BuildCoverUrlAsync(int movieId, CancellationToken cancellationToken = default)
+        => Task.FromResult("");
+
+    public Task<string> BuildEpisodeStillUrlAsync(int movieId, CancellationToken cancellationToken = default)
+        => Task.FromResult("");
+
+    public Task<string> BuildMediaAssetUrlAsync(string source, CancellationToken cancellationToken = default)
+        => Task.FromResult(source);
+
+    public Task<string> BuildStreamUrlAsync(int movieId, CancellationToken cancellationToken = default)
+        => Task.FromResult(new Uri(BackendUri, $"stream/{movieId}").ToString());
+
+    public Task<MediaPlaybackSource> BuildPlaybackSourceAsync(int movieId, CancellationToken cancellationToken = default)
+        => Task.FromResult(new MediaPlaybackSource(new Uri(BackendUri, $"stream/{movieId}").ToString()));
+
+    public Task<VersionInfoDto> GetVersionAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new VersionInfoDto());
+
+    public Task<UpdateCheckResultDto> CheckForUpdatesAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new UpdateCheckResultDto());
+
+    public Task<UpdateStatusDto> GetUpdateStatusAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new UpdateStatusDto());
+
+    public Task<UpdateActionResultDto> PerformUpdateAsync(string version, string mode = "app-package", CancellationToken cancellationToken = default)
+        => Task.FromResult(new UpdateActionResultDto());
+
+    public Task<UpdateActionResultDto> RollbackUpdateAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(new UpdateActionResultDto());
+
+    public Task<ChangelogDto> GetChangelogAsync(string version, CancellationToken cancellationToken = default)
+        => Task.FromResult(new ChangelogDto());
+
+    public void Dispose()
+    {
+        onDispose();
+    }
+}

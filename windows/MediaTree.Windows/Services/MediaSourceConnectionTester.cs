@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaTree.Windows.Providers;
+using MediaTree.Windows.Providers.Jellyfin;
 
 namespace MediaTree.Windows.Services;
 
@@ -47,7 +48,7 @@ public sealed class MediaSourceConnectionTester : IDisposable
             return kind switch
             {
                 MediaSourceKind.RemoteMediaTree => await TestRemoteMediaTreeAsync(endpoint, credentials, cancellationToken),
-                MediaSourceKind.Jellyfin or MediaSourceKind.Emby => await TestJellyfinCompatibleAsync(endpoint, credentials, cancellationToken),
+                MediaSourceKind.Jellyfin or MediaSourceKind.Emby => await TestJellyfinCompatibleAsync(kind, endpoint, credentials, cancellationToken),
                 _ => new MediaSourceConnectionTestResult(false, "本机目录不需要远程连接测试。"),
             };
         }
@@ -104,18 +105,12 @@ public sealed class MediaSourceConnectionTester : IDisposable
     }
 
     public async Task<MediaSourceConnectionTestResult> TestJellyfinCompatibleAsync(
+        MediaSourceKind kind,
         Uri endpoint,
         MediaSourceCredentials credentials,
         CancellationToken cancellationToken = default)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, Resolve(endpoint, "/Users/AuthenticateByName"))
-        {
-            Content = JsonBody(new
-            {
-                Username = credentials.Username,
-                Pw = credentials.Secret,
-            }),
-        };
+        using var request = JellyfinCompatibleApiClient.CreateAuthenticationRequest(endpoint, kind, credentials.Username, credentials.Secret);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
@@ -130,6 +125,8 @@ public sealed class MediaSourceConnectionTester : IDisposable
         var auth = await ReadJsonAsync<JellyfinCompatibleLoginResponse>(response, cancellationToken);
         return string.IsNullOrWhiteSpace(auth.AccessToken)
             ? new MediaSourceConnectionTestResult(false, "媒体库登录响应缺少 AccessToken。")
+            : string.IsNullOrWhiteSpace(auth.User?.Id)
+            ? new MediaSourceConnectionTestResult(false, "媒体库登录响应缺少 User.Id。")
             : new MediaSourceConnectionTestResult(true, "媒体库连接测试通过。");
     }
 
@@ -166,5 +163,12 @@ public sealed class MediaSourceConnectionTester : IDisposable
     private sealed class JellyfinCompatibleLoginResponse
     {
         public string AccessToken { get; set; } = "";
+
+        public JellyfinCompatibleLoginUserResponse? User { get; set; }
+    }
+
+    private sealed class JellyfinCompatibleLoginUserResponse
+    {
+        public string Id { get; set; } = "";
     }
 }

@@ -20,6 +20,7 @@ namespace MediaTree.Windows.Views;
 public sealed partial class SettingsPage : Page
 {
     public const string AddLibraryButtonText = "添加";
+    public const string SwitchToLocalMediaTreeButtonText = "切回本机";
     public const string DeleteLibraryButtonText = "删除";
     public const string LibraryScraperHeader = "刮削器";
     public const string RemoteAccessTitle = "移动端访问";
@@ -86,6 +87,7 @@ public sealed partial class SettingsPage : Page
     private ConfigDto _loadedConfig = new();
     private UpdateCheckResultDto? _lastUpdateResult;
     private UpdateStatusDto? _lastUpdateStatus;
+    private bool _isSwitchingMediaSource;
     private bool _suppressUiPreferenceSave;
 
     private static MediaSourceKind ActiveSourceKind => AppServices.ActiveProvider?.Profile.Kind ?? MediaSourceKind.LocalMediaTree;
@@ -277,6 +279,29 @@ public sealed partial class SettingsPage : Page
         Grid.SetColumn(addLibraryButton, 1);
         libraryHeader.Children.Add(addLibraryButton);
         libraryStack.Children.Add(libraryHeader);
+        var sourceActions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+        };
+        if (!isLocalMediaTreeActive)
+        {
+            var switchToLocalButton = FluentTheme.ApplyButton(new Button
+            {
+                Content = SwitchToLocalMediaTreeButtonText,
+                HorizontalAlignment = HorizontalAlignment.Left,
+            });
+            AutomationProperties.SetAutomationId(switchToLocalButton, "SettingsSwitchToLocalMediaTree");
+            switchToLocalButton.Click += OnSwitchToLocalMediaTreeClicked;
+            sourceActions.Children.Add(switchToLocalButton);
+        }
+
+        if (sourceActions.Children.Count > 0)
+        {
+            sourceActions.SizeChanged += (_, args) => ApplyActionStackLayout(args.NewSize.Width, sourceActions);
+            libraryStack.Children.Add(sourceActions);
+        }
+
         libraryStack.Children.Add(FluentTheme.Body(
             supportsMediaTreeLibraryManagement
                 ? "可添加本机目录，也可以先保存远程 MediaTree、Jellyfin 或 Emby 的连接配置。"
@@ -428,13 +453,36 @@ public sealed partial class SettingsPage : Page
         LoadUiPreferences();
         LoadBackendAccessSettings();
         await LoadVersionAsync();
+        if (_isSwitchingMediaSource)
+        {
+            return;
+        }
+
         await LoadTmdbConfigAsync();
+        if (_isSwitchingMediaSource)
+        {
+            return;
+        }
+
         await LoadLibrarySettingsAsync();
+        if (_isSwitchingMediaSource)
+        {
+            return;
+        }
+
         await LoadUpdateStatusAsync();
+        if (_isSwitchingMediaSource)
+        {
+            return;
+        }
+
         await CheckUpdatesOnLoadAsync();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs args)
+        => StopBackgroundTimers();
+
+    private void StopBackgroundTimers()
     {
         _scanStatusTimer.Stop();
         _updateStatusTimer.Stop();
@@ -1732,6 +1780,45 @@ public sealed partial class SettingsPage : Page
         }
     }
 
+    private async void OnSwitchToLocalMediaTreeClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button button)
+        {
+            return;
+        }
+
+        try
+        {
+            button.IsEnabled = false;
+            _libraryStatusText.Foreground = FluentTheme.TextSecondary;
+            _libraryStatusText.Text = "正在切换到本机 MediaTree...";
+            AppServices.SwitchToLocalMediaTree();
+            MediaSourceProfileStore.SetActiveSource(MediaSourceProfileStore.LocalSourceId);
+            var session = await AppServices.Media.Auth.EnsureLocalSessionAsync();
+            if (session.State == AuthSessionState.NeedsUserLogin)
+            {
+                AppServices.MainWindow?.NavigateToLogin();
+                return;
+            }
+
+            _isSwitchingMediaSource = true;
+            StopBackgroundTimers();
+            _libraryStatusText.Foreground = FluentTheme.Accent;
+            _libraryStatusText.Text = "已切换到本机 MediaTree。";
+            ShellPage.Current?.ReloadActiveMediaSource();
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to switch back to local MediaTree from settings.");
+            _libraryStatusText.Foreground = FluentTheme.Error;
+            _libraryStatusText.Text = $"切换本机 MediaTree 失败：{ex.Message}";
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
+    }
+
     private async System.Threading.Tasks.Task ShowExternalMediaSourceDialogAsync(MediaSourceKind kind)
     {
         var sourceName = DisplaySourceKind(kind);
@@ -1744,7 +1831,7 @@ public sealed partial class SettingsPage : Page
         var secretBox = PasswordInput("密码 / token", $"SettingsSourceSecret_{kind}");
         secretBox.PlaceholderText = "保存在当前 Windows 用户凭据中";
         var statusText = StatusText($"SettingsSourceStatus_{kind}", visible: true);
-        statusText.Text = "凭据会使用 Windows DPAPI 保存。设为当前后，重启应用即可切换到该媒体源。";
+        statusText.Text = "凭据会使用 Windows DPAPI 保存。设为当前后会立即切换到该媒体源。";
 
         var testButton = FluentTheme.ApplyButton(new Button
         {
@@ -1782,15 +1869,20 @@ public sealed partial class SettingsPage : Page
             HorizontalAlignment = HorizontalAlignment.Left,
         });
         AutomationProperties.SetAutomationId(activateButton, $"SettingsActivateMediaSource_{kind}");
-        activateButton.Click += (_, _) =>
+        activateButton.Click += async (_, _) =>
         {
             try
             {
                 activateButton.IsEnabled = false;
-                var saved = SaveExternalMediaSource(kind, nameBox, endpointBox, usernameBox, secretBox, activate: true);
+                ShowSourceDialogStatus(statusText, "正在保存并切换媒体源...", false);
+                var (saved, provider) = await SaveAndActivateExternalMediaSourceAsync(kind, nameBox, endpointBox, usernameBox, secretBox);
+                _isSwitchingMediaSource = true;
+                AppServices.SwitchProvider(provider);
+                StopBackgroundTimers();
                 _libraryStatusText.Foreground = FluentTheme.Accent;
-                _libraryStatusText.Text = $"已保存并设为当前：{saved.DisplayName}。重启应用后生效。";
+                _libraryStatusText.Text = $"已切换到：{saved.DisplayName}。";
                 dialog?.Hide();
+                ShellPage.Current?.ReloadActiveMediaSource();
             }
             catch (Exception ex)
             {
@@ -1863,6 +1955,23 @@ public sealed partial class SettingsPage : Page
         }
 
         return saved;
+    }
+
+    private static async System.Threading.Tasks.Task<(MediaSourceProfileRecord Source, IMediaProvider Provider)> SaveAndActivateExternalMediaSourceAsync(
+        MediaSourceKind kind,
+        TextBox nameBox,
+        TextBox endpointBox,
+        TextBox usernameBox,
+        PasswordBox secretBox)
+    {
+        var endpoint = NormalizeEndpoint(endpointBox.Text);
+        var credentials = ReadExternalSourceCredentials(usernameBox, secretBox);
+        var saved = MediaSourceProfileStore.UpsertExternalSource(kind, nameBox.Text, endpoint);
+        MediaSourceCredentialStore.Save(saved.Id, credentials);
+        var profile = new MediaSourceProfile(saved.Kind, saved.DisplayName, endpoint, saved.RequiresBundledBackend);
+        var provider = await MediaSourceActivator.CreateProviderAsync(profile, credentials);
+        MediaSourceProfileStore.SetActiveSource(saved.Id);
+        return (saved, provider);
     }
 
     private static MediaSourceCredentials ReadExternalSourceCredentials(TextBox usernameBox, PasswordBox secretBox)

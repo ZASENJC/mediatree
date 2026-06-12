@@ -37,6 +37,8 @@ public sealed class JellyfinCompatibleApiClient : IMediaApiClient
     private int _nextLocalId = 1;
     private string _token = "";
     private string _userId = "";
+    private MediaRootsResponseDto? _cachedRoots;
+    private DateTimeOffset _cachedRootsLoadedAt;
 
     public JellyfinCompatibleApiClient(Uri endpoint, MediaSourceKind kind)
     {
@@ -57,19 +59,52 @@ public sealed class JellyfinCompatibleApiClient : IMediaApiClient
 
     public MediaSourceKind Kind { get; }
 
+    public static HttpRequestMessage CreateAuthenticationRequest(
+        Uri endpoint,
+        MediaSourceKind kind,
+        string username,
+        string password)
+    {
+        if (kind is not (MediaSourceKind.Jellyfin or MediaSourceKind.Emby))
+        {
+            throw new ArgumentException("Jellyfin compatible authentication requires a Jellyfin or Emby source kind.", nameof(kind));
+        }
+
+        var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            new Uri(NormalizeEndpoint(endpoint), "Users/AuthenticateByName"));
+        foreach (var header in BuildAuthHeaders(kind, token: "", userId: ""))
+        {
+            request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(new
+            {
+                Username = username,
+                Pw = password,
+            }, new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull }),
+            Encoding.UTF8,
+            "application/json");
+        return request;
+    }
+
     public void SetBackendUri(Uri backendUri)
     {
         BackendUri = NormalizeEndpoint(backendUri);
+        ClearRemoteCaches();
     }
 
     public void SetBearerToken(string token)
     {
         _token = token ?? "";
+        ClearRemoteCaches();
     }
 
     public void SetUserId(string userId)
     {
         _userId = userId ?? "";
+        ClearRemoteCaches();
     }
 
     public Task<AuthStatusDto> GetAuthStatusAsync(CancellationToken cancellationToken = default)
@@ -101,6 +136,11 @@ public sealed class JellyfinCompatibleApiClient : IMediaApiClient
 
     public async Task<MediaRootsResponseDto> GetMediaRootsAsync(CancellationToken cancellationToken = default)
     {
+        if (_cachedRoots is not null && DateTimeOffset.UtcNow - _cachedRootsLoadedAt < TimeSpan.FromSeconds(15))
+        {
+            return CloneRoots(_cachedRoots);
+        }
+
         var userId = RequireUserId();
         var response = await GetAsync<JellyfinItemsResponse>($"/Users/{EscapePath(userId)}/Views", cancellationToken);
         var roots = response.Items
@@ -119,10 +159,13 @@ public sealed class JellyfinCompatibleApiClient : IMediaApiClient
             _containerIdsByPath[root.Path] = root.Path;
         }
 
-        return new MediaRootsResponseDto
+        var result = new MediaRootsResponseDto
         {
             Items = roots,
         };
+        _cachedRoots = result;
+        _cachedRootsLoadedAt = DateTimeOffset.UtcNow;
+        return CloneRoots(result);
     }
 
     public async Task<List<LibrarySettingDto>> GetLibrarySettingsAsync(CancellationToken cancellationToken = default)
@@ -509,12 +552,7 @@ public sealed class JellyfinCompatibleApiClient : IMediaApiClient
 
     private async Task<JellyfinAuthResponse> AuthenticateByNameAsync(string username, string password, CancellationToken cancellationToken)
     {
-        using var request = CreateRequest(HttpMethod.Post, "/Users/AuthenticateByName");
-        request.Content = JsonBody(new
-        {
-            Username = username,
-            Pw = password,
-        });
+        using var request = CreateAuthenticationRequest(BackendUri, Kind, username, password);
 
         var response = await SendAsync<JellyfinAuthResponse>(request, cancellationToken);
         if (string.IsNullOrWhiteSpace(response.AccessToken))
@@ -775,25 +813,49 @@ public sealed class JellyfinCompatibleApiClient : IMediaApiClient
     }
 
     private IReadOnlyDictionary<string, string> BuildAuthHeaders()
+        => BuildAuthHeaders(Kind, _token, _userId);
+
+    private static IReadOnlyDictionary<string, string> BuildAuthHeaders(MediaSourceKind kind, string token, string userId)
     {
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var scheme = Kind == MediaSourceKind.Emby ? "Emby" : "MediaBrowser";
+        var scheme = kind == MediaSourceKind.Emby ? "Emby" : "MediaBrowser";
         var authorization = new StringBuilder(
             $"{scheme} Client=\"MediaTree Windows\", Device=\"Windows\", DeviceId=\"mediatree-windows\", Version=\"1.0\"");
-        if (!string.IsNullOrWhiteSpace(_userId))
+        if (!string.IsNullOrWhiteSpace(userId))
         {
-            authorization.Append($", UserId=\"{HeaderValue(_userId)}\"");
+            authorization.Append($", UserId=\"{HeaderValue(userId)}\"");
         }
 
-        if (!string.IsNullOrWhiteSpace(_token))
+        if (!string.IsNullOrWhiteSpace(token))
         {
-            authorization.Append($", Token=\"{HeaderValue(_token)}\"");
-            headers["X-Emby-Token"] = _token;
+            authorization.Append($", Token=\"{HeaderValue(token)}\"");
+            headers["X-Emby-Token"] = token;
         }
 
-        headers[Kind == MediaSourceKind.Emby ? "Authorization" : "X-Emby-Authorization"] = authorization.ToString();
+        headers[kind == MediaSourceKind.Emby ? "Authorization" : "X-Emby-Authorization"] = authorization.ToString();
         return headers;
     }
+
+    private void ClearRemoteCaches()
+    {
+        _cachedRoots = null;
+        _cachedRootsLoadedAt = default;
+    }
+
+    private static MediaRootsResponseDto CloneRoots(MediaRootsResponseDto roots)
+        => new()
+        {
+            Items = roots.Items
+                .Select(root => new MediaRootDto
+                {
+                    Path = root.Path,
+                    Label = root.Label,
+                    MovieCount = root.MovieCount,
+                    Scraper = root.Scraper,
+                    Locked = root.Locked,
+                })
+                .ToList(),
+        };
 
     private static string HeaderValue(string value)
         => value.Replace("\"", "", StringComparison.Ordinal);

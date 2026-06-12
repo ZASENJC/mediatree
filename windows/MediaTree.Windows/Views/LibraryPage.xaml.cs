@@ -551,17 +551,19 @@ public sealed partial class LibraryPage : Page
             var folders = SortFolders(BrowseLibraryPresenter.FilterExcludedFolders(response.Tree, _excludedFolderPaths))
                 .Where(folder => folder.MovieCount > 0)
                 .ToList();
-            var cards = new List<Button>();
-            foreach (var folder in folders)
-            {
-                if (string.IsNullOrWhiteSpace(folder.MediaRoot))
+            var cards = await ConcurrentMediaItemLoader.MapAsync(
+                folders,
+                ConcurrentMediaItemLoader.DefaultMaxConcurrency,
+                async (folder, cancellationToken) =>
                 {
-                    folder.MediaRoot = mediaRoot;
-                }
+                    if (string.IsNullOrWhiteSpace(folder.MediaRoot))
+                    {
+                        folder.MediaRoot = mediaRoot;
+                    }
 
-                var cover = await BuildFolderCoverUrlAsync(folder);
-                cards.Add(CreateFolderCard(new FolderCardItem(folder, cover)));
-            }
+                    var cover = await BuildFolderCoverUrlAsync(folder, cancellationToken);
+                    return CreateFolderCard(new FolderCardItem(folder, cover));
+                });
 
             if (generation != _movieLoadGeneration || mediaRoot != _activeMediaRoot)
             {
@@ -621,23 +623,25 @@ public sealed partial class LibraryPage : Page
                 return;
             }
 
-            var cards = new List<Button>();
-            foreach (var movie in response.Movies)
-            {
-                var cover = "";
-                try
+            var cards = await ConcurrentMediaItemLoader.MapAsync(
+                response.Movies,
+                ConcurrentMediaItemLoader.DefaultMaxConcurrency,
+                async (movie, cancellationToken) =>
                 {
-                    cover = await AppServices.Media.Api.BuildCoverUrlAsync(movie.Id);
-                }
-                catch (Exception ex)
-                {
-                    ShellLogger.Error(ex, $"Failed to build native cover URL for movie {movie.Id}.");
-                }
+                    var cover = "";
+                    try
+                    {
+                        cover = await AppServices.Media.Api.BuildCoverUrlAsync(movie.Id, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        ShellLogger.Error(ex, $"Failed to build native cover URL for movie {movie.Id}.");
+                    }
 
-                cards.Add(CreateMovieCard(
-                    new MovieCardItem(movie, cover),
-                    CreateContextMenuHost(async () => await LoadMoviesAsync(folderPath, recent))));
-            }
+                    return CreateMovieCard(
+                        new MovieCardItem(movie, cover),
+                        CreateContextMenuHost(async () => await LoadMoviesAsync(folderPath, recent)));
+                });
 
             if (generation != _movieLoadGeneration || mediaRoot != _activeMediaRoot)
             {
@@ -1046,7 +1050,7 @@ public sealed partial class LibraryPage : Page
         _loadingText.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private async Task<string> BuildFolderCoverUrlAsync(FolderNodeDto folder)
+    private async Task<string> BuildFolderCoverUrlAsync(FolderNodeDto folder, System.Threading.CancellationToken cancellationToken = default)
     {
         var cover = string.IsNullOrWhiteSpace(folder.RandomCover) ? folder.Cover : folder.RandomCover;
         if (string.IsNullOrWhiteSpace(cover))
@@ -1056,7 +1060,7 @@ public sealed partial class LibraryPage : Page
 
         try
         {
-            return await AppServices.Media.Api.BuildMediaAssetUrlAsync(cover);
+            return await AppServices.Media.Api.BuildMediaAssetUrlAsync(cover, cancellationToken);
         }
         catch (Exception ex)
         {

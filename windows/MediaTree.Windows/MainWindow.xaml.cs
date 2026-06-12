@@ -196,14 +196,11 @@ public sealed partial class MainWindow : Window
             var mediaTreeServices = MediaProviderFactory.CreateMediaTreeServices(api);
             var localProvider = MediaProviderFactory.CreateLocalMediaTree(mediaTreeServices);
             var provider = await ResolveActiveProviderAsync(localProvider);
-            if (!ReferenceEquals(provider, localProvider))
-            {
-                localProvider.Services.Api.Dispose();
-            }
 
             AppServices.Initialize(
                 backend: _backend,
-                provider: provider);
+                provider: provider,
+                localProvider: localProvider);
 
             if (provider.Profile.Kind == MediaSourceKind.LocalMediaTree)
             {
@@ -237,26 +234,7 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            if (string.IsNullOrWhiteSpace(active.Endpoint) || !Uri.TryCreate(active.Endpoint, UriKind.Absolute, out var endpoint))
-            {
-                ShellLogger.Error($"Ignoring invalid active media source endpoint: {active.Id}.");
-                return localProvider;
-            }
-
-            var credentials = MediaSourceCredentialStore.Load(active.Id);
-            if (credentials is null)
-            {
-                ShellLogger.Error($"Ignoring active media source without stored credentials: {active.Id}.");
-                return localProvider;
-            }
-
-            var profile = new MediaSourceProfile(active.Kind, active.DisplayName, endpoint, active.RequiresBundledBackend);
-            return active.Kind switch
-            {
-                MediaSourceKind.RemoteMediaTree => await MediaProviderFactory.CreateRemoteMediaTreeAsync(profile, credentials),
-                MediaSourceKind.Jellyfin or MediaSourceKind.Emby => await MediaProviderFactory.CreateJellyfinCompatibleAsync(profile, credentials),
-                _ => localProvider,
-            };
+            return await MediaSourceActivator.CreateProviderAsync(active);
         }
         catch (Exception ex)
         {
