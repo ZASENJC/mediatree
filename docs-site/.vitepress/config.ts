@@ -36,6 +36,24 @@ const enDevelopment = [
   { text: 'Release Policy', link: '/en/development/release-policy' }
 ]
 
+const jaGuide = [
+  { text: 'クイックスタート', link: '/ja/guide/installation' },
+  { text: '設定', link: '/ja/guide/configuration' },
+  { text: 'スクレイパー', link: '/ja/guide/scrapers' },
+  { text: '外部クライアント', link: '/ja/guide/external-clients' },
+  { text: '更新とロールバック', link: '/ja/guide/updates' },
+  { text: 'FAQ', link: '/ja/guide/faq' }
+]
+
+const jaReference = [
+  { text: 'API Reference', link: '/ja/reference/api' }
+]
+
+const jaDevelopment = [
+  { text: '開発ガイド', link: '/ja/development/' },
+  { text: 'リリースポリシー', link: '/ja/development/release-policy' }
+]
+
 export default defineConfig({
   base: '/mediatree/',
   cleanUrls: true,
@@ -57,7 +75,7 @@ export default defineConfig({
     root: {
       label: '简体中文',
       lang: 'zh-CN',
-      title: 'MediaTree 文档',
+      title: 'MediaTree',
       description: 'MediaTree 部署、配置、刮削、播放、升级和开发文档。',
       themeConfig: {
         nav: [
@@ -105,7 +123,7 @@ export default defineConfig({
     en: {
       label: 'English',
       lang: 'en-US',
-      title: 'MediaTree Docs',
+      title: 'MediaTree',
       description: 'Documentation for MediaTree deployment, configuration, scraping, playback, updates, and development.',
       themeConfig: {
         nav: [
@@ -143,6 +161,54 @@ export default defineConfig({
         },
         lastUpdated: {
           text: 'Last updated'
+        }
+      }
+    },
+    ja: {
+      label: '日本語',
+      lang: 'ja-JP',
+      title: 'MediaTree',
+      description: 'MediaTree のデプロイ、設定、スクレイピング、再生、更新、開発ドキュメント。',
+      themeConfig: {
+        nav: [
+          { text: 'ユーザーガイド', link: '/ja/guide/installation' },
+          { text: 'API', link: '/ja/reference/api' },
+          { text: '開発', link: '/ja/development/' },
+          { text: 'Release', link: 'https://github.com/ZASENJC/mediatree/releases' }
+        ],
+        sidebar: {
+          '/ja/guide/': [
+            {
+              text: 'ユーザーガイド',
+              items: jaGuide
+            }
+          ],
+          '/ja/reference/': [
+            {
+              text: 'リファレンス',
+              items: jaReference
+            }
+          ],
+          '/ja/development/': [
+            {
+              text: '開発者',
+              items: jaDevelopment
+            }
+          ]
+        },
+        docFooter: {
+          prev: '前のページ',
+          next: '次のページ'
+        },
+        outline: {
+          label: 'このページ'
+        },
+        darkModeSwitchLabel: '表示モード',
+        sidebarMenuLabel: 'メニュー',
+        returnToTopLabel: 'トップへ戻る',
+        langMenuLabel: '言語',
+        lastUpdated: {
+          text: '最終更新'
         }
       }
     }
