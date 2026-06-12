@@ -58,6 +58,7 @@ export default defineConfig({
   base: '/mediatree/',
   cleanUrls: true,
   lastUpdated: true,
+  appearance: 'dark',
   head: [
     ['link', { rel: 'icon', href: '/mediatree/logo.png' }],
     ['meta', { name: 'theme-color', content: '#111827' }]

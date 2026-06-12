@@ -99,7 +99,7 @@ body {
 }
 
 .VPNavBar .wrapper {
-  width: min(100% - 48px, 1180px);
+  width: min(100% - 48px, 1540px);
   margin-inline: auto;
   padding-inline: 0;
 }
@@ -154,7 +154,7 @@ body {
 }
 
 .mt-shell {
-  width: min(100% - 48px, 1180px);
+  width: min(100% - 48px, 1540px);
   margin-inline: auto;
 }
 
@@ -455,30 +455,41 @@ body {
 
 .mt-sections {
   display: grid;
-  gap: 92px;
-  width: min(100% - 48px, 1180px);
+  gap: 132px;
+  width: min(100% - 48px, 1540px);
   margin: 0 auto;
   padding: 104px 0 36px;
 }
 
 .mt-feature-row {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(560px, 1fr);
   align-items: center;
   gap: 72px;
 }
 
 .mt-feature-row-reverse {
-  grid-template-columns: minmax(420px, 1.1fr) minmax(0, 0.9fr);
+  grid-template-columns: minmax(560px, 1fr) minmax(0, 1fr);
 }
 
 .mt-feature-row-reverse .mt-feature-copy {
   order: 2;
+  justify-self: end;
+  width: fit-content;
+}
+
+.mt-feature-row-reverse .mt-feature-copy p {
+  width: 100%;
+  max-width: none;
+}
+
+.mt-feature-copy {
+  width: min(100%, 760px);
 }
 
 .mt-feature-copy h2 {
   margin: 22px 0 0;
-  max-width: 540px;
+  max-width: 760px;
   color: var(--mt-ink);
   font-size: clamp(34px, 4vw, 54px);
   font-weight: 800;
@@ -488,7 +499,7 @@ body {
 
 .mt-feature-copy p {
   margin: 22px 0 0;
-  max-width: 560px;
+  max-width: 640px;
   color: var(--mt-muted);
   font-size: 18px;
   line-height: 1.8;
@@ -508,19 +519,28 @@ body {
 }
 
 .mt-section-heading {
-  max-width: 720px;
+  max-width: 100%;
   margin: 0 auto 54px;
   text-align: center;
 }
 
 .mt-section-heading h2,
 .mt-cta-card h2 {
-  margin: 0;
+  margin: 0 auto;
   color: var(--mt-ink);
   font-size: clamp(34px, 4.6vw, 58px);
   line-height: 1.08;
   font-weight: 800;
   letter-spacing: -0.025em;
+}
+
+.mt-section-heading h2 {
+  width: max-content;
+  max-width: 100%;
+}
+
+.mt-locale-zh .mt-section-heading h2 {
+  white-space: nowrap;
 }
 
 .mt-section-heading p,
@@ -751,6 +771,13 @@ body {
 
   .mt-feature-row-reverse .mt-feature-copy {
     order: 0;
+    justify-self: start;
+    width: min(100%, 760px);
+  }
+
+  .mt-feature-row-reverse .mt-feature-copy p {
+    width: auto;
+    max-width: 640px;
   }
 
   .mt-hero h1 span {
@@ -824,7 +851,7 @@ body {
   .VPNavBar .wrapper,
   .mt-shell,
   .mt-sections {
-    width: min(100% - 32px, 1180px);
+    width: min(100% - 32px, 1540px);
   }
 
   .mt-hero {
@@ -912,6 +939,10 @@ body {
   .mt-section-heading h2,
   .mt-cta-card h2 {
     font-size: 34px;
+  }
+
+  .mt-locale-zh .mt-section-heading h2 {
+    font-size: 25px;
   }
 
   .mt-feature-grid {
