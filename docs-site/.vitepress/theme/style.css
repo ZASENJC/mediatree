@@ -232,10 +232,10 @@ body {
   width: 1500px;
   overflow: hidden;
   pointer-events: none;
-  -webkit-mask-image: linear-gradient(90deg, transparent 0%, transparent 32%, rgba(0, 0, 0, 0.02) 46%, rgba(0, 0, 0, 0.22) 58%, rgba(0, 0, 0, 0.72) 69%, #000 77%, #000 86%, rgba(0, 0, 0, 0.58) 94%, transparent 100%),
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, transparent 18%, rgba(0, 0, 0, 0.06) 28%, rgba(0, 0, 0, 0.36) 40%, rgba(0, 0, 0, 0.84) 52%, #000 58%, #000 86%, rgba(0, 0, 0, 0.58) 94%, transparent 100%),
     linear-gradient(180deg, #000 0%, #000 74%, rgba(0, 0, 0, 0.56) 88%, transparent 100%);
   -webkit-mask-composite: source-in;
-  mask-image: linear-gradient(90deg, transparent 0%, transparent 32%, rgba(0, 0, 0, 0.02) 46%, rgba(0, 0, 0, 0.22) 58%, rgba(0, 0, 0, 0.72) 69%, #000 77%, #000 86%, rgba(0, 0, 0, 0.58) 94%, transparent 100%),
+  mask-image: linear-gradient(90deg, transparent 0%, transparent 18%, rgba(0, 0, 0, 0.06) 28%, rgba(0, 0, 0, 0.36) 40%, rgba(0, 0, 0, 0.84) 52%, #000 58%, #000 86%, rgba(0, 0, 0, 0.58) 94%, transparent 100%),
     linear-gradient(180deg, #000 0%, #000 74%, rgba(0, 0, 0, 0.56) 88%, transparent 100%);
   mask-composite: intersect;
 }
