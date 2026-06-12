@@ -50,29 +50,11 @@ mimetypes.add_type("font/collection", ".ttc")
 
 PUBLIC_FRONTEND_FILES = frozenset({"login-logo.png", "site-logo.png"})
 PUBLIC_FRONTEND_PATHS = frozenset(f"/{name}" for name in PUBLIC_FRONTEND_FILES)
-JELLYFIN_ROUTE_PREFIXES = (
-    "/System",
-    "/Users",
-    "/Items",
-    "/Videos",
-    "/Sessions",
-    "/Shows",
-    "/Library",
-    "/DisplayPreferences",
-    "/Genres",
-    "/emby",
-)
-
-
-def _is_jellyfin_compat_route(path: str) -> bool:
-    return path.startswith(JELLYFIN_ROUTE_PREFIXES)
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if _is_jellyfin_compat_route(path):
-            return await call_next(request)
         if path.startswith("/assets") \
                 or path in PUBLIC_FRONTEND_PATHS \
                 or path in ("/api/auth/login", "/api/auth/setup", "/api/auth/status", "/api/health", "/api/version") \
@@ -222,8 +204,6 @@ async def lifespan(app: FastAPI):
     await init_db()
     setup_file_logging(settings.data_dir)
     mark_update_success_after_restart()
-    from .jellyfin_compat import init_jellyfin
-    await init_jellyfin()
     startup_task = None
     if settings.scan_on_startup and await has_any_library_setting():
         startup_task = asyncio.create_task(run_startup_scan())
@@ -280,12 +260,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-from .jellyfin_compat import router as jellyfin_router, EmbyPathRewriteMiddleware
-app.include_router(jellyfin_router)
-
-app.add_middleware(EmbyPathRewriteMiddleware)
-
 
 # ─── Auth ───
 
@@ -1911,15 +1885,13 @@ class SPAFallbackMiddleware(BaseHTTPMiddleware):
                 and not request.url.path.startswith("/api") \
                 and not request.url.path.startswith("/assets") \
                 and not request.url.path.startswith("/fonts") \
-                and request.url.path not in PUBLIC_FRONTEND_PATHS \
-                and not _is_jellyfin_compat_route(request.url.path):
+                and request.url.path not in PUBLIC_FRONTEND_PATHS:
             return Response(content=INDEX_HTML, media_type="text/html")
         if response.status_code == 401 and INDEX_HTML \
                 and not request.url.path.startswith("/api") \
                 and not request.url.path.startswith("/assets") \
                 and not request.url.path.startswith("/fonts") \
-                and request.url.path not in PUBLIC_FRONTEND_PATHS \
-                and not _is_jellyfin_compat_route(request.url.path):
+                and request.url.path not in PUBLIC_FRONTEND_PATHS:
             return Response(content=INDEX_HTML, media_type="text/html")
         return response
 

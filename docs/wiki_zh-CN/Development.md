@@ -20,9 +20,6 @@ mediatree/
 │   │   ├── tmdb.py        # TMDB API 客户端
 │   │   ├── bangumi.py     # Bangumi API 客户端
 │   │   ├── javdb.py       # JavDatabase 刮削器
-│   │   ├── jellyfin_compat.py  # Jellyfin API 路由
-│   │   ├── jellyfin_mappers.py # 数据映射
-│   │   ├── jellyfin_auth.py    # Jellyfin 认证
 │   │   └── scrapers/      # 刮削器插件系统
 │   └── tests/             # 单元测试
 │
@@ -99,7 +96,7 @@ docker buildx build \
 
 - **单文件路由**：所有 API 路由集中在 `main.py`（~1100 行），没有单独的 router 模块。
 - **认证中间件**：`AuthMiddleware` 使用 Basic/Bearer 认证守卫 `/api/*` 路由，白名单路径跳过认证。
-- **生命周期钩子**：数据库初始化、Jellyfin 启动、初始扫描和文件监控均在 FastAPI lifespan 中管理。
+- **生命周期钩子**：数据库初始化、初始扫描和文件监控均在 FastAPI lifespan 中管理。
 - **SQLite WAL 模式**：启用 WAL 模式以提升并发读取性能。
 
 ### 前端

@@ -22,7 +22,7 @@
   <a href="https://github.com/ZASENJC/mediatree-app"><img src="https://img.shields.io/badge/android-app-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android App"></a>
 </p>
 
-MediaTree 面向把电影、电视剧、动漫和私人片库保存在自己硬盘上的用户。你只需要把媒体目录挂进去，它会扫描文件、补全海报和信息，并提供浏览器播放与 Jellyfin 兼容客户端访问能力，不需要搭一套复杂的媒体服务器。
+MediaTree 面向把电影、电视剧、动漫和私人片库保存在自己硬盘上的用户。你只需要把媒体目录挂进去，它会扫描文件、补全海报和信息，并提供浏览器播放和外部播放器串流能力，不需要搭一套复杂的媒体服务器。
 
 ## 为什么用 MediaTree
 
@@ -31,10 +31,10 @@ MediaTree 面向把电影、电视剧、动漫和私人片库保存在自己硬�
 - **花絮不打扰正片**：把非正片内容放进影片目录下的 `sp` 文件夹即可按花絮入库，默认隐藏，可在目录里单独显示。
 - **播放器够用**：支持直链播放、HTTP Range 跳转、按需转码、AC3 自动转码、ASS/SSA 特效字幕、播放状态标签标题、画中画和 IINA/mpv/VLC 外部播放。
 - **打开就能管理**：按媒体库、文件夹树、收藏、分类和季集浏览；支持启动扫描和文件变动自动更新，花絮不会混入继续观看。
-- **不只 Web 能用**：提供 Jellyfin 兼容 API，可接入 VidHub、Infuse、Kodi、VLC、IINA 和 mpv。
+- **不只 Web 能用**：网页播放器可生成外部播放链接和 M3U 播放列表，方便用 VLC、IINA 或 mpv 继续播放。
 - **部署简单**：Docker Compose、SQLite、持久化 `./data`，支持 linux/amd64 和 linux/arm64。
 
-需要移动端体验时，可以配合独立 Android 客户端 [ZASENJC/mediatree-app](https://github.com/ZASENJC/mediatree-app) 使用；它支持 MediaTree、Jellyfin、Emby、SMB 和 WebDAV，本项目仍作为可独立部署的服务端。
+需要移动端体验时，可以配合独立 Android 客户端 [ZASENJC/mediatree-app](https://github.com/ZASENJC/mediatree-app) 使用；它可以连接 MediaTree，也可以作为独立客户端连接 Jellyfin、Emby、SMB 和 WebDAV。
 
 ## 界面预览
 
@@ -133,7 +133,7 @@ Docker Hub 镜像：`zasenjc/mediatree:latest`
 
 刮削器缓存有效期和 Javdatabase 请求间隔由应用内部管理，不再需要在设置页或环境变量里调整。手动扫描、重新刮削和手动应用结果会绕过缓存，空结果不会写入缓存，避免旧的空结果挡住后续补齐的数据。
 
-完整配置见 [.env.example](.env.example)。高级配置、刮削逻辑、客户端兼容和排障说明放在 [Wiki](https://github.com/ZASENJC/mediatree/wiki)。
+完整配置见 [.env.example](.env.example)。高级配置、刮削逻辑、播放和排障说明放在 [Wiki](https://github.com/ZASENJC/mediatree/wiki)。
 
 ## 更新
 

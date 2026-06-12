@@ -7,13 +7,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app import config, database, main
 from app.config import fetch_safe_image
-from app.jellyfin_compat import jf_authenticate_by_name
-from app.jellyfin_models import AuthByNameRequest
 from app.updater import _format_command_for_logs, _trim_update_logs
 
 
@@ -140,34 +137,26 @@ class SecurityRegressionTest(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse((self.root / "escaped.txt").exists())
 
-    def test_jellyfin_login_fails_closed_without_primary_auth(self):
-        config.settings.auth_user = ""
-        config.settings.auth_pass = ""
-        config.settings.auth_password_hash = ""
+    def test_legacy_jellyfin_emby_routes_are_not_registered(self):
+        legacy_prefixes = (
+            "/System",
+            "/Users",
+            "/Items",
+            "/Videos",
+            "/Sessions",
+            "/Shows",
+            "/Library",
+            "/DisplayPreferences",
+            "/Genres",
+            "/emby",
+        )
+        route_paths = {
+            getattr(route, "path", "")
+            for route in main.app.routes
+        }
 
-        class RequestStub:
-            headers = {}
-
-        async def run():
-            body = AuthByNameRequest(Username="anyone", Pw="anything")
-            with self.assertRaises(HTTPException) as ctx:
-                await jf_authenticate_by_name(RequestStub(), body)
-            self.assertEqual(ctx.exception.status_code, 401)
-
-        import asyncio
-        asyncio.run(run())
-
-    def test_jellyfin_compat_routes_require_token(self):
-        with TestClient(main.app) as client:
-            for path in (
-                "/Library/MediaFolders",
-                "/Items/1/Intros",
-                "/Users/web/Items/1/Intros",
-                "/DisplayPreferences/web",
-                "/Items/1/Images/Primary",
-            ):
-                response = client.get(path)
-                self.assertEqual(response.status_code, 401, path)
+        for path in route_paths:
+            self.assertFalse(path.startswith(legacy_prefixes), path)
 
     def test_setup_and_update_status_require_auth(self):
         with TestClient(main.app) as client:

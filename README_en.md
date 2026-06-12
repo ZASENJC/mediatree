@@ -22,7 +22,7 @@
   <a href="https://github.com/ZASENJC/mediatree-app"><img src="https://img.shields.io/badge/android-app-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android App"></a>
 </p>
 
-MediaTree is built for people who keep movies, TV shows, anime, and private niche libraries on their own disks. Point it at your folders, let it scan and enrich the files, then watch from the browser or Jellyfin-compatible apps without running a heavy media stack.
+MediaTree is built for people who keep movies, TV shows, anime, and private niche libraries on their own disks. Point it at your folders, let it scan and enrich the files, then watch from the browser or stream to external players without running a heavy media stack.
 
 ## Why MediaTree
 
@@ -30,10 +30,10 @@ MediaTree is built for people who keep movies, TV shows, anime, and private nich
 - **Metadata without manual busywork** - scrape posters, titles, cast, seasons, episodes, and details from TMDB, Bangumi, and Javdatabase.
 - **A player made for real libraries** - stream directly, seek with HTTP Range, transcode on demand, render ASS/SSA subtitles, show playback state in the browser tab, and open in IINA, mpv, VLC, or PiP.
 - **Useful from day one** - browse by library, folder tree, favorites, categories, or seasons; scan on startup or let the file watcher pick up changes.
-- **Works with more than the web UI** - Jellyfin-compatible APIs let VidHub, Infuse, Kodi, VLC, IINA, and mpv connect directly.
+- **Works with more than the web UI** - the web player can generate external playback links and M3U playlists for VLC, IINA, and mpv.
 - **Simple to run at home** - Docker Compose, SQLite, persistent `./data`, linux/amd64 and linux/arm64 images.
 
-For a mobile experience, pair it with the standalone Android client [ZASENJC/mediatree-app](https://github.com/ZASENJC/mediatree-app). It supports MediaTree, Jellyfin, Emby, SMB, and WebDAV while this project remains the separately deployable server.
+For a mobile experience, pair it with the standalone Android client [ZASENJC/mediatree-app](https://github.com/ZASENJC/mediatree-app). It can connect to MediaTree, and it also works as an independent client for Jellyfin, Emby, SMB, and WebDAV.
 
 ## Screenshots
 
@@ -132,7 +132,7 @@ Docker Hub image: `zasenjc/mediatree:latest`
 
 Scraper cache TTLs and the Javdatabase request interval are managed internally instead of being tuned from Settings or environment variables. Manual scans, rescrapes, and manual apply actions bypass cache, and empty results are not cached, so stale empty responses do not block later metadata fixes.
 
-See [.env.example](.env.example) for all options. Detailed setup, scraper behavior, client compatibility, and troubleshooting live in the [Wiki](https://github.com/ZASENJC/mediatree/wiki).
+See [.env.example](.env.example) for all options. Detailed setup, scraper behavior, playback, and troubleshooting live in the [Wiki](https://github.com/ZASENJC/mediatree/wiki).
 
 ## Updates
 

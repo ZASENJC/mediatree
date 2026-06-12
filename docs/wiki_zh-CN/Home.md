@@ -6,7 +6,7 @@
 
 # MediaTree Wiki
 
-欢迎查阅 MediaTree 文档。MediaTree 是一个自托管的媒体库管理器，将优雅的玻璃态 UI 与 Jellyfin 兼容 API 和强大的插件化刮削系统融为一体。
+欢迎查阅 MediaTree 文档。MediaTree 是一个自托管的媒体库管理器，将优雅的玻璃态 UI、浏览器播放、外部播放器接续和强大的插件化刮削系统融为一体。
 
 ## 快速导航
 
@@ -15,7 +15,6 @@
 | [安装指南](Installation) | Docker 部署和首次配置 |
 | [配置说明](Configuration) | 环境变量和运行时设置 |
 | [刮削器系统](Scrapers) | TMDB、Bangumi、Javdatabase 刮削系统 |
-| [Jellyfin 客户端](Jellyfin-Clients) | 接入 Jellyfin 兼容客户端 |
 | [开发指南](Development) | 本地开发环境和架构说明 |
 
 ## 架构概览
@@ -43,6 +42,5 @@
 - **刮削器插件** — TMDB（电影/电视剧）、Bangumi（动漫）、Javdatabase（JAV）+ 自动回退链
 - **ArtPlayer 5** — 定制控件、触摸手势、键盘快捷键、画中画和 VR/360° 支持
 - **ASS/SSA 字幕** — libass-wasm 渲染，CJK 回退字体，完整特效支持
-- **Jellyfin API** — 36 个端点，直接接入 VidHub/Infuse/Kodi/VLC/IINA/mpv
+- **外部播放器** — 网页播放器可生成 M3U 播放列表，交给 VLC、IINA 或 mpv 播放
 - **文件监控** — 文件变更自动增量扫描，15 秒防抖
-- **Android TV** — 支持 Android TV Jellyfin 客户端大屏浏览

@@ -76,10 +76,10 @@ Copy `.env.example` to `.env` and configure:
 In production, the backend serves the built frontend at `/`. In development, run the backend on port 80 (`uvicorn --port 80`) and the Vite dev server on port 5173 — Vite proxies `/api/*` to `localhost:80` (configured in `vite.config.ts`).
 
 ### All backend logic lives in `backend/app/`
-- `main.py` — FastAPI app, all 80+ route handlers, AuthMiddleware, lifespan hooks. This is a single large file (~1700 lines). No separate router modules. Middleware stack: `CORSMiddleware` (all origins), `AuthMiddleware` (Basic/Bearer signed sessions for `/api/*`), `EmbyPathRewriteMiddleware` (rewrites `/emby` to Jellyfin paths), `SPAFallbackMiddleware` (serves `index.html` for SPA routing).
+- `main.py` — FastAPI app, all 80+ route handlers, AuthMiddleware, lifespan hooks. This is a single large file (~1700 lines). No separate router modules. Middleware stack: `CORSMiddleware` (all origins), `AuthMiddleware` (Basic/Bearer signed sessions for `/api/*`), `SPAFallbackMiddleware` (serves `index.html` for SPA routing).
 - `scanner.py` — Core scanning and scraping engine (~1800 lines): `scan_media()` walks filesystem, `scrape_for_library()` runs the fallback chain, per-library lock prevents duplicate concurrent scans.
 - `auto_scrape.py` — Automatic scrape scheduling and watcher path policy. Coalesces affected media roots, filters relevant file/folder changes, and centralizes container-safe watcher polling defaults.
-- `database.py` — All SQLite CRUD (~1150 lines): `init_db()` with schema migrations, movie/folder/tag/category ops, Jellyfin user_data/playback_sessions/tokens tables.
+- `database.py` — All SQLite CRUD (~1150 lines): `init_db()` with schema migrations, movie/folder/tag/category ops, and Web playback progress in `user_data`.
 - `config.py` — `pydantic-settings` + JSON config persistence. `Settings` class reads `.env`, then `load_persisted_config()` overlays `data/config.json` except for internal scraper cache/request policy keys. Runtime changes via `/api/config` POST write back to `config.json`.
 - `models.py` — Pydantic v2 models: `Movie`, `JavdbCache`, `Category`, `Tag`, `ScanResult`, `ConfigUpdate`, `FolderNode`.
 - `stream.py` — Video streaming with HTTP Range support (byte-range seeking), ffmpeg transcoding, media info extraction via ffprobe.
@@ -94,12 +94,6 @@ In production, the backend serves the built frontend at `/`. In development, run
 - `utils.py` — Shared helper functions for scraper result processing.
 - Scraper cache TTLs are internal defaults (TMDB/Bangumi 168h, Javdatabase 24h). Empty results are not cached; manual scans/rescrapes/manual apply bypass scraper cache. Javdatabase network requests are internally spaced at least 3s apart.
 - To add a scraper: create new file here, subclass `BaseScraper`, register in `registry.py`.
-
-### Jellyfin compatibility layer
-- `jellyfin_compat.py` (~1300 lines) — 36+ endpoints under `/System/`, `/Users/`, `/Items/`, `/Videos/`, `/Sessions/`, `/Shows/`, `/DisplayPreferences/`, `/Genres/`, `/emby/`. These routes are whitelisted in `AuthMiddleware` and use PascalCase JSON.
-- `jellyfin_mappers.py` — Converts MediaTree DB rows to Jellyfin JSON. Implements Series/Season/Episode hierarchy from folder structure (`ShowName/S01/E01.mkv`).
-- `jellyfin_auth.py` — Handles MediaBrowser Token / X-Emby-Token / Bearer / api_key auth for Jellyfin clients.
-- `jellyfin_models.py` — Pydantic models for incoming Jellyfin requests.
 
 ### Subtitle rendering pipeline
 1. Backend: `subtitles.py` detects embedded (ffprobe) + external subtitles (basename + lang suffix matching). ASS passthrough; SRT/other converted to WebVTT via ffmpeg.
@@ -117,7 +111,6 @@ In production, the backend serves the built frontend at `/`. In development, run
 - Media delivery routes require app auth or a short-lived media token from `/api/media-token`; this covers streams, subtitles, covers, thumbnails, external playlists, and `/api/media/*`
 - Public/limited bypasses remain intentionally narrow: SPA assets, fixed brand assets (`/login-logo.png`, `/site-logo.png`), `/api/auth/login`, `/api/auth/status`, `/api/setup/status`, `/api/health`, `/api/version`, cached covers, font reads, and `/api/update/check`
 - First-run `POST /api/setup/save` is allowed without a session only while no library settings exist
-- Jellyfin clients use separate `jellyfin_auth.py` token system (tokens stored in `jellyfin_tokens` table)
 - Library-level passwords stored in `library_settings` table, verified via `/api/library-verify`
 
 ### File watcher (`watcher.py`)
@@ -221,6 +214,5 @@ scan_media(root)
 - Scan logic: `scanner.py` `scan_media()` / `scrape_for_library()`
 - Cover handling: `scanner.py:_apply_scraped_data()` + `database.py:_normalize_cover_path()`
 - Player/subtitles: `VideoPlayer.tsx` + `artplayerPluginAss.ts`; playback pages update `document.title` with `▶` / `⏸` plus the current title until the user leaves the page
-- Jellyfin compat: `jellyfin_compat.py` (routes) + `jellyfin_mappers.py` (data mapping)
 - File watching: `watcher.py`
 - Update / self-upgrade: `updater.py` + `main.py` (`/api/update/*` routes) + `Settings.tsx` (update panel). App-package mode (default) does not require Docker socket; Docker image mode requires `docker.sock` mount.
