@@ -369,6 +369,24 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void RemoteMediaTreeProviderUsesSharedMediaTreeServices()
+    {
+        using var api = new MediaTreeApiClient(new Uri("https://media.example.invalid/"));
+        var services = CreateMediaTreeServices(api);
+        var profile = MediaSourceProfile.RemoteMediaTree("NAS MediaTree", api.BackendUri);
+        var provider = new RemoteMediaTreeProvider(profile, services, new MediaSourceCredentials("admin", "password"));
+
+        Assert.Equal(MediaSourceKind.RemoteMediaTree, provider.Profile.Kind);
+        Assert.Equal("NAS MediaTree", provider.Profile.DisplayName);
+        Assert.False(provider.Profile.RequiresBundledBackend);
+        Assert.Equal(api.BackendUri, provider.Profile.Endpoint);
+        Assert.Same(services, provider.Services);
+        Assert.Same(services.Api, provider.Api);
+        Assert.IsAssignableFrom<IMediaProvider>(provider);
+        Assert.IsAssignableFrom<IMediaTreeProvider>(provider);
+    }
+
+    [Fact]
     public void MediaSourceProfilesDescribeEachPlannedSourceBoundary()
     {
         var localEndpoint = new Uri("http://127.0.0.1:27580/");
@@ -424,18 +442,54 @@ public sealed class ServiceLogicTests
         Assert.Equal(MediaSourceKind.LocalMediaTree, mediaTreeProvider.Profile.Kind);
     }
 
+    [Fact]
+    public void MediaProviderFactoryCreatesRemoteMediaTreeProvider()
+    {
+        var profile = MediaSourceProfile.RemoteMediaTree("NAS MediaTree", new Uri("https://media.example.invalid/"));
+        var credentials = new MediaSourceCredentials("admin", "password");
+
+        var provider = MediaProviderFactory.Create(profile, credentials);
+
+        var mediaTreeProvider = Assert.IsType<RemoteMediaTreeProvider>(provider);
+        Assert.Equal(MediaSourceKind.RemoteMediaTree, mediaTreeProvider.Profile.Kind);
+        Assert.Equal(profile.Endpoint, mediaTreeProvider.Api.BackendUri);
+        Assert.Same(mediaTreeProvider.Services, provider.Services);
+    }
+
+    [Fact]
+    public async Task MediaProviderFactoryCanAuthenticateRemoteMediaTreeProvider()
+    {
+        using var server = new OneShotJsonServer(new OneShotJsonResponse(200, """{"token":"remote-token","ok":true}"""));
+        var profile = MediaSourceProfile.RemoteMediaTree("NAS MediaTree", server.BaseUri);
+        var credentials = new MediaSourceCredentials("admin", "password");
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        var provider = await MediaProviderFactory.CreateRemoteMediaTreeAsync(profile, credentials, cancellation.Token);
+
+        Assert.Equal(MediaSourceKind.RemoteMediaTree, provider.Profile.Kind);
+        Assert.Equal(server.BaseUri, provider.Api.BackendUri);
+        Assert.Equal("/api/auth/login", server.RequestPath);
+    }
+
     [Theory]
-    [InlineData(MediaSourceKind.RemoteMediaTree)]
     [InlineData(MediaSourceKind.Jellyfin)]
     [InlineData(MediaSourceKind.Emby)]
-    public void MediaProviderFactoryRejectsRemoteSourcesUntilImplemented(MediaSourceKind kind)
+    public void MediaProviderFactoryRejectsNonMediaTreeSourcesUntilImplemented(MediaSourceKind kind)
     {
         var profile = new MediaSourceProfile(kind, "Remote source", new Uri("https://media.example.invalid/"), RequiresBundledBackend: false);
 
-        var exception = Assert.Throws<NotSupportedException>(() => MediaProviderFactory.Create(profile));
+        var exception = Assert.Throws<NotSupportedException>(() => MediaProviderFactory.Create(profile, new MediaSourceCredentials("user", "secret")));
 
         Assert.Contains(kind.ToString(), exception.Message);
         Assert.Contains("not implemented", exception.Message);
+    }
+
+    [Fact]
+    public void MediaProviderFactoryRequiresCredentialsForRemoteMediaTree()
+    {
+        var profile = MediaSourceProfile.RemoteMediaTree("NAS MediaTree", new Uri("https://media.example.invalid/"));
+
+        Assert.Throws<ArgumentNullException>("credentials", () => MediaProviderFactory.Create(profile));
     }
 
     [Fact]
@@ -621,8 +675,10 @@ public sealed class ServiceLogicTests
         AppServices.Initialize(new BackendProcessService(), provider);
 
         Assert.Same(services, AppServices.MediaTree);
+        Assert.Same(services, AppServices.Media);
         Assert.Same(provider, AppServices.ActiveMediaTreeProvider);
         Assert.Same(provider, AppServices.ActiveProvider);
+        Assert.Same(services, AppServices.ActiveProvider.Services);
         Assert.Same(services.Api, AppServices.MediaTree.Api);
         Assert.Same(services.Auth, AppServices.MediaTree.Auth);
         Assert.Same(services.Library, AppServices.MediaTree.Library);
