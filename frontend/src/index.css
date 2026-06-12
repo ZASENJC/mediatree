@@ -455,18 +455,16 @@ canvas[data-mediatree-subtitle="ass"] {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border: 1px solid var(--player-ui-border);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 999px;
   color: var(--player-ui-text);
-  background:
-    radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.26), transparent 32%),
-    radial-gradient(circle at 74% 78%, var(--player-ui-accent-soft), transparent 38%),
-    var(--player-ui-surface);
+  background: rgba(18, 22, 30, 0.44);
   box-shadow:
-    var(--player-ui-shadow),
-    var(--player-ui-inner-highlight);
-  backdrop-filter: blur(22px) saturate(170%) brightness(1.08);
-  -webkit-backdrop-filter: blur(22px) saturate(170%) brightness(1.08);
+    0 10px 24px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
   transition:
     border-color 0.2s ease,
     background 0.2s ease,
@@ -480,24 +478,18 @@ canvas[data-mediatree-subtitle="ass"] {
   inset: 1px;
   border-radius: inherit;
   pointer-events: none;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.2), transparent 42%),
-    linear-gradient(315deg, rgba(255, 255, 255, 0.08), transparent 58%);
-  mix-blend-mode: screen;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.18), transparent 48%);
 }
 
 .episode-switcher-button:hover,
 .episode-switcher-button:focus-visible,
 .episode-switcher-button-active {
-  border-color: var(--player-ui-border-strong);
-  background:
-    radial-gradient(circle at 26% 18%, rgba(255, 255, 255, 0.32), transparent 34%),
-    radial-gradient(circle at 72% 76%, var(--player-ui-accent-soft), transparent 42%),
-    var(--player-ui-surface-elevated);
+  border-color: rgba(255, 255, 255, 0.34);
+  background: rgba(28, 34, 44, 0.58);
   box-shadow:
-    var(--player-ui-shadow),
-    0 10px 30px var(--player-ui-accent-soft),
-    var(--player-ui-inner-highlight);
+    0 12px 28px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.1);
   transform: scale(1.04);
 }
 
