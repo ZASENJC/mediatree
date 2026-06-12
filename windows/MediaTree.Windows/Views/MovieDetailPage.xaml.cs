@@ -290,7 +290,8 @@ public sealed partial class MovieDetailPage : Page
         _progressText.Text = progress.ProgressPercent > 0 ? $"已观看 {progress.ProgressPercent:0}%" : "";
         _playButton.Content = progress.Position > 5 ? $"继续播放 {FormatDuration(progress.Position)}" : "播放";
         _playButton.IsEnabled = true;
-        _scrapeButton.IsEnabled = !movie.IsSpecial;
+        _scrapeButton.Visibility = AppServices.SupportsMediaTreeLibraryManagement ? Visibility.Visible : Visibility.Collapsed;
+        _scrapeButton.IsEnabled = AppServices.SupportsMediaTreeLibraryManagement && !movie.IsSpecial;
         _statusText.Visibility = Visibility.Collapsed;
         await LoadSpecialsAsync(movie);
 
@@ -387,7 +388,7 @@ public sealed partial class MovieDetailPage : Page
 
     private async void OnManualScrapeClicked(object sender, RoutedEventArgs args)
     {
-        if (_loadedMovie is null || _loadedMovie.IsSpecial)
+        if (_loadedMovie is null || _loadedMovie.IsSpecial || !AppServices.SupportsMediaTreeLibraryManagement)
         {
             return;
         }

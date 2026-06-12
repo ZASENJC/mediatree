@@ -10,11 +10,11 @@ namespace MediaTree.Windows.Services;
 
 public sealed class LibraryService
 {
-    private readonly MediaTreeApiClient _api;
+    private readonly IMediaApiClient _api;
 
     public event EventHandler? LibrariesChanged;
 
-    public LibraryService(MediaTreeApiClient api)
+    public LibraryService(IMediaApiClient api)
     {
         _api = api;
     }

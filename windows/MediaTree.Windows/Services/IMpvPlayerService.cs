@@ -90,6 +90,7 @@ public interface IMpvPlayerService : IDisposable
     event EventHandler<PlayerStateSnapshot>? StateChanged;
 
     Task LoadAsync(string source, CancellationToken cancellationToken = default);
+    Task LoadAsync(MediaPlaybackSource source, CancellationToken cancellationToken = default);
     Task PlayPauseAsync(CancellationToken cancellationToken = default);
     Task SeekAsync(double seconds, CancellationToken cancellationToken = default);
     Task SetVolumeAsync(double volume, CancellationToken cancellationToken = default);

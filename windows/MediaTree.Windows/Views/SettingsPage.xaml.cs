@@ -26,6 +26,8 @@ public sealed partial class SettingsPage : Page
     public const string RemoteLoginUsernameHeader = "登录用户名";
     public const string RemoteLoginPasswordHeader = "登录密码";
     public const string SaveRemoteAccessButtonText = "保存账号并重启本机服务";
+    public const string LocalMediaTreeOnlyMessage = "当前媒体源不是本机 MediaTree，此操作不可用。";
+    public const string ExternalLibraryReadOnlyMessage = "当前媒体源由外部服务端管理，MediaTree 刮削、扫描和删除操作不可用。";
     public static readonly IReadOnlyList<string> AddLibrarySourceOptions =
     [
         "本地目录",
@@ -86,6 +88,10 @@ public sealed partial class SettingsPage : Page
     private UpdateStatusDto? _lastUpdateStatus;
     private bool _suppressUiPreferenceSave;
 
+    private static MediaSourceKind ActiveSourceKind => AppServices.ActiveProvider?.Profile.Kind ?? MediaSourceKind.LocalMediaTree;
+    private static bool IsLocalMediaTreeActive => ActiveSourceKind == MediaSourceKind.LocalMediaTree;
+    private static bool SupportsMediaTreeLibraryManagement => AppServices.SupportsMediaTreeLibraryManagement;
+
     public SettingsPage()
     {
         (
@@ -118,6 +124,8 @@ public sealed partial class SettingsPage : Page
     private (TextBlock globalStatusText, CheckBox hideHomeTitleTextBox, CheckBox allowRemoteBackendBox, TextBox remoteBackendPortBox, TextBlock remoteBackendUrlText, TextBlock remoteBackendStatusText, CheckBox showSourceNameBox, TextBox remoteLoginUsernameBox, PasswordBox remoteLoginPasswordBox, ListView librarySettingsList, TextBlock libraryStatusText, TextBox tmdbApiKeyBox, PasswordBox tmdbTokenBox, TextBlock tmdbTokenStatusText, TextBlock backupStatusText, TextBlock versionText, TextBlock updateProgressText, TextBlock updateStatusText, StackPanel updateVersionsStack) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "SettingsPage");
+        var isLocalMediaTreeActive = IsLocalMediaTreeActive;
+        var supportsMediaTreeLibraryManagement = SupportsMediaTreeLibraryManagement;
 
         var scrollViewer = new ScrollViewer
         {
@@ -199,6 +207,7 @@ public sealed partial class SettingsPage : Page
         var allowRemoteBackendBox = FluentTheme.ApplyCheckBox(new CheckBox
         {
             Content = WrapText("开放本机后端给局域网设备连接。"),
+            IsEnabled = isLocalMediaTreeActive,
         });
         AutomationProperties.SetAutomationId(allowRemoteBackendBox, "SettingsAllowRemoteBackend");
         remoteStack.Children.Add(allowRemoteBackendBox);
@@ -210,13 +219,20 @@ public sealed partial class SettingsPage : Page
         AutomationProperties.SetAutomationId(remoteAccessContent, "SettingsRemoteAccessContent");
         var remoteBackendPortBox = TextInput("端口", "SettingsRemoteBackendPort", BackendAccessSettings.DefaultRemotePort.ToString());
         remoteBackendPortBox.InputScope = NumberInputScope();
+        remoteBackendPortBox.IsEnabled = isLocalMediaTreeActive;
         remoteAccessContent.Children.Add(remoteBackendPortBox);
         var remoteLoginUsernameBox = TextInput(RemoteLoginUsernameHeader, "SettingsRemoteLoginUsername");
         var remoteLoginPasswordBox = PasswordInput(RemoteLoginPasswordHeader, "SettingsRemoteLoginPassword");
+        remoteLoginUsernameBox.IsEnabled = isLocalMediaTreeActive;
+        remoteLoginPasswordBox.IsEnabled = isLocalMediaTreeActive;
         remoteAccessContent.Children.Add(remoteLoginUsernameBox);
         remoteAccessContent.Children.Add(remoteLoginPasswordBox);
         remoteStack.Children.Add(remoteAccessContent);
         remoteStack.Children.Add(FluentTheme.Body("保存后会重启本机后端。然后在 mediatree-app 里选择 MediaTree，填入下面地址，并用这里设置的账号登录。", 13));
+        if (!isLocalMediaTreeActive)
+        {
+            remoteStack.Children.Add(FluentTheme.Body("当前媒体源不是本机 MediaTree，本机后端移动端访问设置不可用。", 13));
+        }
         var remoteBackendUrlText = new TextBlock
         {
             TextWrapping = TextWrapping.WrapWholeWords,
@@ -233,6 +249,7 @@ public sealed partial class SettingsPage : Page
         var saveRemoteBackendButton = FluentTheme.ApplyButton(new Button
         {
             Content = SaveRemoteAccessButtonText,
+            IsEnabled = isLocalMediaTreeActive,
         }, FluentButtonStyle.Accent);
         AutomationProperties.SetAutomationId(saveRemoteBackendButton, "SettingsSaveRemoteBackend");
         saveRemoteBackendButton.Click += OnSaveRemoteBackendClicked;
@@ -260,7 +277,11 @@ public sealed partial class SettingsPage : Page
         Grid.SetColumn(addLibraryButton, 1);
         libraryHeader.Children.Add(addLibraryButton);
         libraryStack.Children.Add(libraryHeader);
-        libraryStack.Children.Add(FluentTheme.Body("可添加本机目录，也可以先保存远程 MediaTree、Jellyfin 或 Emby 的连接配置。", 13));
+        libraryStack.Children.Add(FluentTheme.Body(
+            supportsMediaTreeLibraryManagement
+                ? "可添加本机目录，也可以先保存远程 MediaTree、Jellyfin 或 Emby 的连接配置。"
+                : "当前媒体源由外部服务端管理；这里可查看媒体库，也可以添加或切换连接配置。",
+            13));
         var librarySettingsList = FluentTheme.ApplyListView(new ListView
         {
             SelectionMode = ListViewSelectionMode.None,
@@ -285,9 +306,11 @@ public sealed partial class SettingsPage : Page
         AutomationProperties.SetAutomationId(scraperContent, "SettingsScraperContent");
         var tmdbApiKeyBox = TextInput("TMDB API Key", "SettingsTmdbApiKey");
         tmdbApiKeyBox.PlaceholderText = "去 themoviedb.org 免费申请";
+        tmdbApiKeyBox.IsEnabled = supportsMediaTreeLibraryManagement;
         scraperContent.Children.Add(tmdbApiKeyBox);
         var tmdbTokenBox = PasswordInput("TMDB 读访问令牌（推荐，优先使用）", "SettingsTmdbAccessToken");
         tmdbTokenBox.PlaceholderText = "Bearer Token";
+        tmdbTokenBox.IsEnabled = supportsMediaTreeLibraryManagement;
         scraperContent.Children.Add(tmdbTokenBox);
         var tmdbTokenStatusText = StatusText("SettingsTmdbTokenStatusText");
         scraperContent.Children.Add(tmdbTokenStatusText);
@@ -303,20 +326,27 @@ public sealed partial class SettingsPage : Page
             Spacing = 10,
         };
         var backupCoreButton = FluentTheme.ApplyButton(new Button { Content = "下载数据库备份" }, FluentButtonStyle.Accent);
+        backupCoreButton.IsEnabled = isLocalMediaTreeActive;
         AutomationProperties.SetAutomationId(backupCoreButton, "SettingsBackupCore");
         backupCoreButton.Click += async (sender, _) => await SaveBackupAsync("core", sender as Button);
         backupActions.Children.Add(backupCoreButton);
         var backupFullButton = FluentTheme.ApplyButton(new Button { Content = "下载完整备份 (含封面图)" }, FluentButtonStyle.Accent);
+        backupFullButton.IsEnabled = isLocalMediaTreeActive;
         AutomationProperties.SetAutomationId(backupFullButton, "SettingsBackupFull");
         backupFullButton.Click += async (sender, _) => await SaveBackupAsync("full", sender as Button);
         backupActions.Children.Add(backupFullButton);
         var restoreBackupButton = FluentTheme.ApplyButton(new Button { Content = "选择备份恢复" });
+        restoreBackupButton.IsEnabled = isLocalMediaTreeActive;
         AutomationProperties.SetAutomationId(restoreBackupButton, "SettingsRestoreBackup");
         restoreBackupButton.Click += OnRestoreBackupClicked;
         backupActions.Children.Add(restoreBackupButton);
         backupActions.SizeChanged += (_, args) => ApplyActionStackLayout(args.NewSize.Width, backupActions);
         backupStack.Children.Add(backupActions);
         backupStack.Children.Add(FluentTheme.Body("完整备份包含数据库和所有封面图片缓存。恢复会覆盖当前数据。", 13));
+        if (!isLocalMediaTreeActive)
+        {
+            backupStack.Children.Add(FluentTheme.Body("当前媒体源不是本机 MediaTree，备份与恢复不可用。", 13));
+        }
         var backupStatusText = StatusText("SettingsBackupStatusText");
         backupStack.Children.Add(backupStatusText);
         _settingsCards.Add(SectionCard(backupStack, "SettingsBackupCard"));
@@ -328,7 +358,7 @@ public sealed partial class SettingsPage : Page
         updateHeader.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         updateHeader.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
         updateHeader.Children.Add(SectionTitle("更新", "SettingsUpdateCard"));
-        var checkButton = FluentTheme.ApplyButton(new Button { Content = "检查更新" });
+        var checkButton = FluentTheme.ApplyButton(new Button { Content = "检查更新", IsEnabled = isLocalMediaTreeActive });
         AutomationProperties.SetAutomationId(checkButton, "SettingsCheckUpdates");
         checkButton.Click += OnCheckUpdatesClicked;
         Grid.SetColumn(checkButton, 1);
@@ -349,6 +379,10 @@ public sealed partial class SettingsPage : Page
         var updateVersionsStack = new StackPanel { Spacing = 10 };
         AutomationProperties.SetAutomationId(updateVersionsStack, "SettingsUpdateVersions");
         updateStack.Children.Add(updateVersionsStack);
+        if (!isLocalMediaTreeActive)
+        {
+            updateStack.Children.Add(FluentTheme.Body("当前媒体源不是本机 MediaTree，Windows 应用包更新不可用。", 13));
+        }
         var logsButton = FluentTheme.ApplyButton(new Button
         {
             Content = "打开问题日志",
@@ -426,7 +460,10 @@ public sealed partial class SettingsPage : Page
         var settings = BackendAccessSettingsStore.Load();
         _allowRemoteBackendBox.IsChecked = settings.AllowRemoteAccess;
         _remoteBackendPortBox.Text = BackendAccessSettings.NormalizePort(settings.RemotePort).ToString();
-        ShowRemoteBackendSettings(settings, $"当前为{settings.AccessModeLabel}。", false);
+        ShowRemoteBackendSettings(
+            settings,
+            IsLocalMediaTreeActive ? $"当前为{settings.AccessModeLabel}。" : LocalMediaTreeOnlyMessage,
+            false);
     }
 
     private async void OnSaveRemoteBackendClicked(object sender, RoutedEventArgs args)
@@ -438,6 +475,12 @@ public sealed partial class SettingsPage : Page
 
         try
         {
+            if (!IsLocalMediaTreeActive)
+            {
+                ShowRemoteBackendSettings(BackendAccessSettingsStore.Load(), LocalMediaTreeOnlyMessage, true);
+                return;
+            }
+
             button.IsEnabled = false;
             var settings = ReadBackendAccessSettingsFromUi();
             if (HasRemoteLoginInput())
@@ -454,7 +497,10 @@ public sealed partial class SettingsPage : Page
             BackendAccessSettingsStore.Save(settings);
             ShowRemoteBackendSettings(settings, "正在重启本机后端...", false);
             var backendUri = await AppServices.Backend.RestartAsync();
-            AppServices.Media.Api.SetBackendUri(backendUri);
+            if (IsLocalMediaTreeActive)
+            {
+                AppServices.Media.Api.SetBackendUri(backendUri);
+            }
             ShowRemoteBackendSettings(BackendAccessSettingsStore.Load(), "已保存账号并重启本机后端。", false);
         }
         catch (Exception ex)
@@ -508,6 +554,12 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
+            if (!IsLocalMediaTreeActive)
+            {
+                _versionText.Text = $"当前媒体源：{DisplaySourceKind(ActiveSourceKind)}    由外部服务端管理。";
+                return;
+            }
+
             var version = await AppServices.Media.Updates.GetVersionAsync();
             _versionText.Text = FormatVersionLine(
                 version.Version,
@@ -525,6 +577,15 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
+            if (!SupportsMediaTreeLibraryManagement)
+            {
+                _loadedConfig = new ConfigDto();
+                _tmdbApiKeyBox.Text = "";
+                _tmdbTokenBox.Password = "";
+                ShowTmdbStatus(ExternalLibraryReadOnlyMessage, false);
+                return;
+            }
+
             var config = await AppServices.Media.Api.GetConfigAsync();
             _loadedConfig = config;
             _tmdbApiKeyBox.Text = config.TmdbApiKey ?? "";
@@ -552,7 +613,7 @@ public sealed partial class SettingsPage : Page
             SaveUiPreferences();
             await SaveGlobalConfigAsync();
             ShowGlobalStatus("已保存", false);
-            ShowTmdbStatus("TMDB 设置已保存。", false);
+            ShowTmdbStatus(SupportsMediaTreeLibraryManagement ? "TMDB 设置已保存。" : ExternalLibraryReadOnlyMessage, false);
         }
         catch (Exception ex)
         {
@@ -567,6 +628,11 @@ public sealed partial class SettingsPage : Page
 
     private async System.Threading.Tasks.Task SaveGlobalConfigAsync()
     {
+        if (!SupportsMediaTreeLibraryManagement)
+        {
+            return;
+        }
+
         await AppServices.Media.Api.SaveGlobalConfigAsync(new ConfigDto
         {
             JavdbEnabled = _loadedConfig.JavdbEnabled,
@@ -605,9 +671,10 @@ public sealed partial class SettingsPage : Page
             _librarySettingsList.Items.Clear();
             _scanRows.Clear();
 
+            var canManageLibraries = SupportsMediaTreeLibraryManagement;
             var roots = await AppServices.Media.Library.GetMediaRootsAsync();
             var librarySettings = await AppServices.Media.Library.GetLibrarySettingsAsync();
-            var config = await AppServices.Media.Api.GetConfigAsync();
+            var config = canManageLibraries ? await AppServices.Media.Api.GetConfigAsync() : new ConfigDto();
             var settingMap = librarySettings.ToDictionary(s => s.MediaRoot, StringComparer.OrdinalIgnoreCase);
             var removableRoots = config.ExtraMediaRoots ?? [];
             var orderedRoots = roots.Items
@@ -616,7 +683,9 @@ public sealed partial class SettingsPage : Page
 
             if (orderedRoots.Count == 0)
             {
-                _libraryStatusText.Text = "还没有媒体库。先添加影片文件夹后，再设置刮削器。";
+                _libraryStatusText.Text = canManageLibraries
+                    ? "还没有媒体库。先添加影片文件夹后，再设置刮削器。"
+                    : "当前外部媒体源没有返回可显示的媒体库。";
                 return;
             }
 
@@ -629,7 +698,9 @@ public sealed partial class SettingsPage : Page
             }
             ApplyLoadedLibraryRowWidths(_settingsColumnWidth);
 
-            _libraryStatusText.Text = "选择刮削器后点击保存。需要重新刮削时可直接重新扫描。";
+            _libraryStatusText.Text = canManageLibraries
+                ? "选择刮削器后点击保存。需要重新刮削时可直接重新扫描。"
+                : ExternalLibraryReadOnlyMessage;
         }
         catch (Exception ex)
         {
@@ -687,6 +758,7 @@ public sealed partial class SettingsPage : Page
         });
         grid.Children.Add(info);
 
+        var canManageLibraries = SupportsMediaTreeLibraryManagement;
         var selectedScraper = NormalizeScraper(setting?.Scraper ?? root.Scraper);
         var scraperStack = new StackPanel
         {
@@ -704,6 +776,7 @@ public sealed partial class SettingsPage : Page
             Header = LibraryScraperHeader,
             MinWidth = 0,
             HorizontalAlignment = HorizontalAlignment.Stretch,
+            IsEnabled = canManageLibraries,
         });
         AutomationProperties.SetAutomationId(scraperBox, $"SettingsLibraryScraper_{index}");
         foreach (var option in ScraperOptions)
@@ -718,13 +791,13 @@ public sealed partial class SettingsPage : Page
         SelectScraper(scraperBox, selectedScraper);
         var descriptionText = new TextBlock
         {
-            Text = GetScraperDescription(GetSelectedScraper(scraperBox)),
+            Text = canManageLibraries ? GetScraperDescription(GetSelectedScraper(scraperBox)) : ExternalLibraryReadOnlyMessage,
             Foreground = FluentTheme.TextSecondary,
             TextWrapping = TextWrapping.WrapWholeWords,
         };
         scraperBox.SelectionChanged += (_, _) =>
         {
-            descriptionText.Text = GetScraperDescription(GetSelectedScraper(scraperBox));
+            descriptionText.Text = canManageLibraries ? GetScraperDescription(GetSelectedScraper(scraperBox)) : ExternalLibraryReadOnlyMessage;
         };
 
         var passwordBox = FluentTheme.ApplyPasswordInput(new PasswordBox
@@ -733,6 +806,7 @@ public sealed partial class SettingsPage : Page
             PlaceholderText = "可选",
             MinWidth = 0,
             HorizontalAlignment = HorizontalAlignment.Stretch,
+            IsEnabled = canManageLibraries,
         });
         AutomationProperties.SetAutomationId(passwordBox, $"SettingsLibraryPassword_{index}");
         inputGrid.Children.Add(scraperBox);
@@ -754,36 +828,49 @@ public sealed partial class SettingsPage : Page
             Visibility = Visibility.Collapsed,
         };
         AutomationProperties.SetAutomationId(rowLogText, $"SettingsLibraryScanLog_{index}");
-        var saveButton = FluentTheme.ApplyButton(new Button
+        if (canManageLibraries)
         {
-            Content = "保存",
-            Tag = new LibrarySettingsRowContext(root.Path, setting?.TmdbKey ?? "", scraperBox, passwordBox, rowStatusText, rowLogText),
-        }, FluentButtonStyle.Accent);
-        AutomationProperties.SetAutomationId(saveButton, $"SettingsSaveLibrary_{index}");
-        saveButton.Click += OnSaveLibrarySettingClicked;
-        actions.Children.Add(saveButton);
-
-        var scanButton = FluentTheme.ApplyButton(new Button
-        {
-            Content = "重新扫描",
-            Tag = new LibrarySettingsRowContext(root.Path, setting?.TmdbKey ?? "", scraperBox, passwordBox, rowStatusText, rowLogText),
-        });
-        AutomationProperties.SetAutomationId(scanButton, $"SettingsScanLibrary_{index}");
-        scanButton.Click += OnScanLibraryClicked;
-        actions.Children.Add(scanButton);
-
-        if (canDelete)
-        {
-            var deleteButton = FluentTheme.ApplyButton(new Button
+            var saveButton = FluentTheme.ApplyButton(new Button
             {
-                Content = DeleteLibraryButtonText,
-                Tag = root.Path,
-            }, FluentButtonStyle.Danger);
-            AutomationProperties.SetAutomationId(deleteButton, $"SettingsDeleteLibrary_{index}");
-            deleteButton.Click += OnDeleteLibraryClicked;
-            actions.Children.Add(deleteButton);
+                Content = "保存",
+                Tag = new LibrarySettingsRowContext(root.Path, setting?.TmdbKey ?? "", scraperBox, passwordBox, rowStatusText, rowLogText),
+            }, FluentButtonStyle.Accent);
+            AutomationProperties.SetAutomationId(saveButton, $"SettingsSaveLibrary_{index}");
+            saveButton.Click += OnSaveLibrarySettingClicked;
+            actions.Children.Add(saveButton);
+
+            var scanButton = FluentTheme.ApplyButton(new Button
+            {
+                Content = "重新扫描",
+                Tag = new LibrarySettingsRowContext(root.Path, setting?.TmdbKey ?? "", scraperBox, passwordBox, rowStatusText, rowLogText),
+            });
+            AutomationProperties.SetAutomationId(scanButton, $"SettingsScanLibrary_{index}");
+            scanButton.Click += OnScanLibraryClicked;
+            actions.Children.Add(scanButton);
+
+            if (canDelete)
+            {
+                var deleteButton = FluentTheme.ApplyButton(new Button
+                {
+                    Content = DeleteLibraryButtonText,
+                    Tag = root.Path,
+                }, FluentButtonStyle.Danger);
+                AutomationProperties.SetAutomationId(deleteButton, $"SettingsDeleteLibrary_{index}");
+                deleteButton.Click += OnDeleteLibraryClicked;
+                actions.Children.Add(deleteButton);
+            }
+
+            _scanRows[root.Path] = new LibraryScanRowUi(rowStatusText, rowLogText, scanButton);
         }
-        _scanRows[root.Path] = new LibraryScanRowUi(rowStatusText, rowLogText, scanButton);
+        else
+        {
+            actions.Children.Add(new TextBlock
+            {
+                Text = "只读",
+                Foreground = FluentTheme.TextSecondary,
+                TextWrapping = TextWrapping.WrapWholeWords,
+            });
+        }
         Grid.SetColumn(actions, 2);
         grid.Children.Add(actions);
 
@@ -812,6 +899,12 @@ public sealed partial class SettingsPage : Page
 
         try
         {
+            if (!SupportsMediaTreeLibraryManagement)
+            {
+                ShowRowStatus(context.StatusText, ExternalLibraryReadOnlyMessage, true);
+                return;
+            }
+
             button.IsEnabled = false;
             _libraryStatusText.Foreground = FluentTheme.TextSecondary;
             _libraryStatusText.Text = "正在保存媒体库设置...";
@@ -844,6 +937,12 @@ public sealed partial class SettingsPage : Page
 
         try
         {
+            if (!SupportsMediaTreeLibraryManagement)
+            {
+                ShowRowStatus(context.StatusText, ExternalLibraryReadOnlyMessage, true);
+                return;
+            }
+
             button.IsEnabled = false;
             _libraryStatusText.Foreground = FluentTheme.TextSecondary;
             _libraryStatusText.Text = "正在保存刮削器设置并重新扫描...";
@@ -881,6 +980,13 @@ public sealed partial class SettingsPage : Page
         }
 
         var statusText = StatusText("SettingsDeleteLibraryDialogStatus", visible: true);
+        if (!SupportsMediaTreeLibraryManagement)
+        {
+            _libraryStatusText.Foreground = FluentTheme.Error;
+            _libraryStatusText.Text = ExternalLibraryReadOnlyMessage;
+            return;
+        }
+
         statusText.Text = "此操作只会从 Windows 桌面版的已添加本机目录列表移除此媒体库，不会删除本机文件夹或影片文件。";
         statusText.Foreground = FluentTheme.TextSecondary;
 
@@ -929,6 +1035,11 @@ public sealed partial class SettingsPage : Page
 
     private async System.Threading.Tasks.Task SaveLibrarySettingAsync(LibrarySettingsRowContext context)
     {
+        if (!SupportsMediaTreeLibraryManagement)
+        {
+            throw new InvalidOperationException(ExternalLibraryReadOnlyMessage);
+        }
+
         await AppServices.Media.Library.SaveLibrarySettingAsync(new LibrarySettingDto
         {
             MediaRoot = context.MediaRoot,
@@ -947,6 +1058,12 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
+            if (!IsLocalMediaTreeActive)
+            {
+                ShowBackupStatus(LocalMediaTreeOnlyMessage, true);
+                return;
+            }
+
             if (button is not null)
             {
                 button.IsEnabled = false;
@@ -1008,6 +1125,12 @@ public sealed partial class SettingsPage : Page
 
         try
         {
+            if (!IsLocalMediaTreeActive)
+            {
+                ShowBackupStatus(LocalMediaTreeOnlyMessage, true);
+                return;
+            }
+
             var picker = new FileOpenPicker
             {
                 SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
@@ -1052,6 +1175,12 @@ public sealed partial class SettingsPage : Page
 
         try
         {
+            if (!IsLocalMediaTreeActive)
+            {
+                ShowUpdateStatus(LocalMediaTreeOnlyMessage, true);
+                return;
+            }
+
             ShowUpdateStatus("正在检查更新...", false);
             var result = await AppServices.Media.Updates.CheckForUpdatesAsync();
             _lastUpdateResult = result;
@@ -1089,6 +1218,14 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
+            if (!IsLocalMediaTreeActive)
+            {
+                _lastUpdateResult = null;
+                RenderUpdateVersions();
+                ShowUpdateStatus(LocalMediaTreeOnlyMessage, false);
+                return;
+            }
+
             _lastUpdateResult = await AppServices.Media.Updates.CheckForUpdatesAsync();
             RenderUpdateVersions();
             if (_lastUpdateResult.HasUpdate)
@@ -1107,6 +1244,11 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
+            if (!SupportsMediaTreeLibraryManagement)
+            {
+                return;
+            }
+
             await AppServices.Media.Library.ScanAsync(mediaRoot);
         }
         catch (Exception ex)
@@ -1137,6 +1279,18 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
+            if (!IsLocalMediaTreeActive)
+            {
+                _lastUpdateStatus = new UpdateStatusDto
+                {
+                    Status = "disabled",
+                    Message = LocalMediaTreeOnlyMessage,
+                };
+                RenderUpdateStatus(_lastUpdateStatus);
+                RenderUpdateVersions();
+                return;
+            }
+
             _lastUpdateStatus = await AppServices.Media.Updates.GetStatusAsync();
             RenderUpdateStatus(_lastUpdateStatus);
             RenderUpdateVersions();
@@ -1160,6 +1314,12 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
+            if (!IsLocalMediaTreeActive)
+            {
+                _updateStatusTimer.Stop();
+                return;
+            }
+
             _lastUpdateStatus = await AppServices.Media.Updates.GetStatusAsync();
             RenderUpdateStatus(_lastUpdateStatus);
             RenderUpdateVersions();
@@ -1275,6 +1435,12 @@ public sealed partial class SettingsPage : Page
         var isOlderVersion = IsOlderVersion(version);
         try
         {
+            if (!IsLocalMediaTreeActive)
+            {
+                ShowUpdateStatus(LocalMediaTreeOnlyMessage, true);
+                return;
+            }
+
             ShowUpdateStatus(isOlderVersion ? "正在发起版本回滚..." : "正在发起应用包更新...", false);
             _lastUpdateStatus = new UpdateStatusDto
             {
@@ -1307,6 +1473,12 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
+            if (!IsLocalMediaTreeActive)
+            {
+                ShowUpdateStatus(LocalMediaTreeOnlyMessage, true);
+                return;
+            }
+
             ShowUpdateStatus("正在触发回滚...", false);
             _updateStatusTimer.Start();
             var result = await AppServices.Media.Updates.RollbackAsync();
@@ -1326,6 +1498,12 @@ public sealed partial class SettingsPage : Page
 
     private async System.Threading.Tasks.Task RestartBackendAfterAppPackageUpdateAsync(string restartingMessage, string completedMessage)
     {
+        if (!IsLocalMediaTreeActive)
+        {
+            ShowUpdateStatus(LocalMediaTreeOnlyMessage, true);
+            return;
+        }
+
         _updateStatusTimer.Stop();
         _lastUpdateStatus = new UpdateStatusDto
         {
@@ -1338,7 +1516,10 @@ public sealed partial class SettingsPage : Page
 
         await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(1.5));
         var backendUri = await AppServices.Backend.RestartAsync();
-        AppServices.Media.Api.SetBackendUri(backendUri);
+        if (IsLocalMediaTreeActive)
+        {
+            AppServices.Media.Api.SetBackendUri(backendUri);
+        }
         await LoadVersionAsync();
         await LoadUpdateStatusAsync();
         ShowUpdateStatus(completedMessage, false);
@@ -1511,6 +1692,13 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
+            if (!IsLocalMediaTreeActive)
+            {
+                _libraryStatusText.Foreground = FluentTheme.Error;
+                _libraryStatusText.Text = LocalMediaTreeOnlyMessage;
+                return;
+            }
+
             var picker = new FolderPicker
             {
                 SuggestedStartLocation = PickerLocationId.VideosLibrary,
@@ -1556,7 +1744,7 @@ public sealed partial class SettingsPage : Page
         var secretBox = PasswordInput("密码 / token", $"SettingsSourceSecret_{kind}");
         secretBox.PlaceholderText = "保存在当前 Windows 用户凭据中";
         var statusText = StatusText($"SettingsSourceStatus_{kind}", visible: true);
-        statusText.Text = "凭据会使用 Windows DPAPI 保存；实际浏览接入将在后续 Provider 步骤启用。";
+        statusText.Text = "凭据会使用 Windows DPAPI 保存。设为当前后，重启应用即可切换到该媒体源。";
 
         var testButton = FluentTheme.ApplyButton(new Button
         {
@@ -1601,7 +1789,7 @@ public sealed partial class SettingsPage : Page
                 activateButton.IsEnabled = false;
                 var saved = SaveExternalMediaSource(kind, nameBox, endpointBox, usernameBox, secretBox, activate: true);
                 _libraryStatusText.Foreground = FluentTheme.Accent;
-                _libraryStatusText.Text = $"已保存并设为当前：{saved.DisplayName}。远程浏览将在对应 Provider 接入后启用。";
+                _libraryStatusText.Text = $"已保存并设为当前：{saved.DisplayName}。重启应用后生效。";
                 dialog?.Hide();
             }
             catch (Exception ex)
@@ -1643,7 +1831,7 @@ public sealed partial class SettingsPage : Page
             {
                 var saved = SaveExternalMediaSource(kind, nameBox, endpointBox, usernameBox, secretBox, activate: false);
                 _libraryStatusText.Foreground = FluentTheme.Accent;
-                _libraryStatusText.Text = $"已保存 {saved.DisplayName}。远程浏览将在对应 Provider 接入后启用。";
+                _libraryStatusText.Text = $"已保存 {saved.DisplayName}。";
                 return System.Threading.Tasks.Task.FromResult(true);
             }
             catch (Exception ex)

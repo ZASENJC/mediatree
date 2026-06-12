@@ -1,7 +1,9 @@
 using MediaTree.Windows.Models;
 using MediaTree.Windows.Providers;
+using MediaTree.Windows.Providers.Jellyfin;
 using MediaTree.Windows.Services;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Threading;
@@ -280,6 +282,13 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void SettingsExplainsLocalOnlyAndExternalReadOnlyProviderBoundaries()
+    {
+        Assert.Contains("本机 MediaTree", MediaTree.Windows.Views.SettingsPage.LocalMediaTreeOnlyMessage);
+        Assert.Contains("外部服务端管理", MediaTree.Windows.Views.SettingsPage.ExternalLibraryReadOnlyMessage);
+    }
+
+    [Fact]
     public void SettingsDoesNotExposeSeparateAccountSecurityCard()
     {
         Assert.DoesNotContain("账号安全", MediaTree.Windows.Views.SettingsPage.RemoteAccessTitle);
@@ -472,16 +481,243 @@ public sealed class ServiceLogicTests
     }
 
     [Theory]
+    [InlineData(MediaSourceKind.Jellyfin, "https://jellyfin.example.invalid/")]
+    [InlineData(MediaSourceKind.Emby, "https://emby.example.invalid/")]
+    public void MediaProviderFactoryCreatesJellyfinCompatibleProviders(MediaSourceKind kind, string endpoint)
+    {
+        var profile = new MediaSourceProfile(kind, "Remote source", new Uri(endpoint), RequiresBundledBackend: false);
+        var credentials = new MediaSourceCredentials("user", "secret");
+
+        var provider = MediaProviderFactory.Create(profile, credentials);
+
+        var compatible = Assert.IsType<JellyfinCompatibleProvider>(provider);
+        Assert.Equal(kind, compatible.Profile.Kind);
+        Assert.Equal(profile.Endpoint, compatible.Services.Api.BackendUri);
+        Assert.Same(compatible.Services, provider.Services);
+        Assert.Same(credentials, compatible.Credentials);
+    }
+
+    [Theory]
     [InlineData(MediaSourceKind.Jellyfin)]
     [InlineData(MediaSourceKind.Emby)]
-    public void MediaProviderFactoryRejectsNonMediaTreeSourcesUntilImplemented(MediaSourceKind kind)
+    public async Task MediaProviderFactoryCanAuthenticateJellyfinCompatibleProviders(MediaSourceKind kind)
     {
-        var profile = new MediaSourceProfile(kind, "Remote source", new Uri("https://media.example.invalid/"), RequiresBundledBackend: false);
+        using var server = new OneShotJsonServer(new OneShotJsonResponse(200, """{"AccessToken":"media-token","User":{"Id":"user-id","Name":"media-user"}}"""));
+        var profile = new MediaSourceProfile(kind, "Remote source", server.BaseUri, RequiresBundledBackend: false);
+        var credentials = new MediaSourceCredentials("media-user", "media-password");
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
-        var exception = Assert.Throws<NotSupportedException>(() => MediaProviderFactory.Create(profile, new MediaSourceCredentials("user", "secret")));
+        var provider = await MediaProviderFactory.CreateJellyfinCompatibleAsync(profile, credentials, cancellation.Token);
 
-        Assert.Contains(kind.ToString(), exception.Message);
-        Assert.Contains("not implemented", exception.Message);
+        Assert.Equal(kind, provider.Profile.Kind);
+        Assert.Equal(server.BaseUri, provider.Services.Api.BackendUri);
+        Assert.Equal("/Users/AuthenticateByName", server.RequestPath);
+        Assert.Contains("\"Username\":\"media-user\"", server.RequestBodies[0]);
+        Assert.Contains("\"Pw\":\"media-password\"", server.RequestBodies[0]);
+    }
+
+    [Fact]
+    public async Task JellyfinCompatibleClientMapsLibrariesFoldersMoviesAndPlaybackUrls()
+    {
+        using var server = new OneShotJsonServer(
+            new OneShotJsonResponse(200, """
+                {
+                  "Items": [
+                    { "Id": "lib-1", "Name": "Movies", "CollectionType": "movies" }
+                  ]
+                }
+                """),
+            new OneShotJsonResponse(200, """
+                {
+                  "Items": [
+                    { "Id": "folder-1", "Name": "Shows", "Type": "Folder", "ChildCount": 2 },
+                    { "Id": "movie-leaf", "Name": "Standalone Movie", "Type": "Movie", "ChildCount": 0, "RunTimeTicks": 1200000000 }
+                  ],
+                  "TotalRecordCount": 2
+                }
+                """),
+            new OneShotJsonResponse(200, """
+                {
+                  "Items": [
+                    {
+                      "Id": "movie-1",
+                      "Name": "Episode One",
+                      "OriginalTitle": "Episode One Original",
+                      "Overview": "Pilot",
+                      "Type": "Episode",
+                      "SeriesName": "Sample Show",
+                      "SeasonName": "Season 1",
+                      "IndexNumber": 1,
+                      "ParentIndexNumber": 1,
+                      "RunTimeTicks": 600000000,
+                      "DateCreated": "2026-06-10T10:00:00Z",
+                      "PremiereDate": "2026-06-09T00:00:00Z",
+                      "UserData": { "PlaybackPositionTicks": 300000000, "PlayedPercentage": 50, "IsFavorite": true, "Played": true }
+                    }
+                  ],
+                  "TotalRecordCount": 1
+                }
+                """),
+            new OneShotJsonResponse(200, """
+                {
+                  "Id": "movie-1",
+                  "Name": "Episode One",
+                  "Overview": "Pilot",
+                  "Type": "Episode",
+                  "SeriesName": "Sample Show",
+                  "SeasonName": "Season 1",
+                  "IndexNumber": 1,
+                  "ParentIndexNumber": 1,
+                  "RunTimeTicks": 600000000,
+                  "UserData": { "PlaybackPositionTicks": 300000000, "PlayedPercentage": 50, "IsFavorite": true, "Played": true }
+                }
+                """),
+            new OneShotJsonResponse(204, ""),
+            new OneShotJsonResponse(200, "image-bytes"));
+        using var api = new JellyfinCompatibleApiClient(server.BaseUri, MediaSourceKind.Jellyfin);
+        api.SetBearerToken("media-token");
+        api.SetUserId("user-id");
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        var roots = await api.GetMediaRootsAsync(cancellation.Token);
+        var folders = await api.GetFoldersAsync("lib-1", cancellation.Token);
+        var movies = await api.GetMoviesAsync("lib-1", "folder-1", "", "created_desc", 20, 0, cancellation.Token);
+        var detail = await api.GetMovieDetailAsync(movies.Movies[0].Id, cancellation.Token);
+        var progress = await api.GetProgressAsync(detail.Id, cancellation.Token);
+        await api.SaveProgressAsync(detail.Id, 42, 60, stopped: false, cancellation.Token);
+        var coverUrl = await api.BuildCoverUrlAsync(detail.Id, cancellation.Token);
+        var streamUrl = await api.BuildStreamUrlAsync(detail.Id, cancellation.Token);
+        var playbackSource = await api.BuildPlaybackSourceAsync(detail.Id, cancellation.Token);
+
+        var root = Assert.Single(roots.Items);
+        Assert.Equal("lib-1", root.Path);
+        Assert.Equal("Movies", root.Label);
+        Assert.Equal(2, folders.Tree.Count);
+        var folder = Assert.Single(folders.Tree, item => item.Path == "folder-1");
+        Assert.Equal("folder-1", folder.Path);
+        Assert.Equal("lib-1", folder.MediaRoot);
+        var leaf = Assert.Single(folders.Tree, item => item.Path == "movie-leaf");
+        Assert.True(leaf.IsLeaf);
+        Assert.True(leaf.MovieId > 0);
+        Assert.Equal(1, leaf.MovieCount);
+        var movie = Assert.Single(movies.Movies);
+        Assert.Equal("Episode One", movie.Title);
+        Assert.StartsWith("jellyfin-compatible://", movie.Path);
+        Assert.Equal("Sample Show/Season 1", movie.FolderLevels);
+        Assert.Equal(60, movie.Duration);
+        Assert.Equal(30, movie.PlaybackPosition);
+        Assert.Contains("favorite", movie.Tags);
+        Assert.Contains("watched", movie.Tags);
+        Assert.Equal(movie.Id, detail.Id);
+        Assert.True(progress.Played);
+        Assert.Equal(50, progress.ProgressPercent);
+        Assert.StartsWith("file://", coverUrl);
+        Assert.DoesNotContain("media-token", coverUrl);
+        Assert.Contains("/Videos/movie-1/stream?static=true", streamUrl);
+        Assert.DoesNotContain("api_key", streamUrl);
+        Assert.Equal(streamUrl, playbackSource.Uri);
+        Assert.Equal("media-token", playbackSource.Headers["X-Emby-Token"]);
+        Assert.Contains("MediaBrowser ", playbackSource.Headers["X-Emby-Authorization"]);
+        Assert.Contains("Token=\"media-token\"", playbackSource.Headers["X-Emby-Authorization"]);
+        Assert.Equal(
+            [
+                "/Users/user-id/Views",
+                "/Users/user-id/Items?ParentId=lib-1&IncludeItemTypes=Folder%2CMovie%2CSeries%2CSeason%2CEpisode%2CBoxSet%2CVideo%2CMusicVideo&Recursive=false&Fields=Overview%2CPeople%2CGenres%2CDateCreated%2CPremiereDate%2CRuntimeTicks%2CUserData%2CSeriesName%2CSeasonName%2CIndexNumber%2CParentIndexNumber%2CPath%2CChildCount%2CCollectionType&Limit=200",
+                "/Users/user-id/Items?ParentId=folder-1&IncludeItemTypes=Movie%2CEpisode%2CVideo&Recursive=true&SearchTerm=&SortBy=DateCreated&SortOrder=Descending&StartIndex=0&Limit=20&Fields=Overview%2CPeople%2CGenres%2CDateCreated%2CPremiereDate%2CRuntimeTicks%2CUserData%2CSeriesName%2CSeasonName%2CIndexNumber%2CParentIndexNumber%2CPath%2CChildCount%2CCollectionType",
+                $"/Users/user-id/Items/movie-1",
+                "/Sessions/Playing/Progress?ItemId=movie-1&PositionTicks=420000000&IsPaused=false&EventName=timeupdate",
+                "/Items/movie-1/Images/Primary"
+            ],
+            server.RequestPaths);
+        Assert.Equal("media-token", server.RequestHeaders[^1]["X-Emby-Token"]);
+        Assert.Contains("Token=\"media-token\"", server.RequestHeaders[^1]["X-Emby-Authorization"]);
+    }
+
+    [Fact]
+    public async Task JellyfinCompatibleClientUsesEmbyProgressPathAndMediaBrowserWatchedPaths()
+    {
+        using var server = new OneShotJsonServer(
+            new OneShotJsonResponse(200, """
+                {
+                  "Items": [
+                    {
+                      "Id": "movie-1",
+                      "Name": "Movie One",
+                      "Type": "Movie",
+                      "RunTimeTicks": 600000000,
+                      "UserData": { "PlaybackPositionTicks": 0, "PlayedPercentage": 0, "Played": false }
+                    }
+                  ],
+                  "TotalRecordCount": 1
+                }
+                """),
+            new OneShotJsonResponse(204, ""),
+            new OneShotJsonResponse(204, ""),
+            new OneShotJsonResponse(204, ""));
+        using var api = new JellyfinCompatibleApiClient(server.BaseUri, MediaSourceKind.Emby);
+        api.SetBearerToken("media-token");
+        api.SetUserId("user-id");
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        var movies = await api.GetMoviesAsync("lib-1", "", "", "created_desc", 20, 0, cancellation.Token);
+        var movie = Assert.Single(movies.Movies);
+        await api.SaveProgressAsync(movie.Id, 42, 60, stopped: false, cancellation.Token);
+        await api.AddTagAsync(movie.Id, "watched", cancellation.Token);
+        await api.RemoveTagAsync(movie.Id, "watched", cancellation.Token);
+
+        Assert.Equal(
+            [
+                "/Users/user-id/Items?ParentId=lib-1&IncludeItemTypes=Movie%2CEpisode%2CVideo&Recursive=true&SearchTerm=&SortBy=DateCreated&SortOrder=Descending&StartIndex=0&Limit=20&Fields=Overview%2CPeople%2CGenres%2CDateCreated%2CPremiereDate%2CRuntimeTicks%2CUserData%2CSeriesName%2CSeasonName%2CIndexNumber%2CParentIndexNumber%2CPath%2CChildCount%2CCollectionType",
+                "/Users/user-id/PlayingItems/movie-1/Progress?PositionTicks=420000000",
+                "/Users/user-id/PlayedItems/movie-1",
+                "/Users/user-id/PlayedItems/movie-1"
+            ],
+            server.RequestPaths);
+        Assert.All(server.RequestHeaders, headers =>
+        {
+            Assert.Equal("media-token", headers["X-Emby-Token"]);
+            Assert.StartsWith("Emby ", headers["Authorization"]);
+            Assert.Contains("Token=\"media-token\"", headers["Authorization"]);
+        });
+    }
+
+    [Fact]
+    public async Task JellyfinCompatibleClientUsesDistinctReadPathsForRecentFavoritesAndSearch()
+    {
+        using var server = new OneShotJsonServer(
+            new OneShotJsonResponse(200, """{"Items":[],"TotalRecordCount":0}"""),
+            new OneShotJsonResponse(200, """{"Items":[],"TotalRecordCount":0}"""),
+            new OneShotJsonResponse(200, """{"Items":[],"TotalRecordCount":0}"""));
+        using var api = new JellyfinCompatibleApiClient(server.BaseUri, MediaSourceKind.Emby);
+        api.SetBearerToken("media-token");
+        api.SetUserId("user-id");
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        await api.GetRecentWatchedAsync("lib-1", 10, 0, cancellation.Token);
+        await api.GetFavoritesAsync("lib-1", "name", 10, 0, cancellation.Token);
+        await api.GetMoviesAsync("lib-1", "", "matrix", "release_date_desc", 10, 0, cancellation.Token);
+
+        Assert.Contains("SortBy=DatePlayed", server.RequestPaths[0]);
+        Assert.Contains("Filters=IsResumable", server.RequestPaths[0]);
+        Assert.DoesNotContain("IsPlayed=true", server.RequestPaths[0]);
+        Assert.Contains("Filters=IsFavorite", server.RequestPaths[1]);
+        Assert.Contains("SortBy=SortName", server.RequestPaths[1]);
+        Assert.Contains("SearchTerm=matrix", server.RequestPaths[2]);
+        Assert.Contains("SortBy=PremiereDate", server.RequestPaths[2]);
+    }
+
+    [Fact]
+    public async Task JellyfinCompatibleClientRejectsMediaTreeLibraryManagementWrites()
+    {
+        using var api = new JellyfinCompatibleApiClient(new Uri("https://jellyfin.example.invalid/"), MediaSourceKind.Jellyfin);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        await Assert.ThrowsAsync<NotSupportedException>(() => api.SaveLibrarySettingAsync(new LibrarySettingDto { MediaRoot = "lib-1" }, cancellation.Token));
+        await Assert.ThrowsAsync<NotSupportedException>(() => api.SetLibraryPasswordAsync("lib-1", "secret", cancellation.Token));
+        await Assert.ThrowsAsync<NotSupportedException>(() => api.ScanAsync("lib-1", cancellation.Token));
+        await Assert.ThrowsAsync<NotSupportedException>(() => api.ClearLibraryAsync("lib-1", cancellation.Token));
+        await Assert.ThrowsAsync<NotSupportedException>(() => api.SaveConfigAsync(["C:\\Media"], cancellation.Token));
+        await Assert.ThrowsAsync<NotSupportedException>(() => api.SaveGlobalConfigAsync(new ConfigDto(), cancellation.Token));
     }
 
     [Fact]
@@ -687,6 +923,25 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void AppServicesExposeExternalProviderServicesWithoutMediaTreeProviderAlias()
+    {
+        using var api = new JellyfinCompatibleApiClient(new Uri("https://jellyfin.example.invalid/"), MediaSourceKind.Jellyfin);
+        var services = CreateMediaTreeServices(api);
+        var profile = MediaSourceProfile.Jellyfin("Jellyfin", api.BackendUri);
+        var provider = new JellyfinCompatibleProvider(profile, services, new MediaSourceCredentials("user", "secret"));
+
+        AppServices.Initialize(new BackendProcessService(), provider);
+
+        Assert.Same(provider, AppServices.ActiveProvider);
+        Assert.Null(AppServices.ActiveMediaTreeProvider);
+        Assert.Same(services, AppServices.Media);
+        Assert.Same(services.Api, AppServices.Media.Api);
+        Assert.Same(services.Library, AppServices.Media.Library);
+        Assert.Same(services.Movie, AppServices.Media.Movie);
+        Assert.Same(services.PlaybackProgress, AppServices.Media.PlaybackProgress);
+    }
+
+    [Fact]
     public void MediaTreeServicesRequireAllServiceDependencies()
     {
         using var api = new MediaTreeApiClient(new Uri("http://127.0.0.1:27580/"));
@@ -704,7 +959,7 @@ public sealed class ServiceLogicTests
         Assert.Throws<ArgumentNullException>("playbackProgress", () => new MediaTreeServices(api, auth, library, movie, updates, null!));
     }
 
-    private static MediaTreeServices CreateMediaTreeServices(MediaTreeApiClient api)
+    private static MediaTreeServices CreateMediaTreeServices(IMediaApiClient api)
     {
         return new MediaTreeServices(
             api,
@@ -1162,15 +1417,23 @@ file sealed class OneShotJsonServer : IDisposable
                 var requestLine = await reader.ReadLineAsync();
                 RequestPaths.Add(requestLine?.Split(' ', StringSplitOptions.RemoveEmptyEntries).ElementAtOrDefault(1) ?? "");
                 var contentLength = 0;
+                var requestHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 string? header;
                 while (!string.IsNullOrEmpty(header = await reader.ReadLineAsync()))
                 {
+                    var separator = header.IndexOf(':', StringComparison.Ordinal);
+                    if (separator > 0)
+                    {
+                        requestHeaders[header[..separator]] = header[(separator + 1)..].Trim();
+                    }
+
                     if (header.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase)
                         && int.TryParse(header["Content-Length:".Length..].Trim(), out var parsedLength))
                     {
                         contentLength = parsedLength;
                     }
                 }
+                RequestHeaders.Add(requestHeaders);
 
                 if (contentLength > 0)
                 {
@@ -1209,6 +1472,8 @@ file sealed class OneShotJsonServer : IDisposable
     public List<string> RequestPaths { get; } = [];
 
     public List<string> RequestBodies { get; } = [];
+
+    public List<Dictionary<string, string>> RequestHeaders { get; } = [];
 
     public string RequestPath => RequestPaths.FirstOrDefault() ?? "";
 

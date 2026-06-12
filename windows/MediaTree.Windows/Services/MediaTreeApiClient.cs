@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace MediaTree.Windows.Services;
 
-public sealed partial class MediaTreeApiClient : IDisposable
+public sealed partial class MediaTreeApiClient : IMediaApiClient
 {
     private readonly HttpClient _httpClient;
     private readonly JsonSerializerOptions _jsonOptions = new()

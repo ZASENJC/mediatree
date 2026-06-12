@@ -6,7 +6,7 @@ namespace MediaTree.Windows.Providers;
 public sealed class MediaTreeServices
 {
     public MediaTreeServices(
-        MediaTreeApiClient api,
+        IMediaApiClient api,
         AuthSessionService auth,
         LibraryService library,
         MovieService movie,
@@ -21,7 +21,7 @@ public sealed class MediaTreeServices
         PlaybackProgress = playbackProgress ?? throw new ArgumentNullException(nameof(playbackProgress));
     }
 
-    public MediaTreeApiClient Api { get; }
+    public IMediaApiClient Api { get; }
     public AuthSessionService Auth { get; }
     public LibraryService Library { get; }
     public MovieService Movie { get; }

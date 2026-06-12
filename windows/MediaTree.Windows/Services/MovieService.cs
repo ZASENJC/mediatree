@@ -6,9 +6,9 @@ namespace MediaTree.Windows.Services;
 
 public sealed class MovieService
 {
-    private readonly MediaTreeApiClient _api;
+    private readonly IMediaApiClient _api;
 
-    public MovieService(MediaTreeApiClient api)
+    public MovieService(IMediaApiClient api)
     {
         _api = api;
     }

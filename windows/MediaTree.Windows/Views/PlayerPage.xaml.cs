@@ -1013,7 +1013,9 @@ public sealed partial class PlayerPage : Page
         _player.StateChanged += OnPlayerStateChanged;
         _playerHost.AttachService(_player);
 
-        var source = File.Exists(movie.Path) ? movie.Path : await AppServices.Media.Api.BuildStreamUrlAsync(movie.Id);
+        var source = AppServices.IsLocalMediaTreeActive && File.Exists(movie.Path)
+            ? new MediaPlaybackSource(movie.Path)
+            : await AppServices.Media.Api.BuildPlaybackSourceAsync(movie.Id);
         await _player.LoadAsync(source);
         await SetVolumeAsync(_volumeSlider.Value, showOsd: false);
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaTree.Windows.Interop;
@@ -32,10 +33,15 @@ public sealed class LibMpvPlayerService : IMpvPlayerService
     }
 
     public Task LoadAsync(string source, CancellationToken cancellationToken = default)
+        => LoadAsync(new MediaPlaybackSource(source), cancellationToken);
+
+    public Task LoadAsync(MediaPlaybackSource source, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(source);
         EnsureInitialized();
         ApplyCompositionSize();
-        MpvNative.Command(_handle, "loadfile", source);
+        ApplyHttpHeaders(source.Headers);
+        MpvNative.Command(_handle, "loadfile", source.Uri);
         UpdateSwapchain();
         return Task.CompletedTask;
     }
@@ -161,6 +167,22 @@ public sealed class LibMpvPlayerService : IMpvPlayerService
 
         MpvNative.SetD3D11CompositionSize(_handle, width, height);
     }
+
+    private void ApplyHttpHeaders(IReadOnlyDictionary<string, string> headers)
+    {
+        if (_handle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var fields = headers
+            .Where(item => !string.IsNullOrWhiteSpace(item.Key) && !string.IsNullOrWhiteSpace(item.Value))
+            .Select(item => EscapeMpvListValue($"{item.Key}: {item.Value}"));
+        MpvNative.SetOption(_handle, "http-header-fields", string.Join(",", fields));
+    }
+
+    private static string EscapeMpvListValue(string value)
+        => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace(",", "\\,", StringComparison.Ordinal);
 
     private void PollState()
     {

@@ -28,6 +28,11 @@ public static class MediaContextMenuService
     public static MenuFlyout CreateMovieFlyout(MovieCardItem item, MediaContextMenuHost host)
     {
         var flyout = FluentTheme.ApplyMenuFlyout(new MenuFlyout());
+        if (!AppServices.SupportsMediaTreeLibraryManagement)
+        {
+            return flyout;
+        }
+
         if (!item.IsSpecial)
         {
             flyout.Items.Add(CreateItem("重新刮削", async () => await RunMovieActionAsync(item, host, "重新刮削", () => AppServices.Media.Movie.RescrapeMovieAsync(item.Id))));
@@ -43,6 +48,11 @@ public static class MediaContextMenuService
     public static MenuFlyout CreateFolderFlyout(FolderCardItem item, MediaContextMenuHost host)
     {
         var flyout = FluentTheme.ApplyMenuFlyout(new MenuFlyout());
+        if (!AppServices.SupportsMediaTreeLibraryManagement)
+        {
+            return flyout;
+        }
+
         flyout.Items.Add(CreateItem("重新刮削", async () => await RunFolderActionAsync(item, host, "重新刮削", () => AppServices.Media.Movie.RescrapeFolderAsync(item.Path, item.MediaRoot))));
         flyout.Items.Add(CreateItem("手动刮削", async () => await ShowFolderScrapeDialogAsync(item, host)));
         flyout.Items.Add(CreateItem("更换封面", async () => await ShowFolderCoverDialogAsync(item, host)));

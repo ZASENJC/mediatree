@@ -7,9 +7,9 @@ namespace MediaTree.Windows.Services;
 public sealed class PlaybackProgressService
 {
     private const double WatchedRatio = 0.9;
-    private readonly MediaTreeApiClient _api;
+    private readonly IMediaApiClient _api;
 
-    public PlaybackProgressService(MediaTreeApiClient api)
+    public PlaybackProgressService(IMediaApiClient api)
     {
         _api = api;
     }
@@ -24,4 +24,3 @@ public sealed class PlaybackProgressService
         return _api.SaveProgressAsync(movieId, Math.Max(0, position), duration > 0 ? duration : null, stopped, cancellationToken);
     }
 }
-

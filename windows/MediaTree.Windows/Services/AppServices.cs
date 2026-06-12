@@ -7,19 +7,25 @@ public static class AppServices
 {
     public static MainWindow? MainWindow { get; set; }
     public static IMediaProvider ActiveProvider { get; private set; } = null!;
-    public static IMediaTreeProvider ActiveMediaTreeProvider { get; private set; } = null!;
+    public static IMediaTreeProvider? ActiveMediaTreeProvider { get; private set; }
     public static BackendProcessService Backend { get; private set; } = null!;
     public static MediaTreeServices Media { get; private set; } = null!;
 
     public static bool IsReady => Media != null && ActiveProvider != null;
 
+    public static bool IsLocalMediaTreeActive
+        => ActiveProvider?.Profile.Kind == MediaSourceKind.LocalMediaTree;
+
+    public static bool SupportsMediaTreeLibraryManagement
+        => ActiveProvider?.Profile.Kind is MediaSourceKind.LocalMediaTree or MediaSourceKind.RemoteMediaTree;
+
     public static void Initialize(
         BackendProcessService backend,
-        IMediaTreeProvider provider)
+        IMediaProvider provider)
     {
         Backend = backend ?? throw new ArgumentNullException(nameof(backend));
         ActiveProvider = provider ?? throw new ArgumentNullException(nameof(provider));
-        ActiveMediaTreeProvider = provider;
+        ActiveMediaTreeProvider = provider as IMediaTreeProvider;
         Media = provider.Services;
     }
 

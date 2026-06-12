@@ -6,9 +6,9 @@ namespace MediaTree.Windows.Services;
 
 public sealed class UpdateService
 {
-    private readonly MediaTreeApiClient _api;
+    private readonly IMediaApiClient _api;
 
-    public UpdateService(MediaTreeApiClient api)
+    public UpdateService(IMediaApiClient api)
     {
         _api = api;
     }

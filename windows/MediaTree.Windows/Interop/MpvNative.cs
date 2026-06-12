@@ -142,7 +142,7 @@ internal static class MpvNative
         }
     }
 
-    private static void SetOption(IntPtr handle, string name, string value)
+    public static void SetOption(IntPtr handle, string name, string value)
     {
         Check(mpv_set_option_string(handle, name, value), $"mpv_set_option_string {name}");
     }

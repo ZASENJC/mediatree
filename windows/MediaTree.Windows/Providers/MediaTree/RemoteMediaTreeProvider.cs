@@ -21,7 +21,7 @@ public sealed class RemoteMediaTreeProvider : IMediaTreeProvider
     public MediaSourceProfile Profile { get; }
     public MediaTreeServices Services { get; }
     public MediaSourceCredentials Credentials { get; }
-    public MediaTreeApiClient Api => Services.Api;
+    public IMediaApiClient Api => Services.Api;
     public AuthSessionService Auth => Services.Auth;
     public LibraryService Library => Services.Library;
     public MovieService Movie => Services.Movie;

@@ -64,4 +64,7 @@ public sealed partial class MediaTreeApiClient
         var token = await EnsureMediaTokenAsync(cancellationToken);
         return new Uri(BackendUri, $"api/stream/{movieId}?token={Uri.EscapeDataString(token)}").ToString();
     }
+
+    public async Task<MediaPlaybackSource> BuildPlaybackSourceAsync(int movieId, CancellationToken cancellationToken = default)
+        => new(await BuildStreamUrlAsync(movieId, cancellationToken));
 }

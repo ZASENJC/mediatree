@@ -12,9 +12,9 @@ namespace MediaTree.Windows.Services;
 public sealed class AuthSessionService
 {
     private const string LocalUsername = "mediatree-windows";
-    private readonly MediaTreeApiClient _api;
+    private readonly IMediaApiClient _api;
 
-    public AuthSessionService(MediaTreeApiClient api)
+    public AuthSessionService(IMediaApiClient api)
     {
         _api = api;
     }

@@ -442,6 +442,7 @@ public sealed partial class LibraryPage : Page
             AppServices.Media.Library.LibrariesChanged -= OnLibrariesChanged;
             AppServices.Media.Library.LibrariesChanged += OnLibrariesChanged;
             LoadUiPreferences();
+            ApplyProviderCapabilities();
             await LoadLibrariesAsync();
         }
         catch (Exception ex)
@@ -745,6 +746,12 @@ public sealed partial class LibraryPage : Page
 
     private async void OnScanClicked(object sender, RoutedEventArgs args)
     {
+        if (!AppServices.SupportsMediaTreeLibraryManagement)
+        {
+            ShowInfo(SettingsPage.ExternalLibraryReadOnlyMessage, InfoBarSeverity.Informational);
+            return;
+        }
+
         var mediaRoot = _activeMediaRoot;
         if (string.IsNullOrWhiteSpace(mediaRoot))
         {
@@ -835,6 +842,12 @@ public sealed partial class LibraryPage : Page
             }
 
             _searchBox.Text = "";
+            if (item.Folder.IsLeaf && item.Folder.MovieId > 0)
+            {
+                ShellPage.Current?.NavigateToMovie(item.Folder.MovieId);
+                return;
+            }
+
             ShellPage.Current?.NavigateToFolder(item.Path, _activeMediaRoot, item.Title);
         }
         catch (Exception ex)
@@ -926,6 +939,11 @@ public sealed partial class LibraryPage : Page
     {
         try
         {
+            if (!AppServices.SupportsMediaTreeLibraryManagement)
+            {
+                return;
+            }
+
             await AppServices.Media.Library.ScanAsync(mediaRoot);
             if (mediaRoot == _activeScanMediaRoot)
             {
@@ -957,6 +975,17 @@ public sealed partial class LibraryPage : Page
         _scanInfoText.Foreground = severity == InfoBarSeverity.Error ? FluentTheme.Error : FluentTheme.TextSecondary;
         _scanInfoText.Visibility = Visibility.Visible;
         _scanProgressTrack.Visibility = Visibility.Collapsed;
+    }
+
+    private void ApplyProviderCapabilities()
+    {
+        var canManageLibraries = AppServices.SupportsMediaTreeLibraryManagement;
+        _scanButton.Visibility = canManageLibraries ? Visibility.Visible : Visibility.Collapsed;
+        if (!canManageLibraries)
+        {
+            _scanTimer.Stop();
+            _scanProgressTrack.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void ShowScanProgress()

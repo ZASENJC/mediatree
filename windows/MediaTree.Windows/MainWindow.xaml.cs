@@ -194,17 +194,26 @@ public sealed partial class MainWindow : Window
             _statusText.Text = "正在准备登录状态";
             var api = new MediaTreeApiClient(backendUri);
             var mediaTreeServices = MediaProviderFactory.CreateMediaTreeServices(api);
-            var provider = MediaProviderFactory.CreateLocalMediaTree(mediaTreeServices);
+            var localProvider = MediaProviderFactory.CreateLocalMediaTree(mediaTreeServices);
+            var provider = await ResolveActiveProviderAsync(localProvider);
+            if (!ReferenceEquals(provider, localProvider))
+            {
+                localProvider.Services.Api.Dispose();
+            }
+
             AppServices.Initialize(
                 backend: _backend,
                 provider: provider);
 
-            var session = await AppServices.Media.Auth.EnsureLocalSessionAsync();
-            ShellLogger.Info($"Native session result: {session.State}.");
-            if (session.State == AuthSessionState.NeedsUserLogin)
+            if (provider.Profile.Kind == MediaSourceKind.LocalMediaTree)
             {
-                NavigateToLogin();
-                return;
+                var session = await AppServices.Media.Auth.EnsureLocalSessionAsync();
+                ShellLogger.Info($"Native session result: {session.State}.");
+                if (session.State == AuthSessionState.NeedsUserLogin)
+                {
+                    NavigateToLogin();
+                    return;
+                }
             }
 
             NavigateToShell();
@@ -214,6 +223,45 @@ public sealed partial class MainWindow : Window
             Debug.WriteLine(ex);
             ShellLogger.Error(ex, "Native main window startup failed.");
             ShowStartupFailure(ex);
+        }
+    }
+
+    private static async Task<IMediaProvider> ResolveActiveProviderAsync(IMediaTreeProvider localProvider)
+    {
+        var state = MediaSourceProfileStore.Load();
+        var active = state.Sources.Find(source => string.Equals(source.Id, state.ActiveSourceId, StringComparison.OrdinalIgnoreCase));
+        if (active is null || active.Kind == MediaSourceKind.LocalMediaTree)
+        {
+            return localProvider;
+        }
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(active.Endpoint) || !Uri.TryCreate(active.Endpoint, UriKind.Absolute, out var endpoint))
+            {
+                ShellLogger.Error($"Ignoring invalid active media source endpoint: {active.Id}.");
+                return localProvider;
+            }
+
+            var credentials = MediaSourceCredentialStore.Load(active.Id);
+            if (credentials is null)
+            {
+                ShellLogger.Error($"Ignoring active media source without stored credentials: {active.Id}.");
+                return localProvider;
+            }
+
+            var profile = new MediaSourceProfile(active.Kind, active.DisplayName, endpoint, active.RequiresBundledBackend);
+            return active.Kind switch
+            {
+                MediaSourceKind.RemoteMediaTree => await MediaProviderFactory.CreateRemoteMediaTreeAsync(profile, credentials),
+                MediaSourceKind.Jellyfin or MediaSourceKind.Emby => await MediaProviderFactory.CreateJellyfinCompatibleAsync(profile, credentials),
+                _ => localProvider,
+            };
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, $"Failed to activate media source {active.Id}. Falling back to local MediaTree.");
+            return localProvider;
         }
     }
 

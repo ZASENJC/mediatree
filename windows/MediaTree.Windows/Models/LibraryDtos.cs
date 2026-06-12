@@ -43,6 +43,9 @@ public sealed class FolderNodeDto
     [JsonPropertyName("is_leaf")]
     public bool IsLeaf { get; set; }
 
+    [JsonIgnore]
+    public int MovieId { get; set; }
+
     [JsonPropertyName("media_root")]
     public string MediaRoot { get; set; } = "";
 

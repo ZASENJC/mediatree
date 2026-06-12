@@ -12,7 +12,7 @@ public sealed class LocalMediaTreeProvider : IMediaTreeProvider
 
     public MediaSourceProfile Profile => MediaSourceProfile.LocalMediaTree(Services.Api.BackendUri);
     public MediaTreeServices Services { get; }
-    public MediaTreeApiClient Api => Services.Api;
+    public IMediaApiClient Api => Services.Api;
     public AuthSessionService Auth => Services.Auth;
     public LibraryService Library => Services.Library;
     public MovieService Movie => Services.Movie;
