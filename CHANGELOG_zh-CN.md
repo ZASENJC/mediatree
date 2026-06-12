@@ -6,6 +6,20 @@
 
 ---
 
+## 未发布
+
+### 移除
+
+- 移除 Jellyfin/Emby 兼容 API 层，包括旧的 `/System`、`/Users`、`/Items`、`/Videos`、`/Sessions`、`/Shows`、`/Library`、`/DisplayPreferences`、`/Genres` 和 `/emby` 路由
+- 移除独立的 Jellyfin 令牌、认证和映射模块；浏览器播放、媒体 token 串流、外部播放器 M3U 接续和 Web 播放进度继续通过 MediaTree 原生 API 支持
+- 后续 Windows 端 Jellyfin/Emby 支持继续放在 WinUI Provider / 媒体源适配层，不再依赖已移除的 MediaTree 后端兼容层
+
+### 文档
+
+- 更新 README 和 Wiki，当前安装/使用说明不再宣称服务端支持 Jellyfin/Emby 兼容访问
+
+---
+
 ## 1.0.15 (2026-06-11)
 
 ### Windows 桌面版

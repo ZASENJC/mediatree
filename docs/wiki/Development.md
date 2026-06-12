@@ -20,9 +20,6 @@ mediatree/
 │   │   ├── tmdb.py        # TMDB API client
 │   │   ├── bangumi.py     # Bangumi API client
 │   │   ├── javdb.py       # JavDatabase scraper
-│   │   ├── jellyfin_compat.py  # Jellyfin API routes
-│   │   ├── jellyfin_mappers.py # Data mapping
-│   │   ├── jellyfin_auth.py    # Jellyfin auth
 │   │   └── scrapers/      # Scraper plugin system
 │   └── tests/             # Unit tests
 │
@@ -99,7 +96,7 @@ docker buildx build \
 
 - **Single-file router**: All API routes in `main.py` (~1580 lines). No separate router modules.
 - **Auth middleware**: `AuthMiddleware` guards `/api/*` routes with Basic/Bearer auth. Whitelisted paths bypass auth.
-- **Lifespan hooks**: DB init, Jellyfin startup, initial scan, and file watcher all managed in FastAPI lifespan.
+- **Lifespan hooks**: DB init, initial scan, and file watcher are managed in FastAPI lifespan.
 - **SQLite WAL mode**: Enabled for better concurrent read performance.
 
 ### Frontend

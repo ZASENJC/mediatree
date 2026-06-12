@@ -7,7 +7,6 @@ import { getUiPrefs, setUiPrefs } from '../store'
 import artplayerPluginAss from './artplayerPluginAss'
 import VRVideoLayer, { VRMode } from './VRVideoLayer'
 import { useTheater } from '../theater'
-import { getWindowsBridge, isWindowsShell } from '../windowsBridge'
 
 interface Props {
   src: string
@@ -51,6 +50,7 @@ type AssPluginController = {
 Artplayer.PLAYBACK_RATE = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]
 Artplayer.SEEK_STEP = SEEK_SMALL
 Artplayer.FAST_FORWARD_VALUE = 2
+Artplayer.CONTROL_HIDE_TIME = 5000
 Artplayer.REMOVE_SRC_WHEN_DESTROY = true
 
 function getSavedPos(movieId: number): number {
@@ -704,6 +704,25 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
     })
   }, [])
 
+  const showPlayerChrome = useCallback(() => {
+    const art = artRef.current
+    if (!art || art.isDestroy) return
+    art.controls.show = true
+  }, [])
+
+  const hidePlayerChrome = useCallback(() => {
+    const art = artRef.current
+    if (art && !art.isDestroy) {
+      art.setting.show = false
+      art.contextmenu.show = false
+      art.info.show = false
+      art.controls.show = false
+    } else {
+      setPlayerChromeVisible(false)
+    }
+    setEpisodeMenuOpen(false)
+  }, [])
+
   const ensureDocumentTitleBaseline = useCallback(() => {
     if (!playbackTitleActiveRef.current) {
       documentTitleBeforePlaybackRef.current = document.title || SITE_TITLE
@@ -1116,30 +1135,13 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
     }
   }, [localPlaybackUrl])
 
-  const openMpv = useCallback(async () => {
-    const windowsShell = isWindowsShell()
-    const windowsBridge = getWindowsBridge()
-    if (windowsShell) {
-      if (!windowsBridge?.openMpv) {
-        notice('Windows 内嵌 MPV 不可用，请重启应用。')
-        return
-      }
-      try {
-        await windowsBridge.openMpv(localPlaybackUrl)
-        return
-      } catch (err) {
-        console.error('Windows bundled MPV launch failed', err)
-        notice('Windows 内嵌 MPV 启动失败，请打开日志查看原因。')
-        return
-      }
-    }
-
+  const openMpv = useCallback(() => {
     const ua = navigator.userAgent || ''
     const href = /Android/i.test(ua)
       ? `intent:${localPlaybackUrl}#Intent;action=android.intent.action.VIEW;type=video/*;package=is.xyz.mpv;end`
       : `mpv://play/${encodeURIComponent(localPlaybackUrl)}`
     window.location.href = href
-  }, [localPlaybackUrl, notice])
+  }, [localPlaybackUrl])
 
   const setSubtitleVisible = useCallback((visible: boolean, art = artRef.current, manual = false) => {
     subtitleVisibleRef.current = visible
@@ -1832,7 +1834,9 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
           ref={playerFrameRef}
           className={`mediatree-player-frame theater-player-frame relative z-[1] overflow-hidden rounded-3xl ${theaterTransition ? `theater-player-frame-${theaterTransition}` : ''}`}
           style={theaterMode ? theaterFrameStyle : undefined}
-          onMouseLeave={() => setEpisodeMenuOpen(false)}
+          onMouseMove={showPlayerChrome}
+          onMouseEnter={showPlayerChrome}
+          onMouseLeave={hidePlayerChrome}
         >
         <div ref={artContainerRef} className="mediatree-artplayer w-full" />
         <VRVideoLayer art={artInstance} mode={vrMode} />

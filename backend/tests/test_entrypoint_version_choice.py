@@ -1,12 +1,10 @@
 import os
-import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
 
-@unittest.skipIf(shutil.which("sh") is None, "requires POSIX sh")
 class EntrypointVersionChoiceTest(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()

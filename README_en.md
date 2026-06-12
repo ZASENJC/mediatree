@@ -23,7 +23,7 @@
   <a href="https://github.com/ZASENJC/mediatree-app"><img src="https://img.shields.io/badge/android-app-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android App"></a>
 </p>
 
-MediaTree is built for people who keep movies, TV shows, anime, and private niche libraries on their own disks. Point it at your folders, let it scan and enrich the files, then watch from the browser or Jellyfin-compatible apps without running a heavy media stack.
+MediaTree is built for people who keep movies, TV shows, anime, and private niche libraries on their own disks. Point it at your folders, let it scan and enrich the files, then watch from the browser or stream to external players without running a heavy media stack.
 
 ## Why MediaTree
 
@@ -31,10 +31,10 @@ MediaTree is built for people who keep movies, TV shows, anime, and private nich
 - **Metadata without manual busywork** - scrape posters, titles, cast, seasons, episodes, and details from TMDB, Bangumi, and Javdatabase.
 - **A player made for real libraries** - stream directly, seek with HTTP Range, transcode on demand, render ASS/SSA subtitles, show playback state in the browser tab, and open in IINA, mpv, VLC, or PiP.
 - **Useful from day one** - browse by library, folder tree, favorites, categories, or seasons; scan on startup or let the file watcher pick up changes.
-- **Works with more than the web UI** - Jellyfin-compatible APIs let VidHub, Infuse, Kodi, VLC, IINA, and mpv connect directly.
+- **Works with more than the web UI** - the web player can generate external playback links and M3U playlists for VLC, IINA, and mpv.
 - **Simple to run at home** - Docker Compose, SQLite, persistent `./data`, linux/amd64 and linux/arm64 images.
 
-For a local desktop experience, use the Windows desktop build: it launches the local FastAPI backend from a WinUI 3 shell and renders the same MediaTree web app inside WebView2. For a mobile experience, pair it with the standalone Android client [ZASENJC/mediatree-app](https://github.com/ZASENJC/mediatree-app). It supports MediaTree, Jellyfin, Emby, SMB, and WebDAV while this project remains the separately deployable server.
+For a local desktop experience, use the Windows desktop build: it starts the local FastAPI backend from a native WinUI 3 client, lets you add local media folders in the app, browse the library, and play through bundled libmpv. For a mobile experience, pair it with the standalone Android client [ZASENJC/mediatree-app](https://github.com/ZASENJC/mediatree-app). It can connect to MediaTree, and it also works as an independent client for Jellyfin, Emby, SMB, and WebDAV.
 
 ## Screenshots
 
@@ -122,11 +122,11 @@ Docker Hub image: `zasenjc/mediatree:latest`
 
 ## Windows Desktop
 
-The first Windows desktop build targets Windows 10 19041+ / Windows 11 x64. It is not an external browser launcher: the app starts a local `mediatree-server.exe` backend and opens `http://127.0.0.1:<random-port>` inside an embedded WebView2 hosted by a WinUI 3 window.
+The Windows desktop build targets Windows 10 19041+ / Windows 11 x64. It is not an external browser launcher: the app starts a local `mediatree-server.exe` backend and uses a native Windows navigation shell, media grids, detail pages, and an in-window bundled libmpv player.
 
-Desktop data is stored under `%APPDATA%\MediaTree\data`, and logs are stored under `%LOCALAPPDATA%\MediaTree\logs`. Windows Settings exposes only two update paths: shared backend/application-code updates can use an in-app `app package update`, which downloads `mediatree-app-<version>.tar.gz`, replaces the current app package, removes old packages, and restarts the local service automatically; Windows native UI, Python dependency, ffmpeg/libmpv, PyInstaller packaging, or other native runtime changes use a `full update` that opens the Windows full-package download. Current releases primarily deliver a portable zip; if a release also provides an `.exe`, the desktop updater prefers the `.exe` download link.
+Desktop data is stored under `%APPDATA%\MediaTree\data`, and logs are stored under `%LOCALAPPDATA%\MediaTree\logs`. To let the Android client connect to the bundled Windows backend, enable LAN access from `移动端访问` in Windows Settings and set the login username and password there. Saving restarts the local backend and shows the `http://<this-pc-ip>:27581` URL to enter in `mediatree-app`; Windows and mobile then use the same account for that local backend. Windows Settings exposes only two update paths: shared backend/application-code updates can use an in-app `app package update`, which downloads `mediatree-app-<version>.tar.gz`, replaces the current app package, removes old packages, and restarts the local service automatically; Windows native UI, Python dependency, ffmpeg/libmpv, PyInstaller packaging, or other native runtime changes use a `full update` that opens the Windows full-package download. Current releases primarily deliver a portable zip; if a release also provides an `.exe`, the desktop updater prefers the `.exe` download link.
 
-The Windows desktop build does not reuse the Web React frontend. The Web app lives under `frontend/`, while Windows uses the WinUI native frontend under `windows/MediaTree.Windows/`; only the FastAPI backend, data models, and business logic are shared or migrated consistently. Web UI and interaction changes therefore do not automatically appear in Windows. When the same feature must appear in Windows, it must be adapted in the WinUI frontend and shipped as a Windows full update.
+The Windows desktop build does not reuse the Web React frontend. The Web app lives under `frontend/`, while Windows uses the native WinUI frontend under `windows/MediaTree.Windows/`; only the FastAPI backend, data models, and business logic are shared or migrated consistently. Web UI and interaction changes therefore do not automatically appear in Windows. When the same feature must appear in Windows, it must be adapted in the WinUI frontend and shipped as a Windows full update. Remote MediaTree, Jellyfin, and Emby connections belong to the Windows Provider/media-source adapter layer, not to the removed MediaTree backend Jellyfin/Emby compatibility API.
 
 Maintainer local Windows build:
 
@@ -147,7 +147,7 @@ pwsh packaging/windows/build-windows.ps1 -Configuration Release
 
 Scraper cache TTLs and the Javdatabase request interval are managed internally instead of being tuned from Settings or environment variables. Manual scans, rescrapes, and manual apply actions bypass cache, and empty results are not cached, so stale empty responses do not block later metadata fixes.
 
-See [.env.example](.env.example) for all options. Detailed setup, scraper behavior, client compatibility, and troubleshooting live in the [Wiki](https://github.com/ZASENJC/mediatree/wiki).
+See [.env.example](.env.example) for all options. Detailed setup, scraper behavior, playback, and troubleshooting live in the [Wiki](https://github.com/ZASENJC/mediatree/wiki).
 
 ## Updates
 
@@ -157,7 +157,7 @@ For app-package releases, maintainers now build and push `zasenjc/mediatree:late
 
 The Windows desktop build does not show Docker/image update actions. It only shows `app package update` and `full update`. If the Windows impact is limited to shared backend/application code that can run on the existing bundled runtime without changing WinUI pages or Windows DTO/API consumption, keep `.github/release-metadata.json` at `requires_windows_base_update: false`; if a Web feature must land in the Windows native frontend, or the release changes Python dependencies, bundled binaries, ffmpeg/libmpv, the WinUI shell, PyInstaller packaging, bootstrap/session behavior, or another native/runtime surface, mark that version with `requires_windows_base_update: true` and publish a new Windows full package.
 
-For container deployments, some releases show "full image update required". That usually means the runtime changed too, such as Python, ffmpeg, fonts, or startup behavior. The simplest path is to run the two host-side commands below. If you want Settings to perform full image updates automatically, mount `/var/run/docker.sock:/var/run/docker.sock` in `docker-compose.yml`; this gives the container control over Docker on the host, so leave it unmounted if you are unsure.
+Some releases show "full image update required". That usually means the runtime changed too, such as Python, ffmpeg, fonts, or startup behavior. The simplest path is to run the two host-side commands below. If you want Settings to perform full image updates automatically, mount `/var/run/docker.sock:/var/run/docker.sock` in `docker-compose.yml`; this gives the container control over Docker on the host, so leave it unmounted if you are unsure.
 
 For full image updates:
 

@@ -724,7 +724,7 @@ async def scrape_for_library(media_root: str):
                 _set_scan_progress(media_root, done=done_count, skipped=skipped_count)
             return
 
-        # 使用源文件夹名进行搜索（参考 Jellyfin 刮削逻辑），而非视频文件名
+        # 使用源文件夹名进行搜索，而非视频文件名
         search_name = folder_name
         search_levels = folder_levels
         if is_season_folder(folder_name):

@@ -1,9 +1,7 @@
 name: Auto Update Release Tag
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -189,3 +187,12 @@ jobs:
             ${{ steps.app_package.outputs.archive }}
             ${{ steps.app_package.outputs.manifest }}
             ${{ steps.app_package.outputs.sha_file }}
+
+      - name: Notify Telegram
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_REQUIRES_IMAGE_UPDATE: ${{ env.RELEASE_REQUIRES_IMAGE_UPDATE }}
+          RELEASE_UPDATE_REASON: ${{ env.RELEASE_UPDATE_REASON }}
+        run: bash .github/scripts/notify-telegram-release.sh

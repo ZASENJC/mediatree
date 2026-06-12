@@ -1,6 +1,5 @@
 import { getCached, setCache, clearCache } from './cache'
 import { Capacitor } from '@capacitor/core'
-import { isWindowsShell } from './windowsBridge'
 
 const DEFAULT_API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '') || '/api'
 const SERVER_URL_KEY = 'mediatree_server_url'
@@ -24,7 +23,6 @@ function normalizeServerUrl(input: string): string {
 }
 
 function getServerUrl(): string {
-  if (isWindowsShell()) return ''
   try {
     const stored = normalizeServerUrl(localStorage.getItem(SERVER_URL_KEY) || '')
     if (stored) memoryServerUrl = stored
@@ -35,7 +33,6 @@ function getServerUrl(): string {
 }
 
 function setServerUrl(url: string): string {
-  if (isWindowsShell()) return ''
   const normalized = normalizeServerUrl(url)
   if (normalized !== memoryServerUrl) clearMediaToken()
   memoryServerUrl = normalized
@@ -827,7 +824,6 @@ export interface Config {
   tmdb_access_token: string
   tmdb_configured: boolean
   media_root: string
-  extra_media_roots?: string[]
   update_check_enabled: boolean
   update_check_interval_hours: number
 }
@@ -851,14 +847,11 @@ export interface VersionEntry {
   html_url: string
   body?: string
   source: 'github-release' | string
-  update_type?: 'app-package' | 'docker-image-required' | 'windows-full-required'
+  update_type?: 'app-package' | 'docker-image-required'
   size?: number
   requires_image_update?: boolean
-  requires_windows_base_update?: boolean
   required_image_version?: string
   reason?: string
-  windows_reason?: string
-  windows_download_url?: string
 }
 
 export interface DockerHubLatestBaseline {

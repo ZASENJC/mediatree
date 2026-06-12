@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom'
 import { marked } from 'marked'
 import { api, Config, MediaRoot, LibrarySetting, UpdateCheckResult, UpdateStatus, clearCache, getServerUrl, setServerUrl as saveServerUrl, isNativeApp, resolveApiUrl } from '../api'
 import { getUiPrefs, setUiPrefs, dismissUpdate } from '../store'
-import { getWindowsBridge, isWindowsShell } from '../windowsBridge'
 
 const SCRAPER_META: Record<string, { label: string; desc: string; hasKey: boolean }> = {
   tmdb_movie: { label: 'TMDB 电影', desc: '适合电影库；tmdbid 调用 /movie 精确刮削', hasKey: true },
@@ -36,7 +35,6 @@ interface ScanState {
 
 export default function Settings() {
   const nativeApp = isNativeApp()
-  const windowsShell = isWindowsShell()
   const [config, setConfig] = useState<Config | null>(null)
   const [librariesLoading, setLibrariesLoading] = useState(true)
 
@@ -55,7 +53,6 @@ export default function Settings() {
   const [libPasswords, setLibPasswords] = useState<Record<string, string>>({})
   const [libSaving, setLibSaving] = useState<string | null>(null)
   const [libMsg, setLibMsg] = useState('')
-  const [addingLibrary, setAddingLibrary] = useState(false)
 
   const [scanStates, setScanStates] = useState<Record<string, ScanState>>({})
   const [scanLogs, setScanLogs] = useState<Record<string, string[]>>({})
@@ -154,29 +151,11 @@ export default function Settings() {
     return ''
   }
 
-  const getWindowsUpdateGuide = (v?: any) => {
-    const reason = v?.windows_reason || v?.reason || '该版本需要下载 Windows 桌面版全量更新包。'
-    return `${reason} 请下载新的 Windows 完整包后重新启动应用。日常 FastAPI/React 更新仍会继续使用应用包更新。`
-  }
-
   const stopUpdatePolling = () => {
     if (updateStatusTimer.current) {
       clearInterval(updateStatusTimer.current)
       updateStatusTimer.current = null
     }
-  }
-
-  const loadLibraries = async () => {
-    const [rootsData, settings] = await Promise.all([api.mediaRoots(), api.librarySettings()])
-    const items = rootsData.items || []
-    const settingMap: Record<string, LibrarySetting> = {}
-    settings.forEach(s => { settingMap[s.media_root] = s })
-    setLibraries(items.map(i => ({ ...i, settings: settingMap[i.path] })))
-    const sp: Record<string, string> = {}
-    items.forEach(i => {
-      sp[i.path] = normalizeScraper(settingMap[i.path]?.scraper)
-    })
-    setLibScraper(sp)
   }
 
   const startUpdatePolling = (targetVersion: string) => {
@@ -257,7 +236,17 @@ export default function Settings() {
       setTmdbToken(d.tmdb_access_token || '')
     }).catch(() => {})
 
-    loadLibraries().catch(() => {}).finally(() => setLibrariesLoading(false))
+    Promise.all([api.mediaRoots(), api.librarySettings()]).then(([rootsData, settings]) => {
+      const items = rootsData.items || []
+      const settingMap: Record<string, LibrarySetting> = {}
+      settings.forEach(s => { settingMap[s.media_root] = s })
+      setLibraries(items.map(i => ({ ...i, settings: settingMap[i.path] })))
+      const sp: Record<string, string> = {}
+      items.forEach(i => {
+        sp[i.path] = normalizeScraper(settingMap[i.path]?.scraper)
+      })
+      setLibScraper(sp)
+    }).catch(() => {}).finally(() => setLibrariesLoading(false))
 
     // 自动检查更新
     checkUpdates(true)
@@ -313,37 +302,6 @@ export default function Settings() {
       setLibMsg('保存失败')
     }
     setLibSaving(null)
-  }
-
-  const addWindowsLibrary = async () => {
-    const bridge = getWindowsBridge()
-    if (!bridge?.pickFolder) {
-      setLibMsg('Windows 文件夹选择器不可用')
-      return
-    }
-
-    setAddingLibrary(true)
-    setLibMsg('')
-    try {
-      const selected = await bridge.pickFolder()
-      if (!selected) {
-        setLibMsg('已取消选择')
-        return
-      }
-      const existing = new Set([...(config?.extra_media_roots || []), ...libraries.map(lib => lib.path)])
-      const nextRoots = Array.from(new Set([...(config?.extra_media_roots || []), selected]))
-      await api.updateConfig({ extra_media_roots: nextRoots })
-      await api.saveLibrarySetting({ media_root: selected, scraper: 'auto' })
-      setConfig(prev => prev ? { ...prev, extra_media_roots: nextRoots } : prev)
-      clearCache()
-      await loadLibraries()
-      setLibMsg(existing.has(selected) ? '该媒体库已存在，已刷新列表' : '已添加媒体库，建议先保存刮削器设置后重新扫描')
-    } catch (err) {
-      console.error('Add Windows library failed', err)
-      setLibMsg('添加媒体库失败')
-    } finally {
-      setAddingLibrary(false)
-    }
   }
 
   const doScan = async (media_root: string) => {
@@ -436,7 +394,7 @@ export default function Settings() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* 左列 */}
         <div className="space-y-5">
-          {nativeApp && !windowsShell && (
+          {nativeApp && (
             <div className={cardClass}>
               <h2 className={sectionTitle}>服务器</h2>
               <label className={labelClass}>MediaTree 后端地址</label>
@@ -540,24 +498,7 @@ export default function Settings() {
 
           {/* 媒体库配置 */}
           <div className={cardClass}>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h2 className="text-lg font-semibold text-white">媒体库</h2>
-                {windowsShell && (
-                  <p className="mt-1 text-xs text-gray-500">Windows 桌面版可直接选择本机文件夹作为媒体库。</p>
-                )}
-              </div>
-              {windowsShell && (
-                <button
-                  type="button"
-                  onClick={addWindowsLibrary}
-                  disabled={addingLibrary}
-                  className={`${btnPrimary} disabled:opacity-50`}
-                >
-                  {addingLibrary ? '选择中...' : '添加本机目录'}
-                </button>
-              )}
-            </div>
+            <h2 className={sectionTitle}>媒体库</h2>
             <div className="space-y-2">
             {librariesLoading && (
               <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-xs text-gray-500">
@@ -748,7 +689,7 @@ export default function Settings() {
               <p>
                 运行来源：
                 <span className="text-white font-medium">
-                  {windowsShell ? `Windows · ${sourceLabel(updateResult?.current_source)}` : sourceLabel(updateResult?.current_source)}
+                  {sourceLabel(updateResult?.current_source)}
                 </span>
               </p>
               <p>
@@ -789,8 +730,6 @@ export default function Settings() {
                   const result = updateResult
                   if (!result) return null
                   const versionKey = normalizeVersion(v.version)
-                  const requiresWindowsFull = Boolean(windowsShell && (v.requires_windows_base_update || v.update_type === 'windows-full-required'))
-                  const requiresImageUpdate = Boolean(!windowsShell && v.requires_image_update)
                   const dockerTargetVersion = v.required_image_version || v.version
                   const dockerTargetKey = normalizeVersion(dockerTargetVersion)
                   const currentVersion = result.effective_version || result.current_version
@@ -801,13 +740,13 @@ export default function Settings() {
                     && !isCurrent
                     && (
                       normalizeVersion(updateProgress.version) === versionKey
-                      || (requiresImageUpdate && normalizeVersion(updateProgress.version) === dockerTargetKey)
+                      || (v.requires_image_update && normalizeVersion(updateProgress.version) === dockerTargetKey)
                     )
                     && updateProgress.status !== 'idle'
                     && updateProgress.status !== 'success'
                     ? updateProgress
                     : null
-                  const isDockerUpdate = Boolean(activeUpdate && (activeUpdate.update_type === 'docker-image' || requiresImageUpdate))
+                  const isDockerUpdate = Boolean(activeUpdate && (activeUpdate.update_type === 'docker-image' || v.requires_image_update))
                   const isAppUpdate = Boolean(activeUpdate && !isDockerUpdate)
                   const progressPercent = activeUpdate?.total
                     ? Math.min(100, Math.round((activeUpdate.downloaded / activeUpdate.total) * 100))
@@ -841,13 +780,13 @@ export default function Settings() {
                           )}
                           <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
                             <span className={`inline-flex rounded-full border px-2 py-0.5 ${
-                              requiresImageUpdate || requiresWindowsFull
+                              v.requires_image_update
                                 ? 'border-apple-yellow/30 bg-apple-yellow/10 text-apple-yellow'
                                 : 'border-apple-mint/30 bg-apple-mint/10 text-apple-mint'
                             }`}>
-                              {requiresWindowsFull ? '全量更新' : requiresImageUpdate ? '需要完整镜像更新' : '应用包更新'}
+                              {v.requires_image_update ? '需要完整镜像更新' : '应用包更新'}
                             </span>
-                            {!requiresImageUpdate && !requiresWindowsFull && (
+                            {!v.requires_image_update && (
                               <span>{formatSize(v.size)}</span>
                             )}
                             {v.reason && (
@@ -891,11 +830,10 @@ export default function Settings() {
                             >
                               {updatePerforming === v.version ? '回滚中...' : '回滚此版本'}
                             </button>
-                          ) : !isCurrent && !requiresImageUpdate && !requiresWindowsFull ? (
+                          ) : !isCurrent && !v.requires_image_update ? (
                             <button
                               onClick={async () => {
-                                const restartTarget = windowsShell ? '本机服务' : '容器'
-                                if (!confirm(`确定要${isOlderVersion ? '回滚到' : '切换到'} ${v.display_version || v.version} 吗？${restartTarget}将自动重启。`)) return
+                                if (!confirm(`确定要${isOlderVersion ? '回滚到' : '切换到'} ${v.display_version || v.version} 吗？容器将自动重启。`)) return
                                 setUpdatePerforming(v.version)
                                 setUpdateMsg('')
                                 setUpdateProgress({
@@ -924,17 +862,7 @@ export default function Settings() {
                                 ? (isOlderVersion ? '回滚中...' : '更新中...')
                                 : (isOlderVersion ? '回滚此版本' : '下载并更新')}
                             </button>
-                          ) : !isCurrent && requiresWindowsFull ? (
-                            <a
-                              href={v.windows_download_url || v.html_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              title={getWindowsUpdateGuide(v)}
-                              className={`${btnDark} text-xs px-2 py-1`}
-                            >
-                              下载全量更新
-                            </a>
-                          ) : !isCurrent && requiresImageUpdate ? (
+                          ) : !isCurrent && v.requires_image_update ? (
                             <button
                               onClick={async () => {
                                 if (!confirm(`确定要执行完整镜像更新到 ${dockerTargetVersion} 吗？该操作需要已挂载 Docker socket。`)) return

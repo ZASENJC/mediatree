@@ -135,7 +135,7 @@ scripts/push-docker-release.sh
 - Windows 端和 Web 端不复用前端：Web 使用 `frontend/` React，Windows 使用 `windows/MediaTree.Windows/` WinUI 原生前端；只有后端 FastAPI / 数据模型 / 业务逻辑应保持复用或迁移一致。
 - Win 端前端/UI 任务不得新增、删除或修改后端 API 接口；Windows 项目里的后端代码只用于迁移和适配 Web 端既有后端能力。若 WinUI 功能缺少接口，优先用现有 API/配置路径实现，或先向用户确认 Web 端后端是否需要独立演进。
 - 当用户要求“Win 端同步 Web 端更新”时，必须先检查 Web 端新增 UI/交互是否能在 WinUI 原生前端落地：纯 Web UI 改动不会自动进入 Windows；需要用户可见的 Windows 前端特性时，要在 WinUI 中单独适配、构建并验证 portable 包。
-- Windows 架构按三层管理：`windows/MediaTree.Windows/` 是独立 WinUI 前端；`backend/app/` 是 Web/Docker/Windows 共享的 MediaTree 后端逻辑，Windows 只通过 `windows_entry.py`、`windows_runtime.py`、打包脚本和环境变量做平台迁移；远程 MediaTree、Jellyfin、Emby 等外部媒体库连接放在 WinUI 的 Provider/媒体源适配层，不复用 `backend/app/jellyfin_compat.py` 这类“MediaTree 后端对外兼容 Jellyfin/Emby 客户端”的代码路径。
+- Windows 架构按三层管理：`windows/MediaTree.Windows/` 是独立 WinUI 前端；`backend/app/` 是 Web/Docker/Windows 共享的 MediaTree 后端逻辑，Windows 只通过 `windows_entry.py`、`windows_runtime.py`、打包脚本和环境变量做平台迁移；远程 MediaTree、Jellyfin、Emby 等外部媒体库连接放在 WinUI 的 Provider/媒体源适配层，不复用已删除的 MediaTree 后端 Jellyfin/Emby 兼容层。
 - Windows 前端重构优先顺序：先拆分 MediaTree API 客户端和 DTO/服务边界，再建立 Provider contracts 与 `LocalMediaTreeProvider`，随后将页面逐步改为依赖 Provider 接口；远程 MediaTree Provider 优先于 Jellyfin/Emby Provider，因为它最接近现有 MediaTree API 语义。
 
 ## Security Without Hooks
@@ -162,10 +162,12 @@ Codex does not provide Claude Code hooks in this repo, so enforce security throu
 - Unless the user explicitly overrides it, automatically choose the release/update path before push or release work:
   - Use `app-package` when the change is limited to application code or built frontend assets and does not require a new base image/runtime layer.
   - Use full Docker image update when the change touches the runtime/base image surface, including Dockerfile, system packages, Python version or pinned dependency layer, ffmpeg/fonts, container user/permissions, entrypoint/bootstrap behavior, Docker self-update prerequisites, or any change that cannot be delivered safely by replacing only the app package.
+- Ordinary pushes must not run the release workflow. Trigger `.github/workflows/release-tag.yml` manually only when performing an app-package or full Docker image release.
 - For Windows releases, make the same decision as `应用包更新` vs `全量更新` before publishing:
   - Use Windows `应用包更新` only when the Windows-impacting change is limited to shared backend/application code that can run on the existing bundled Python/libmpv/WinUI/PyInstaller runtime, without changing WinUI views, DTO contracts, bundled dependencies, or native/runtime surfaces; keep `requires_windows_base_update: false`.
   - Treat Web React UI changes as Web-only unless the same feature is explicitly implemented in `windows/MediaTree.Windows/`; if a Web UI feature must appear in Windows, adapt it in WinUI and use Windows `全量更新`.
   - Use Windows `全量更新` when the change touches WinUI pages/components, Windows DTO/API consumption, player UI, settings UI, Python dependencies, bundled binaries, ffmpeg/libmpv, PyInstaller packaging, Windows bootstrap/session behavior, or any native/runtime surface; set `requires_windows_base_update: true` and publish a new Windows full package asset.
   - For shared backend changes, check whether Windows API consumers and DTOs still match. If no Windows frontend/native change is needed, app-package can sync the backend; if Windows models/pages must change, ship the backend change together with a Windows full package.
 - Every release must refresh DockerHub `zasenjc/mediatree:latest` so new Docker installs start from the newest application baseline. Do this from a local build/push with `scripts/push-docker-release.sh`, not GitHub Actions. App-package releases publish only `latest`; full Docker image releases publish both `zasenjc/mediatree:<version>` and `latest`.
+- Keep GitHub Release notes user-facing: write concise functional changes and upgrade guidance for users there, and put implementation details, configuration changes, test notes, and maintainer bookkeeping in `CHANGELOG.md` / `CHANGELOG_zh-CN.md`.
 - When the chosen path is full Docker image update, keep Settings/release messaging aligned so users are guided to host-side `docker compose pull && docker compose up -d` when in-container image replacement is unavailable.

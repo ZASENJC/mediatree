@@ -23,7 +23,7 @@
   <a href="https://github.com/ZASENJC/mediatree-app"><img src="https://img.shields.io/badge/android-app-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android App"></a>
 </p>
 
-MediaTree 面向把电影、电视剧、动漫和私人片库保存在自己硬盘上的用户。你只需要把媒体目录挂进去，它会扫描文件、补全海报和信息，并提供浏览器播放与 Jellyfin 兼容客户端访问能力，不需要搭一套复杂的媒体服务器。
+MediaTree 面向把电影、电视剧、动漫和私人片库保存在自己硬盘上的用户。你只需要把媒体目录挂进去，它会扫描文件、补全海报和信息，并提供浏览器播放和外部播放器串流能力，不需要搭一套复杂的媒体服务器。
 
 ## 为什么用 MediaTree
 
@@ -32,10 +32,10 @@ MediaTree 面向把电影、电视剧、动漫和私人片库保存在自己硬�
 - **花絮不打扰正片**：把非正片内容放进影片目录下的 `sp` 文件夹即可按花絮入库，默认隐藏，可在目录里单独显示。
 - **播放器够用**：支持直链播放、HTTP Range 跳转、按需转码、AC3 自动转码、ASS/SSA 特效字幕、播放状态标签标题、画中画和 IINA/mpv/VLC 外部播放。
 - **打开就能管理**：按媒体库、文件夹树、收藏、分类和季集浏览；支持启动扫描和文件变动自动更新，花絮不会混入继续观看。
-- **不只 Web 能用**：提供 Jellyfin 兼容 API，可接入 VidHub、Infuse、Kodi、VLC、IINA 和 mpv。
+- **不只 Web 能用**：网页播放器可生成外部播放链接和 M3U 播放列表，方便用 VLC、IINA 或 mpv 继续播放。
 - **部署简单**：Docker Compose、SQLite、持久化 `./data`，支持 linux/amd64 和 linux/arm64。
 
-需要桌面本地体验时，可以使用 Windows 桌面版：它通过 WinUI 3 原生客户端启动本机 FastAPI 后端，支持在软件内添加本地媒体文件夹、浏览媒体库，并用内置 libmpv 播放器观看。需要移动端体验时，可以配合独立 Android 客户端 [ZASENJC/mediatree-app](https://github.com/ZASENJC/mediatree-app) 使用；它支持 MediaTree、Jellyfin、Emby、SMB 和 WebDAV，本项目仍作为可独立部署的服务端。
+需要桌面本地体验时，可以使用 Windows 桌面版：它通过 WinUI 3 原生客户端启动本机 FastAPI 后端，支持在软件内添加本地媒体文件夹、浏览媒体库，并用内置 libmpv 播放器观看。需要移动端体验时，可以配合独立 Android 客户端 [ZASENJC/mediatree-app](https://github.com/ZASENJC/mediatree-app) 使用；它可以连接 MediaTree，也可以作为独立客户端连接 Jellyfin、Emby、SMB 和 WebDAV。
 
 ## 界面预览
 
@@ -127,7 +127,7 @@ Windows 桌面版面向 Windows 10 19041+ / Windows 11 x64。它不是外部浏�
 
 桌面版数据默认保存在 `%APPDATA%\MediaTree\data`，日志保存在 `%LOCALAPPDATA%\MediaTree\logs`。需要让 Android 客户端连接 Windows 内置后端时，在 Windows 设置页的 `移动端访问` 中开启局域网访问，并在同一区域设置登录用户名和密码；保存后会重启本机后端并显示给 `mediatree-app` 填写的 `http://<此电脑IP>:27581` 地址，后续 Windows 本机和移动端都会使用这组账号访问本地后端。Windows 设置页只保留两种更新：共享后端 / 应用代码更新可使用 `应用包更新`，会在软件内下载 `mediatree-app-<version>.tar.gz`、替换当前应用包、清理旧包并自动重启本机服务；当 Windows 原生 UI、Python 依赖、ffmpeg/libmpv、PyInstaller 打包或其他本机运行时变化时，设置页显示 `全量更新` 并跳转下载新的 Windows 完整包。当前发布包优先交付 portable zip，若 release 中提供 `.exe`，桌面端会优先打开 `.exe` 下载链接。
 
-Windows 桌面版不复用 Web 端 React 前端。Web 使用 `frontend/`，Windows 使用 `windows/MediaTree.Windows/` WinUI 原生前端；只有 FastAPI 后端、数据模型和业务逻辑保持复用或迁移一致。因此 Web 端 UI/交互更新不会自动同步到 Windows。需要同等 Windows 用户体验时，必须在 WinUI 原生前端单独适配并发布 Windows 全量更新。
+Windows 桌面版不复用 Web 端 React 前端。Web 使用 `frontend/`，Windows 使用 `windows/MediaTree.Windows/` WinUI 原生前端；只有 FastAPI 后端、数据模型和业务逻辑保持复用或迁移一致。因此 Web 端 UI/交互更新不会自动同步到 Windows。需要同等 Windows 用户体验时，必须在 WinUI 原生前端单独适配并发布 Windows 全量更新。远程 MediaTree、Jellyfin、Emby 等外部媒体库连接属于 Windows Provider / 媒体源适配层，不再依赖已移除的 MediaTree 后端 Jellyfin/Emby 兼容 API。
 
 维护者本地构建 Windows 版：
 
@@ -148,7 +148,7 @@ pwsh packaging/windows/build-windows.ps1 -Configuration Release
 
 刮削器缓存有效期和 Javdatabase 请求间隔由应用内部管理，不再需要在设置页或环境变量里调整。手动扫描、重新刮削和手动应用结果会绕过缓存，空结果不会写入缓存，避免旧的空结果挡住后续补齐的数据。
 
-完整配置见 [.env.example](.env.example)。高级配置、刮削逻辑、客户端兼容和排障说明放在 [Wiki](https://github.com/ZASENJC/mediatree/wiki)。
+完整配置见 [.env.example](.env.example)。高级配置、刮削逻辑、播放和排障说明放在 [Wiki](https://github.com/ZASENJC/mediatree/wiki)。
 
 ## 更新
 
@@ -158,7 +158,7 @@ pwsh packaging/windows/build-windows.ps1 -Configuration Release
 
 Windows 桌面版不显示 Docker/镜像更新入口，只显示 `应用包更新` 和 `全量更新`。发布时如果 Windows 影响面只限共享后端 / 应用代码，并且可运行在现有 bundled runtime 上、无需修改 WinUI 页面或 Windows DTO/API 消费，`.github/release-metadata.json` 保持 `requires_windows_base_update: false`；如果 Web 新特性需要落地到 Windows 原生前端，或改了 Python 依赖、bundled binaries、ffmpeg/libmpv、WinUI 原生客户端、PyInstaller 打包、启动/会话逻辑或其他 native/runtime surface，则标记 `requires_windows_base_update: true` 并发布新的 Windows 完整包。
 
-容器部署中，少数更新会提示“需要完整镜像更新”，通常是因为运行环境也变了，例如 Python、ffmpeg、字体或启动流程。这时最简单的做法是在宿主机执行下面两条命令。如果想让设置页也能自动完成这类完整镜像更新，可以在 `docker-compose.yml` 里挂载 `/var/run/docker.sock:/var/run/docker.sock`；但这会让容器获得控制宿主机 Docker 的能力，不确定时建议不要挂载。
+少数更新会提示“需要完整镜像更新”，通常是因为运行环境也变了，例如 Python、ffmpeg、字体或启动流程。这时最简单的做法是在宿主机执行下面两条命令。如果想让设置页也能自动完成这类完整镜像更新，可以在 `docker-compose.yml` 里挂载 `/var/run/docker.sock:/var/run/docker.sock`；但这会让容器获得控制宿主机 Docker 的能力，不确定时建议不要挂载。
 
 完整镜像更新：
 

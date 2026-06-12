@@ -6,6 +6,20 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## Unreleased
+
+### Removed
+
+- Removed the Jellyfin/Emby compatibility API layer, including legacy `/System`, `/Users`, `/Items`, `/Videos`, `/Sessions`, `/Shows`, `/Library`, `/DisplayPreferences`, `/Genres`, and `/emby` routes
+- Removed the separate Jellyfin token/auth mapper modules; browser playback, media-token streaming, external-player M3U handoff, and Web playback progress remain supported through MediaTree's native API
+- Kept future Windows Jellyfin/Emby support scoped to the WinUI Provider/media-source adapter layer instead of the removed MediaTree backend compatibility layer
+
+### Docs
+
+- Updated README and Wiki pages so current setup guidance no longer advertises Jellyfin/Emby-compatible server access
+
+---
+
 ## 1.0.15 (2026-06-11)
 
 ### Windows Desktop

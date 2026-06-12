@@ -878,6 +878,19 @@ def _find_blocking_image_release(
     return max(blocking, key=lambda entry: _normalize_version(entry.get("version", "")))
 
 
+def _image_gate_reason(base_version: str, target_entry: dict, blocking_entry: dict) -> str:
+    target_display = target_entry.get("display_version") or target_entry.get("version", "")
+    blocking_display = blocking_entry.get("display_version") or blocking_entry.get("version", "")
+    blocking_reason = blocking_entry.get("reason", "")
+    reason = (
+        f"从当前镜像内置版本 {base_version or 'unknown'} 升级到 {target_display} "
+        f"会跨过需要完整镜像更新的 {blocking_display}，请先执行完整镜像更新。"
+    )
+    if blocking_reason:
+        reason += f" {blocking_reason}"
+    return reason
+
+
 def _find_blocking_windows_full_release(
     entries: list[dict],
     base_version: str,
@@ -901,19 +914,6 @@ def _find_blocking_windows_full_release(
     if not blocking:
         return None
     return max(blocking, key=lambda entry: _normalize_version(entry.get("version", "")))
-
-
-def _image_gate_reason(base_version: str, target_entry: dict, blocking_entry: dict) -> str:
-    target_display = target_entry.get("display_version") or target_entry.get("version", "")
-    blocking_display = blocking_entry.get("display_version") or blocking_entry.get("version", "")
-    blocking_reason = blocking_entry.get("reason", "")
-    reason = (
-        f"从当前镜像内置版本 {base_version or 'unknown'} 升级到 {target_display} "
-        f"会跨过需要完整镜像更新的 {blocking_display}，请先执行完整镜像更新。"
-    )
-    if blocking_reason:
-        reason += f" {blocking_reason}"
-    return reason
 
 
 def _windows_full_gate_reason(base_version: str, target_entry: dict, blocking_entry: dict) -> str:
