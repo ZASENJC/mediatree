@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useData } from 'vitepress'
 
 type Locale = 'zh' | 'en' | 'ja'
+type PreviewImage = {
+  alt: string
+  scrollable: boolean
+  src: string
+  title: string
+}
 
 const { lang } = useData()
 const locale = computed<Locale>(() => {
@@ -234,6 +240,7 @@ const copy = {
 }
 
 const t = computed(() => copy[locale.value])
+const activePreview = ref<PreviewImage | null>(null)
 const docsBase = '/mediatree'
 const installPath = computed(() => {
   if (locale.value === 'en') return '/mediatree/en/guide/installation'
@@ -249,6 +256,42 @@ function withBase(path: string) {
 function imageFor(key: string) {
   return imageSlots[key as keyof typeof imageSlots]
 }
+
+function isScrollableImage(key: string) {
+  return key === 'detail'
+}
+
+function openPreview(imageKey: string, alt: string, title: string) {
+  const src = imageFor(imageKey)
+  if (!src) return
+  activePreview.value = {
+    alt,
+    scrollable: isScrollableImage(imageKey),
+    src,
+    title
+  }
+}
+
+function closePreview() {
+  activePreview.value = null
+}
+
+function handlePreviewKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') closePreview()
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', handlePreviewKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handlePreviewKeydown)
+  document.documentElement.classList.remove('mt-preview-open')
+})
+
+watch(activePreview, (preview) => {
+  document.documentElement.classList.toggle('mt-preview-open', Boolean(preview))
+})
 </script>
 
 <template>
@@ -274,9 +317,24 @@ function imageFor(key: string) {
               {{ t.secondary }}
             </a>
           </div>
-          <figure class="mt-hero-mobile-screen">
-            <div class="mt-screen-scroll">
-              <img :src="imageSlots.homeMobile" :alt="t.heroAlt" />
+          <figure class="mt-hero-mobile-screen mt-screen-static">
+            <div
+              class="mt-screen-trigger"
+              role="button"
+              tabindex="0"
+              :aria-label="t.heroAlt"
+              @click="openPreview('homeMobile', t.heroAlt, t.eyebrow)"
+              @keydown.enter.prevent="openPreview('homeMobile', t.heroAlt, t.eyebrow)"
+              @keydown.space.prevent="openPreview('homeMobile', t.heroAlt, t.eyebrow)"
+            >
+              <div class="mt-mac-bar" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <div class="mt-screen-scroll">
+                <img :src="imageSlots.homeMobile" :alt="t.heroAlt" />
+              </div>
             </div>
           </figure>
           <div class="mt-stats">
@@ -302,11 +360,38 @@ function imageFor(key: string) {
           <p>{{ section.text }}</p>
           <a :href="withBase(section.link)">{{ section.linkText }} →</a>
         </div>
-        <figure class="mt-screen">
-          <div v-if="imageFor(section.imageKey)" class="mt-screen-scroll">
-            <img :src="imageFor(section.imageKey)" :alt="section.imageAlt" />
+        <figure
+          class="mt-screen"
+          :class="{
+            'mt-screen-scrollable': isScrollableImage(section.imageKey),
+            'mt-screen-static': !isScrollableImage(section.imageKey)
+          }"
+        >
+          <div
+            v-if="imageFor(section.imageKey)"
+            class="mt-screen-trigger"
+            role="button"
+            tabindex="0"
+            :aria-label="section.imageAlt"
+            @click="openPreview(section.imageKey, section.imageAlt, section.label)"
+            @keydown.enter.prevent="openPreview(section.imageKey, section.imageAlt, section.label)"
+            @keydown.space.prevent="openPreview(section.imageKey, section.imageAlt, section.label)"
+          >
+            <div class="mt-mac-bar" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <div class="mt-screen-scroll">
+              <img :src="imageFor(section.imageKey)" :alt="section.imageAlt" />
+            </div>
           </div>
           <div v-else class="mt-image-placeholder">
+            <div class="mt-mac-bar" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
             <span>{{ section.hint }}</span>
             <small>imageSlots.{{ section.imageKey }}</small>
           </div>
@@ -339,5 +424,31 @@ function imageFor(key: string) {
         </a>
       </div>
     </section>
+
+    <div
+      v-if="activePreview"
+      class="mt-preview"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="activePreview.title"
+      @click.self="closePreview"
+    >
+      <div
+        class="mt-preview-window"
+        :class="{ 'mt-preview-window-scrollable': activePreview.scrollable }"
+      >
+        <div class="mt-mac-bar mt-preview-bar" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <button class="mt-preview-close" type="button" aria-label="Close preview" @click="closePreview">
+          <span aria-hidden="true"></span>
+        </button>
+        <div class="mt-preview-body">
+          <img :src="activePreview.src" :alt="activePreview.alt" />
+        </div>
+      </div>
+    </div>
   </main>
 </template>

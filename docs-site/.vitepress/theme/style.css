@@ -432,16 +432,89 @@ body {
   border-radius: 28px;
   background: var(--mt-screen-bg);
   box-shadow: var(--mt-screen-shadow);
+  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+}
+
+.mt-screen:hover,
+.mt-screen:focus-within,
+.mt-hero-mobile-screen:hover,
+.mt-hero-mobile-screen:focus-within {
+  border-color: rgba(104, 199, 243, 0.42);
+  box-shadow: 0 42px 110px -42px rgba(0, 0, 0, 0.86);
+  transform: translateY(-4px) scale(1.018);
+}
+
+.mt-screen-trigger {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: zoom-in;
+}
+
+.mt-screen-trigger:focus-visible {
+  outline: 2px solid var(--mt-accent);
+  outline-offset: -6px;
+}
+
+.mt-mac-bar {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 14px;
+  gap: 7px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(248, 250, 252, 0.72);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+}
+
+.dark .mt-mac-bar {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.64);
+}
+
+.mt-mac-bar span {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
+}
+
+.mt-mac-bar span:nth-child(1) {
+  background: #ff5f57;
+}
+
+.mt-mac-bar span:nth-child(2) {
+  background: #ffbd2e;
+}
+
+.mt-mac-bar span:nth-child(3) {
+  background: #28c840;
 }
 
 .mt-screen-scroll {
   position: absolute;
-  inset: 0;
+  inset: 34px 0 0;
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: rgba(100, 116, 139, 0.56) transparent;
+}
+
+.mt-screen-static .mt-screen-scroll {
+  overflow: hidden;
 }
 
 .mt-screen-scroll::-webkit-scrollbar {
@@ -465,8 +538,104 @@ body {
   object-fit: contain;
 }
 
+.mt-screen-static .mt-screen-scroll img {
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+.mt-screen-scrollable .mt-screen-scroll img {
+  object-position: top center;
+}
+
 .mt-hero-media {
   display: none;
+}
+
+.mt-preview-open {
+  overflow: hidden;
+}
+
+.mt-preview {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 42px;
+  background: rgba(0, 0, 0, 0.72);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+}
+
+.mt-preview-window {
+  position: relative;
+  width: min(1180px, 100%);
+  max-height: min(86vh, 860px);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 26px;
+  background: #060911;
+  box-shadow: 0 44px 120px -38px rgba(0, 0, 0, 0.95);
+}
+
+.mt-preview-bar {
+  position: absolute;
+}
+
+.mt-preview-close {
+  position: absolute;
+  z-index: 4;
+  top: 7px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+}
+
+.mt-preview-close span,
+.mt-preview-close span::after {
+  position: absolute;
+  top: 13px;
+  left: 7px;
+  width: 14px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  content: "";
+  transform: rotate(45deg);
+}
+
+.mt-preview-close span::after {
+  top: 0;
+  left: 0;
+  transform: rotate(90deg);
+}
+
+.mt-preview-body {
+  max-height: calc(min(86vh, 860px) - 34px);
+  margin-top: 34px;
+  overflow: hidden;
+}
+
+.mt-preview-window-scrollable .mt-preview-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.mt-preview-body img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.mt-preview-window:not(.mt-preview-window-scrollable) .mt-preview-body img {
+  height: calc(min(86vh, 860px) - 34px);
+  object-fit: contain;
+  object-position: top center;
 }
 
 .mt-image-placeholder {
@@ -576,8 +745,9 @@ body {
 }
 
 .mt-section-heading h2 {
-  width: max-content;
+  width: 100%;
   max-width: 100%;
+  text-align: center;
 }
 
 .mt-locale-zh .mt-section-heading h2 {
@@ -647,6 +817,12 @@ body {
   background: var(--mt-surface);
   text-align: center;
   box-shadow: var(--mt-screen-shadow);
+}
+
+.mt-cta-card h2,
+.mt-cta-card p {
+  width: 100%;
+  text-align: center;
 }
 
 .mt-cta-card .mt-button {
