@@ -50,6 +50,7 @@ type AssPluginController = {
 Artplayer.PLAYBACK_RATE = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]
 Artplayer.SEEK_STEP = SEEK_SMALL
 Artplayer.FAST_FORWARD_VALUE = 2
+Artplayer.CONTROL_HIDE_TIME = 5000
 Artplayer.REMOVE_SRC_WHEN_DESTROY = true
 
 function getSavedPos(movieId: number): number {
@@ -701,6 +702,25 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
       setUiPrefs({ ...prefs, ambientMode: next })
       return next
     })
+  }, [])
+
+  const showPlayerChrome = useCallback(() => {
+    const art = artRef.current
+    if (!art || art.isDestroy) return
+    art.controls.show = true
+  }, [])
+
+  const hidePlayerChrome = useCallback(() => {
+    const art = artRef.current
+    if (art && !art.isDestroy) {
+      art.setting.show = false
+      art.contextmenu.show = false
+      art.info.show = false
+      art.controls.show = false
+    } else {
+      setPlayerChromeVisible(false)
+    }
+    setEpisodeMenuOpen(false)
   }, [])
 
   const ensureDocumentTitleBaseline = useCallback(() => {
@@ -1814,7 +1834,9 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
           ref={playerFrameRef}
           className={`mediatree-player-frame theater-player-frame relative z-[1] overflow-hidden rounded-3xl ${theaterTransition ? `theater-player-frame-${theaterTransition}` : ''}`}
           style={theaterMode ? theaterFrameStyle : undefined}
-          onMouseLeave={() => setEpisodeMenuOpen(false)}
+          onMouseMove={showPlayerChrome}
+          onMouseEnter={showPlayerChrome}
+          onMouseLeave={hidePlayerChrome}
         >
         <div ref={artContainerRef} className="mediatree-artplayer w-full" />
         <VRVideoLayer art={artInstance} mode={vrMode} />
