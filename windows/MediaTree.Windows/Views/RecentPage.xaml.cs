@@ -82,13 +82,13 @@ public sealed partial class RecentPage : Page
     {
         _items.Clear();
         _recentGrid.Items.Clear();
-        var mediaTree = AppServices.MediaTree;
-        var roots = await mediaTree.Library.GetMediaRootsAsync();
+        var media = AppServices.Media;
+        var roots = await media.Library.GetMediaRootsAsync();
         var mediaRoot = roots.Items.Count > 0 ? roots.Items[0].Path : "";
-        var response = await mediaTree.Movie.GetRecentWatchedAsync(mediaRoot, 80, 0);
+        var response = await media.Movie.GetRecentWatchedAsync(mediaRoot, 80, 0);
         foreach (var movie in response.Movies)
         {
-            var item = new MovieCardItem(movie, await mediaTree.Api.BuildCoverUrlAsync(movie.Id));
+            var item = new MovieCardItem(movie, await media.Api.BuildCoverUrlAsync(movie.Id));
             _items.Add(item);
             _recentGrid.Items.Add(CreateMovieCard(item));
         }

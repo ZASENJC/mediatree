@@ -199,7 +199,7 @@ public sealed partial class MainWindow : Window
                 backend: _backend,
                 provider: provider);
 
-            var session = await AppServices.MediaTree.Auth.EnsureLocalSessionAsync();
+            var session = await AppServices.Media.Auth.EnsureLocalSessionAsync();
             ShellLogger.Info($"Native session result: {session.State}.");
             if (session.State == AuthSessionState.NeedsUserLogin)
             {

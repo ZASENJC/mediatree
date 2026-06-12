@@ -439,8 +439,8 @@ public sealed partial class LibraryPage : Page
     {
         try
         {
-            AppServices.MediaTree.Library.LibrariesChanged -= OnLibrariesChanged;
-            AppServices.MediaTree.Library.LibrariesChanged += OnLibrariesChanged;
+            AppServices.Media.Library.LibrariesChanged -= OnLibrariesChanged;
+            AppServices.Media.Library.LibrariesChanged += OnLibrariesChanged;
             LoadUiPreferences();
             await LoadLibrariesAsync();
         }
@@ -453,7 +453,7 @@ public sealed partial class LibraryPage : Page
 
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
-        AppServices.MediaTree.Library.LibrariesChanged -= OnLibrariesChanged;
+        AppServices.Media.Library.LibrariesChanged -= OnLibrariesChanged;
         _scanTimer.Stop();
     }
 
@@ -481,14 +481,14 @@ public sealed partial class LibraryPage : Page
         SetLoading(true);
         try
         {
-            var setup = await AppServices.MediaTree.Library.GetSetupStatusAsync();
+            var setup = await AppServices.Media.Library.GetSetupStatusAsync();
             if (setup.NeedsSetup)
             {
                 ShellPage.Current?.NavigateToSetup();
                 return;
             }
 
-            var roots = await AppServices.MediaTree.Library.GetMediaRootsAsync();
+            var roots = await AppServices.Media.Library.GetMediaRootsAsync();
             _suppressLibrarySelectionChanged = true;
             try
             {
@@ -541,7 +541,7 @@ public sealed partial class LibraryPage : Page
             _folderGrid.Items.Clear();
             _moviesGrid.Items.Clear();
 
-            var response = await AppServices.MediaTree.Library.GetFoldersAsync(mediaRoot);
+            var response = await AppServices.Media.Library.GetFoldersAsync(mediaRoot);
             if (generation != _movieLoadGeneration || mediaRoot != _activeMediaRoot)
             {
                 return;
@@ -613,8 +613,8 @@ public sealed partial class LibraryPage : Page
             _folderGrid.Items.Clear();
             var sort = (_sortBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "created_desc";
             var response = recent
-                ? await AppServices.MediaTree.Movie.GetRecentWatchedAsync(mediaRoot, 80, 0)
-                : await AppServices.MediaTree.Movie.GetMoviesAsync(mediaRoot, folderPath, _searchBox.Text.Trim(), sort, 80, 0);
+                ? await AppServices.Media.Movie.GetRecentWatchedAsync(mediaRoot, 80, 0)
+                : await AppServices.Media.Movie.GetMoviesAsync(mediaRoot, folderPath, _searchBox.Text.Trim(), sort, 80, 0);
             if (generation != _movieLoadGeneration || mediaRoot != _activeMediaRoot)
             {
                 return;
@@ -626,7 +626,7 @@ public sealed partial class LibraryPage : Page
                 var cover = "";
                 try
                 {
-                    cover = await AppServices.MediaTree.Api.BuildCoverUrlAsync(movie.Id);
+                    cover = await AppServices.Media.Api.BuildCoverUrlAsync(movie.Id);
                 }
                 catch (Exception ex)
                 {
@@ -871,7 +871,7 @@ public sealed partial class LibraryPage : Page
     {
         try
         {
-            var status = await AppServices.MediaTree.Library.GetScanStatusAsync(mediaRoot);
+            var status = await AppServices.Media.Library.GetScanStatusAsync(mediaRoot);
             if (string.IsNullOrWhiteSpace(status.Status) || status.Status == "idle")
             {
                 return;
@@ -926,7 +926,7 @@ public sealed partial class LibraryPage : Page
     {
         try
         {
-            await AppServices.MediaTree.Library.ScanAsync(mediaRoot);
+            await AppServices.Media.Library.ScanAsync(mediaRoot);
             if (mediaRoot == _activeScanMediaRoot)
             {
                 _scanHasObservedActiveStatus = true;
@@ -1027,7 +1027,7 @@ public sealed partial class LibraryPage : Page
 
         try
         {
-            return await AppServices.MediaTree.Api.BuildMediaAssetUrlAsync(cover);
+            return await AppServices.Media.Api.BuildMediaAssetUrlAsync(cover);
         }
         catch (Exception ex)
         {

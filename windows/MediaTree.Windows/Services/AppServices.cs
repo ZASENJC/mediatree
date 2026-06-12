@@ -9,7 +9,6 @@ public static class AppServices
     public static IMediaProvider ActiveProvider { get; private set; } = null!;
     public static IMediaTreeProvider ActiveMediaTreeProvider { get; private set; } = null!;
     public static BackendProcessService Backend { get; private set; } = null!;
-    public static MediaTreeServices MediaTree { get; private set; } = null!;
     public static MediaTreeServices Media { get; private set; } = null!;
 
     public static bool IsReady => Media != null && ActiveProvider != null;
@@ -21,7 +20,6 @@ public static class AppServices
         Backend = backend ?? throw new ArgumentNullException(nameof(backend));
         ActiveProvider = provider ?? throw new ArgumentNullException(nameof(provider));
         ActiveMediaTreeProvider = provider;
-        MediaTree = provider.Services;
         Media = provider.Services;
     }
 
@@ -29,7 +27,7 @@ public static class AppServices
     {
         try
         {
-            MediaTree?.Api.Dispose();
+            Media?.Api.Dispose();
         }
         catch
         {

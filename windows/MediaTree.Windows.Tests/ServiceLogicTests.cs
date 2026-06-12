@@ -674,17 +674,16 @@ public sealed class ServiceLogicTests
 
         AppServices.Initialize(new BackendProcessService(), provider);
 
-        Assert.Same(services, AppServices.MediaTree);
         Assert.Same(services, AppServices.Media);
         Assert.Same(provider, AppServices.ActiveMediaTreeProvider);
         Assert.Same(provider, AppServices.ActiveProvider);
         Assert.Same(services, AppServices.ActiveProvider.Services);
-        Assert.Same(services.Api, AppServices.MediaTree.Api);
-        Assert.Same(services.Auth, AppServices.MediaTree.Auth);
-        Assert.Same(services.Library, AppServices.MediaTree.Library);
-        Assert.Same(services.Movie, AppServices.MediaTree.Movie);
-        Assert.Same(services.Updates, AppServices.MediaTree.Updates);
-        Assert.Same(services.PlaybackProgress, AppServices.MediaTree.PlaybackProgress);
+        Assert.Same(services.Api, AppServices.Media.Api);
+        Assert.Same(services.Auth, AppServices.Media.Auth);
+        Assert.Same(services.Library, AppServices.Media.Library);
+        Assert.Same(services.Movie, AppServices.Media.Movie);
+        Assert.Same(services.Updates, AppServices.Media.Updates);
+        Assert.Same(services.PlaybackProgress, AppServices.Media.PlaybackProgress);
     }
 
     [Fact]

@@ -271,7 +271,7 @@ public sealed partial class BrowsePage : Page
         {
             _libraryBox.Items.Clear();
             _libraryBox.Items.Add(new ComboBoxItem { Content = "全部媒体库", Tag = "" });
-            var roots = await AppServices.MediaTree.Library.GetMediaRootsAsync();
+            var roots = await AppServices.Media.Library.GetMediaRootsAsync();
             _activeMediaRoots = BrowseLibraryPresenter.DistinctMediaRoots(roots.Items);
             foreach (var root in _activeMediaRoots)
             {
@@ -322,7 +322,7 @@ public sealed partial class BrowsePage : Page
         {
             foreach (var root in GetSelectedMediaRoots())
             {
-                var response = await AppServices.MediaTree.Library.GetFoldersAsync(root.Path);
+                var response = await AppServices.Media.Library.GetFoldersAsync(root.Path);
                 foreach (var state in BrowseFolderTreePresenter.VisibleNodeStatesForMediaRoot(
                     root.Path,
                     response.Tree,
@@ -383,13 +383,13 @@ public sealed partial class BrowsePage : Page
         var search = _searchBox.Text.Trim();
         if (!string.IsNullOrWhiteSpace(_activeMediaRoot))
         {
-            var response = await AppServices.MediaTree.Movie.GetMoviesAsync(_activeMediaRoot, _activeFolderPath, search, sort, limit, 0);
+            var response = await AppServices.Media.Movie.GetMoviesAsync(_activeMediaRoot, _activeFolderPath, search, sort, limit, 0);
             return BrowseLibraryPresenter.FilterExcludedMovies(response, _excludedFolderPaths);
         }
 
         if (!string.IsNullOrWhiteSpace(_activeFolderPath) && !string.IsNullOrWhiteSpace(_activeFolderMediaRoot))
         {
-            var response = await AppServices.MediaTree.Movie.GetMoviesAsync(_activeFolderMediaRoot, _activeFolderPath, search, sort, limit, 0);
+            var response = await AppServices.Media.Movie.GetMoviesAsync(_activeFolderMediaRoot, _activeFolderPath, search, sort, limit, 0);
             return BrowseLibraryPresenter.FilterExcludedMovies(response, _excludedFolderPaths);
         }
 
@@ -399,7 +399,7 @@ public sealed partial class BrowsePage : Page
             return new MoviesResponseDto();
         }
 
-        var responses = await Task.WhenAll(roots.Select(root => AppServices.MediaTree.Movie.GetMoviesAsync(root.Path, "", search, sort, limit, 0)));
+        var responses = await Task.WhenAll(roots.Select(root => AppServices.Media.Movie.GetMoviesAsync(root.Path, "", search, sort, limit, 0)));
         return BrowseLibraryPresenter.FilterExcludedMovies(BrowseLibraryPresenter.MergeMovieResponses(responses, sort, limit), _excludedFolderPaths);
     }
 
@@ -645,15 +645,15 @@ public sealed partial class BrowsePage : Page
 
     private async void OnLoaded(object sender, RoutedEventArgs args)
     {
-        AppServices.MediaTree.Library.LibrariesChanged -= OnLibrariesChanged;
-        AppServices.MediaTree.Library.LibrariesChanged += OnLibrariesChanged;
+        AppServices.Media.Library.LibrariesChanged -= OnLibrariesChanged;
+        AppServices.Media.Library.LibrariesChanged += OnLibrariesChanged;
         LoadExcludedFolders();
         await LoadLibrariesAsync();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
-        AppServices.MediaTree.Library.LibrariesChanged -= OnLibrariesChanged;
+        AppServices.Media.Library.LibrariesChanged -= OnLibrariesChanged;
     }
 
     private void OnLibrariesChanged(object? sender, EventArgs args)
@@ -853,10 +853,10 @@ public sealed partial class BrowsePage : Page
         var fallbackCover = "";
         try
         {
-            fallbackCover = await AppServices.MediaTree.Api.BuildCoverUrlAsync(movie.Id);
+            fallbackCover = await AppServices.Media.Api.BuildCoverUrlAsync(movie.Id);
             var isEpisode = string.Equals(movie.TmdbType, "tv", StringComparison.OrdinalIgnoreCase) && movie.TmdbEpisode.HasValue;
             cover = isEpisode && !string.IsNullOrWhiteSpace(movie.EpisodeStill)
-                ? await AppServices.MediaTree.Api.BuildEpisodeStillUrlAsync(movie.Id)
+                ? await AppServices.Media.Api.BuildEpisodeStillUrlAsync(movie.Id)
                 : fallbackCover;
         }
         catch (Exception ex)

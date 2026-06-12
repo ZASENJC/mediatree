@@ -30,7 +30,7 @@ public static class MediaContextMenuService
         var flyout = FluentTheme.ApplyMenuFlyout(new MenuFlyout());
         if (!item.IsSpecial)
         {
-            flyout.Items.Add(CreateItem("重新刮削", async () => await RunMovieActionAsync(item, host, "重新刮削", () => AppServices.MediaTree.Movie.RescrapeMovieAsync(item.Id))));
+            flyout.Items.Add(CreateItem("重新刮削", async () => await RunMovieActionAsync(item, host, "重新刮削", () => AppServices.Media.Movie.RescrapeMovieAsync(item.Id))));
             flyout.Items.Add(CreateItem("手动刮削", async () => await ShowManualScrapeDialogAsync(item.Movie, host)));
         }
 
@@ -43,7 +43,7 @@ public static class MediaContextMenuService
     public static MenuFlyout CreateFolderFlyout(FolderCardItem item, MediaContextMenuHost host)
     {
         var flyout = FluentTheme.ApplyMenuFlyout(new MenuFlyout());
-        flyout.Items.Add(CreateItem("重新刮削", async () => await RunFolderActionAsync(item, host, "重新刮削", () => AppServices.MediaTree.Movie.RescrapeFolderAsync(item.Path, item.MediaRoot))));
+        flyout.Items.Add(CreateItem("重新刮削", async () => await RunFolderActionAsync(item, host, "重新刮削", () => AppServices.Media.Movie.RescrapeFolderAsync(item.Path, item.MediaRoot))));
         flyout.Items.Add(CreateItem("手动刮削", async () => await ShowFolderScrapeDialogAsync(item, host)));
         flyout.Items.Add(CreateItem("更换封面", async () => await ShowFolderCoverDialogAsync(item, host)));
         flyout.Items.Add(CreateItem("编辑信息", async () => await ShowEditFolderDialogAsync(item, host)));
@@ -132,7 +132,7 @@ public static class MediaContextMenuService
             {
                 status.Foreground = FluentTheme.TextSecondary;
                 status.Text = "正在应用刮削结果...";
-                await AppServices.MediaTree.Movie.ManualScrapeMovieAsync(movie.Id, selected.Title, selected.SourceId, selected.MediaType, string.IsNullOrWhiteSpace(selected.Scraper) ? SelectedScraper(scraperBox) : selected.Scraper);
+                await AppServices.Media.Movie.ManualScrapeMovieAsync(movie.Id, selected.Title, selected.SourceId, selected.MediaType, string.IsNullOrWhiteSpace(selected.Scraper) ? SelectedScraper(scraperBox) : selected.Scraper);
                 await host.RefreshAsync();
                 return true;
             }
@@ -181,7 +181,7 @@ public static class MediaContextMenuService
             {
                 status.Foreground = FluentTheme.TextSecondary;
                 status.Text = "正在应用刮削结果...";
-                await AppServices.MediaTree.Movie.ApplyFolderScrapeAsync(folder.Path, folder.MediaRoot, selected.SourceId, selected.Source, selected.MediaType);
+                await AppServices.Media.Movie.ApplyFolderScrapeAsync(folder.Path, folder.MediaRoot, selected.SourceId, selected.Source, selected.MediaType);
                 await host.RefreshAsync();
                 return true;
             }
@@ -213,7 +213,7 @@ public static class MediaContextMenuService
             status.Foreground = FluentTheme.TextSecondary;
             status.Text = "正在搜索候选结果...";
             resultsList.Items.Clear();
-            var response = await AppServices.MediaTree.Movie.SearchScrapeAsync(trimmed, scraper, mediaRoot);
+            var response = await AppServices.Media.Movie.SearchScrapeAsync(trimmed, scraper, mediaRoot);
             foreach (var result in response.Results)
             {
                 resultsList.Items.Add(await CreateScrapeResultRowAsync(ScrapeResultPresenter.NormalizeScraper(result, scraper)));
@@ -237,10 +237,10 @@ public static class MediaContextMenuService
     {
         try
         {
-            var response = await AppServices.MediaTree.Movie.GetAlternativeCoversAsync(movie.Id);
+            var response = await AppServices.Media.Movie.GetAlternativeCoversAsync(movie.Id);
             await ShowCoverDialogAsync(host, response.Covers, async cover =>
             {
-                await AppServices.MediaTree.Movie.ChangeMovieCoverAsync(movie.Id, cover.Url);
+                await AppServices.Media.Movie.ChangeMovieCoverAsync(movie.Id, cover.Url);
                 await host.RefreshAsync();
             }, async () => await UploadMovieCoverAsync(movie, host));
         }
@@ -255,7 +255,7 @@ public static class MediaContextMenuService
     {
         try
         {
-            var first = await AppServices.MediaTree.Movie.GetMoviesAsync(folder.MediaRoot, folder.Path, "", "created_desc", 1, 0);
+            var first = await AppServices.Media.Movie.GetMoviesAsync(folder.MediaRoot, folder.Path, "", "created_desc", 1, 0);
             var movie = first.Movies.FirstOrDefault();
             if (movie is null)
             {
@@ -263,10 +263,10 @@ public static class MediaContextMenuService
                 return;
             }
 
-            var response = await AppServices.MediaTree.Movie.GetAlternativeCoversAsync(movie.Id);
+            var response = await AppServices.Media.Movie.GetAlternativeCoversAsync(movie.Id);
             await ShowCoverDialogAsync(host, response.Covers, async cover =>
             {
-                await AppServices.MediaTree.Movie.ChangeFolderCoverAsync(folder.Path, folder.MediaRoot, cover.Url);
+                await AppServices.Media.Movie.ChangeFolderCoverAsync(folder.Path, folder.MediaRoot, cover.Url);
                 await host.RefreshAsync();
             });
         }
@@ -385,7 +385,7 @@ public static class MediaContextMenuService
                 return;
             }
 
-            await AppServices.MediaTree.Movie.UploadMovieCoverAsync(movie.Id, file.Path);
+            await AppServices.Media.Movie.UploadMovieCoverAsync(movie.Id, file.Path);
             host.ShowStatus("封面已更新", false);
             await host.RefreshAsync();
         }
@@ -411,7 +411,7 @@ public static class MediaContextMenuService
         };
         try
         {
-            var url = await AppServices.MediaTree.Api.BuildMediaAssetUrlAsync(cover.Url);
+            var url = await AppServices.Media.Api.BuildMediaAssetUrlAsync(cover.Url);
             if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
             {
                 host.Children.Add(new Image
@@ -468,7 +468,7 @@ public static class MediaContextMenuService
             DurationMinutesOrNull(movie.Duration),
             async fields =>
             {
-                await AppServices.MediaTree.Movie.EditMovieAsync(movie.Id, fields.Title, fields.Code, fields.Actress, fields.ReleaseDate, fields.Duration);
+                await AppServices.Media.Movie.EditMovieAsync(movie.Id, fields.Title, fields.Code, fields.Actress, fields.ReleaseDate, fields.Duration);
                 await host.RefreshAsync();
             });
     }
@@ -478,7 +478,7 @@ public static class MediaContextMenuService
         MovieDto? firstMovie = null;
         try
         {
-            var response = await AppServices.MediaTree.Movie.GetMoviesAsync(folder.MediaRoot, folder.Path, "", "created_desc", 1, 0);
+            var response = await AppServices.Media.Movie.GetMoviesAsync(folder.MediaRoot, folder.Path, "", "created_desc", 1, 0);
             firstMovie = response.Movies.FirstOrDefault();
         }
         catch (Exception ex)
@@ -496,7 +496,7 @@ public static class MediaContextMenuService
             DurationMinutesOrNull(firstMovie?.Duration ?? 0),
             async fields =>
             {
-                await AppServices.MediaTree.Movie.EditFolderAsync(folder.Path, folder.MediaRoot, fields.Title, fields.Code, fields.Actress, fields.ReleaseDate, fields.Duration);
+                await AppServices.Media.Movie.EditFolderAsync(folder.Path, folder.MediaRoot, fields.Title, fields.Code, fields.Actress, fields.ReleaseDate, fields.Duration);
                 await host.RefreshAsync();
             });
     }
@@ -568,7 +568,7 @@ public static class MediaContextMenuService
 
         try
         {
-            await AppServices.MediaTree.Movie.DeleteMovieAsync(movie.Id);
+            await AppServices.Media.Movie.DeleteMovieAsync(movie.Id);
             host.ShowStatus("已删除", false);
             await host.RefreshAsync();
         }
@@ -589,7 +589,7 @@ public static class MediaContextMenuService
 
         try
         {
-            await AppServices.MediaTree.Movie.DeleteFolderAsync(folder.Path, folder.MediaRoot);
+            await AppServices.Media.Movie.DeleteFolderAsync(folder.Path, folder.MediaRoot);
             host.ShowStatus("已删除", false);
             await host.RefreshAsync();
         }
@@ -604,7 +604,7 @@ public static class MediaContextMenuService
     {
         try
         {
-            await AppServices.MediaTree.Movie.SetFolderSpecialsAsync(folder.Path, folder.MediaRoot, !folder.Folder.ShowSpecials);
+            await AppServices.Media.Movie.SetFolderSpecialsAsync(folder.Path, folder.MediaRoot, !folder.Folder.ShowSpecials);
             host.ShowStatus(folder.Folder.ShowSpecials ? "已隐藏花絮" : "已显示花絮", false);
             await host.RefreshAsync();
         }
@@ -790,7 +790,7 @@ public static class MediaContextMenuService
         {
             try
             {
-                var posterUrl = await AppServices.MediaTree.Api.BuildMediaAssetUrlAsync(result.PosterUrl);
+                var posterUrl = await AppServices.Media.Api.BuildMediaAssetUrlAsync(result.PosterUrl);
                 if (Uri.TryCreate(posterUrl, UriKind.Absolute, out var posterUri))
                 {
                     var image = new Image

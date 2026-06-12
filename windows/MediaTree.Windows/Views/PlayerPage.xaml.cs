@@ -1001,8 +1001,8 @@ public sealed partial class PlayerPage : Page
 
     private async Task StartPlaybackAsync()
     {
-        var movie = await AppServices.MediaTree.Movie.GetMovieDetailAsync(_movieId);
-        var progress = await AppServices.MediaTree.Movie.GetProgressAsync(_movieId);
+        var movie = await AppServices.Media.Movie.GetMovieDetailAsync(_movieId);
+        var progress = await AppServices.Media.Movie.GetProgressAsync(_movieId);
         _movie = movie;
         _titleText.Text = movie.BestTitle;
         UpdatePlaybackWindowTitle(paused: true);
@@ -1013,7 +1013,7 @@ public sealed partial class PlayerPage : Page
         _player.StateChanged += OnPlayerStateChanged;
         _playerHost.AttachService(_player);
 
-        var source = File.Exists(movie.Path) ? movie.Path : await AppServices.MediaTree.Api.BuildStreamUrlAsync(movie.Id);
+        var source = File.Exists(movie.Path) ? movie.Path : await AppServices.Media.Api.BuildStreamUrlAsync(movie.Id);
         await _player.LoadAsync(source);
         await SetVolumeAsync(_volumeSlider.Value, showOsd: false);
 
@@ -1039,12 +1039,12 @@ public sealed partial class PlayerPage : Page
                 return;
             }
 
-            var primary = await AppServices.MediaTree.Movie.GetMoviesAsync(movie.MediaRoot, movie.FolderLevels, "", "name", 2000, 0);
+            var primary = await AppServices.Media.Movie.GetMoviesAsync(movie.MediaRoot, movie.FolderLevels, "", "name", 2000, 0);
             var items = primary.Movies;
             var parent = ParentFolder(movie.FolderLevels);
             if (items.Count <= 1 && !string.IsNullOrWhiteSpace(parent))
             {
-                var fallback = await AppServices.MediaTree.Movie.GetMoviesAsync(movie.MediaRoot, parent, "", "name", 2000, 0);
+                var fallback = await AppServices.Media.Movie.GetMoviesAsync(movie.MediaRoot, parent, "", "name", 2000, 0);
                 if (fallback.Movies.Any(item => item.Id == movie.Id))
                 {
                     items = fallback.Movies;
@@ -1288,12 +1288,12 @@ public sealed partial class PlayerPage : Page
             var hadTag = _movie.Tags.Contains(tag);
             if (hadTag)
             {
-                await AppServices.MediaTree.Movie.RemoveTagAsync(_movie.Id, tag);
+                await AppServices.Media.Movie.RemoveTagAsync(_movie.Id, tag);
                 _movie.Tags.RemoveAll(item => string.Equals(item, tag, StringComparison.OrdinalIgnoreCase));
             }
             else
             {
-                await AppServices.MediaTree.Movie.AddTagAsync(_movie.Id, tag);
+                await AppServices.Media.Movie.AddTagAsync(_movie.Id, tag);
                 _movie.Tags.Add(tag);
             }
 
@@ -1335,8 +1335,8 @@ public sealed partial class PlayerPage : Page
 
     private async Task RefreshDetailAsync()
     {
-        var movie = await AppServices.MediaTree.Movie.GetMovieDetailAsync(_movieId);
-        var progress = await AppServices.MediaTree.Movie.GetProgressAsync(_movieId);
+        var movie = await AppServices.Media.Movie.GetMovieDetailAsync(_movieId);
+        var progress = await AppServices.Media.Movie.GetProgressAsync(_movieId);
         _movie = movie;
         _titleText.Text = movie.BestTitle;
         UpdatePlaybackWindowTitle(_state.Paused);
@@ -1398,7 +1398,7 @@ public sealed partial class PlayerPage : Page
 
         try
         {
-            var data = await AppServices.MediaTree.Movie.GetFolderSpecialsAsync(folder, movie.MediaRoot, includeMovies: true);
+            var data = await AppServices.Media.Movie.GetFolderSpecialsAsync(folder, movie.MediaRoot, includeMovies: true);
             _specialMovies.AddRange(data.Movies
                 .OrderBy(item => item.FolderLevels, StringComparer.CurrentCultureIgnoreCase)
                 .ThenBy(item => item.BestTitle, StringComparer.CurrentCultureIgnoreCase));
@@ -1443,7 +1443,7 @@ public sealed partial class PlayerPage : Page
         {
             try
             {
-                sources.Add((await AppServices.MediaTree.Api.BuildEpisodeStillUrlAsync(movie.Id), "单集封面"));
+                sources.Add((await AppServices.Media.Api.BuildEpisodeStillUrlAsync(movie.Id), "单集封面"));
             }
             catch (Exception ex)
             {
@@ -1479,7 +1479,7 @@ public sealed partial class PlayerPage : Page
         };
         try
         {
-            var url = await AppServices.MediaTree.Api.BuildMediaAssetUrlAsync(source);
+            var url = await AppServices.Media.Api.BuildMediaAssetUrlAsync(source);
             if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
             {
                 var image = new Image
@@ -2225,7 +2225,7 @@ public sealed partial class PlayerPage : Page
         }
 
         var state = _player.CurrentState;
-        await AppServices.MediaTree.PlaybackProgress.SaveAsync(_movieId, state.Position, _duration > 0 ? _duration : state.Duration, stopped);
+        await AppServices.Media.PlaybackProgress.SaveAsync(_movieId, state.Position, _duration > 0 ? _duration : state.Duration, stopped);
     }
 
     private void OnUserPointerMoved(object sender, PointerRoutedEventArgs args)

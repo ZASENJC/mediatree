@@ -280,8 +280,8 @@ public sealed partial class MovieDetailPage : Page
 
     private async System.Threading.Tasks.Task LoadAsync()
     {
-        var movie = await AppServices.MediaTree.Movie.GetMovieDetailAsync(_movieId);
-        var progress = await AppServices.MediaTree.Movie.GetProgressAsync(_movieId);
+        var movie = await AppServices.Media.Movie.GetMovieDetailAsync(_movieId);
+        var progress = await AppServices.Media.Movie.GetProgressAsync(_movieId);
         _loadedMovie = movie;
         _titleText.Text = movie.BestTitle;
         _metaText.Text = $"{movie.ReleaseDate}  {movie.Genre}  {FormatDuration(movie.Duration)}".Trim();
@@ -296,7 +296,7 @@ public sealed partial class MovieDetailPage : Page
 
         try
         {
-            var cover = await AppServices.MediaTree.Api.BuildCoverUrlAsync(movie.Id);
+            var cover = await AppServices.Media.Api.BuildCoverUrlAsync(movie.Id);
             _posterImage.Source = Uri.TryCreate(cover, UriKind.Absolute, out var coverUri) ? new BitmapImage(coverUri) : null;
         }
         catch (Exception ex)
@@ -324,7 +324,7 @@ public sealed partial class MovieDetailPage : Page
 
         try
         {
-            var data = await AppServices.MediaTree.Movie.GetFolderSpecialsAsync(folder, movie.MediaRoot, includeMovies: true);
+            var data = await AppServices.Media.Movie.GetFolderSpecialsAsync(folder, movie.MediaRoot, includeMovies: true);
             _specialMovies = data.Movies
                 .OrderBy(item => item.FolderLevels, StringComparer.CurrentCultureIgnoreCase)
                 .ThenBy(item => item.BestTitle, StringComparer.CurrentCultureIgnoreCase)
@@ -458,7 +458,7 @@ public sealed partial class MovieDetailPage : Page
                 statusText.Text = "正在搜索候选结果...";
                 resultList.Items.Clear();
                 var scraper = SelectedScraper(scraperBox);
-                var response = await AppServices.MediaTree.Movie.SearchScrapeAsync(query, scraper, movie.MediaRoot);
+                var response = await AppServices.Media.Movie.SearchScrapeAsync(query, scraper, movie.MediaRoot);
                 foreach (var result in response.Results)
                 {
                     resultList.Items.Add(await MediaContextMenuService.CreateScrapeResultRowAsync(
@@ -506,7 +506,7 @@ public sealed partial class MovieDetailPage : Page
                 statusText.Foreground = FluentTheme.TextSecondary;
                 statusText.Text = "正在应用刮削结果...";
                 var scraper = string.IsNullOrWhiteSpace(selected.Scraper) ? SelectedScraper(scraperBox) : selected.Scraper;
-                await AppServices.MediaTree.Movie.ManualScrapeMovieAsync(movie.Id, selected.Title, selected.SourceId, selected.MediaType, scraper);
+                await AppServices.Media.Movie.ManualScrapeMovieAsync(movie.Id, selected.Title, selected.SourceId, selected.MediaType, scraper);
                 await LoadAsync();
                 return true;
             }

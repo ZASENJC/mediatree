@@ -268,10 +268,10 @@ class WindowsPackagingTest(unittest.TestCase):
         self.assertIn("public RemoteMediaTreeProvider(MediaSourceProfile profile, MediaTreeServices services, MediaSourceCredentials credentials)", remote_media_tree_provider)
         self.assertIn("public MediaTreeServices Services { get; }", remote_media_tree_provider)
         self.assertIn("public MediaSourceCredentials Credentials { get; }", remote_media_tree_provider)
-        self.assertIn("public static MediaTreeServices MediaTree", app_services)
         self.assertIn("public static MediaTreeServices Media", app_services)
-        self.assertIn("MediaTree = provider.Services", app_services)
         self.assertIn("Media = provider.Services", app_services)
+        self.assertNotIn("public static MediaTreeServices " + "MediaTree", app_services)
+        self.assertNotIn("MediaTree = provider." + "Services", app_services)
         self.assertNotIn("public static MediaTreeApiClient Api", app_services)
         self.assertNotIn("public static AuthSessionService Auth", app_services)
         self.assertNotIn("public static LibraryService Library", app_services)
@@ -760,10 +760,10 @@ class WindowsPackagingTest(unittest.TestCase):
         self.assertIn("FluentTheme.MediaCornerRadius", library_page)
         self.assertIn("FluentTheme.MediaCornerRadius", movie_detail_page)
         self.assertIn("FluentTheme.MediaCornerRadius", recent_page)
-        self.assertIn("var mediaTree = AppServices.MediaTree", recent_page)
-        self.assertIn("mediaTree.Library.GetMediaRootsAsync", recent_page)
-        self.assertIn("mediaTree.Movie.GetRecentWatchedAsync", recent_page)
-        self.assertIn("mediaTree.Api.BuildCoverUrlAsync", recent_page)
+        self.assertIn("var media = AppServices.Media", recent_page)
+        self.assertIn("media.Library.GetMediaRootsAsync", recent_page)
+        self.assertIn("media.Movie.GetRecentWatchedAsync", recent_page)
+        self.assertIn("media.Api.BuildCoverUrlAsync", recent_page)
         forbidden_app_service_shortcuts = (
             "AppServices.Api",
             "AppServices.Auth",
@@ -771,12 +771,14 @@ class WindowsPackagingTest(unittest.TestCase):
             "AppServices.Movie",
             "AppServices.Updates",
             "AppServices.PlaybackProgress",
+            "AppServices." + "MediaTree",
             "Services.AppServices.Api",
             "Services.AppServices.Auth",
             "Services.AppServices.Library",
             "Services.AppServices.Movie",
             "Services.AppServices.Updates",
             "Services.AppServices.PlaybackProgress",
+            "Services.AppServices." + "MediaTree",
         )
         windows_csharp = "\n".join(
             path.read_text(encoding="utf-8")
