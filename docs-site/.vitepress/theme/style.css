@@ -95,7 +95,10 @@ body {
 
 .VPNavBar {
   border-bottom: 1px solid transparent;
-  backdrop-filter: saturate(180%) blur(24px);
+  background: transparent !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  transition: background-color 180ms ease, border-color 180ms ease, backdrop-filter 180ms ease;
 }
 
 .VPNavBar .wrapper {
@@ -109,15 +112,53 @@ body {
   margin-inline: 0;
 }
 
-.VPNavBar.has-sidebar,
-.VPNavBar:not(.top) {
-  background: rgba(251, 251, 253, 0.78);
-  border-bottom-color: var(--vp-c-divider);
+.VPNavBar .content-body {
+  justify-content: flex-end;
+  gap: 0;
 }
 
-.dark .VPNavBar.has-sidebar,
+.VPNavBarSearch {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  order: 2;
+  margin-left: 16px;
+}
+
+.VPNavBarMenu {
+  order: 1;
+}
+
+.VPNavBarTranslations {
+  order: 3;
+}
+
+.VPNavBarAppearance {
+  order: 4;
+}
+
+.VPNavBarSocialLinks {
+  order: 5;
+}
+
+.VPNavBar .divider,
+.VPNavBar .divider-line {
+  height: 0;
+  background: transparent !important;
+  background-color: transparent !important;
+  opacity: 0;
+  transition: background-color 180ms ease, opacity 180ms ease;
+}
+
+.VPNavBar:not(.top) {
+  background: rgba(251, 251, 253, 0.72) !important;
+  border-bottom-color: transparent;
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+}
+
 .dark .VPNavBar:not(.top) {
-  background: rgba(0, 0, 0, 0.66);
+  background: rgba(5, 7, 11, 0.62) !important;
 }
 
 .VPNavBarTitle .title {
