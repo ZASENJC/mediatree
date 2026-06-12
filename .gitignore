@@ -5,6 +5,8 @@ __pycache__/
 .DS_Store
 node_modules/
 frontend/dist/
+docs-site/.vitepress/dist/
+docs-site/.vitepress/cache/
 *.egg-info/
 docker-compose.yml
 frontend/tsconfig.tsbuildinfo

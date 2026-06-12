@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>English</strong> · <a href="README.md">简体中文</a> · <a href="#quick-deploy">Quick Deploy</a> · <a href="https://github.com/ZASENJC/mediatree/wiki">Wiki</a> · <a href="CHANGELOG.md">Changelog</a>
+  <strong>English</strong> · <a href="README.md">简体中文</a> · <a href="#quick-deploy">Quick Deploy</a> · <a href="https://zasenjc.github.io/mediatree/en/">Docs Site</a> · <a href="https://github.com/ZASENJC/mediatree/wiki">Wiki</a> · <a href="CHANGELOG.md">Changelog</a>
 </p>
 
 <p align="center">
@@ -153,7 +153,8 @@ docker compose up -d
 
 | Document | Description |
 |---|---|
-| [Wiki](https://github.com/ZASENJC/mediatree/wiki) | Full user guides, advanced config, scraper notes, and troubleshooting |
+| [Docs Site](https://zasenjc.github.io/mediatree/en/) | Recommended entry for deployment, configuration, scraping, updates, API, and development docs |
+| [Wiki](https://github.com/ZASENJC/mediatree/wiki) | GitHub Wiki mirror and legacy entry |
 | [README.md](README.md) | 简体中文 README |
 | [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
 | [CLAUDE.md](CLAUDE.md) | Development and AI-assisted maintenance notes |

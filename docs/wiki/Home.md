@@ -8,10 +8,13 @@
 
 Welcome to the MediaTree documentation. MediaTree is a self-hosted media library manager that combines an elegant glassmorphism UI, browser playback, external-player handoff, and a powerful plugin-based scraper system.
 
+> The new docs site is available at [https://zasenjc.github.io/mediatree/en/](https://zasenjc.github.io/mediatree/en/). The GitHub Wiki remains as a mirror and legacy entry.
+
 ## Quick Navigation
 
 | Guide | Description |
 |-------|-------------|
+| [Docs Site](https://zasenjc.github.io/mediatree/en/) | Deployment, configuration, scraping, updates, API, and development docs |
 | [Installation](Installation) | Docker setup and first-time deployment |
 | [Configuration](Configuration) | Environment variables and runtime settings |
 | [Media Libraries](Media-Libraries) | Setting up and managing media libraries |

@@ -8,10 +8,13 @@
 
 欢迎查阅 MediaTree 文档。MediaTree 是一个自托管的媒体库管理器，将优雅的玻璃态 UI、浏览器播放、外部播放器接续和强大的插件化刮削系统融为一体。
 
+> 新版文档站已发布到 [https://zasenjc.github.io/mediatree/](https://zasenjc.github.io/mediatree/)。GitHub Wiki 继续作为镜像和旧入口保留。
+
 ## 快速导航
 
 | 指南 | 说明 |
 |-------|-------------|
+| [新版文档站](https://zasenjc.github.io/mediatree/) | 部署、配置、刮削、升级、API 和开发文档 |
 | [安装指南](Installation) | Docker 部署和首次配置 |
 | [配置说明](Configuration) | 环境变量和运行时设置 |
 | [刮削器系统](Scrapers) | TMDB、Bangumi、Javdatabase 刮削系统 |

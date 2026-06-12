@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>简体中文</strong> · <a href="README_en.md">English</a> · <a href="#快速部署">快速部署</a> · <a href="https://github.com/ZASENJC/mediatree/wiki">Wiki</a> · <a href="CHANGELOG_zh-CN.md">更新日志</a>
+  <strong>简体中文</strong> · <a href="README_en.md">English</a> · <a href="#快速部署">快速部署</a> · <a href="https://zasenjc.github.io/mediatree/">文档站</a> · <a href="https://github.com/ZASENJC/mediatree/wiki">Wiki</a> · <a href="CHANGELOG_zh-CN.md">更新日志</a>
 </p>
 
 <p align="center">
@@ -154,7 +154,8 @@ docker compose up -d
 
 | 文档 | 说明 |
 |---|---|
-| [Wiki](https://github.com/ZASENJC/mediatree/wiki) | 完整使用指南、高级配置、刮削说明和排障 |
+| [文档站](https://zasenjc.github.io/mediatree/) | 推荐入口，包含部署、配置、刮削、升级、API 和开发文档 |
+| [Wiki](https://github.com/ZASENJC/mediatree/wiki) | GitHub Wiki 镜像和旧入口 |
 | [README_en.md](README_en.md) | English README |
 | [CHANGELOG_zh-CN.md](CHANGELOG_zh-CN.md) | 中文版本历史 |
 | [CHANGELOG.md](CHANGELOG.md) | 英文版本历史 |
