@@ -15,7 +15,9 @@ All notable changes to MediaTree are documented here.
 
 ### Docs
 
-- Updated README and Wiki pages so current setup guidance no longer advertises Jellyfin/Emby-compatible server access
+- Removed the repository-maintained GitHub Wiki mirror under `docs/wiki*`; the VitePress docs site is now the canonical documentation entry
+- Updated README and development docs to point users to the docs site instead of the legacy Wiki
+- Updated README and docs-site pages so current setup guidance no longer advertises Jellyfin/Emby-compatible server access
 
 ---
 

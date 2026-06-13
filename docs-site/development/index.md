@@ -16,7 +16,6 @@ mediatree/
 │   └── tests/
 ├── frontend/              # React 18 + TypeScript + Vite
 ├── docs-site/             # VitePress 文档站
-├── docs/wiki*             # GitHub Wiki 镜像文档
 └── Dockerfile
 ```
 

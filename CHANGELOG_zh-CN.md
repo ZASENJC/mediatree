@@ -15,7 +15,9 @@
 
 ### 文档
 
-- 更新 README 和 Wiki，当前安装/使用说明不再宣称服务端支持 Jellyfin/Emby 兼容访问
+- 移除仓库内维护的 GitHub Wiki 镜像目录 `docs/wiki*`，统一以 VitePress 文档站作为文档入口
+- 更新 README 和开发文档，用户说明统一指向文档站，不再保留旧 Wiki 入口
+- 更新 README 和文档站，当前安装/使用说明不再宣称服务端支持 Jellyfin/Emby 兼容访问
 
 ---
 

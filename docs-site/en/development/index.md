@@ -16,7 +16,6 @@ mediatree/
 │   └── tests/
 ├── frontend/              # React 18 + TypeScript + Vite
 ├── docs-site/             # VitePress documentation site
-├── docs/wiki*             # GitHub Wiki mirror docs
 └── Dockerfile
 ```
 
