@@ -100,6 +100,35 @@ public static class MediaSourceProfileStore
         return Load(filePath);
     }
 
+    public static MediaSourceProfileState RemoveSource(string sourceId)
+        => RemoveSource(sourceId, SourcesFilePath);
+
+    public static MediaSourceProfileState RemoveSource(string sourceId, string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourceId))
+        {
+            throw new ArgumentException("Media source id is required.", nameof(sourceId));
+        }
+
+        if (string.Equals(sourceId, LocalSourceId, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("The bundled local MediaTree source cannot be removed.", nameof(sourceId));
+        }
+
+        var state = Load(filePath);
+        var removed = state.Sources.RemoveAll(source => string.Equals(source.Id, sourceId, StringComparison.OrdinalIgnoreCase));
+        if (removed == 0)
+        {
+            throw new ArgumentException("Media source does not exist.", nameof(sourceId));
+        }
+
+        var activeSourceId = string.Equals(state.ActiveSourceId, sourceId, StringComparison.OrdinalIgnoreCase)
+            ? LocalSourceId
+            : state.ActiveSourceId;
+        Save(new MediaSourceProfileState(activeSourceId, state.Sources), filePath);
+        return Load(filePath);
+    }
+
     private static void Save(MediaSourceProfileState state, string filePath)
     {
         var directory = Path.GetDirectoryName(filePath);

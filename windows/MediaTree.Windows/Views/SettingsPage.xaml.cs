@@ -21,6 +21,7 @@ public sealed partial class SettingsPage : Page
 {
     public const string AddLibraryButtonText = "添加";
     public const string SwitchToLocalMediaTreeButtonText = "切回本机";
+    public const string SwitchMediaSourceButtonText = "切换";
     public const string DeleteLibraryButtonText = "删除";
     public const string LibraryScraperHeader = "刮削器";
     public const string RemoteAccessTitle = "移动端访问";
@@ -43,9 +44,32 @@ public sealed partial class SettingsPage : Page
 
     private sealed record ScraperOption(string Value, string Label, string Description, bool HasKey);
 
-    private sealed record LibrarySettingsRowContext(string MediaRoot, string TmdbKey, ComboBox ScraperBox, PasswordBox PasswordBox, TextBlock StatusText, TextBlock LogText);
+    private sealed record LibrarySettingsRowContext(string SourceId, string MediaRoot, string TmdbKey, ComboBox ScraperBox, PasswordBox PasswordBox, TextBlock StatusText, TextBlock LogText);
 
-    private sealed record LibraryScanRowUi(TextBlock StatusText, TextBlock LogText, Button ScanButton);
+    private sealed record LibraryScanRowUi(string SourceId, string MediaRoot, TextBlock StatusText, TextBlock LogText, Button ScanButton);
+
+    private sealed record MediaSourceRowContext(MediaSourceListItem Source, TextBlock StatusText);
+
+    private sealed record DeleteLibraryContext(string SourceId, string MediaRoot);
+
+    private sealed class MediaServicesLease(MediaTreeServices services, IDisposable? disposable = null) : IDisposable
+    {
+        public MediaTreeServices Services { get; } = services;
+
+        public void Dispose()
+            => disposable?.Dispose();
+    }
+
+    private sealed class MediaSourceLibraryPanelState
+    {
+        public bool IsLoading { get; init; }
+        public bool IsLoaded { get; init; }
+        public bool IsError { get; init; }
+        public string Message { get; init; } = "";
+        public List<MediaRootDto> Roots { get; init; } = [];
+        public Dictionary<string, LibrarySettingDto> Settings { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+        public List<string> RemovableRoots { get; init; } = [];
+    }
 
     private static readonly IReadOnlyList<ScraperOption> ScraperOptions =
     [
@@ -68,7 +92,7 @@ public sealed partial class SettingsPage : Page
     private readonly PasswordBox _remoteLoginPasswordBox;
     private readonly CheckBox _showSourceNameBox;
     private readonly TextBlock _backupStatusText;
-    private readonly ListView _librarySettingsList;
+    private readonly StackPanel _mediaSourceGroupsStack;
     private readonly TextBlock _libraryStatusText;
     private readonly TextBox _tmdbApiKeyBox;
     private readonly PasswordBox _tmdbTokenBox;
@@ -77,6 +101,9 @@ public sealed partial class SettingsPage : Page
     private readonly Dictionary<string, int> _scanPollCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, LibraryScanRowUi> _scanRows = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _activeScanRoots = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _expandedMediaSources = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, MediaSourceLibraryPanelState> _mediaSourceLibraryStates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<FrameworkElement> _librarySettingRows = [];
     private readonly DispatcherTimer _updateStatusTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly TextBlock _updateProgressText;
     private readonly TextBlock _updateStatusText;
@@ -106,7 +133,7 @@ public sealed partial class SettingsPage : Page
             _showSourceNameBox,
             _remoteLoginUsernameBox,
             _remoteLoginPasswordBox,
-            _librarySettingsList,
+            _mediaSourceGroupsStack,
             _libraryStatusText,
             _tmdbApiKeyBox,
             _tmdbTokenBox,
@@ -123,7 +150,7 @@ public sealed partial class SettingsPage : Page
         Unloaded += OnUnloaded;
     }
 
-    private (TextBlock globalStatusText, CheckBox hideHomeTitleTextBox, CheckBox allowRemoteBackendBox, TextBox remoteBackendPortBox, TextBlock remoteBackendUrlText, TextBlock remoteBackendStatusText, CheckBox showSourceNameBox, TextBox remoteLoginUsernameBox, PasswordBox remoteLoginPasswordBox, ListView librarySettingsList, TextBlock libraryStatusText, TextBox tmdbApiKeyBox, PasswordBox tmdbTokenBox, TextBlock tmdbTokenStatusText, TextBlock backupStatusText, TextBlock versionText, TextBlock updateProgressText, TextBlock updateStatusText, StackPanel updateVersionsStack) BuildContent()
+    private (TextBlock globalStatusText, CheckBox hideHomeTitleTextBox, CheckBox allowRemoteBackendBox, TextBox remoteBackendPortBox, TextBlock remoteBackendUrlText, TextBlock remoteBackendStatusText, CheckBox showSourceNameBox, TextBox remoteLoginUsernameBox, PasswordBox remoteLoginPasswordBox, StackPanel mediaSourceGroupsStack, TextBlock libraryStatusText, TextBox tmdbApiKeyBox, PasswordBox tmdbTokenBox, TextBlock tmdbTokenStatusText, TextBlock backupStatusText, TextBlock versionText, TextBlock updateProgressText, TextBlock updateStatusText, StackPanel updateVersionsStack) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "SettingsPage");
         var isLocalMediaTreeActive = IsLocalMediaTreeActive;
@@ -279,43 +306,18 @@ public sealed partial class SettingsPage : Page
         Grid.SetColumn(addLibraryButton, 1);
         libraryHeader.Children.Add(addLibraryButton);
         libraryStack.Children.Add(libraryHeader);
-        var sourceActions = new StackPanel
+        var mediaSourceGroupsStack = new StackPanel
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 10,
+            Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
-        if (!isLocalMediaTreeActive)
-        {
-            var switchToLocalButton = FluentTheme.ApplyButton(new Button
-            {
-                Content = SwitchToLocalMediaTreeButtonText,
-                HorizontalAlignment = HorizontalAlignment.Left,
-            });
-            AutomationProperties.SetAutomationId(switchToLocalButton, "SettingsSwitchToLocalMediaTree");
-            switchToLocalButton.Click += OnSwitchToLocalMediaTreeClicked;
-            sourceActions.Children.Add(switchToLocalButton);
-        }
-
-        if (sourceActions.Children.Count > 0)
-        {
-            sourceActions.SizeChanged += (_, args) => ApplyActionStackLayout(args.NewSize.Width, sourceActions);
-            libraryStack.Children.Add(sourceActions);
-        }
-
+        AutomationProperties.SetAutomationId(mediaSourceGroupsStack, "SettingsMediaSourceGroups");
+        libraryStack.Children.Add(mediaSourceGroupsStack);
         libraryStack.Children.Add(FluentTheme.Body(
             supportsMediaTreeLibraryManagement
                 ? "可添加本机目录，也可以先保存远程 MediaTree、Jellyfin 或 Emby 的连接配置。"
                 : "当前媒体源由外部服务端管理；这里可查看媒体库，也可以添加或切换连接配置。",
             13));
-        var librarySettingsList = FluentTheme.ApplyListView(new ListView
-        {
-            SelectionMode = ListViewSelectionMode.None,
-            IsItemClickEnabled = false,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            Padding = new Thickness(0),
-        });
-        AutomationProperties.SetAutomationId(librarySettingsList, "SettingsLibrarySettingsList");
-        libraryStack.Children.Add(librarySettingsList);
         var libraryStatusText = StatusText("SettingsLibraryStatusText", visible: true);
         libraryStatusText.Text = "正在加载媒体库设置...";
         libraryStack.Children.Add(libraryStatusText);
@@ -435,7 +437,7 @@ public sealed partial class SettingsPage : Page
             showSourceNameBox,
             remoteLoginUsernameBox,
             remoteLoginPasswordBox,
-            librarySettingsList,
+            mediaSourceGroupsStack,
             libraryStatusText,
             tmdbApiKeyBox,
             tmdbTokenBox,
@@ -452,6 +454,7 @@ public sealed partial class SettingsPage : Page
     {
         LoadUiPreferences();
         LoadBackendAccessSettings();
+        LoadMediaSourceGroups();
         await LoadVersionAsync();
         if (_isSwitchingMediaSource)
         {
@@ -512,6 +515,428 @@ public sealed partial class SettingsPage : Page
             settings,
             IsLocalMediaTreeActive ? $"当前为{settings.AccessModeLabel}。" : LocalMediaTreeOnlyMessage,
             false);
+    }
+
+    private void LoadMediaSourceGroups()
+    {
+        _mediaSourceGroupsStack.Children.Clear();
+        _librarySettingRows.Clear();
+        var state = MediaSourceProfileStore.Load();
+        foreach (var source in MediaSourceListPresenter.BuildItems(state))
+        {
+            _mediaSourceGroupsStack.Children.Add(CreateMediaSourceCard(source));
+        }
+    }
+
+    private UIElement CreateMediaSourceCard(MediaSourceListItem source)
+    {
+        var expanded = _expandedMediaSources.Contains(source.Id);
+        var state = GetLibraryPanelState(source);
+        var automationSuffix = SanitizeAutomationId(source.Id);
+        var row = new Border
+        {
+            Padding = new Thickness(12),
+            CornerRadius = FluentTheme.CardCornerRadius,
+            Background = FluentTheme.LayerAlt,
+            BorderBrush = FluentTheme.Border,
+            BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        AutomationProperties.SetAutomationId(row, $"SettingsMediaSource_{automationSuffix}");
+
+        var stack = new StackPanel
+        {
+            Spacing = 10,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        var header = new Grid
+        {
+            ColumnSpacing = 12,
+            RowSpacing = 10,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        header.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        header.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
+
+        var info = new StackPanel
+        {
+            Spacing = 4,
+            MinWidth = 220,
+        };
+        info.Children.Add(new TextBlock
+        {
+            Text = source.DisplayName,
+            FontSize = 15,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            Foreground = FluentTheme.TextPrimary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        });
+        info.Children.Add(new TextBlock
+        {
+            Text = $"{DisplaySourceKind(source.Kind)} · {FormatMediaSourceEndpoint(source)}",
+            Foreground = FluentTheme.TextTertiary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = 12,
+        });
+        info.Children.Add(new TextBlock
+        {
+            Text = FormatMediaSourceSummary(source, state),
+            Foreground = FluentTheme.TextSecondary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        });
+        header.Children.Add(info);
+
+        var actions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+        };
+        var statusText = StatusText($"SettingsMediaSourceStatus_{automationSuffix}");
+        var toggleButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = expanded ? "收起媒体库" : "查看媒体库",
+            Tag = source,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        });
+        AutomationProperties.SetAutomationId(toggleButton, $"SettingsToggleMediaSource_{automationSuffix}");
+        toggleButton.Click += OnToggleMediaSourceClicked;
+        actions.Children.Add(toggleButton);
+
+        if (!source.IsActive)
+        {
+            var switchButton = FluentTheme.ApplyButton(new Button
+            {
+                Content = source.Kind == MediaSourceKind.LocalMediaTree ? SwitchToLocalMediaTreeButtonText : SwitchMediaSourceButtonText,
+                Tag = new MediaSourceRowContext(source, statusText),
+                HorizontalAlignment = HorizontalAlignment.Left,
+            }, FluentButtonStyle.Accent);
+            AutomationProperties.SetAutomationId(switchButton, $"SettingsSwitchMediaSource_{automationSuffix}");
+            switchButton.Click += OnSwitchMediaSourceClicked;
+            actions.Children.Add(switchButton);
+        }
+
+        if (source.Kind != MediaSourceKind.LocalMediaTree)
+        {
+            var deleteButton = FluentTheme.ApplyButton(new Button
+            {
+                Content = DeleteLibraryButtonText,
+                Tag = new MediaSourceRowContext(source, statusText),
+                HorizontalAlignment = HorizontalAlignment.Left,
+            }, FluentButtonStyle.Danger);
+            AutomationProperties.SetAutomationId(deleteButton, $"SettingsDeleteMediaSource_{automationSuffix}");
+            deleteButton.Click += OnDeleteMediaSourceClicked;
+            actions.Children.Add(deleteButton);
+        }
+
+        Grid.SetColumn(actions, 1);
+        header.Children.Add(actions);
+        header.SizeChanged += (_, args) => ApplyMediaSourceRowLayout(args.NewSize.Width, header, info, actions);
+        stack.Children.Add(header);
+        stack.Children.Add(statusText);
+
+        var libraryStack = new StackPanel
+        {
+            Spacing = 8,
+            Visibility = expanded ? Visibility.Visible : Visibility.Collapsed,
+        };
+        AutomationProperties.SetAutomationId(libraryStack, $"SettingsMediaSourceLibraries_{automationSuffix}");
+        if (expanded)
+        {
+            RenderMediaSourceLibraries(source, state, libraryStack);
+        }
+
+        stack.Children.Add(libraryStack);
+        row.Child = stack;
+        return row;
+    }
+
+    private MediaSourceLibraryPanelState GetLibraryPanelState(MediaSourceListItem source)
+    {
+        if (_mediaSourceLibraryStates.TryGetValue(source.Id, out var state))
+        {
+            return state;
+        }
+
+        return new MediaSourceLibraryPanelState
+        {
+            Message = source.IsActive ? "正在加载媒体库..." : "展开后加载该后端媒体库。"
+        };
+    }
+
+    private void RenderMediaSourceLibraries(MediaSourceListItem source, MediaSourceLibraryPanelState state, StackPanel libraryStack)
+    {
+        if (state.IsLoading || !state.IsLoaded)
+        {
+            libraryStack.Children.Add(FluentTheme.Body(state.Message, 13));
+            return;
+        }
+
+        if (state.IsError || state.Roots.Count == 0)
+        {
+            libraryStack.Children.Add(FluentTheme.Body(state.Message, 13));
+            return;
+        }
+
+        for (var i = 0; i < state.Roots.Count; i++)
+        {
+            var root = state.Roots[i];
+            state.Settings.TryGetValue(root.Path, out var setting);
+            var canDelete = CanManageLibraries(source)
+                && state.RemovableRoots.Any(extraRoot => LibraryService.RootsMatch(extraRoot, root.Path));
+            libraryStack.Children.Add(CreateLibrarySettingsRow(source, root, setting, i, canDelete));
+        }
+    }
+
+    private async void OnToggleMediaSourceClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button { Tag: MediaSourceListItem source })
+        {
+            return;
+        }
+
+        if (!_expandedMediaSources.Add(source.Id))
+        {
+            _expandedMediaSources.Remove(source.Id);
+            LoadMediaSourceGroups();
+            return;
+        }
+
+        LoadMediaSourceGroups();
+        await LoadMediaSourceLibrariesAsync(source);
+    }
+
+    private async System.Threading.Tasks.Task LoadLibrarySettingsAsync()
+    {
+        var state = MediaSourceProfileStore.Load();
+        var active = MediaSourceListPresenter.BuildItems(state).FirstOrDefault(source => source.IsActive);
+        if (active is null)
+        {
+            _libraryStatusText.Foreground = FluentTheme.Error;
+            _libraryStatusText.Text = "当前媒体源配置不存在。";
+            return;
+        }
+
+        _expandedMediaSources.Add(active.Id);
+        LoadMediaSourceGroups();
+        await LoadMediaSourceLibrariesAsync(active);
+    }
+
+    private async System.Threading.Tasks.Task LoadMediaSourceLibrariesAsync(MediaSourceListItem source)
+    {
+        _mediaSourceLibraryStates[source.Id] = new MediaSourceLibraryPanelState
+        {
+            IsLoading = true,
+            Message = $"正在加载 {source.DisplayName} 的媒体库...",
+        };
+        LoadMediaSourceGroups();
+
+        try
+        {
+            _libraryStatusText.Foreground = FluentTheme.TextSecondary;
+            _libraryStatusText.Text = $"正在加载 {source.DisplayName} 的媒体库...";
+            using var lease = await OpenMediaServicesAsync(source);
+            var canManageLibraries = CanManageLibraries(source);
+            var roots = await lease.Services.Library.GetMediaRootsAsync();
+            var librarySettings = await lease.Services.Library.GetLibrarySettingsAsync();
+            var config = canManageLibraries ? await lease.Services.Api.GetConfigAsync() : new ConfigDto();
+            var orderedRoots = roots.Items
+                .OrderBy(root => string.IsNullOrWhiteSpace(root.Label) ? root.Path : root.Label, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            var message = orderedRoots.Count == 0
+                ? canManageLibraries
+                    ? "还没有媒体库。先添加影片文件夹后，再设置刮削器。"
+                    : "当前外部媒体源没有返回可显示的媒体库。"
+                : canManageLibraries
+                    ? "选择刮削器后点击保存。需要重新刮削时可直接重新扫描。"
+                    : ExternalLibraryReadOnlyMessage;
+
+            _mediaSourceLibraryStates[source.Id] = new MediaSourceLibraryPanelState
+            {
+                IsLoaded = true,
+                Message = message,
+                Roots = orderedRoots,
+                Settings = librarySettings.ToDictionary(s => s.MediaRoot, StringComparer.OrdinalIgnoreCase),
+                RemovableRoots = config.ExtraMediaRoots ?? [],
+            };
+            _libraryStatusText.Foreground = canManageLibraries || orderedRoots.Count > 0 ? FluentTheme.TextSecondary : FluentTheme.Error;
+            _libraryStatusText.Text = message;
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to load media source library settings.");
+            _mediaSourceLibraryStates[source.Id] = new MediaSourceLibraryPanelState
+            {
+                IsLoaded = true,
+                IsError = true,
+                Message = $"加载媒体库设置失败：{ex.Message}",
+            };
+            _libraryStatusText.Foreground = FluentTheme.Error;
+            _libraryStatusText.Text = $"加载 {source.DisplayName} 媒体库失败：{ex.Message}";
+        }
+        finally
+        {
+            LoadMediaSourceGroups();
+        }
+    }
+
+    private async System.Threading.Tasks.Task<MediaServicesLease> OpenMediaServicesAsync(MediaSourceListItem source)
+    {
+        if (source.Kind == MediaSourceKind.LocalMediaTree)
+        {
+            return new MediaServicesLease(AppServices.LocalMediaTreeProvider.Services);
+        }
+
+        if (source.IsActive)
+        {
+            return new MediaServicesLease(AppServices.Media);
+        }
+
+        var record = MediaSourceProfileStore.Load().Sources.FirstOrDefault(item => string.Equals(item.Id, source.Id, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("媒体源配置不存在。");
+        var provider = await MediaSourceActivator.CreateProviderAsync(record);
+        return new MediaServicesLease(provider.Services, provider.Services.Api);
+    }
+
+    private async System.Threading.Tasks.Task<MediaServicesLease> OpenMediaServicesAsync(string sourceId)
+    {
+        var source = MediaSourceListPresenter.BuildItems(MediaSourceProfileStore.Load())
+            .FirstOrDefault(item => string.Equals(item.Id, sourceId, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("媒体源配置不存在。");
+        return await OpenMediaServicesAsync(source);
+    }
+
+    private static bool CanManageLibraries(MediaSourceListItem source)
+        => source.Kind is MediaSourceKind.LocalMediaTree or MediaSourceKind.RemoteMediaTree;
+
+    private static string FormatMediaSourceEndpoint(MediaSourceListItem source)
+        => string.IsNullOrWhiteSpace(source.Endpoint) ? "内置本机后端" : source.Endpoint;
+
+    private static string FormatMediaSourceSummary(MediaSourceListItem source, MediaSourceLibraryPanelState state)
+    {
+        var status = source.IsActive ? "当前" : "已保存";
+        if (state.IsLoaded && !state.IsError)
+        {
+            return $"{status} · {state.Roots.Count} 个媒体库";
+        }
+
+        return string.IsNullOrWhiteSpace(state.Message) ? status : $"{status} · {state.Message}";
+    }
+
+    private static MediaSourceListItem FindMediaSource(string sourceId)
+        => MediaSourceListPresenter.BuildItems(MediaSourceProfileStore.Load())
+            .FirstOrDefault(item => string.Equals(item.Id, sourceId, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("媒体源配置不存在。");
+
+    private static string ScanKey(string sourceId, string mediaRoot)
+        => $"{sourceId}\n{mediaRoot}";
+
+    private async void OnDeleteMediaSourceClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button button || button.Tag is not MediaSourceRowContext context)
+        {
+            return;
+        }
+
+        await ShowDeleteMediaSourceDialogAsync(context.Source, context.StatusText);
+    }
+
+    private async System.Threading.Tasks.Task ShowDeleteMediaSourceDialogAsync(MediaSourceListItem source, TextBlock rowStatusText)
+    {
+        if (source.Kind == MediaSourceKind.LocalMediaTree)
+        {
+            ShowRowStatus(rowStatusText, "本机 MediaTree 不能删除。", true);
+            return;
+        }
+
+        var statusText = StatusText("SettingsDeleteMediaSourceDialogStatus", visible: true);
+        statusText.Text = source.IsActive
+            ? "此后端当前正在使用。删除后会自动切回本机 MediaTree。"
+            : "删除后只移除此连接配置和本机保存的凭据，不会删除服务端媒体库。";
+        statusText.Foreground = FluentTheme.TextSecondary;
+
+        var content = new StackPanel { Spacing = 12 };
+        content.Children.Add(WrapText("确定要删除这个已连接后端吗？"));
+        content.Children.Add(new TextBlock
+        {
+            Text = source.DisplayName,
+            Foreground = FluentTheme.TextPrimary,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.WrapWholeWords,
+        });
+        content.Children.Add(new TextBlock
+        {
+            Text = FormatMediaSourceEndpoint(source),
+            Foreground = FluentTheme.TextTertiary,
+            TextWrapping = TextWrapping.WrapWholeWords,
+            FontFamily = new FontFamily("Consolas"),
+        });
+        content.Children.Add(statusText);
+
+        var dialog = new WindowModalDialog("删除后端", content, "删除", "取消")
+        {
+            MaxWidth = 560,
+            ContentMaxWidth = 500,
+        };
+        dialog.PrimaryActionAsync = async () =>
+        {
+            try
+            {
+                statusText.Foreground = FluentTheme.TextSecondary;
+                statusText.Text = "正在删除后端连接...";
+                MediaSourceProfileStore.RemoveSource(source.Id);
+                MediaSourceCredentialStore.Clear(source.Id);
+                _expandedMediaSources.Remove(source.Id);
+                _mediaSourceLibraryStates.Remove(source.Id);
+                RemoveScanRowsForSource(source.Id);
+
+                if (source.IsActive)
+                {
+                    await SwitchToSavedMediaSourceAsync(new MediaSourceListItem(
+                        MediaSourceProfileStore.LocalSourceId,
+                        MediaSourceKind.LocalMediaTree,
+                        "本机 MediaTree",
+                        "",
+                        RequiresBundledBackend: true,
+                        IsActive: false));
+                }
+                else
+                {
+                    LoadMediaSourceGroups();
+                }
+
+                _libraryStatusText.Foreground = FluentTheme.Accent;
+                _libraryStatusText.Text = "后端连接已删除。";
+                ShowRowStatus(rowStatusText, "已删除。", false);
+                ShellPage.Current?.ReloadActiveMediaSource();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ShellLogger.Error(ex, "Failed to delete saved media source.");
+                statusText.Foreground = FluentTheme.Error;
+                statusText.Text = $"删除失败：{ex.Message}";
+                ShowRowStatus(rowStatusText, $"删除失败：{ex.Message}", true);
+                return false;
+            }
+        };
+
+        await dialog.ShowAsync();
+    }
+
+    private void RemoveScanRowsForSource(string sourceId)
+    {
+        foreach (var scanKey in _scanRows
+            .Where(pair => string.Equals(pair.Value.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
+            .Select(pair => pair.Key)
+            .ToList())
+        {
+            _scanRows.Remove(scanKey);
+            _activeScanRoots.Remove(scanKey);
+            _scanPollCounts.Remove(scanKey);
+        }
     }
 
     private async void OnSaveRemoteBackendClicked(object sender, RoutedEventArgs args)
@@ -710,58 +1135,9 @@ public sealed partial class SettingsPage : Page
         });
     }
 
-    private async System.Threading.Tasks.Task LoadLibrarySettingsAsync()
+    private UIElement CreateLibrarySettingsRow(MediaSourceListItem source, MediaRootDto root, LibrarySettingDto? setting, int index, bool canDelete)
     {
-        try
-        {
-            _libraryStatusText.Foreground = FluentTheme.TextSecondary;
-            _libraryStatusText.Text = "正在加载媒体库设置...";
-            _librarySettingsList.Items.Clear();
-            _scanRows.Clear();
-
-            var canManageLibraries = SupportsMediaTreeLibraryManagement;
-            var roots = await AppServices.Media.Library.GetMediaRootsAsync();
-            var librarySettings = await AppServices.Media.Library.GetLibrarySettingsAsync();
-            var config = canManageLibraries ? await AppServices.Media.Api.GetConfigAsync() : new ConfigDto();
-            var settingMap = librarySettings.ToDictionary(s => s.MediaRoot, StringComparer.OrdinalIgnoreCase);
-            var removableRoots = config.ExtraMediaRoots ?? [];
-            var orderedRoots = roots.Items
-                .OrderBy(root => string.IsNullOrWhiteSpace(root.Label) ? root.Path : root.Label, StringComparer.CurrentCultureIgnoreCase)
-                .ToList();
-
-            if (orderedRoots.Count == 0)
-            {
-                _libraryStatusText.Text = canManageLibraries
-                    ? "还没有媒体库。先添加影片文件夹后，再设置刮削器。"
-                    : "当前外部媒体源没有返回可显示的媒体库。";
-                return;
-            }
-
-            for (var i = 0; i < orderedRoots.Count; i++)
-            {
-                var root = orderedRoots[i];
-                settingMap.TryGetValue(root.Path, out var setting);
-                var canDelete = removableRoots.Any(extraRoot => LibraryService.RootsMatch(extraRoot, root.Path));
-                _librarySettingsList.Items.Add(CreateLibrarySettingsRow(root, setting, i, canDelete));
-            }
-            ApplyLoadedLibraryRowWidths(_settingsColumnWidth);
-
-            _libraryStatusText.Text = canManageLibraries
-                ? "选择刮削器后点击保存。需要重新刮削时可直接重新扫描。"
-                : ExternalLibraryReadOnlyMessage;
-        }
-        catch (Exception ex)
-        {
-            ShellLogger.Error(ex, "Failed to load native library scraper settings.");
-            _librarySettingsList.Items.Clear();
-            _scanRows.Clear();
-            _libraryStatusText.Foreground = FluentTheme.Error;
-            _libraryStatusText.Text = $"加载媒体库设置失败：{ex.Message}";
-        }
-    }
-
-    private UIElement CreateLibrarySettingsRow(MediaRootDto root, LibrarySettingDto? setting, int index, bool canDelete)
-    {
+        var rowSuffix = $"{SanitizeAutomationId(source.Id)}_{index}";
         var row = new Border
         {
             Padding = new Thickness(14),
@@ -773,8 +1149,9 @@ public sealed partial class SettingsPage : Page
         };
         if (_settingsColumnWidth > 0)
         {
-            row.Width = Math.Max(0, _settingsColumnWidth - 44);
+            row.Width = CalculateLibraryRowWidth(_settingsColumnWidth);
         }
+        _librarySettingRows.Add(row);
 
         var grid = new Grid { ColumnSpacing = 12, HorizontalAlignment = HorizontalAlignment.Stretch };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -806,7 +1183,7 @@ public sealed partial class SettingsPage : Page
         });
         grid.Children.Add(info);
 
-        var canManageLibraries = SupportsMediaTreeLibraryManagement;
+        var canManageLibraries = CanManageLibraries(source);
         var selectedScraper = NormalizeScraper(setting?.Scraper ?? root.Scraper);
         var scraperStack = new StackPanel
         {
@@ -826,7 +1203,7 @@ public sealed partial class SettingsPage : Page
             HorizontalAlignment = HorizontalAlignment.Stretch,
             IsEnabled = canManageLibraries,
         });
-        AutomationProperties.SetAutomationId(scraperBox, $"SettingsLibraryScraper_{index}");
+        AutomationProperties.SetAutomationId(scraperBox, $"SettingsLibraryScraper_{rowSuffix}");
         foreach (var option in ScraperOptions)
         {
             scraperBox.Items.Add(new ComboBoxItem
@@ -856,7 +1233,7 @@ public sealed partial class SettingsPage : Page
             HorizontalAlignment = HorizontalAlignment.Stretch,
             IsEnabled = canManageLibraries,
         });
-        AutomationProperties.SetAutomationId(passwordBox, $"SettingsLibraryPassword_{index}");
+        AutomationProperties.SetAutomationId(passwordBox, $"SettingsLibraryPassword_{rowSuffix}");
         inputGrid.Children.Add(scraperBox);
         Grid.SetColumn(passwordBox, 1);
         inputGrid.Children.Add(passwordBox);
@@ -866,7 +1243,7 @@ public sealed partial class SettingsPage : Page
         grid.Children.Add(scraperStack);
 
         var actions = new StackPanel { Spacing = 8 };
-        var rowStatusText = StatusText($"SettingsLibraryRowStatus_{index}");
+        var rowStatusText = StatusText($"SettingsLibraryRowStatus_{rowSuffix}");
         var rowLogText = new TextBlock
         {
             Foreground = FluentTheme.TextTertiary,
@@ -875,24 +1252,24 @@ public sealed partial class SettingsPage : Page
             FontSize = 11,
             Visibility = Visibility.Collapsed,
         };
-        AutomationProperties.SetAutomationId(rowLogText, $"SettingsLibraryScanLog_{index}");
+        AutomationProperties.SetAutomationId(rowLogText, $"SettingsLibraryScanLog_{rowSuffix}");
         if (canManageLibraries)
         {
             var saveButton = FluentTheme.ApplyButton(new Button
             {
                 Content = "保存",
-                Tag = new LibrarySettingsRowContext(root.Path, setting?.TmdbKey ?? "", scraperBox, passwordBox, rowStatusText, rowLogText),
+                Tag = new LibrarySettingsRowContext(source.Id, root.Path, setting?.TmdbKey ?? "", scraperBox, passwordBox, rowStatusText, rowLogText),
             }, FluentButtonStyle.Accent);
-            AutomationProperties.SetAutomationId(saveButton, $"SettingsSaveLibrary_{index}");
+            AutomationProperties.SetAutomationId(saveButton, $"SettingsSaveLibrary_{rowSuffix}");
             saveButton.Click += OnSaveLibrarySettingClicked;
             actions.Children.Add(saveButton);
 
             var scanButton = FluentTheme.ApplyButton(new Button
             {
                 Content = "重新扫描",
-                Tag = new LibrarySettingsRowContext(root.Path, setting?.TmdbKey ?? "", scraperBox, passwordBox, rowStatusText, rowLogText),
+                Tag = new LibrarySettingsRowContext(source.Id, root.Path, setting?.TmdbKey ?? "", scraperBox, passwordBox, rowStatusText, rowLogText),
             });
-            AutomationProperties.SetAutomationId(scanButton, $"SettingsScanLibrary_{index}");
+            AutomationProperties.SetAutomationId(scanButton, $"SettingsScanLibrary_{rowSuffix}");
             scanButton.Click += OnScanLibraryClicked;
             actions.Children.Add(scanButton);
 
@@ -901,14 +1278,14 @@ public sealed partial class SettingsPage : Page
                 var deleteButton = FluentTheme.ApplyButton(new Button
                 {
                     Content = DeleteLibraryButtonText,
-                    Tag = root.Path,
+                    Tag = new DeleteLibraryContext(source.Id, root.Path),
                 }, FluentButtonStyle.Danger);
-                AutomationProperties.SetAutomationId(deleteButton, $"SettingsDeleteLibrary_{index}");
+                AutomationProperties.SetAutomationId(deleteButton, $"SettingsDeleteLibrary_{rowSuffix}");
                 deleteButton.Click += OnDeleteLibraryClicked;
                 actions.Children.Add(deleteButton);
             }
 
-            _scanRows[root.Path] = new LibraryScanRowUi(rowStatusText, rowLogText, scanButton);
+            _scanRows[ScanKey(source.Id, root.Path)] = new LibraryScanRowUi(source.Id, root.Path, rowStatusText, rowLogText, scanButton);
         }
         else
         {
@@ -947,7 +1324,8 @@ public sealed partial class SettingsPage : Page
 
         try
         {
-            if (!SupportsMediaTreeLibraryManagement)
+            var source = FindMediaSource(context.SourceId);
+            if (!CanManageLibraries(source))
             {
                 ShowRowStatus(context.StatusText, ExternalLibraryReadOnlyMessage, true);
                 return;
@@ -985,7 +1363,8 @@ public sealed partial class SettingsPage : Page
 
         try
         {
-            if (!SupportsMediaTreeLibraryManagement)
+            var source = FindMediaSource(context.SourceId);
+            if (!CanManageLibraries(source))
             {
                 ShowRowStatus(context.StatusText, ExternalLibraryReadOnlyMessage, true);
                 return;
@@ -998,10 +1377,15 @@ public sealed partial class SettingsPage : Page
             context.LogText.Visibility = Visibility.Collapsed;
             context.LogText.Text = "";
             await SaveLibrarySettingAsync(context);
-            await AppServices.Media.Library.ClearLibraryAsync(context.MediaRoot);
-            _ = StartLibraryScanInBackgroundAsync(context.MediaRoot);
-            _activeScanRoots.Add(context.MediaRoot);
-            _scanPollCounts[context.MediaRoot] = 0;
+            using (var lease = await OpenMediaServicesAsync(context.SourceId))
+            {
+                await lease.Services.Library.ClearLibraryAsync(context.MediaRoot);
+            }
+
+            var scanKey = ScanKey(context.SourceId, context.MediaRoot);
+            _ = StartLibraryScanInBackgroundAsync(context.SourceId, context.MediaRoot);
+            _activeScanRoots.Add(scanKey);
+            _scanPollCounts[scanKey] = 0;
             _scanStatusTimer.Start();
             _libraryStatusText.Foreground = FluentTheme.Accent;
             _libraryStatusText.Text = "已开始重新扫描。你可以继续使用应用。";
@@ -1016,19 +1400,20 @@ public sealed partial class SettingsPage : Page
         }
         finally
         {
-            button.IsEnabled = !_activeScanRoots.Contains(context.MediaRoot);
+            button.IsEnabled = !_activeScanRoots.Contains(ScanKey(context.SourceId, context.MediaRoot));
         }
     }
 
     private async void OnDeleteLibraryClicked(object sender, RoutedEventArgs args)
     {
-        if (sender is not Button button || button.Tag is not string mediaRoot || string.IsNullOrWhiteSpace(mediaRoot))
+        if (sender is not Button button || button.Tag is not DeleteLibraryContext context || string.IsNullOrWhiteSpace(context.MediaRoot))
         {
             return;
         }
 
         var statusText = StatusText("SettingsDeleteLibraryDialogStatus", visible: true);
-        if (!SupportsMediaTreeLibraryManagement)
+        var source = FindMediaSource(context.SourceId);
+        if (!CanManageLibraries(source))
         {
             _libraryStatusText.Foreground = FluentTheme.Error;
             _libraryStatusText.Text = ExternalLibraryReadOnlyMessage;
@@ -1042,7 +1427,7 @@ public sealed partial class SettingsPage : Page
         content.Children.Add(WrapText("确定要删除这个本机媒体库目录吗？"));
         content.Children.Add(new TextBlock
         {
-            Text = mediaRoot,
+            Text = context.MediaRoot,
             Foreground = FluentTheme.TextPrimary,
             TextWrapping = TextWrapping.WrapWholeWords,
             FontFamily = new FontFamily("Consolas"),
@@ -1060,13 +1445,15 @@ public sealed partial class SettingsPage : Page
             {
                 statusText.Foreground = FluentTheme.TextSecondary;
                 statusText.Text = "正在删除媒体库...";
-                await AppServices.Media.Library.DeleteLibraryAsync(mediaRoot);
-                _activeScanRoots.Remove(mediaRoot);
-                _scanPollCounts.Remove(mediaRoot);
-                _scanRows.Remove(mediaRoot);
+                using var lease = await OpenMediaServicesAsync(context.SourceId);
+                await lease.Services.Library.DeleteLibraryAsync(context.MediaRoot);
+                var scanKey = ScanKey(context.SourceId, context.MediaRoot);
+                _activeScanRoots.Remove(scanKey);
+                _scanPollCounts.Remove(scanKey);
+                _scanRows.Remove(scanKey);
                 _libraryStatusText.Foreground = FluentTheme.Accent;
                 _libraryStatusText.Text = "媒体库已从已添加目录中移除。";
-                await LoadLibrarySettingsAsync();
+                await LoadMediaSourceLibrariesAsync(source);
                 return true;
             }
             catch (Exception ex)
@@ -1083,12 +1470,14 @@ public sealed partial class SettingsPage : Page
 
     private async System.Threading.Tasks.Task SaveLibrarySettingAsync(LibrarySettingsRowContext context)
     {
-        if (!SupportsMediaTreeLibraryManagement)
+        var source = FindMediaSource(context.SourceId);
+        if (!CanManageLibraries(source))
         {
             throw new InvalidOperationException(ExternalLibraryReadOnlyMessage);
         }
 
-        await AppServices.Media.Library.SaveLibrarySettingAsync(new LibrarySettingDto
+        using var lease = await OpenMediaServicesAsync(context.SourceId);
+        await lease.Services.Library.SaveLibrarySettingAsync(new LibrarySettingDto
         {
             MediaRoot = context.MediaRoot,
             Scraper = GetSelectedScraper(context.ScraperBox),
@@ -1097,7 +1486,7 @@ public sealed partial class SettingsPage : Page
         });
         if (!string.IsNullOrWhiteSpace(context.PasswordBox.Password))
         {
-            await AppServices.Media.Library.SetLibraryPasswordAsync(context.MediaRoot, context.PasswordBox.Password);
+            await lease.Services.Library.SetLibraryPasswordAsync(context.MediaRoot, context.PasswordBox.Password);
             context.PasswordBox.Password = "";
         }
     }
@@ -1288,16 +1677,18 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private async System.Threading.Tasks.Task StartLibraryScanInBackgroundAsync(string mediaRoot)
+    private async System.Threading.Tasks.Task StartLibraryScanInBackgroundAsync(string sourceId, string mediaRoot)
     {
         try
         {
-            if (!SupportsMediaTreeLibraryManagement)
+            var source = FindMediaSource(sourceId);
+            if (!CanManageLibraries(source))
             {
                 return;
             }
 
-            await AppServices.Media.Library.ScanAsync(mediaRoot);
+            using var lease = await OpenMediaServicesAsync(sourceId);
+            await lease.Services.Library.ScanAsync(mediaRoot);
         }
         catch (Exception ex)
         {
@@ -1740,13 +2131,6 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
-            if (!IsLocalMediaTreeActive)
-            {
-                _libraryStatusText.Foreground = FluentTheme.Error;
-                _libraryStatusText.Text = LocalMediaTreeOnlyMessage;
-                return;
-            }
-
             var picker = new FolderPicker
             {
                 SuggestedStartLocation = PickerLocationId.VideosLibrary,
@@ -1767,10 +2151,13 @@ public sealed partial class SettingsPage : Page
 
             _libraryStatusText.Foreground = FluentTheme.TextSecondary;
             _libraryStatusText.Text = "正在添加本机目录...";
-            var added = await AppServices.Media.Library.AddLibraryRootAsync(folder.Path);
+            var localSource = FindMediaSource(MediaSourceProfileStore.LocalSourceId);
+            using var lease = await OpenMediaServicesAsync(localSource);
+            var added = await lease.Services.Library.AddLibraryRootAsync(folder.Path);
+            _expandedMediaSources.Add(localSource.Id);
             _libraryStatusText.Foreground = FluentTheme.Accent;
             _libraryStatusText.Text = added ? "本机目录已添加。可在列表中设置刮削器并重新扫描。" : "该本机目录已存在。";
-            await LoadLibrarySettingsAsync();
+            await LoadMediaSourceLibrariesAsync(localSource);
         }
         catch (Exception ex)
         {
@@ -1792,20 +2179,13 @@ public sealed partial class SettingsPage : Page
             button.IsEnabled = false;
             _libraryStatusText.Foreground = FluentTheme.TextSecondary;
             _libraryStatusText.Text = "正在切换到本机 MediaTree...";
-            AppServices.SwitchToLocalMediaTree();
-            MediaSourceProfileStore.SetActiveSource(MediaSourceProfileStore.LocalSourceId);
-            var session = await AppServices.Media.Auth.EnsureLocalSessionAsync();
-            if (session.State == AuthSessionState.NeedsUserLogin)
-            {
-                AppServices.MainWindow?.NavigateToLogin();
-                return;
-            }
-
-            _isSwitchingMediaSource = true;
-            StopBackgroundTimers();
-            _libraryStatusText.Foreground = FluentTheme.Accent;
-            _libraryStatusText.Text = "已切换到本机 MediaTree。";
-            ShellPage.Current?.ReloadActiveMediaSource();
+            await SwitchToSavedMediaSourceAsync(new MediaSourceListItem(
+                MediaSourceProfileStore.LocalSourceId,
+                MediaSourceKind.LocalMediaTree,
+                "本机 MediaTree",
+                "",
+                RequiresBundledBackend: true,
+                IsActive: false));
         }
         catch (Exception ex)
         {
@@ -1817,6 +2197,67 @@ public sealed partial class SettingsPage : Page
         {
             button.IsEnabled = true;
         }
+    }
+
+    private async void OnSwitchMediaSourceClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not Button button || button.Tag is not MediaSourceRowContext context)
+        {
+            return;
+        }
+
+        try
+        {
+            button.IsEnabled = false;
+            ShowRowStatus(context.StatusText, $"正在切换到：{context.Source.DisplayName}...", false);
+            await SwitchToSavedMediaSourceAsync(context.Source);
+            ShowRowStatus(context.StatusText, $"已切换到：{context.Source.DisplayName}。", false);
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to switch saved media source from settings.");
+            ShowRowStatus(context.StatusText, $"切换失败：{ex.Message}", true);
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
+    }
+
+    private async System.Threading.Tasks.Task SwitchToSavedMediaSourceAsync(MediaSourceListItem source)
+    {
+        if (source.Kind == MediaSourceKind.LocalMediaTree)
+        {
+            AppServices.SwitchToLocalMediaTree();
+            MediaSourceProfileStore.SetActiveSource(MediaSourceProfileStore.LocalSourceId);
+            var session = await AppServices.Media.Auth.EnsureLocalSessionAsync();
+            if (session.State == AuthSessionState.NeedsUserLogin)
+            {
+                AppServices.MainWindow?.NavigateToLogin();
+                return;
+            }
+        }
+        else
+        {
+            var state = MediaSourceProfileStore.Load();
+            var record = state.Sources.FirstOrDefault(item => string.Equals(item.Id, source.Id, StringComparison.OrdinalIgnoreCase))
+                ?? throw new InvalidOperationException("媒体源配置不存在。");
+            var provider = await MediaSourceActivator.CreateProviderAsync(record);
+            AppServices.SwitchProvider(provider);
+            MediaSourceProfileStore.SetActiveSource(record.Id);
+        }
+
+        _isSwitchingMediaSource = true;
+        StopBackgroundTimers();
+        _expandedMediaSources.Add(source.Id);
+        LoadMediaSourceGroups();
+        await LoadTmdbConfigAsync();
+        await LoadVersionAsync();
+        await LoadLibrarySettingsAsync();
+        await LoadUpdateStatusAsync();
+        _libraryStatusText.Foreground = FluentTheme.Accent;
+        _libraryStatusText.Text = $"已切换到：{source.DisplayName}。";
+        ShellPage.Current?.ReloadActiveMediaSource();
     }
 
     private async System.Threading.Tasks.Task ShowExternalMediaSourceDialogAsync(MediaSourceKind kind)
@@ -1875,14 +2316,15 @@ public sealed partial class SettingsPage : Page
             {
                 activateButton.IsEnabled = false;
                 ShowSourceDialogStatus(statusText, "正在保存并切换媒体源...", false);
-                var (saved, provider) = await SaveAndActivateExternalMediaSourceAsync(kind, nameBox, endpointBox, usernameBox, secretBox);
-                _isSwitchingMediaSource = true;
-                AppServices.SwitchProvider(provider);
-                StopBackgroundTimers();
-                _libraryStatusText.Foreground = FluentTheme.Accent;
-                _libraryStatusText.Text = $"已切换到：{saved.DisplayName}。";
+                var saved = SaveExternalMediaSource(kind, nameBox, endpointBox, usernameBox, secretBox, activate: false);
+                await SwitchToSavedMediaSourceAsync(new MediaSourceListItem(
+                    saved.Id,
+                    saved.Kind,
+                    saved.DisplayName,
+                    saved.Endpoint,
+                    saved.RequiresBundledBackend,
+                    IsActive: false));
                 dialog?.Hide();
-                ShellPage.Current?.ReloadActiveMediaSource();
             }
             catch (Exception ex)
             {
@@ -1922,6 +2364,7 @@ public sealed partial class SettingsPage : Page
             try
             {
                 var saved = SaveExternalMediaSource(kind, nameBox, endpointBox, usernameBox, secretBox, activate: false);
+                LoadMediaSourceGroups();
                 _libraryStatusText.Foreground = FluentTheme.Accent;
                 _libraryStatusText.Text = $"已保存 {saved.DisplayName}。";
                 return System.Threading.Tasks.Task.FromResult(true);
@@ -1955,23 +2398,6 @@ public sealed partial class SettingsPage : Page
         }
 
         return saved;
-    }
-
-    private static async System.Threading.Tasks.Task<(MediaSourceProfileRecord Source, IMediaProvider Provider)> SaveAndActivateExternalMediaSourceAsync(
-        MediaSourceKind kind,
-        TextBox nameBox,
-        TextBox endpointBox,
-        TextBox usernameBox,
-        PasswordBox secretBox)
-    {
-        var endpoint = NormalizeEndpoint(endpointBox.Text);
-        var credentials = ReadExternalSourceCredentials(usernameBox, secretBox);
-        var saved = MediaSourceProfileStore.UpsertExternalSource(kind, nameBox.Text, endpoint);
-        MediaSourceCredentialStore.Save(saved.Id, credentials);
-        var profile = new MediaSourceProfile(saved.Kind, saved.DisplayName, endpoint, saved.RequiresBundledBackend);
-        var provider = await MediaSourceActivator.CreateProviderAsync(profile, credentials);
-        MediaSourceProfileStore.SetActiveSource(saved.Id);
-        return (saved, provider);
     }
 
     private static MediaSourceCredentials ReadExternalSourceCredentials(TextBox usernameBox, PasswordBox secretBox)
@@ -2066,40 +2492,41 @@ public sealed partial class SettingsPage : Page
             return;
         }
 
-        foreach (var mediaRoot in _activeScanRoots.ToList())
+        foreach (var scanKey in _activeScanRoots.ToList())
         {
-            await RefreshScanRowAsync(mediaRoot);
+            await RefreshScanRowAsync(scanKey);
         }
     }
 
-    private async System.Threading.Tasks.Task RefreshScanRowAsync(string mediaRoot)
+    private async System.Threading.Tasks.Task RefreshScanRowAsync(string scanKey)
     {
-        if (!_scanRows.TryGetValue(mediaRoot, out var row))
+        if (!_scanRows.TryGetValue(scanKey, out var row))
         {
-            _activeScanRoots.Remove(mediaRoot);
+            _activeScanRoots.Remove(scanKey);
             return;
         }
 
-        _scanPollCounts[mediaRoot] = _scanPollCounts.TryGetValue(mediaRoot, out var count) ? count + 1 : 1;
+        _scanPollCounts[scanKey] = _scanPollCounts.TryGetValue(scanKey, out var count) ? count + 1 : 1;
         try
         {
-            var status = await AppServices.Media.Library.GetScanStatusAsync(mediaRoot);
+            using var lease = await OpenMediaServicesAsync(row.SourceId);
+            var status = await lease.Services.Library.GetScanStatusAsync(row.MediaRoot);
             var message = FormatScanStatus(status);
             row.StatusText.Text = message;
             row.StatusText.Foreground = status.Status == "done" ? FluentTheme.Accent : FluentTheme.TextSecondary;
             row.StatusText.Visibility = Visibility.Visible;
 
-            var log = await AppServices.Media.Library.GetScanLogAsync(mediaRoot, 20);
+            var log = await lease.Services.Library.GetScanLogAsync(row.MediaRoot, 20);
             if (log.Lines.Count > 0)
             {
                 row.LogText.Text = string.Join(Environment.NewLine, log.Lines);
                 row.LogText.Visibility = Visibility.Visible;
             }
 
-            if (status.Status is "done" or "disabled" or "not_found" || _scanPollCounts[mediaRoot] > 120)
+            if (status.Status is "done" or "disabled" or "not_found" || _scanPollCounts[scanKey] > 120)
             {
-                _activeScanRoots.Remove(mediaRoot);
-                _scanPollCounts.Remove(mediaRoot);
+                _activeScanRoots.Remove(scanKey);
+                _scanPollCounts.Remove(scanKey);
                 row.ScanButton.IsEnabled = true;
                 if (_activeScanRoots.Count == 0)
                 {
@@ -2111,8 +2538,8 @@ public sealed partial class SettingsPage : Page
         {
             ShellLogger.Error(ex, "Failed to refresh native scan status.");
             ShowRowStatus(row.StatusText, $"读取扫描进度失败：{ex.Message}", true);
-            _activeScanRoots.Remove(mediaRoot);
-            _scanPollCounts.Remove(mediaRoot);
+            _activeScanRoots.Remove(scanKey);
+            _scanPollCounts.Remove(scanKey);
             row.ScanButton.IsEnabled = true;
         }
     }
@@ -2228,12 +2655,15 @@ public sealed partial class SettingsPage : Page
             return;
         }
 
-        var rowWidth = Math.Max(0, columnWidth - 44);
-        foreach (var row in _librarySettingsList.Items.OfType<FrameworkElement>())
+        var rowWidth = CalculateLibraryRowWidth(columnWidth);
+        foreach (var row in _librarySettingRows)
         {
             row.Width = rowWidth;
         }
     }
+
+    private static double CalculateLibraryRowWidth(double columnWidth)
+        => Math.Max(0, columnWidth - 68);
 
     private static TextBlock WrapText(string text)
     {
@@ -2258,6 +2688,21 @@ public sealed partial class SettingsPage : Page
     {
         var compact = width < 640;
         actions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
+        foreach (var child in actions.Children.OfType<FrameworkElement>())
+        {
+            child.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        }
+    }
+
+    private static void ApplyMediaSourceRowLayout(double width, Grid grid, FrameworkElement info, StackPanel actions)
+    {
+        var compact = width < 520;
+        grid.RowDefinitions[1].Height = compact ? GridLength.Auto : new GridLength(0);
+        grid.ColumnDefinitions[1].Width = compact ? new GridLength(0) : GridLength.Auto;
+        Grid.SetColumn(actions, compact ? 0 : 1);
+        Grid.SetRow(actions, compact ? 1 : 0);
+        info.MinWidth = compact ? 0 : 220;
+        actions.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         foreach (var child in actions.Children.OfType<FrameworkElement>())
         {
             child.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;

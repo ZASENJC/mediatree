@@ -838,6 +838,91 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void MediaSourceProfileStoreRemovesExternalSourcesAndFallsBackToLocal()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"mediatree-sources-{Guid.NewGuid():N}.json");
+        try
+        {
+            var remote = MediaSourceProfileStore.UpsertExternalSource(
+                MediaSourceKind.RemoteMediaTree,
+                "NAS MediaTree",
+                new Uri("https://media.example.invalid/"),
+                path);
+            var jellyfin = MediaSourceProfileStore.UpsertExternalSource(
+                MediaSourceKind.Jellyfin,
+                "Living Room Jellyfin",
+                new Uri("https://jellyfin.example.invalid/"),
+                path);
+            MediaSourceProfileStore.SetActiveSource(remote.Id, path);
+
+            var afterRemovingActive = MediaSourceProfileStore.RemoveSource(remote.Id, path);
+
+            Assert.Equal(MediaSourceProfileStore.LocalSourceId, afterRemovingActive.ActiveSourceId);
+            Assert.DoesNotContain(afterRemovingActive.Sources, source => source.Id == remote.Id);
+            Assert.Contains(afterRemovingActive.Sources, source => source.Id == jellyfin.Id);
+
+            var afterRemovingInactive = MediaSourceProfileStore.RemoveSource(jellyfin.Id, path);
+
+            Assert.Equal(MediaSourceProfileStore.LocalSourceId, afterRemovingInactive.ActiveSourceId);
+            Assert.Single(afterRemovingInactive.Sources);
+            Assert.Throws<ArgumentException>("sourceId", () => MediaSourceProfileStore.RemoveSource(MediaSourceProfileStore.LocalSourceId, path));
+            Assert.Throws<ArgumentException>("sourceId", () => MediaSourceProfileStore.RemoveSource("missing-source", path));
+        }
+        finally
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    [Fact]
+    public void MediaSourceListPresenterGroupsSavedSourcesByKindAndMarksActiveSource()
+    {
+        var state = new MediaSourceProfileState(
+            "Jellyfin:https://jellyfin.example.invalid/",
+            [
+                new(MediaSourceProfileStore.LocalSourceId, MediaSourceKind.LocalMediaTree, "本机 MediaTree", "", true),
+                new("RemoteMediaTree:https://media.example.invalid/", MediaSourceKind.RemoteMediaTree, "NAS MediaTree", "https://media.example.invalid/", false),
+                new("Jellyfin:https://jellyfin.example.invalid/", MediaSourceKind.Jellyfin, "Living Room Jellyfin", "https://jellyfin.example.invalid/", false),
+            ]);
+
+        var groups = MediaSourceListPresenter.BuildGroups(state);
+
+        Assert.Equal(
+            ["本机 MediaTree", "MediaTree 远程", "Jellyfin"],
+            groups.Select(group => group.Title));
+        Assert.Equal([1, 1, 1], groups.Select(group => group.Sources.Count));
+        Assert.DoesNotContain(groups, group => group.Kind == MediaSourceKind.Emby);
+        Assert.True(groups.Single(group => group.Kind == MediaSourceKind.Jellyfin).Sources.Single().IsActive);
+        Assert.False(groups.Single(group => group.Kind == MediaSourceKind.RemoteMediaTree).Sources.Single().IsActive);
+        Assert.Equal("Living Room Jellyfin", groups.Single(group => group.Kind == MediaSourceKind.Jellyfin).Sources.Single().DisplayName);
+        Assert.Equal("https://jellyfin.example.invalid/", groups.Single(group => group.Kind == MediaSourceKind.Jellyfin).Sources.Single().Endpoint);
+    }
+
+    [Fact]
+    public void MediaSourceListPresenterBuildsOrderedBackendCards()
+    {
+        var state = new MediaSourceProfileState(
+            "RemoteMediaTree:https://media.example.invalid/",
+            [
+                new("Jellyfin:https://jellyfin.example.invalid/", MediaSourceKind.Jellyfin, "Living Room Jellyfin", "https://jellyfin.example.invalid/", false),
+                new(MediaSourceProfileStore.LocalSourceId, MediaSourceKind.LocalMediaTree, "本机 MediaTree", "", true),
+                new("RemoteMediaTree:https://media.example.invalid/", MediaSourceKind.RemoteMediaTree, "NAS MediaTree", "https://media.example.invalid/", false),
+            ]);
+
+        var items = MediaSourceListPresenter.BuildItems(state);
+
+        Assert.Equal(
+            [MediaSourceKind.LocalMediaTree, MediaSourceKind.RemoteMediaTree, MediaSourceKind.Jellyfin],
+            items.Select(item => item.Kind));
+        Assert.True(items.Single(item => item.Kind == MediaSourceKind.RemoteMediaTree).IsActive);
+        Assert.False(items.Single(item => item.Kind == MediaSourceKind.LocalMediaTree).IsActive);
+        Assert.Equal("NAS MediaTree", items.Single(item => item.Kind == MediaSourceKind.RemoteMediaTree).DisplayName);
+    }
+
+    [Fact]
     public void MediaSourceCredentialStoreProtectsExternalSourceSecrets()
     {
         var path = Path.Combine(Path.GetTempPath(), $"mediatree-source-credentials-{Guid.NewGuid():N}.json");
