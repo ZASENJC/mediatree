@@ -39,6 +39,30 @@ def _folder_descendant_like(folder_levels: str) -> str:
     return f"{_escape_like(folder_levels)}/%"
 
 
+def _display_media_count_expr(prefix: str = "") -> str:
+    col = lambda name: f"{prefix}.{name}" if prefix else name
+    is_tv = (
+        f"({col('tmdb_type')} = 'tv' "
+        f"OR {col('tmdb_episode')} IS NOT NULL "
+        f"OR {col('episode_number')} IS NOT NULL)"
+    )
+    identity = (
+        "CASE "
+        f"WHEN {col('tmdb_id')} IS NOT NULL THEN 'tmdb:' || CAST({col('tmdb_id')} AS TEXT) "
+        f"WHEN COALESCE({col('source_id')}, '') != '' THEN 'source:' || COALESCE({col('scraper_source')}, '') || ':' || {col('source_id')} "
+        f"WHEN COALESCE({col('bangumi_id')}, '') != '' THEN 'bangumi:' || {col('bangumi_id')} "
+        f"ELSE 'folder:' || COALESCE({col('folder_levels')}, '') "
+        "END"
+    )
+    season = f"COALESCE(CAST({col('tmdb_season')} AS TEXT), 'folder')"
+    return (
+        "COUNT(DISTINCT CASE "
+        f"WHEN {is_tv} THEN 'tv|' || COALESCE({col('media_root')}, '') || '|' || {identity} || '|season:' || {season} "
+        f"ELSE 'movie|' || CAST({col('id')} AS TEXT) "
+        "END)"
+    )
+
+
 def _file_title_from_path(path: str | None) -> str:
     name = str(path or "").replace("\\", "/").rsplit("/", 1)[-1]
     return Path(name).stem or name
@@ -936,11 +960,13 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
     if media_root:
         where += " AND media_root = ?"
         params.append(media_root)
+    display_count_expr = _display_media_count_expr()
     cur = await db.execute(
         f"""SELECT folder_levels, MAX(cover_local) as cover_local, MAX(cover_remote) as cover_remote,
                    MAX(created_at) as created_max, MAX(release_date) as release_date_max, media_root, MAX(fanart_local) as fanart_local,
                    MAX(tmdb_id) as tmdb_id, MAX(tmdb_type) as tmdb_type,
-                   COUNT(*) as movie_count,
+                   {display_count_expr} as movie_count,
+                   COUNT(*) as item_count,
                    SUM(CASE WHEN EXISTS (SELECT 1 FROM tags t WHERE t.movie_id=movies.id AND t.tag='watched')
                          OR EXISTS (SELECT 1 FROM user_data ud WHERE ud.item_id=CAST(movies.id AS TEXT) AND ud.played=1)
                        THEN 1 ELSE 0 END) as watched_count
@@ -964,6 +990,7 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
             if part not in node:
                 node[part] = {
                     "_total_count": 0,
+                    "_item_count": 0,
                     "_leaf_count": 0,
                     "_children": {},
                     "_cover": None,
@@ -979,6 +1006,7 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                     "_show_specials": False,
                 }
             node[part]["_total_count"] += r["movie_count"]
+            node[part]["_item_count"] += r["item_count"]
             node[part]["_watched_count"] += r["watched_count"] or 0
             if r["created_max"] and (not node[part]["_created_max"] or r["created_max"] > node[part]["_created_max"]):
                 node[part]["_created_max"] = r["created_max"]
@@ -1067,8 +1095,8 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                 "created_max": info["_created_max"],
                 "release_date_max": info["_release_date_max"],
                 "watched_count": info["_watched_count"],
-                "folder_watched": bool(info["_total_count"] and info["_watched_count"] >= info["_total_count"]),
-                "progress_percent": round((info["_watched_count"] / info["_total_count"]) * 100) if info["_total_count"] else 0,
+                "folder_watched": bool(info["_item_count"] and info["_watched_count"] >= info["_item_count"]),
+                "progress_percent": round((info["_watched_count"] / info["_item_count"]) * 100) if info["_item_count"] else 0,
                 "tmdb_id": info.get("_tmdb_id"),
                 "tmdb_type": info.get("_tmdb_type"),
                 "special_count": info.get("_special_count", 0),
@@ -1374,9 +1402,10 @@ async def delete_movie(movie_id: int):
 
 async def get_media_roots() -> list[dict]:
     db = await get_db()
+    display_count_expr = _display_media_count_expr()
     cur = await db.execute(
-        "SELECT media_root, COUNT(*) as cnt FROM movies "
-        "WHERE media_root != '' AND COALESCE(content_role, 'main') != 'special' "
+        f"SELECT media_root, {display_count_expr} as cnt FROM movies "
+        f"WHERE media_root != '' AND {MAIN_CONTENT_WHERE} "
         "GROUP BY media_root"
     )
     rows = await cur.fetchall()

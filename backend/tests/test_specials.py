@@ -161,6 +161,46 @@ class SpecialDatabaseTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tree[0]["special_count"], 1)
         self.assertFalse(tree[0]["show_specials"])
 
+    async def test_media_counts_group_tv_episodes_by_season(self):
+        await self._movie(
+            "movie",
+            path=f"{self.media_root}/Movie/movie.mkv",
+            folder_levels="Movie",
+            tmdb_type="movie",
+            tmdb_id=10,
+        )
+        for episode in (1, 2, 3):
+            await self._movie(
+                f"show-s01e{episode}",
+                path=f"{self.media_root}/Show/S01/E{episode:02d}.mkv",
+                folder_levels="Show/S01",
+                tmdb_type="tv",
+                tmdb_id=20,
+                tmdb_season=1,
+                tmdb_episode=episode,
+            )
+        for episode in (1, 2):
+            await self._movie(
+                f"show-s02e{episode}",
+                path=f"{self.media_root}/Show/S02/E{episode:02d}.mkv",
+                folder_levels="Show/S02",
+                tmdb_type="tv",
+                tmdb_id=20,
+                tmdb_season=2,
+                tmdb_episode=episode,
+            )
+
+        roots = await database.get_media_roots()
+        tree = await database.get_folder_tree_from_db(media_root=self.media_root)
+        by_path = {node["path"]: node for node in tree}
+        show_children = {node["path"]: node for node in by_path["Show"]["children"]}
+
+        self.assertEqual(roots[0]["movie_count"], 3)
+        self.assertEqual(by_path["Movie"]["movie_count"], 1)
+        self.assertEqual(by_path["Show"]["movie_count"], 2)
+        self.assertEqual(show_children["Show/S01"]["movie_count"], 1)
+        self.assertEqual(show_children["Show/S02"]["movie_count"], 1)
+
     async def test_get_folder_specials_respects_visibility_setting(self):
         special_id = await self._movie(
             "bonus",
