@@ -8,6 +8,14 @@ All notable changes to MediaTree are documented here.
 
 ## Unreleased
 
+---
+
+## 1.0.16 (2026-06-15)
+
+### Library
+
+- Changed home-page folder cards to show the source folder's raw video count while keeping Settings media-library counts grouped by TV season/display item
+
 ### Release Pipeline
 
 - Slimmed Docker builds by making full Noto CJK and emoji fonts opt-in build arguments while keeping the default WenQuanYi and bundled subtitle fallback fonts
@@ -17,6 +25,7 @@ All notable changes to MediaTree are documented here.
 ### Release Type
 
 - Full Docker image update is required because this changes the Dockerfile/runtime font policy and release packaging path
+- Docker Compose users should run `docker compose pull && docker compose up -d`
 
 ---
 

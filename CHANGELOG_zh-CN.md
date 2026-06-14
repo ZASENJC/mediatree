@@ -8,6 +8,14 @@
 
 ## 未发布
 
+---
+
+## 1.0.16 (2026-06-15)
+
+### 媒体库
+
+- 首页媒体库目录卡片改为显示源文件夹下的原始视频项数量；设置页媒体库数量继续按电视剧季/显示条目聚合
+
 ### 发布流水线
 
 - 精简 Docker 构建：完整 Noto CJK 和 emoji 字体改为按需构建参数，默认保留 WenQuanYi 和前端内置字幕兜底字体
@@ -17,6 +25,7 @@
 ### 发布类型
 
 - 需要完整 Docker 镜像更新，因为本次调整了 Dockerfile/runtime 字体策略和 release 打包路径
+- Docker Compose 用户请执行 `docker compose pull && docker compose up -d`
 
 ---
 
