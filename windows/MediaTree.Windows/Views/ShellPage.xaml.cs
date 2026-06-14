@@ -20,6 +20,7 @@ public sealed partial class ShellPage : Page
     private readonly ColumnDefinition _navigationColumn;
     private readonly Button _settingsButton;
     private readonly Button _updateIndicatorButton;
+    private bool _initialNavigationCompleted;
     private bool _isCompactNavigation;
     private bool _navigationChromeVisible = true;
 
@@ -101,6 +102,13 @@ public sealed partial class ShellPage : Page
     private async void OnLoaded(object sender, RoutedEventArgs args)
     {
         _ = RefreshUpdateIndicatorAsync();
+
+        if (_initialNavigationCompleted)
+        {
+            return;
+        }
+
+        _initialNavigationCompleted = true;
 
         try
         {
@@ -317,10 +325,42 @@ public sealed partial class ShellPage : Page
     private void NavigateToPage(Type page, Button selectedButton, bool forceReload = false)
     {
         SelectButton(selectedButton);
-        if (forceReload || _contentFrame.CurrentSourcePageType != page)
+        if (forceReload)
         {
             _contentFrame.Navigate(page);
+            return;
         }
+
+        if (_contentFrame.CurrentSourcePageType == page)
+        {
+            return;
+        }
+
+        if (TryGoBackToPage(page))
+        {
+            return;
+        }
+
+        _contentFrame.Navigate(page);
+    }
+
+    private bool TryGoBackToPage(Type page)
+    {
+        for (var index = _contentFrame.BackStack.Count - 1; index >= 0; index--)
+        {
+            if (_contentFrame.BackStack[index].SourcePageType == page)
+            {
+                for (var backIndex = _contentFrame.BackStack.Count - 1; backIndex > index; backIndex--)
+                {
+                    _contentFrame.BackStack.RemoveAt(backIndex);
+                }
+
+                _contentFrame.GoBack();
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void SelectButton(Button selectedButton)

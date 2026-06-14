@@ -22,10 +22,12 @@ public sealed partial class FavoritesPage : Page
     private IReadOnlyList<MediaRootDto> _activeMediaRoots = [];
     private string _activeMediaRoot = "";
     private int _loadGeneration;
+    private bool _hasLoadedLibraries;
     private bool _suppressLibrarySelectionChanged;
 
     public FavoritesPage()
     {
+        NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Enabled;
         (_libraryBox, _sortBox, _moviesGrid, _statusText, _subtitleText) = BuildContent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -166,8 +168,13 @@ public sealed partial class FavoritesPage : Page
         sortBox.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
     }
 
-    private async System.Threading.Tasks.Task LoadLibrariesAsync()
+    private async System.Threading.Tasks.Task LoadLibrariesAsync(bool forceRefresh = false)
     {
+        if (_hasLoadedLibraries && !forceRefresh)
+        {
+            return;
+        }
+
         var previousMediaRoot = _activeMediaRoot;
         _suppressLibrarySelectionChanged = true;
         try
@@ -206,6 +213,7 @@ public sealed partial class FavoritesPage : Page
         }
 
         await LoadFavoritesAsync();
+        _hasLoadedLibraries = true;
     }
 
     private async System.Threading.Tasks.Task LoadFavoritesAsync()
@@ -344,11 +352,11 @@ public sealed partial class FavoritesPage : Page
     {
         if (DispatcherQueue.HasThreadAccess)
         {
-            _ = LoadLibrariesAsync();
+            _ = LoadLibrariesAsync(forceRefresh: true);
             return;
         }
 
-        _ = DispatcherQueue.TryEnqueue(() => _ = LoadLibrariesAsync());
+        _ = DispatcherQueue.TryEnqueue(() => _ = LoadLibrariesAsync(forceRefresh: true));
     }
 
     private MediaContextMenuHost CreateContextMenuHost(Func<System.Threading.Tasks.Task> refreshAsync)

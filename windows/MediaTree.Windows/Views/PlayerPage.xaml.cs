@@ -82,6 +82,8 @@ public sealed partial class PlayerPage : Page
         TextBlock ThumbnailsTitleText,
         GridView ThumbnailsGrid);
 
+    private sealed record ThumbnailPreviewItem(string Url, string Title);
+
     private readonly DispatcherTimer _chromeTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     private readonly DispatcherTimer _playbackShortcutClickGuardTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly DispatcherTimer _resumePromptTimer = new() { Interval = TimeSpan.FromSeconds(5) };
@@ -138,6 +140,7 @@ public sealed partial class PlayerPage : Page
     private readonly Border _thumbnailsCard;
     private readonly TextBlock _thumbnailsTitleText;
     private readonly GridView _thumbnailsGrid;
+    private readonly List<ThumbnailPreviewItem> _thumbnailPreviewItems = [];
     private IMpvPlayerService? _player;
     private MovieDto? _movie;
     private PlayerStateSnapshot _state = new(0, 0, true);
@@ -1439,6 +1442,7 @@ public sealed partial class PlayerPage : Page
     private async Task LoadThumbnailsAsync(MovieDto movie)
     {
         _thumbnailsGrid.Items.Clear();
+        _thumbnailPreviewItems.Clear();
         _thumbnailsCard.Visibility = Visibility.Collapsed;
         var sources = new List<(string Source, string Title)>();
         if (!string.IsNullOrWhiteSpace(movie.EpisodeStill))
@@ -1463,15 +1467,45 @@ public sealed partial class PlayerPage : Page
             return;
         }
 
-        _thumbnailsTitleText.Text = $"缩略图 ({sources.Count})";
-        _thumbnailsCard.Visibility = Visibility.Visible;
         foreach (var (source, title) in sources)
         {
-            _thumbnailsGrid.Items.Add(await CreateThumbnailCardAsync(source, title));
+            var item = await CreateThumbnailPreviewItemAsync(source, title);
+            if (item is not null)
+            {
+                _thumbnailPreviewItems.Add(item);
+            }
+        }
+
+        if (_thumbnailPreviewItems.Count == 0)
+        {
+            return;
+        }
+
+        _thumbnailsTitleText.Text = $"缩略图 ({_thumbnailPreviewItems.Count})";
+        _thumbnailsCard.Visibility = Visibility.Visible;
+        for (var index = 0; index < _thumbnailPreviewItems.Count; index++)
+        {
+            _thumbnailsGrid.Items.Add(CreateThumbnailCard(_thumbnailPreviewItems[index], index));
         }
     }
 
-    private async Task<Button> CreateThumbnailCardAsync(string source, string title)
+    private async Task<ThumbnailPreviewItem?> CreateThumbnailPreviewItemAsync(string source, string title)
+    {
+        try
+        {
+            var url = await AppServices.Media.Api.BuildMediaAssetUrlAsync(source);
+            return Uri.TryCreate(url, UriKind.Absolute, out _)
+                ? new ThumbnailPreviewItem(url, title)
+                : null;
+        }
+        catch (Exception ex)
+        {
+            ShellLogger.Error(ex, "Failed to load native player detail thumbnail.");
+            return null;
+        }
+    }
+
+    private Button CreateThumbnailCard(ThumbnailPreviewItem item, int index)
     {
         var imageHost = new Grid
         {
@@ -1481,8 +1515,7 @@ public sealed partial class PlayerPage : Page
         };
         try
         {
-            var url = await AppServices.Media.Api.BuildMediaAssetUrlAsync(source);
-            if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            if (Uri.TryCreate(item.Url, UriKind.Absolute, out var uri))
             {
                 var image = new Image
                 {
@@ -1502,7 +1535,7 @@ public sealed partial class PlayerPage : Page
         stack.Children.Add(imageHost);
         stack.Children.Add(new TextBlock
         {
-            Text = title,
+            Text = item.Title,
             Padding = new Thickness(10, 8, 10, 10),
             Foreground = FluentTheme.TextSecondary,
             FontSize = 12,
@@ -1523,7 +1556,128 @@ public sealed partial class PlayerPage : Page
             VerticalContentAlignment = VerticalAlignment.Stretch,
         };
         AttachPlaybackKeyHandler(card);
+        AutomationProperties.SetAutomationId(card, $"PlayerDetailThumbnail_{SanitizeAutomationId(item.Title)}");
+        card.Click += WhenNotPlaybackShortcut(async (_, _) => await ShowThumbnailPreviewAsync(index));
         return card;
+    }
+
+    private async Task ShowThumbnailPreviewAsync(int index)
+    {
+        if (index < 0 || index >= _thumbnailPreviewItems.Count)
+        {
+            return;
+        }
+
+        var currentIndex = index;
+        var previewImage = new Image
+        {
+            MaxWidth = 920,
+            MaxHeight = 620,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        previewImage.Stretch = Stretch.Uniform;
+        previewImage.ImageFailed += (_, _) => previewImage.Visibility = Visibility.Collapsed;
+        AutomationProperties.SetAutomationId(previewImage, "PlayerThumbnailPreviewImage");
+
+        var previousButton = FluentTheme.ApplyButton(new Button
+        {
+            Width = 44,
+            Height = 36,
+            Content = new FontIcon { Glyph = "\uE76B", FontSize = 16 },
+            Padding = new Thickness(0),
+        });
+        AutomationProperties.SetAutomationId(previousButton, "PlayerThumbnailPreviewPrevious");
+        ToolTipService.SetToolTip(previousButton, "上一张");
+
+        var nextButton = FluentTheme.ApplyButton(new Button
+        {
+            Width = 44,
+            Height = 36,
+            Content = new FontIcon { Glyph = "\uE76C", FontSize = 16 },
+            Padding = new Thickness(0),
+        });
+        AutomationProperties.SetAutomationId(nextButton, "PlayerThumbnailPreviewNext");
+        ToolTipService.SetToolTip(nextButton, "下一张");
+
+        var counterText = new TextBlock
+        {
+            Foreground = FluentTheme.TextSecondary,
+            FontSize = 13,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        AutomationProperties.SetAutomationId(counterText, "PlayerThumbnailPreviewCounter");
+
+        var actionBar = new Grid
+        {
+            Margin = new Thickness(0, 14, 0, 0),
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = GridLength.Auto },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                new ColumnDefinition { Width = GridLength.Auto },
+            },
+        };
+        Grid.SetColumn(previousButton, 0);
+        Grid.SetColumn(counterText, 1);
+        Grid.SetColumn(nextButton, 2);
+        actionBar.Children.Add(previousButton);
+        actionBar.Children.Add(counterText);
+        actionBar.Children.Add(nextButton);
+
+        var content = new Grid
+        {
+            MaxWidth = 960,
+            MaxHeight = 700,
+            RowDefinitions =
+            {
+                new RowDefinition { Height = GridLength.Auto },
+                new RowDefinition { Height = GridLength.Auto },
+            },
+        };
+        content.Children.Add(new ScrollViewer
+        {
+            Content = previewImage,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            MaxWidth = 960,
+            MaxHeight = 640,
+        });
+        Grid.SetRow(actionBar, 1);
+        content.Children.Add(actionBar);
+
+        var dialog = FluentTheme.ApplyContentDialog(new ContentDialog
+        {
+            Content = content,
+            CloseButtonText = "关闭",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot,
+        });
+        AutomationProperties.SetAutomationId(dialog, "PlayerThumbnailPreviewDialog");
+
+        void ShowAdjacentThumbnailPreview(int delta)
+        {
+            var targetIndex = currentIndex + delta;
+            if (targetIndex < 0 || targetIndex >= _thumbnailPreviewItems.Count)
+            {
+                return;
+            }
+
+            currentIndex = targetIndex;
+            var item = _thumbnailPreviewItems[currentIndex];
+            dialog.Title = item.Title;
+            previewImage.Visibility = Visibility.Visible;
+            previewImage.Source = new BitmapImage(new Uri(item.Url));
+            counterText.Text = $"{currentIndex + 1} / {_thumbnailPreviewItems.Count}";
+            previousButton.IsEnabled = currentIndex > 0;
+            nextButton.IsEnabled = currentIndex < _thumbnailPreviewItems.Count - 1;
+        }
+
+        previousButton.Click += (_, _) => ShowAdjacentThumbnailPreview(-1);
+        nextButton.Click += (_, _) => ShowAdjacentThumbnailPreview(1);
+        ShowAdjacentThumbnailPreview(0);
+        await dialog.ShowAsync();
     }
 
     private async Task<Button> CreateDetailMovieCardAsync(MovieDto movie, string logContext)
@@ -2669,6 +2823,11 @@ public sealed partial class PlayerPage : Page
         var span = TimeSpan.FromSeconds(seconds);
         return span.TotalHours >= 1 ? $"{(int)span.TotalHours}:{span.Minutes:00}:{span.Seconds:00}" : $"{span.Minutes}:{span.Seconds:00}";
     }
+
+    private static string SanitizeAutomationId(string value)
+        => string.IsNullOrWhiteSpace(value)
+            ? "Unknown"
+            : Regex.Replace(value, @"[^\w]+", "_").Trim('_');
 
     private static SolidColorBrush Brush(byte r, byte g, byte b, byte a = 0xFF)
     {

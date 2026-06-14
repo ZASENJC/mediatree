@@ -364,7 +364,7 @@ public sealed partial class MovieDetailPage : Page
 
     private void OnBackClicked(object sender, RoutedEventArgs args)
     {
-        ShellPage.Current?.NavigateToLibrary();
+        ShellPage.Current?.GoBackOrLibrary();
     }
 
     private void OnPlayClicked(object sender, RoutedEventArgs args)

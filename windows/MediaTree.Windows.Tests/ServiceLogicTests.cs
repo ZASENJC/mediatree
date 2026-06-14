@@ -2,6 +2,7 @@ using MediaTree.Windows.Models;
 using MediaTree.Windows.Providers;
 using MediaTree.Windows.Providers.Jellyfin;
 using MediaTree.Windows.Services;
+using MediaTree.Windows.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -1261,6 +1262,35 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void BrowsePresenterMergesMoviesFromActiveRootsWithGlobalPagination()
+    {
+        var first = new MoviesResponseDto
+        {
+            Total = 3,
+            Movies =
+            [
+                new MovieDto { Id = 1, CreatedAt = "2026-06-10T10:00:00", MediaRoot = @"D:\Movies" },
+                new MovieDto { Id = 2, CreatedAt = "2026-06-08T10:00:00", MediaRoot = @"D:\Movies" },
+                new MovieDto { Id = 5, CreatedAt = "2026-06-06T10:00:00", MediaRoot = @"D:\Movies" },
+            ],
+        };
+        var second = new MoviesResponseDto
+        {
+            Total = 2,
+            Movies =
+            [
+                new MovieDto { Id = 3, CreatedAt = "2026-06-11T10:00:00", MediaRoot = @"E:\Series" },
+                new MovieDto { Id = 4, CreatedAt = "2026-06-09T10:00:00", MediaRoot = @"E:\Series" },
+            ],
+        };
+
+        var merged = BrowseLibraryPresenter.MergeMovieResponses([first, second], "created_desc", limit: 2, offset: 2);
+
+        Assert.Equal(5, merged.Total);
+        Assert.Equal([4, 2], merged.Movies.Select(movie => movie.Id).ToList());
+    }
+
+    [Fact]
     public void BrowsePresenterFiltersExcludedFoldersAndDescendantMovies()
     {
         var folders = new[]
@@ -1286,6 +1316,44 @@ public sealed class ServiceLogicTests
         Assert.Equal(["Other"], visibleFolders.Select(folder => folder.Path).ToList());
         Assert.Equal([3], visibleMovies.Movies.Select(movie => movie.Id).ToList());
         Assert.Equal(1, visibleMovies.Total);
+    }
+
+    [Fact]
+    public void BrowsePresenterCanPreservePagedTotalWhenFilteringExcludedMovies()
+    {
+        var movies = new MoviesResponseDto
+        {
+            Movies =
+            [
+                new MovieDto { Id = 1, FolderLevels = "Series" },
+                new MovieDto { Id = 2, FolderLevels = "Other" },
+            ],
+            Total = 250,
+        };
+
+        var visibleMovies = BrowseLibraryPresenter.FilterExcludedMovies(movies, ["Series"], preserveTotal: true);
+
+        Assert.Equal([2], visibleMovies.Movies.Select(movie => movie.Id).ToList());
+        Assert.Equal(250, visibleMovies.Total);
+    }
+
+    [Fact]
+    public void BrowsePresenterPreservesMovieTotalWhenNoFoldersAreExcluded()
+    {
+        var movies = new MoviesResponseDto
+        {
+            Movies =
+            [
+                new MovieDto { Id = 1, FolderLevels = "Series" },
+                new MovieDto { Id = 2, FolderLevels = "Other" },
+            ],
+            Total = 250,
+        };
+
+        var visibleMovies = BrowseLibraryPresenter.FilterExcludedMovies(movies, []);
+
+        Assert.Equal([1, 2], visibleMovies.Movies.Select(movie => movie.Id).ToList());
+        Assert.Equal(250, visibleMovies.Total);
     }
 
     [Fact]
@@ -1397,6 +1465,28 @@ public sealed class ServiceLogicTests
         Assert.Equal(0, movie.Duration);
         Assert.Equal(0, movie.PlaybackPosition);
         Assert.Equal(0, movie.ProgressPercent);
+    }
+
+    [Fact]
+    public void MovieCardItemPublishesCoverUrlChangesAfterInitialRender()
+    {
+        var item = new MovieCardItem(new MovieDto { Id = 42, Code = "sample" }, "");
+        var changed = new List<string>();
+        item.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName is not null)
+            {
+                changed.Add(args.PropertyName);
+            }
+        };
+
+        item.CoverUrl = "https://example.invalid/cover.jpg";
+        item.FallbackCoverUrl = "https://example.invalid/fallback.jpg";
+
+        Assert.Equal("https://example.invalid/cover.jpg", item.CoverUrl);
+        Assert.Equal("https://example.invalid/fallback.jpg", item.FallbackCoverUrl);
+        Assert.Contains(nameof(MovieCardItem.CoverUrl), changed);
+        Assert.Contains(nameof(MovieCardItem.FallbackCoverUrl), changed);
     }
 
     [Fact]

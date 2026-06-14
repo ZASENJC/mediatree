@@ -34,26 +34,42 @@ public static class BrowseLibraryPresenter
     public static MoviesResponseDto MergeMovieResponses(
         IEnumerable<MoviesResponseDto> responses,
         string sort,
-        int limit)
+        int limit,
+        int offset = 0)
     {
         var responseList = responses.ToList();
         var movies = responseList.SelectMany(response => response.Movies);
         return new MoviesResponseDto
         {
-            Movies = SortMovies(movies, sort).Take(Math.Max(0, limit)).ToList(),
+            Movies = SortMovies(movies, sort)
+                .Skip(Math.Max(0, offset))
+                .Take(Math.Max(0, limit))
+                .ToList(),
             Total = responseList.Sum(response => response.Total),
         };
     }
 
-    public static MoviesResponseDto FilterExcludedMovies(MoviesResponseDto response, IEnumerable<string> excludedFolders)
+    public static MoviesResponseDto FilterExcludedMovies(
+        MoviesResponseDto response,
+        IEnumerable<string> excludedFolders,
+        bool preserveTotal = false)
     {
+        var excluded = excludedFolders
+            .Select(NormalizeFolderPath)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .ToList();
+        if (excluded.Count == 0)
+        {
+            return response;
+        }
+
         var movies = response.Movies
-            .Where(movie => !IsFolderPathExcluded(movie.FolderForSpecials, excludedFolders))
+            .Where(movie => !IsFolderPathExcluded(movie.FolderForSpecials, excluded))
             .ToList();
         return new MoviesResponseDto
         {
             Movies = movies,
-            Total = movies.Count,
+            Total = preserveTotal ? response.Total : movies.Count,
         };
     }
 

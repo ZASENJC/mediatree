@@ -6,6 +6,9 @@ namespace MediaTree.Windows.ViewModels;
 
 public sealed partial class MovieCardItem : ObservableObject
 {
+    private string _coverUrl = "";
+    private string _fallbackCoverUrl = "";
+
     public MovieCardItem(MovieDto movie, string coverUrl)
     {
         Movie = movie;
@@ -23,8 +26,18 @@ public sealed partial class MovieCardItem : ObservableObject
     public string Subtitle => IsSpecial
         ? string.IsNullOrWhiteSpace(Movie.FolderLevels) ? "花絮" : Movie.FolderLevels
         : IsEpisode ? Movie.Code : string.IsNullOrWhiteSpace(Movie.ReleaseDate) ? Movie.Genre : Movie.ReleaseDate;
-    public string CoverUrl { get; }
-    public string FallbackCoverUrl { get; init; } = "";
+    public string CoverUrl
+    {
+        get => _coverUrl;
+        set => SetProperty(ref _coverUrl, value);
+    }
+
+    public string FallbackCoverUrl
+    {
+        get => _fallbackCoverUrl;
+        set => SetProperty(ref _fallbackCoverUrl, value);
+    }
+
     public string ProgressText => Movie.ProgressPercent > 0 ? $"{Movie.ProgressPercent:0}%" : "";
 
     private static string FirstNonEmpty(params string[] values)

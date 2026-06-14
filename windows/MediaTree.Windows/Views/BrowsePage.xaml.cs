@@ -17,6 +17,7 @@ namespace MediaTree.Windows.Views;
 
 public sealed partial class BrowsePage : Page
 {
+    private const int BrowsePageSize = 48;
     private const double FolderTreePreferredWidth = 260;
     private const double FolderTreeCompactWidth = 220;
 
@@ -30,6 +31,10 @@ public sealed partial class BrowsePage : Page
     private readonly ComboBox _sortBox;
     private readonly TextBlock _subtitleText;
     private readonly TextBlock _titleText;
+    private readonly StackPanel _paginationBar;
+    private readonly Button _previousPageButton;
+    private readonly Button _nextPageButton;
+    private readonly TextBlock _pageText;
     private IReadOnlyList<MediaRootDto> _activeMediaRoots = [];
     private readonly HashSet<string> _excludedFolderPaths = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _expandedFolderKeys = new(StringComparer.OrdinalIgnoreCase);
@@ -37,17 +42,20 @@ public sealed partial class BrowsePage : Page
     private string _activeFolderPath = "";
     private string _activeFolderMediaRoot = "";
     private string _activeMediaRoot = "";
+    private int _pageIndex;
     private int _loadGeneration;
+    private bool _hasLoadedLibraries;
     private bool _suppressLibrarySelectionChanged;
 
     public BrowsePage()
     {
-        (_libraryBox, _folderList, _moviesGrid, _statusText, _searchBox, _sortBox, _titleText, _subtitleText) = BuildContent();
+        NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Enabled;
+        (_libraryBox, _folderList, _moviesGrid, _statusText, _searchBox, _sortBox, _titleText, _subtitleText, _paginationBar, _previousPageButton, _nextPageButton, _pageText) = BuildContent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
 
-    private (ComboBox libraryBox, ListView folderList, GridView moviesGrid, TextBlock statusText, TextBox searchBox, ComboBox sortBox, TextBlock titleText, TextBlock subtitleText) BuildContent()
+    private (ComboBox libraryBox, ListView folderList, GridView moviesGrid, TextBlock statusText, TextBox searchBox, ComboBox sortBox, TextBlock titleText, TextBlock subtitleText, StackPanel paginationBar, Button previousPageButton, Button nextPageButton, TextBlock pageText) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "BrowsePage");
 
@@ -145,7 +153,7 @@ public sealed partial class BrowsePage : Page
             VerticalAlignment = VerticalAlignment.Bottom,
         }, FluentButtonStyle.Accent);
         AutomationProperties.SetAutomationId(searchButton, "BrowseSearchButton");
-        searchButton.Click += async (_, _) => await LoadMoviesAsync();
+        searchButton.Click += async (_, _) => await ReloadFirstPageAsync();
         Grid.SetColumn(searchButton, 4);
         toolbar.Children.Add(searchButton);
 
@@ -159,25 +167,33 @@ public sealed partial class BrowsePage : Page
         content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(0) });
         Grid.SetRow(content, 1);
 
-        var folderStack = new StackPanel { Spacing = 10 };
-        folderStack.Children.Add(new TextBlock
+        var folderStack = new Grid { RowSpacing = 10 };
+        folderStack.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        folderStack.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        var folderTitle = new TextBlock
         {
             Text = "文件夹",
             FontSize = 13,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
             Foreground = FluentTheme.TextSecondary,
-        });
+        };
+        Grid.SetRow(folderTitle, 0);
+        folderStack.Children.Add(folderTitle);
         var folderList = FluentTheme.ApplyListView(new ListView
         {
             SelectionMode = ListViewSelectionMode.None,
             Padding = new Thickness(0),
+            VerticalAlignment = VerticalAlignment.Stretch,
         });
         AutomationProperties.SetAutomationId(folderList, "BrowseFoldersList");
+        Grid.SetRow(folderList, 1);
         folderStack.Children.Add(folderList);
         var folderHost = FluentTheme.Card(folderStack, new Thickness(14));
         content.Children.Add(folderHost);
 
-        var moviesHost = new Grid();
+        var moviesHost = new Grid { RowSpacing = 12 };
+        moviesHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        moviesHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Grid.SetColumn(moviesHost, 1);
         var moviesGrid = FluentTheme.ApplyGridView(new GridView
         {
@@ -185,6 +201,7 @@ public sealed partial class BrowsePage : Page
             SelectionMode = ListViewSelectionMode.None,
         });
         AutomationProperties.SetAutomationId(moviesGrid, "BrowseMoviesGrid");
+        Grid.SetRow(moviesGrid, 0);
         moviesHost.Children.Add(moviesGrid);
 
         var statusText = new TextBlock
@@ -197,7 +214,47 @@ public sealed partial class BrowsePage : Page
             TextWrapping = TextWrapping.WrapWholeWords,
         };
         AutomationProperties.SetAutomationId(statusText, "BrowseStatusText");
+        Grid.SetRow(statusText, 0);
         moviesHost.Children.Add(statusText);
+
+        var previousPageButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = "上一页",
+            MinWidth = 84,
+        });
+        AutomationProperties.SetAutomationId(previousPageButton, "BrowsePreviousPage");
+        previousPageButton.Click += async (_, _) => await ChangePageAsync(_pageIndex - 1);
+
+        var pageText = new TextBlock
+        {
+            Text = "",
+            MinWidth = 96,
+            TextAlignment = TextAlignment.Center,
+            Foreground = FluentTheme.TextSecondary,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        AutomationProperties.SetAutomationId(pageText, "BrowsePageText");
+
+        var nextPageButton = FluentTheme.ApplyButton(new Button
+        {
+            Content = "下一页",
+            MinWidth = 84,
+        });
+        AutomationProperties.SetAutomationId(nextPageButton, "BrowseNextPage");
+        nextPageButton.Click += async (_, _) => await ChangePageAsync(_pageIndex + 1);
+
+        var paginationBar = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Spacing = 8,
+            Visibility = Visibility.Collapsed,
+        };
+        paginationBar.Children.Add(previousPageButton);
+        paginationBar.Children.Add(pageText);
+        paginationBar.Children.Add(nextPageButton);
+        Grid.SetRow(paginationBar, 1);
+        moviesHost.Children.Add(paginationBar);
         content.Children.Add(moviesHost);
 
         root.SizeChanged += (_, args) => ApplyBrowseResponsiveLayout(
@@ -214,7 +271,7 @@ public sealed partial class BrowsePage : Page
 
         root.Children.Add(content);
         Content = root;
-        return (libraryBox, folderList, moviesGrid, statusText, searchBox, sortBox, titleText, subtitleText);
+        return (libraryBox, folderList, moviesGrid, statusText, searchBox, sortBox, titleText, subtitleText, paginationBar, previousPageButton, nextPageButton, pageText);
     }
 
     private static void ApplyBrowseResponsiveLayout(
@@ -262,8 +319,13 @@ public sealed partial class BrowsePage : Page
         Grid.SetRow(moviesHost, 0);
     }
 
-    private async Task LoadLibrariesAsync()
+    private async Task LoadLibrariesAsync(bool forceRefresh = false)
     {
+        if (_hasLoadedLibraries && !forceRefresh)
+        {
+            return;
+        }
+
         var previousMediaRoot = _activeMediaRoot;
         var previousFolderMediaRoot = _activeFolderMediaRoot;
         _suppressLibrarySelectionChanged = true;
@@ -310,6 +372,7 @@ public sealed partial class BrowsePage : Page
 
         await LoadFoldersAsync();
         await LoadMoviesAsync();
+        _hasLoadedLibraries = true;
     }
 
     private async Task LoadFoldersAsync()
@@ -350,21 +413,32 @@ public sealed partial class BrowsePage : Page
             ShowStatus("正在加载...", false);
             _moviesGrid.Items.Clear();
             var sort = (_sortBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "created_desc";
-            var response = await LoadActiveMoviesAsync(sort, 120);
+            var response = await LoadActiveMoviesAsync(sort, BrowsePageSize, _pageIndex * BrowsePageSize);
             if (generation != _loadGeneration)
             {
                 return;
             }
 
+            var totalPages = PageCount(response.Total);
+            if (response.Total > 0 && _pageIndex >= totalPages)
+            {
+                _pageIndex = totalPages - 1;
+                await LoadMoviesAsync();
+                return;
+            }
+
             foreach (var movie in response.Movies)
             {
+                var item = new MovieCardItem(movie, "");
                 _moviesGrid.Items.Add(CreateMovieCard(
-                    await CreateMovieCardItemAsync(movie, "browse"),
+                    item,
                     CreateContextMenuHost(async () => await LoadMoviesAsync())));
+                _ = LoadMovieCardCoverAsync(item, generation, "browse");
             }
 
             _titleText.Text = string.IsNullOrWhiteSpace(_activeFolderPath) ? "全部影片" : $"浏览: {_activeFolderPath}";
-            _subtitleText.Text = $"共 {response.Total} 部";
+            _subtitleText.Text = BuildBrowseSubtitle(response.Total, response.Movies.Count);
+            UpdatePagination(response.Total);
             _statusText.Visibility = response.Movies.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             if (response.Movies.Count == 0)
             {
@@ -378,19 +452,19 @@ public sealed partial class BrowsePage : Page
         }
     }
 
-    private async Task<MoviesResponseDto> LoadActiveMoviesAsync(string sort, int limit)
+    private async Task<MoviesResponseDto> LoadActiveMoviesAsync(string sort, int limit, int offset)
     {
         var search = _searchBox.Text.Trim();
         if (!string.IsNullOrWhiteSpace(_activeMediaRoot))
         {
-            var response = await AppServices.Media.Movie.GetMoviesAsync(_activeMediaRoot, _activeFolderPath, search, sort, limit, 0);
-            return BrowseLibraryPresenter.FilterExcludedMovies(response, _excludedFolderPaths);
+            var response = await AppServices.Media.Movie.GetMoviesAsync(_activeMediaRoot, _activeFolderPath, search, sort, limit, offset);
+            return BrowseLibraryPresenter.FilterExcludedMovies(response, _excludedFolderPaths, preserveTotal: true);
         }
 
         if (!string.IsNullOrWhiteSpace(_activeFolderPath) && !string.IsNullOrWhiteSpace(_activeFolderMediaRoot))
         {
-            var response = await AppServices.Media.Movie.GetMoviesAsync(_activeFolderMediaRoot, _activeFolderPath, search, sort, limit, 0);
-            return BrowseLibraryPresenter.FilterExcludedMovies(response, _excludedFolderPaths);
+            var response = await AppServices.Media.Movie.GetMoviesAsync(_activeFolderMediaRoot, _activeFolderPath, search, sort, limit, offset);
+            return BrowseLibraryPresenter.FilterExcludedMovies(response, _excludedFolderPaths, preserveTotal: true);
         }
 
         var roots = _activeMediaRoots.ToList();
@@ -399,8 +473,51 @@ public sealed partial class BrowsePage : Page
             return new MoviesResponseDto();
         }
 
-        var responses = await Task.WhenAll(roots.Select(root => AppServices.Media.Movie.GetMoviesAsync(root.Path, "", search, sort, limit, 0)));
-        return BrowseLibraryPresenter.FilterExcludedMovies(BrowseLibraryPresenter.MergeMovieResponses(responses, sort, limit), _excludedFolderPaths);
+        var fetchLimit = Math.Max(0, limit + offset);
+        var responses = await Task.WhenAll(roots.Select(root => AppServices.Media.Movie.GetMoviesAsync(root.Path, "", search, sort, fetchLimit, 0)));
+        return BrowseLibraryPresenter.FilterExcludedMovies(BrowseLibraryPresenter.MergeMovieResponses(responses, sort, limit, offset), _excludedFolderPaths, preserveTotal: true);
+    }
+
+    private static int PageCount(int total)
+        => total <= 0 ? 0 : (int)Math.Ceiling(total / (double)BrowsePageSize);
+
+    private string BuildBrowseSubtitle(int total, int currentCount)
+    {
+        if (total <= 0 || currentCount <= 0)
+        {
+            return $"共 {total} 部";
+        }
+
+        var start = _pageIndex * BrowsePageSize + 1;
+        var end = Math.Min(total, start + currentCount - 1);
+        return total > BrowsePageSize ? $"共 {total} 部，显示 {start}-{end}" : $"共 {total} 部";
+    }
+
+    private void UpdatePagination(int total)
+    {
+        var pageCount = PageCount(total);
+        _paginationBar.Visibility = pageCount > 1 ? Visibility.Visible : Visibility.Collapsed;
+        _pageText.Text = pageCount > 0 ? $"{_pageIndex + 1} / {pageCount}" : "";
+        _previousPageButton.IsEnabled = _pageIndex > 0;
+        _nextPageButton.IsEnabled = pageCount > 0 && _pageIndex < pageCount - 1;
+    }
+
+    private async Task ReloadFirstPageAsync()
+    {
+        _pageIndex = 0;
+        await LoadMoviesAsync();
+    }
+
+    private async Task ChangePageAsync(int pageIndex)
+    {
+        var nextPage = Math.Max(0, pageIndex);
+        if (nextPage == _pageIndex)
+        {
+            return;
+        }
+
+        _pageIndex = nextPage;
+        await LoadMoviesAsync();
     }
 
     private IEnumerable<MediaRootDto> GetSelectedMediaRoots()
@@ -440,7 +557,7 @@ public sealed partial class BrowsePage : Page
 
             _activeFolderPath = selection.Path;
             _activeFolderMediaRoot = selection.MediaRoot;
-            await LoadMoviesAsync();
+            await ReloadFirstPageAsync();
         };
         return button;
     }
@@ -544,7 +661,7 @@ public sealed partial class BrowsePage : Page
 
             _activeFolderPath = selection.Path;
             _activeFolderMediaRoot = selection.MediaRoot;
-            await LoadMoviesAsync();
+            await ReloadFirstPageAsync();
         };
         Grid.SetColumn(labelButton, 2);
         root.Children.Add(labelButton);
@@ -606,7 +723,7 @@ public sealed partial class BrowsePage : Page
         }
 
         await LoadFoldersAsync();
-        await LoadMoviesAsync();
+        await ReloadFirstPageAsync();
     }
 
     private void LoadExcludedFolders()
@@ -640,7 +757,7 @@ public sealed partial class BrowsePage : Page
         _activeFolderMediaRoot = "";
         _searchBox.Text = "";
         await LoadFoldersAsync();
-        await LoadMoviesAsync();
+        await ReloadFirstPageAsync();
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs args)
@@ -660,18 +777,18 @@ public sealed partial class BrowsePage : Page
     {
         if (DispatcherQueue.HasThreadAccess)
         {
-            _ = LoadLibrariesAsync();
+            _ = LoadLibrariesAsync(forceRefresh: true);
             return;
         }
 
-        _ = DispatcherQueue.TryEnqueue(() => _ = LoadLibrariesAsync());
+        _ = DispatcherQueue.TryEnqueue(() => _ = LoadLibrariesAsync(forceRefresh: true));
     }
 
     private async void OnSortChanged(object sender, SelectionChangedEventArgs args)
     {
         if (IsLoaded)
         {
-            await LoadMoviesAsync();
+            await ReloadFirstPageAsync();
         }
     }
 
@@ -679,7 +796,7 @@ public sealed partial class BrowsePage : Page
     {
         if (args.Key == global::Windows.System.VirtualKey.Enter)
         {
-            await LoadMoviesAsync();
+            await ReloadFirstPageAsync();
         }
     }
 
@@ -727,40 +844,70 @@ public sealed partial class BrowsePage : Page
             Height = item.HasEpisodeStill ? 100 : 252,
             Background = FluentTheme.LayerAlt,
         };
-        try
-        {
-            if (Uri.TryCreate(item.CoverUrl, UriKind.Absolute, out var coverUri))
-            {
-                var triedFallback = false;
-                var image = new Image
-                {
-                    Source = new BitmapImage(coverUri),
-                    Stretch = Stretch.UniformToFill,
-                };
-                image.ImageFailed += (_, _) =>
-                {
-                    if (item.HasEpisodeStill && !triedFallback && Uri.TryCreate(item.FallbackCoverUrl, UriKind.Absolute, out var fallbackUri))
-                    {
-                        triedFallback = true;
-                        image.Source = new BitmapImage(fallbackUri);
-                        return;
-                    }
 
-                    image.Visibility = Visibility.Collapsed;
-                    AddCoverFallback(imageHost);
-                };
-                imageHost.Children.Add(image);
-            }
-            else
-            {
-                AddCoverFallback(imageHost);
-            }
-        }
-        catch (Exception ex)
+        var fallbackText = AddCoverFallback(imageHost);
+        var image = new Image
         {
-            ShellLogger.Error(ex, $"Failed to create native browse cover image for movie {item.Id}.");
-            AddCoverFallback(imageHost);
+            Stretch = Stretch.UniformToFill,
+            Visibility = Visibility.Collapsed,
+        };
+        imageHost.Children.Add(image);
+
+        var triedFallback = false;
+        void ApplyCoverUrl()
+        {
+            try
+            {
+                if (Uri.TryCreate(item.CoverUrl, UriKind.Absolute, out var coverUri))
+                {
+                    triedFallback = false;
+                    image.Source = new BitmapImage(coverUri);
+                    image.Visibility = Visibility.Visible;
+                    fallbackText.Visibility = Visibility.Collapsed;
+                    return;
+                }
+
+                image.Source = null;
+                image.Visibility = Visibility.Collapsed;
+                fallbackText.Visibility = Visibility.Visible;
+            }
+            catch (Exception ex)
+            {
+                ShellLogger.Error(ex, $"Failed to create native browse cover image for movie {item.Id}.");
+                image.Source = null;
+                image.Visibility = Visibility.Collapsed;
+                fallbackText.Visibility = Visibility.Visible;
+            }
         }
+
+        image.ImageFailed += (_, _) =>
+        {
+            if (item.HasEpisodeStill && !triedFallback && Uri.TryCreate(item.FallbackCoverUrl, UriKind.Absolute, out var fallbackUri))
+            {
+                triedFallback = true;
+                image.Source = new BitmapImage(fallbackUri);
+                image.Visibility = Visibility.Visible;
+                fallbackText.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            image.Visibility = Visibility.Collapsed;
+            fallbackText.Visibility = Visibility.Visible;
+        };
+        item.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(MovieCardItem.CoverUrl))
+            {
+                if (imageHost.DispatcherQueue.HasThreadAccess)
+                {
+                    ApplyCoverUrl();
+                    return;
+                }
+
+                _ = imageHost.DispatcherQueue.TryEnqueue(ApplyCoverUrl);
+            }
+        };
+        ApplyCoverUrl();
 
         if (item.IsEpisode)
         {
@@ -849,42 +996,54 @@ public sealed partial class BrowsePage : Page
 
     internal static async Task<MovieCardItem> CreateMovieCardItemAsync(MovieDto movie, string logContext)
     {
-        var cover = "";
-        var fallbackCover = "";
+        var item = new MovieCardItem(movie, "");
+        await PopulateMovieCardCoverAsync(item, logContext);
+        return item;
+    }
+
+    private async Task LoadMovieCardCoverAsync(MovieCardItem item, int generation, string logContext)
+    {
+        await PopulateMovieCardCoverAsync(item, logContext);
+        if (generation != _loadGeneration)
+        {
+            return;
+        }
+    }
+
+    internal static async Task PopulateMovieCardCoverAsync(MovieCardItem item, string logContext)
+    {
         try
         {
-            fallbackCover = await AppServices.Media.Api.BuildCoverUrlAsync(movie.Id);
-            var isEpisode = string.Equals(movie.TmdbType, "tv", StringComparison.OrdinalIgnoreCase) && movie.TmdbEpisode.HasValue;
-            cover = isEpisode && !string.IsNullOrWhiteSpace(movie.EpisodeStill)
-                ? await AppServices.Media.Api.BuildEpisodeStillUrlAsync(movie.Id)
+            var fallbackCover = await AppServices.Media.Api.BuildCoverUrlAsync(item.Id);
+            item.FallbackCoverUrl = fallbackCover;
+            item.CoverUrl = item.HasEpisodeStill
+                ? await AppServices.Media.Api.BuildEpisodeStillUrlAsync(item.Id)
                 : fallbackCover;
         }
         catch (Exception ex)
         {
-            ShellLogger.Error(ex, $"Failed to build native {logContext} cover URL for movie {movie.Id}.");
-            cover = fallbackCover;
+            ShellLogger.Error(ex, $"Failed to build native {logContext} cover URL for movie {item.Id}.");
+            item.CoverUrl = item.FallbackCoverUrl;
         }
-
-        return new MovieCardItem(movie, cover)
-        {
-            FallbackCoverUrl = fallbackCover,
-        };
     }
 
-    private static void AddCoverFallback(Grid imageHost)
+    private static TextBlock AddCoverFallback(Grid imageHost)
     {
-        if (imageHost.Children.OfType<TextBlock>().Any(text => text.Text == "无封面"))
+        var existing = imageHost.Children.OfType<TextBlock>().FirstOrDefault(text => text.Text == "无封面");
+        if (existing is not null)
         {
-            return;
+            return existing;
         }
 
-        imageHost.Children.Add(new TextBlock
+        var fallback = new TextBlock
         {
             Text = "无封面",
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             Foreground = FluentTheme.TextTertiary,
-        });
+        };
+        imageHost.Children.Add(fallback);
+        return fallback;
     }
 
     private static string SanitizeAutomationId(string value)

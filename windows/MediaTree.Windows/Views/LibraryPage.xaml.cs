@@ -12,6 +12,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Navigation;
 
 namespace MediaTree.Windows.Views;
 
@@ -43,20 +44,29 @@ public sealed partial class LibraryPage : Page
     private readonly StackPanel _tabs;
     private readonly Grid _toolbar;
     private readonly DispatcherTimer _scanTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private ScrollViewer? _folderGridScrollViewer;
+    private ScrollViewer? _moviesGridScrollViewer;
     private string _activeMediaRoot = "";
     private string _activeFolderPath = "";
     private string _activeView = "folders";
     private string _activeScanMediaRoot = "";
+    private double _folderGridScrollOffset;
+    private double _moviesGridScrollOffset;
+    private int _libraryScrollRestoreGeneration;
     private int _movieLoadGeneration;
     private int _scanProgressGeneration;
     private bool _hideHomeTitleText;
+    private bool _restoringLibraryScrollPosition;
     private bool _showSourceName;
     private bool _scanHasObservedActiveStatus;
+    private bool _trackLibraryScrollChanges = true;
     private IReadOnlyList<string> _excludedFolderPaths = [];
+    private bool _hasLoadedLibraries;
     private bool _suppressLibrarySelectionChanged;
 
     public LibraryPage()
     {
+        NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Enabled;
         (_rootGrid, _headerGrid, _tabs, _toolbar, _libraryBox, _searchBox, _sortBox, _scanButton, _addButton, _scanInfoText, _scanProgressTrack, _scanProgressFill, _loadingText, _folderGrid, _moviesGrid, _headerTitleText, _headerSubtitleText, _folderTabButton, _recentTabButton, _moviesBackButton) = BuildContent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -444,6 +454,8 @@ public sealed partial class LibraryPage : Page
             LoadUiPreferences();
             ApplyProviderCapabilities();
             await LoadLibrariesAsync();
+            AttachLibraryScrollMemory();
+            ScheduleRestoreActiveScrollPosition();
         }
         catch (Exception ex)
         {
@@ -454,19 +466,26 @@ public sealed partial class LibraryPage : Page
 
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
+        RememberActiveScrollPosition();
         AppServices.Media.Library.LibrariesChanged -= OnLibrariesChanged;
         _scanTimer.Stop();
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs args)
+    {
+        RememberActiveScrollPosition();
+        base.OnNavigatedFrom(args);
     }
 
     private void OnLibrariesChanged(object? sender, EventArgs args)
     {
         if (DispatcherQueue.HasThreadAccess)
         {
-            _ = LoadLibrariesAsync();
+            _ = LoadLibrariesAsync(forceRefresh: true);
             return;
         }
 
-        _ = DispatcherQueue.TryEnqueue(() => _ = LoadLibrariesAsync());
+        _ = DispatcherQueue.TryEnqueue(() => _ = LoadLibrariesAsync(forceRefresh: true));
     }
 
     private void LoadUiPreferences()
@@ -477,8 +496,14 @@ public sealed partial class LibraryPage : Page
         _excludedFolderPaths = preferences.ExcludedFolders;
     }
 
-    private async Task LoadLibrariesAsync()
+    private async Task LoadLibrariesAsync(bool forceRefresh = false)
     {
+        if (_hasLoadedLibraries && !forceRefresh)
+        {
+            _scanTimer.Start();
+            return;
+        }
+
         SetLoading(true);
         try
         {
@@ -508,10 +533,13 @@ public sealed partial class LibraryPage : Page
 
             if (roots.Items.Count > 0)
             {
-                _activeMediaRoot = roots.Items[0].Path;
+                var selectedRoot = roots.Items.FirstOrDefault(root => LibraryService.RootsMatch(root.Path, _activeMediaRoot)) ?? roots.Items[0];
+                _activeMediaRoot = selectedRoot.Path;
                 await LoadFoldersAsync();
                 _scanTimer.Start();
             }
+
+            _hasLoadedLibraries = true;
         }
         catch (Exception ex)
         {
@@ -535,6 +563,8 @@ public sealed partial class LibraryPage : Page
         var generation = ++_movieLoadGeneration;
         try
         {
+            RememberActiveScrollPosition();
+            _trackLibraryScrollChanges = false;
             SetLoading(true);
             _activeView = "folders";
             _activeFolderPath = "";
@@ -578,6 +608,7 @@ public sealed partial class LibraryPage : Page
 
             _headerTitleText.Text = "我的媒体库";
             _headerSubtitleText.Text = $"共 {folders.Count} 个目录";
+            ScheduleRestoreActiveScrollPosition();
         }
         catch (Exception ex)
         {
@@ -604,6 +635,8 @@ public sealed partial class LibraryPage : Page
         var generation = ++_movieLoadGeneration;
         try
         {
+            RememberActiveScrollPosition();
+            _trackLibraryScrollChanges = false;
             SetLoading(true);
             _activeView = recent ? "recent" : "movies";
             if (!recent)
@@ -656,6 +689,7 @@ public sealed partial class LibraryPage : Page
 
             _headerTitleText.Text = recent ? "继续观看" : (string.IsNullOrWhiteSpace(folderPath) ? "搜索结果" : FolderTitleFromPath(folderPath));
             _headerSubtitleText.Text = recent ? $"共 {response.Movies.Count} 部" : $"共 {response.Movies.Count} 部影片";
+            ScheduleRestoreActiveScrollPosition();
         }
         catch (Exception ex)
         {
@@ -900,6 +934,14 @@ public sealed partial class LibraryPage : Page
             }
 
             var terminalStatus = IsTerminalScanStatus(status.Status);
+            var hasActiveScanContext = !string.IsNullOrWhiteSpace(_activeScanMediaRoot) || _scanHasObservedActiveStatus;
+            if (terminalStatus && !hasActiveScanContext)
+            {
+                _scanTimer.Stop();
+                _scanButton.IsEnabled = true;
+                return;
+            }
+
             if (terminalStatus && mediaRoot == _activeScanMediaRoot && !_scanHasObservedActiveStatus)
             {
                 return;
@@ -1098,6 +1140,128 @@ public sealed partial class LibraryPage : Page
         _activeView = recent ? "recent" : "movies";
         ApplyTabStyles();
         ApplyCurrentLayout();
+    }
+
+    private void AttachLibraryScrollMemory()
+    {
+        AttachLibraryScrollMemory(_folderGrid, ref _folderGridScrollViewer, offset => _folderGridScrollOffset = offset);
+        AttachLibraryScrollMemory(_moviesGrid, ref _moviesGridScrollViewer, offset => _moviesGridScrollOffset = offset);
+    }
+
+    private void AttachLibraryScrollMemory(GridView grid, ref ScrollViewer? scrollViewer, Action<double> rememberOffset)
+    {
+        if (scrollViewer is not null)
+        {
+            return;
+        }
+
+        var viewer = FindDescendant<ScrollViewer>(grid);
+        if (viewer is null)
+        {
+            return;
+        }
+
+        scrollViewer = viewer;
+        viewer.ViewChanged += (_, _) =>
+        {
+            if (_trackLibraryScrollChanges && !_restoringLibraryScrollPosition)
+            {
+                rememberOffset(viewer.VerticalOffset);
+            }
+        };
+    }
+
+    private void ScheduleRestoreActiveScrollPosition()
+    {
+        var generation = ++_libraryScrollRestoreGeneration;
+        _trackLibraryScrollChanges = false;
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            AttachLibraryScrollMemory();
+            _ = RestoreActiveScrollPositionAsync(generation);
+        });
+    }
+
+    private async Task RestoreActiveScrollPositionAsync(int generation)
+    {
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            if (generation != _libraryScrollRestoreGeneration)
+            {
+                return;
+            }
+
+            RestoreActiveScrollPosition(generation, keepTrackingSuspended: attempt < 3);
+            await Task.Delay(80);
+        }
+
+        if (generation == _libraryScrollRestoreGeneration)
+        {
+            _trackLibraryScrollChanges = true;
+        }
+    }
+
+    private void RestoreActiveScrollPosition(int generation, bool keepTrackingSuspended = false)
+    {
+        if (generation != _libraryScrollRestoreGeneration)
+        {
+            return;
+        }
+
+        var viewer = _activeView == "folders" ? _folderGridScrollViewer : _moviesGridScrollViewer;
+        var offset = _activeView == "folders" ? _folderGridScrollOffset : _moviesGridScrollOffset;
+        if (viewer is null || offset <= 0)
+        {
+            _trackLibraryScrollChanges = keepTrackingSuspended ? false : true;
+            return;
+        }
+
+        _restoringLibraryScrollPosition = true;
+        try
+        {
+            viewer.ChangeView(null, offset, null, disableAnimation: true);
+        }
+        finally
+        {
+            _restoringLibraryScrollPosition = false;
+            _trackLibraryScrollChanges = keepTrackingSuspended ? false : true;
+        }
+    }
+
+    private void RememberActiveScrollPosition()
+    {
+        AttachLibraryScrollMemory();
+        if (_folderGridScrollViewer is not null)
+        {
+            _folderGridScrollOffset = Math.Max(_folderGridScrollOffset, _folderGridScrollViewer.VerticalOffset);
+        }
+
+        if (_moviesGridScrollViewer is not null)
+        {
+            _moviesGridScrollOffset = Math.Max(_moviesGridScrollOffset, _moviesGridScrollViewer.VerticalOffset);
+        }
+    }
+
+    private static T? FindDescendant<T>(DependencyObject parent)
+        where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var index = 0; index < count; index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            var descendant = FindDescendant<T>(child);
+            if (descendant is not null)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
     }
 
     private void ApplyTabStyles()

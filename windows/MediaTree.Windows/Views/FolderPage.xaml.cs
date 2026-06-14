@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using MediaTree.Windows.Models;
 using MediaTree.Windows.Services;
 using MediaTree.Windows.Styles;
@@ -24,19 +25,26 @@ public sealed partial class FolderPage : Page
     private readonly StackPanel _seasonTabs;
     private readonly ComboBox _sortBox;
     private readonly TextBlock _statusText;
+    private ScrollViewer? _moviesGridScrollViewer;
     private List<MovieDto> _allMovies = [];
     private List<MovieDto> _specialMovies = [];
     private string _folderPath = "";
     private string _mediaRoot = "";
     private string _seasonFilter = "";
     private string _title = "";
+    private double _moviesGridScrollOffset;
+    private int _folderScrollRestoreGeneration;
+    private bool _hasLoadedFolder;
+    private bool _restoringScrollPosition;
     private bool _showSpecials;
     private bool _specialsSelected;
+    private bool _trackFolderScrollChanges = true;
     private int _specialCount;
     private int _loadGeneration;
 
     public FolderPage()
     {
+        NavigationCacheMode = Microsoft.UI.Xaml.Navigation.NavigationCacheMode.Enabled;
         (_headerTitleText, _headerSubtitleText, _seasonTabs, _sortBox, _moviesGrid, _loadingText, _statusText) = BuildContent();
     }
 
@@ -70,7 +78,7 @@ public sealed partial class FolderPage : Page
             VerticalAlignment = VerticalAlignment.Center,
         });
         AutomationProperties.SetAutomationId(backButton, "FolderBackHome");
-        backButton.Click += (_, _) => ShellPage.Current?.NavigateToLibrary();
+        backButton.Click += (_, _) => ShellPage.Current?.GoBackOrLibrary();
         header.Children.Add(backButton);
 
         var titleStack = new StackPanel { Spacing = 4 };
@@ -211,6 +219,8 @@ public sealed partial class FolderPage : Page
     protected override async void OnNavigatedTo(NavigationEventArgs args)
     {
         base.OnNavigatedTo(args);
+        var previousFolderPath = _folderPath;
+        var previousMediaRoot = _mediaRoot;
         if (args.Parameter is FolderNavigationParameter parameter)
         {
             _folderPath = parameter.FolderPath;
@@ -218,7 +228,21 @@ public sealed partial class FolderPage : Page
             _title = parameter.Title;
         }
 
+        if (_hasLoadedFolder
+            && string.Equals(previousFolderPath, _folderPath, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(previousMediaRoot, _mediaRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            ScheduleRestoreScrollPosition();
+            return;
+        }
+
         await LoadAsync();
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs args)
+    {
+        RememberScrollPosition();
+        base.OnNavigatedFrom(args);
     }
 
     private async System.Threading.Tasks.Task LoadAsync()
@@ -226,6 +250,8 @@ public sealed partial class FolderPage : Page
         var generation = ++_loadGeneration;
         try
         {
+            RememberScrollPosition();
+            _trackFolderScrollChanges = false;
             SetLoading(true);
             _statusText.Visibility = Visibility.Collapsed;
             _moviesGrid.Items.Clear();
@@ -253,6 +279,8 @@ public sealed partial class FolderPage : Page
             _headerTitleText.Text = string.IsNullOrWhiteSpace(_title) ? FolderTitleFromPath(_folderPath) : _title;
             RenderSeasonTabs();
             RenderMovies();
+            _hasLoadedFolder = true;
+            ScheduleRestoreScrollPosition();
         }
         catch (Exception ex)
         {
@@ -368,6 +396,117 @@ public sealed partial class FolderPage : Page
         {
             _statusText.Visibility = Visibility.Collapsed;
         }
+
+        ScheduleRestoreScrollPosition();
+    }
+
+    private void AttachFolderScrollMemory()
+    {
+        if (_moviesGridScrollViewer is not null)
+        {
+            return;
+        }
+
+        var viewer = FindDescendant<ScrollViewer>(_moviesGrid);
+        if (viewer is null)
+        {
+            return;
+        }
+
+        _moviesGridScrollViewer = viewer;
+        viewer.ViewChanged += (_, _) =>
+        {
+            if (_trackFolderScrollChanges && !_restoringScrollPosition)
+            {
+                _moviesGridScrollOffset = viewer.VerticalOffset;
+            }
+        };
+    }
+
+    private void ScheduleRestoreScrollPosition()
+    {
+        var generation = ++_folderScrollRestoreGeneration;
+        _trackFolderScrollChanges = false;
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            AttachFolderScrollMemory();
+            _ = RestoreScrollPositionAsync(generation);
+        });
+    }
+
+    private async System.Threading.Tasks.Task RestoreScrollPositionAsync(int generation)
+    {
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            if (generation != _folderScrollRestoreGeneration)
+            {
+                return;
+            }
+
+            RestoreScrollPosition(generation, keepTrackingSuspended: attempt < 3);
+            await Task.Delay(80);
+        }
+
+        if (generation == _folderScrollRestoreGeneration)
+        {
+            _trackFolderScrollChanges = true;
+        }
+    }
+
+    private void RestoreScrollPosition(int generation, bool keepTrackingSuspended = false)
+    {
+        if (generation != _folderScrollRestoreGeneration)
+        {
+            return;
+        }
+
+        if (_moviesGridScrollViewer is null || _moviesGridScrollOffset <= 0)
+        {
+            _trackFolderScrollChanges = keepTrackingSuspended ? false : true;
+            return;
+        }
+
+        _restoringScrollPosition = true;
+        try
+        {
+            _moviesGridScrollViewer.ChangeView(null, _moviesGridScrollOffset, null, disableAnimation: true);
+        }
+        finally
+        {
+            _restoringScrollPosition = false;
+            _trackFolderScrollChanges = keepTrackingSuspended ? false : true;
+        }
+    }
+
+    private void RememberScrollPosition()
+    {
+        AttachFolderScrollMemory();
+        if (_moviesGridScrollViewer is not null)
+        {
+            _moviesGridScrollOffset = Math.Max(_moviesGridScrollOffset, _moviesGridScrollViewer.VerticalOffset);
+        }
+    }
+
+    private static T? FindDescendant<T>(DependencyObject parent)
+        where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var index = 0; index < count; index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            var descendant = FindDescendant<T>(child);
+            if (descendant is not null)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
     }
 
     private UIElement CreateEpisodeCardAsync(MovieDto movie)
