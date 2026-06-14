@@ -122,6 +122,31 @@ function Stop-ProcessesUnderPath {
   }
 }
 
+function Remove-PathWithRetry {
+  param(
+    [string]$Path,
+    [int]$Retries = 5,
+    [int]$DelaySeconds = 2
+  )
+
+  if (-not (Test-Path $Path)) {
+    return
+  }
+
+  for ($attempt = 1; $attempt -le $Retries; $attempt++) {
+    try {
+      Remove-Item $Path -Recurse -Force -ErrorAction Stop
+      return
+    } catch {
+      if ($attempt -eq $Retries) {
+        throw
+      }
+      Write-Host "Remove failed for $Path; retrying after file handles settle ($attempt/$Retries)."
+      Start-Sleep -Seconds $DelaySeconds
+    }
+  }
+}
+
 function New-ExpandedAppxManifest {
   param(
     [string]$SourceManifest,
@@ -318,7 +343,7 @@ try {
   $ShellOutput = Join-Path $Root "dist/windows/publish/MediaTree.Windows"
   if (Test-Path $ShellOutput) {
     Stop-ProcessesUnderPath -Path $ShellOutput
-    Remove-Item $ShellOutput -Recurse -Force
+    Remove-PathWithRetry -Path $ShellOutput
   }
   $MsBuild = Resolve-MSBuild
   Invoke-Native $MsBuild windows/MediaTree.Windows/MediaTree.Windows.csproj `
