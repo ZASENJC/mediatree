@@ -31,6 +31,9 @@ public sealed class FolderNodeDto
     [JsonPropertyName("movie_count")]
     public int MovieCount { get; set; }
 
+    [JsonPropertyName("video_count")]
+    public int VideoCount { get; set; }
+
     [JsonPropertyName("cover")]
     public string Cover { get; set; } = "";
 

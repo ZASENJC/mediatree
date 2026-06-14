@@ -8,6 +8,11 @@ All notable changes to MediaTree are documented here.
 
 ## Unreleased
 
+### Library
+
+- Added `video_count` to `/api/folders` folder-tree nodes so home folder cards can show the actual main-video count for episode folders while media-library totals continue to use the season-aware `movie_count`
+- Updated Windows desktop home folder cards to show episode-folder video counts, while Settings media-library rows continue to show `movie_count` totals
+
 ### Release Pipeline
 
 - Slimmed Docker builds by making full Noto CJK and emoji fonts opt-in build arguments while keeping the default WenQuanYi and bundled subtitle fallback fonts

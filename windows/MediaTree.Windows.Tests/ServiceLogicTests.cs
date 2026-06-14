@@ -1514,6 +1514,24 @@ public sealed class ServiceLogicTests
     }
 
     [Fact]
+    public void FolderCardItemUsesVideoCountForEpisodeSubtitle()
+    {
+        var folder = new FolderNodeDto
+        {
+            Name = "Season 1",
+            Path = "Series/Season 1",
+            MovieCount = 1,
+            VideoCount = 12,
+        };
+
+        var item = new FolderCardItem(folder, "");
+
+        Assert.Equal(12, item.DisplayVideoCount);
+        Assert.Equal("集", item.DisplayCountUnit);
+        Assert.Equal("12 集", item.Subtitle);
+    }
+
+    [Fact]
     public void BrowseFolderTreePresenterIncludesEmptyParentFolders()
     {
         var tree = new[]

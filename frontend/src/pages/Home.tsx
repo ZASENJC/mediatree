@@ -462,6 +462,8 @@ export default function Home() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid">
             {tree.map((node) => {
               const coverSrc = getCoverSrc(node.random_cover || node.cover, folderCoverVersion)
+              const folderCount = node.video_count ?? node.movie_count
+              const folderCountUnit = folderCount > node.movie_count ? '集' : '项'
               return (
                 <div key={node.path}
                   onClick={() => goFolder(node.path, node.media_root)}
@@ -504,7 +506,7 @@ export default function Home() {
                     <div className="absolute bottom-0 left-0 right-0 min-w-0 p-3">
                       <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-white drop-shadow">{showSourceName ? node.name : (node.display_title || node.name)}</p>
                       <p className="mt-1 text-xs text-gray-400">
-                        {node.movie_count} 项{node.special_count ? ` · ${node.special_count} 花絮` : ''}
+                        {folderCount} {folderCountUnit}{node.special_count ? ` · ${node.special_count} 花絮` : ''}
                       </p>
                     </div>
                     </>

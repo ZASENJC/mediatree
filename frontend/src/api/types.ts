@@ -60,6 +60,7 @@ export interface FolderNode {
   path: string
   is_leaf: boolean
   movie_count: number
+  video_count?: number
   cover?: string
   random_cover?: string
   backdrop?: string

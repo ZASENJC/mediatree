@@ -60,5 +60,6 @@ class FolderNode(BaseModel):
     path: str
     is_leaf: bool = False
     movie_count: int = 0
+    video_count: int = 0
     cover: Optional[str] = None
     children: Optional[list["FolderNode"]] = None

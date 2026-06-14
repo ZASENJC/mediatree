@@ -17,6 +17,8 @@ public sealed partial class FolderCardItem : ObservableObject
     public string Title => Folder.BestTitle;
     public string SourceName => Folder.Name;
     public string CoverUrl { get; }
-    public string Subtitle => Folder.SpecialCount > 0 ? $"{Folder.MovieCount} 部 · {Folder.SpecialCount} 花絮" : $"{Folder.MovieCount} 部";
+    public int DisplayVideoCount => Folder.VideoCount > 0 ? Folder.VideoCount : Folder.MovieCount;
+    public string DisplayCountUnit => Folder.VideoCount > Folder.MovieCount ? "集" : "部";
+    public string Subtitle => Folder.SpecialCount > 0 ? $"{DisplayVideoCount} {DisplayCountUnit} · {Folder.SpecialCount} 花絮" : $"{DisplayVideoCount} {DisplayCountUnit}";
     public string ProgressText => Folder.ProgressPercent > 0 && !Folder.FolderWatched ? $"{Folder.ProgressPercent:0}%" : "";
 }

@@ -878,6 +878,7 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                 "path": info["_path"],
                 "children": children,
                 "movie_count": info["_total_count"],
+                "video_count": info["_item_count"],
                 "cover": info["_cover"],
                 "random_cover": info["_cover"],
                 "backdrop": info.get("_backdrop"),
