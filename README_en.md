@@ -10,11 +10,11 @@
 </p>
 
 <p align="center">
-  <strong>English</strong> · <a href="README.md">简体中文</a> · <a href="#quick-deploy">Quick Deploy</a> · <a href="https://github.com/ZASENJC/mediatree/wiki">Wiki</a> · <a href="CHANGELOG.md">Changelog</a>
+  <strong>English</strong> · <a href="README.md">简体中文</a> · <a href="#quick-deploy">Quick Deploy</a> · <a href="https://zasenjc.github.io/mediatree/en/">Docs Site</a> · <a href="CHANGELOG.md">Changelog</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.0.14-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.0.15-blue?style=flat-square" alt="Version"></a>
   <a href="https://github.com/ZASENJC/mediatree/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react" alt="React">
@@ -134,6 +134,8 @@ Maintainer local Windows build:
 pwsh packaging/windows/build-windows.ps1 -Configuration Release
 ```
 
+The default image is size-optimized. It includes the lightweight `fonts-wqy-microhei` package and the bundled frontend subtitle fallback font, but it does not include full Noto CJK or emoji font packages by default. Upload custom fonts in Settings when you need wider subtitle coverage; maintainers only build with `INCLUDE_FULL_CJK_FONTS=true` or `INCLUDE_EMOJI_FONT=true` when a release explicitly needs those larger font packages.
+
 ## Configuration You Usually Need
 
 | Variable | What it does |
@@ -147,7 +149,7 @@ pwsh packaging/windows/build-windows.ps1 -Configuration Release
 
 Scraper cache TTLs and the Javdatabase request interval are managed internally instead of being tuned from Settings or environment variables. Manual scans, rescrapes, and manual apply actions bypass cache, and empty results are not cached, so stale empty responses do not block later metadata fixes.
 
-See [.env.example](.env.example) for all options. Detailed setup, scraper behavior, playback, and troubleshooting live in the [Wiki](https://github.com/ZASENJC/mediatree/wiki).
+See [.env.example](.env.example) for all options. Detailed setup, scraper behavior, playback, and troubleshooting live in the [Docs Site](https://zasenjc.github.io/mediatree/en/).
 
 ## Updates
 
@@ -170,7 +172,7 @@ docker compose up -d
 
 | Document | Description |
 |---|---|
-| [Wiki](https://github.com/ZASENJC/mediatree/wiki) | Full user guides, advanced config, scraper notes, and troubleshooting |
+| [Docs Site](https://zasenjc.github.io/mediatree/en/) | Recommended entry for deployment, configuration, scraping, updates, API, and development docs |
 | [README.md](README.md) | 简体中文 README |
 | [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
 | [CLAUDE.md](CLAUDE.md) | Development and AI-assisted maintenance notes |

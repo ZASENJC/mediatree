@@ -1,8 +1,8 @@
 import aiosqlite
 import json
-import sqlite3
 from pathlib import Path
-from .config import settings, logger
+from .config import settings
+from .db.migrations import init_schema
 from .scraper_cache_policy import should_bypass_scraper_cache
 
 _db_pool = None
@@ -39,6 +39,30 @@ def _folder_descendant_like(folder_levels: str) -> str:
     return f"{_escape_like(folder_levels)}/%"
 
 
+def _display_media_count_expr(prefix: str = "") -> str:
+    col = lambda name: f"{prefix}.{name}" if prefix else name
+    is_tv = (
+        f"({col('tmdb_type')} = 'tv' "
+        f"OR {col('tmdb_episode')} IS NOT NULL "
+        f"OR {col('episode_number')} IS NOT NULL)"
+    )
+    identity = (
+        "CASE "
+        f"WHEN {col('tmdb_id')} IS NOT NULL THEN 'tmdb:' || CAST({col('tmdb_id')} AS TEXT) "
+        f"WHEN COALESCE({col('source_id')}, '') != '' THEN 'source:' || COALESCE({col('scraper_source')}, '') || ':' || {col('source_id')} "
+        f"WHEN COALESCE({col('bangumi_id')}, '') != '' THEN 'bangumi:' || {col('bangumi_id')} "
+        f"ELSE 'folder:' || COALESCE({col('folder_levels')}, '') "
+        "END"
+    )
+    season = f"COALESCE(CAST({col('tmdb_season')} AS TEXT), 'folder')"
+    return (
+        "COUNT(DISTINCT CASE "
+        f"WHEN {is_tv} THEN 'tv|' || COALESCE({col('media_root')}, '') || '|' || {identity} || '|season:' || {season} "
+        f"ELSE 'movie|' || CAST({col('id')} AS TEXT) "
+        "END)"
+    )
+
+
 def _file_title_from_path(path: str | None) -> str:
     name = str(path or "").replace("\\", "/").rsplit("/", 1)[-1]
     return Path(name).stem or name
@@ -67,217 +91,8 @@ async def get_db():
     return await get_db_pool()
 
 
-def _is_expected_migration_error(exc: Exception) -> bool:
-    if not isinstance(exc, sqlite3.OperationalError):
-        return False
-    message = str(exc).lower()
-    return (
-        "duplicate column name" in message
-        or "no such table: movies" in message
-        or "no such table: tags" in message
-    )
-
-
 async def init_db():
-    db = await get_db()
-
-    # Run migrations first on existing tables
-    migrations = [
-        "ALTER TABLE movies ADD COLUMN media_root TEXT DEFAULT ''",
-        "ALTER TABLE movies ADD COLUMN created_at TEXT DEFAULT (datetime('now'))",
-        "ALTER TABLE movies ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))",
-        "ALTER TABLE movies ADD COLUMN local_metadata TEXT DEFAULT '{}'",
-        "ALTER TABLE movies ADD COLUMN tmdb_id INTEGER",
-        "ALTER TABLE movies ADD COLUMN tmdb_type TEXT",
-        "ALTER TABLE movies ADD COLUMN tmdb_season INTEGER",
-        "ALTER TABLE movies ADD COLUMN tmdb_episode INTEGER",
-        "ALTER TABLE movies ADD COLUMN episode_title TEXT",
-        "ALTER TABLE movies ADD COLUMN episode_overview TEXT",
-        "ALTER TABLE movies ADD COLUMN episode_still TEXT",
-        "ALTER TABLE movies ADD COLUMN episode_still_local TEXT",
-        "ALTER TABLE movies ADD COLUMN clean_title TEXT",
-        "ALTER TABLE movies ADD COLUMN episode_number INTEGER",
-        "ALTER TABLE movies ADD COLUMN display_title TEXT",
-        "ALTER TABLE movies ADD COLUMN external_audio_tracks TEXT DEFAULT '[]'",
-        "ALTER TABLE movies ADD COLUMN \"cast\" TEXT DEFAULT '[]'",
-        "ALTER TABLE movies ADD COLUMN crew TEXT DEFAULT '[]'",
-        "ALTER TABLE movies ADD COLUMN scraper_source TEXT",
-        "ALTER TABLE movies ADD COLUMN source_id TEXT",
-        "ALTER TABLE movies ADD COLUMN bangumi_id TEXT",
-        "ALTER TABLE movies ADD COLUMN javdb_id TEXT",
-        "ALTER TABLE movies ADD COLUMN original_title TEXT",
-        "ALTER TABLE movies ADD COLUMN overview TEXT",
-        "ALTER TABLE movies ADD COLUMN scraper_raw TEXT",
-        "ALTER TABLE movies ADD COLUMN pending_review INTEGER DEFAULT 0",
-        "ALTER TABLE movies ADD COLUMN review_candidates TEXT",
-        "ALTER TABLE movies ADD COLUMN genre TEXT",
-        "ALTER TABLE movies ADD COLUMN keywords TEXT",
-        "ALTER TABLE movies ADD COLUMN studios TEXT",
-        "ALTER TABLE movies ADD COLUMN tagline TEXT",
-        "ALTER TABLE movies ADD COLUMN status TEXT",
-        "ALTER TABLE movies ADD COLUMN content_rating TEXT",
-        "ALTER TABLE movies ADD COLUMN content_role TEXT DEFAULT 'main'",
-        "ALTER TABLE movies ADD COLUMN special_parent_levels TEXT",
-    ]
-    for mig in migrations:
-        try:
-            await db.execute(mig)
-        except Exception as exc:
-            if not _is_expected_migration_error(exc):
-                logger.exception("Database migration failed: %s", mig)
-                raise
-    await db.commit()
-
-    # Ensure tags table has created_at column
-    try:
-        await db.execute("ALTER TABLE tags ADD COLUMN created_at TEXT")
-        await db.execute("UPDATE tags SET created_at = datetime('now') WHERE created_at IS NULL")
-    except Exception as exc:
-        if not _is_expected_migration_error(exc):
-            logger.exception("Database migration failed: tags.created_at")
-            raise
-    await db.commit()
-
-    await db.executescript("""
-        CREATE TABLE IF NOT EXISTS movies (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            path TEXT UNIQUE NOT NULL,
-            code TEXT NOT NULL,
-            title TEXT,
-            actress TEXT,
-            release_date TEXT,
-            duration INTEGER,
-            cover_local TEXT,
-            cover_remote TEXT,
-            fanart_local TEXT,
-            javdb_url TEXT,
-            javdb_score REAL,
-            javdb_likes INTEGER,
-            javdb_thumbnails TEXT,
-            folder_levels TEXT,
-            local_metadata TEXT DEFAULT '{}',
-            tmdb_id INTEGER,
-            tmdb_type TEXT,
-            tmdb_season INTEGER,
-            tmdb_episode INTEGER,
-            episode_title TEXT,
-            episode_overview TEXT,
-            episode_still TEXT,
-            episode_still_local TEXT,
-            clean_title TEXT,
-            episode_number INTEGER,
-            display_title TEXT,
-            external_audio_tracks TEXT DEFAULT '[]',
-            "cast" TEXT DEFAULT '[]',
-            crew TEXT DEFAULT '[]',
-            scraper_source TEXT,
-            source_id TEXT,
-            bangumi_id TEXT,
-            javdb_id TEXT,
-            original_title TEXT,
-            overview TEXT,
-            scraper_raw TEXT,
-            pending_review INTEGER DEFAULT 0,
-            review_candidates TEXT,
-            genre TEXT,
-            keywords TEXT,
-            studios TEXT,
-            tagline TEXT,
-            status TEXT,
-            content_rating TEXT,
-            content_role TEXT DEFAULT 'main',
-            special_parent_levels TEXT,
-            media_root TEXT DEFAULT '',
-            created_at TEXT DEFAULT (datetime('now')),
-            updated_at TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_movies_code ON movies(code);
-        CREATE INDEX IF NOT EXISTS idx_movies_path ON movies(path);
-        CREATE INDEX IF NOT EXISTS idx_movies_folder ON movies(folder_levels);
-        CREATE INDEX IF NOT EXISTS idx_movies_media_root ON movies(media_root);
-        CREATE INDEX IF NOT EXISTS idx_movies_content_role ON movies(content_role);
-        CREATE INDEX IF NOT EXISTS idx_movies_special_parent ON movies(media_root, special_parent_levels);
-
-        CREATE TABLE IF NOT EXISTS javdb_cache (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            code TEXT UNIQUE NOT NULL,
-            data TEXT NOT NULL,
-            fetched_at TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_javdb_cache_code ON javdb_cache(code);
-
-        CREATE TABLE IF NOT EXISTS categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            movie_ids TEXT DEFAULT '[]',
-            created_at TEXT DEFAULT (datetime('now'))
-        );
-
-        CREATE TABLE IF NOT EXISTS tags (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            movie_id INTEGER NOT NULL,
-            tag TEXT NOT NULL,
-            created_at TEXT,
-            FOREIGN KEY (movie_id) REFERENCES movies(id) ON DELETE CASCADE,
-            UNIQUE(movie_id, tag)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_tags_movie ON tags(movie_id);
-
-        CREATE TABLE IF NOT EXISTS config (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS library_passwords (
-            media_root TEXT PRIMARY KEY,
-            password_hash TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS library_settings (
-            media_root TEXT PRIMARY KEY,
-            scraper TEXT DEFAULT 'auto',
-            tmdb_key TEXT DEFAULT '',
-            password_hash TEXT,
-            enabled INTEGER DEFAULT 1
-        );
-
-        CREATE TABLE IF NOT EXISTS folder_special_settings (
-            media_root TEXT NOT NULL,
-            folder_levels TEXT NOT NULL,
-            show_specials INTEGER DEFAULT 0,
-            updated_at TEXT DEFAULT (datetime('now')),
-            PRIMARY KEY (media_root, folder_levels)
-        );
-
-        CREATE TABLE IF NOT EXISTS scraper_cache (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source TEXT NOT NULL,
-            query TEXT NOT NULL,
-            data TEXT NOT NULL,
-            fetched_at TEXT DEFAULT (datetime('now')),
-            UNIQUE(source, query)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_scraper_cache_query ON scraper_cache(source, query);
-
-        CREATE TABLE IF NOT EXISTS user_data (
-            user_id TEXT NOT NULL,
-            item_id TEXT NOT NULL,
-            playback_position_ticks INTEGER DEFAULT 0,
-            play_count INTEGER DEFAULT 0,
-            is_favorite INTEGER DEFAULT 0,
-            played INTEGER DEFAULT 0,
-            last_played_date TEXT,
-            updated_at TEXT DEFAULT (datetime('now')),
-            PRIMARY KEY (user_id, item_id)
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_user_data_item ON user_data(item_id);
-    """)
-    await db.commit()
+    await init_schema(get_db)
 
 
 def _valid_scraper(scraper: str | None) -> str:
@@ -936,11 +751,13 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
     if media_root:
         where += " AND media_root = ?"
         params.append(media_root)
+    display_count_expr = _display_media_count_expr()
     cur = await db.execute(
         f"""SELECT folder_levels, MAX(cover_local) as cover_local, MAX(cover_remote) as cover_remote,
                    MAX(created_at) as created_max, MAX(release_date) as release_date_max, media_root, MAX(fanart_local) as fanart_local,
                    MAX(tmdb_id) as tmdb_id, MAX(tmdb_type) as tmdb_type,
-                   COUNT(*) as movie_count,
+                   {display_count_expr} as movie_count,
+                   COUNT(*) as item_count,
                    SUM(CASE WHEN EXISTS (SELECT 1 FROM tags t WHERE t.movie_id=movies.id AND t.tag='watched')
                          OR EXISTS (SELECT 1 FROM user_data ud WHERE ud.item_id=CAST(movies.id AS TEXT) AND ud.played=1)
                        THEN 1 ELSE 0 END) as watched_count
@@ -964,6 +781,7 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
             if part not in node:
                 node[part] = {
                     "_total_count": 0,
+                    "_item_count": 0,
                     "_leaf_count": 0,
                     "_children": {},
                     "_cover": None,
@@ -979,6 +797,7 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                     "_show_specials": False,
                 }
             node[part]["_total_count"] += r["movie_count"]
+            node[part]["_item_count"] += r["item_count"]
             node[part]["_watched_count"] += r["watched_count"] or 0
             if r["created_max"] and (not node[part]["_created_max"] or r["created_max"] > node[part]["_created_max"]):
                 node[part]["_created_max"] = r["created_max"]
@@ -1067,8 +886,8 @@ async def get_folder_tree_from_db(media_root: str = "") -> list[dict]:
                 "created_max": info["_created_max"],
                 "release_date_max": info["_release_date_max"],
                 "watched_count": info["_watched_count"],
-                "folder_watched": bool(info["_total_count"] and info["_watched_count"] >= info["_total_count"]),
-                "progress_percent": round((info["_watched_count"] / info["_total_count"]) * 100) if info["_total_count"] else 0,
+                "folder_watched": bool(info["_item_count"] and info["_watched_count"] >= info["_item_count"]),
+                "progress_percent": round((info["_watched_count"] / info["_item_count"]) * 100) if info["_item_count"] else 0,
                 "tmdb_id": info.get("_tmdb_id"),
                 "tmdb_type": info.get("_tmdb_type"),
                 "special_count": info.get("_special_count", 0),
@@ -1374,9 +1193,10 @@ async def delete_movie(movie_id: int):
 
 async def get_media_roots() -> list[dict]:
     db = await get_db()
+    display_count_expr = _display_media_count_expr()
     cur = await db.execute(
-        "SELECT media_root, COUNT(*) as cnt FROM movies "
-        "WHERE media_root != '' AND COALESCE(content_role, 'main') != 'special' "
+        f"SELECT media_root, {display_count_expr} as cnt FROM movies "
+        f"WHERE media_root != '' AND {MAIN_CONTENT_WHERE} "
         "GROUP BY media_root"
     )
     rows = await cur.fetchall()

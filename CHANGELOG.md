@@ -8,6 +8,35 @@ All notable changes to MediaTree are documented here.
 
 ## Unreleased
 
+### Release Pipeline
+
+- Slimmed Docker builds by making full Noto CJK and emoji fonts opt-in build arguments while keeping the default WenQuanYi and bundled subtitle fallback fonts
+- Added a shared `scripts/build-app-package.sh` builder so local and GitHub release packaging strip pycache, bytecode, source maps, and local metadata consistently
+- Updated the build/update rules to keep Docker and app-package artifacts small by default, with full Docker image updates required for runtime font policy changes
+
+### Release Type
+
+- Full Docker image update is required because this changes the Dockerfile/runtime font policy and release packaging path
+
+---
+
+## 1.0.15 (2026-06-14)
+
+### Windows Desktop
+
+- Added a Settings option to expose the bundled Windows backend on the LAN so `mediatree-app` can connect to the Windows desktop backend
+- Kept the default backend listener loopback-only, and only binds `0.0.0.0` after the user enables mobile access and restarts the local service from Settings
+- Moved the login username/password fields into the mobile access area so the Windows app and `mediatree-app` use the same configured backend account after saving
+
+### Library
+
+- Media library counts now treat TV-season and folder entries as one displayed item, avoiding over-counting season-based content on the home page
+
+### Playback
+
+- Tuned player chrome auto-hide timing to reduce controls covering the video during playback
+- Refined the episode switcher button glass styling so the player tool area feels lighter
+
 ### Removed
 
 - Removed the Jellyfin/Emby compatibility API layer, including legacy `/System`, `/Users`, `/Items`, `/Videos`, `/Sessions`, `/Shows`, `/Library`, `/DisplayPreferences`, `/Genres`, and `/emby` routes
@@ -16,20 +45,17 @@ All notable changes to MediaTree are documented here.
 
 ### Docs
 
-- Updated README and Wiki pages so current setup guidance no longer advertises Jellyfin/Emby-compatible server access
+- Removed the repository-maintained GitHub Wiki mirror under `docs/wiki*`; the VitePress docs site is now the canonical documentation entry
+- Updated README and development docs to point users to the docs site instead of the legacy Wiki
+- Updated README and docs-site pages so current setup guidance no longer advertises Jellyfin/Emby-compatible server access
 
----
+### Release Pipeline
 
-## 1.0.15 (2026-06-11)
-
-### Windows Desktop
-
-- Added a Settings option to expose the bundled Windows backend on the LAN so `mediatree-app` can connect to the Windows desktop backend
-- Kept the default backend listener loopback-only, and only binds `0.0.0.0` after the user enables mobile access and restarts the local service from Settings
-- Moved the login username/password fields into the mobile access area so the Windows app and `mediatree-app` use the same configured backend account after saving
+- Release publishing remains manually triggered, so ordinary `push` events do not publish a new version
 
 ### Release Type
 
+- App-package update; no full Docker image update is required
 - Windows full update required because this changes WinUI Settings, backend launch behavior, and the Windows runtime surface
 
 ---

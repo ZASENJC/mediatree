@@ -8,6 +8,8 @@ VERSION="${1:-$(head -n 1 VERSION | tr -d '[:space:]')}"
 PLATFORMS="${PLATFORMS:-linux/amd64,linux/arm64}"
 PORT="${PORT:-80}"
 BUILDER="${DOCKER_BUILDX_BUILDER:-${BUILDER:-}}"
+INCLUDE_FULL_CJK_FONTS="${INCLUDE_FULL_CJK_FONTS:-false}"
+INCLUDE_EMOJI_FONT="${INCLUDE_EMOJI_FONT:-false}"
 METADATA_FILE=".github/release-metadata.json"
 
 if [[ -z "$VERSION" ]]; then
@@ -41,7 +43,13 @@ cmd=(docker buildx build)
 if [[ -n "$BUILDER" ]]; then
   cmd+=(--builder "$BUILDER")
 fi
-cmd+=(--platform "$PLATFORMS" --build-arg "PORT=$PORT" --build-arg "MEDIATREE_VERSION=$VERSION")
+cmd+=(
+  --platform "$PLATFORMS"
+  --build-arg "PORT=$PORT"
+  --build-arg "MEDIATREE_VERSION=$VERSION"
+  --build-arg "INCLUDE_FULL_CJK_FONTS=$INCLUDE_FULL_CJK_FONTS"
+  --build-arg "INCLUDE_EMOJI_FONT=$INCLUDE_EMOJI_FONT"
+)
 
 if [[ "$REQUIRES_IMAGE_UPDATE" == "true" ]]; then
   cmd+=(-t "zasenjc/mediatree:${VERSION}" -t "zasenjc/mediatree:latest")
@@ -54,6 +62,8 @@ cmd+=(--push .)
 echo "Version: $VERSION"
 echo "Release type: $([[ "$REQUIRES_IMAGE_UPDATE" == "true" ]] && echo "full Docker image" || echo "app-package")"
 echo "Reason: $RELEASE_REASON"
+echo "Full CJK fonts: $INCLUDE_FULL_CJK_FONTS"
+echo "Emoji font: $INCLUDE_EMOJI_FONT"
 printf 'Running:'
 printf ' %q' "${cmd[@]}"
 printf '\n'

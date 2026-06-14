@@ -9,7 +9,12 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
-from app import config, database, main
+from app import config, database, main, security
+from app.routers import auth as auth_router
+from app.routers import backup as backup_router
+from app.routers import media as media_router
+from app.routers import subtitles as subtitles_router
+from app.routers import update as update_router
 from app.config import fetch_safe_image
 from app.updater import _format_command_for_logs, _trim_update_logs
 
@@ -51,11 +56,17 @@ class SecurityRegressionTest(unittest.TestCase):
                 "javdb_thumbnails": [],
             }
 
-        self.detail_patch = patch("app.main.get_movie_detail", fake_detail)
-        self.detail_patch.start()
+        self.fake_detail = fake_detail
+        self.detail_patches = [
+            patch("app.main.get_movie_detail", fake_detail),
+            patch("app.routers.media.get_movie_detail", fake_detail),
+        ]
+        for detail_patch in self.detail_patches:
+            detail_patch.start()
 
     def tearDown(self):
-        self.detail_patch.stop()
+        for detail_patch in self.detail_patches:
+            detail_patch.stop()
         database._db_pool = self.orig_db_pool
         config.settings.media_root = self.orig_media_root
         config.settings.data_dir = self.orig_data_dir
@@ -109,8 +120,9 @@ class SecurityRegressionTest(unittest.TestCase):
             token_response = client.post("/api/media-token", headers=self.auth_headers())
             media_token = token_response.json()["token"]
 
-            with patch("app.main.get_subtitle_tracks", return_value=[{"index": 0, "stream_index": 0, "codec": "srt"}]), \
-                    patch("app.main.find_external_subtitles", return_value=[{"path": str(self.media_root / "Movie.srt"), "format": "srt"}]):
+            with patch("app.routers.subtitles.get_movie_detail", self.fake_detail), \
+                    patch("app.routers.subtitles.get_subtitle_tracks", return_value=[{"index": 0, "stream_index": 0, "codec": "srt"}]), \
+                    patch("app.routers.subtitles.find_external_subtitles", return_value=[{"path": str(self.media_root / "Movie.srt"), "format": "srt"}]):
                 response = client.get(f"/api/subtitle-tracks/1?token={media_token}")
 
             self.assertEqual(response.status_code, 200)
@@ -218,8 +230,69 @@ class SecurityRegressionTest(unittest.TestCase):
             self.assertFalse(status.json()["auth_configured"])
 
             response = client.get("/api/media-roots")
+            self.assertEqual(response.status_code, 401)
 
-        self.assertEqual(response.status_code, 401)
+    def test_auth_middleware_lives_in_security_module(self):
+        self.assertIs(main.AuthMiddleware, security.AuthMiddleware)
+        self.assertEqual(main.AuthMiddleware.__module__, "app.security")
+
+    def test_auth_routes_live_in_auth_router(self):
+        route_names = {
+            getattr(route.endpoint, "__module__", "")
+            for route in main.app.routes
+            if getattr(route, "path", "") in {
+                "/api/auth/login",
+                "/api/auth/setup",
+                "/api/auth/status",
+                "/api/media-token",
+            }
+        }
+        self.assertEqual(route_names, {auth_router.__name__})
+
+    def test_update_routes_live_in_update_router(self):
+        route_names = {
+            getattr(route.endpoint, "__module__", "")
+            for route in main.app.routes
+            if getattr(route, "path", "") == "/api/version"
+            or getattr(route, "path", "").startswith("/api/update/")
+        }
+        self.assertEqual(route_names, {update_router.__name__})
+
+    def test_backup_routes_live_in_backup_router(self):
+        route_names = {
+            getattr(route.endpoint, "__module__", "")
+            for route in main.app.routes
+            if getattr(route, "path", "") == "/api/backup"
+            or getattr(route, "path", "").startswith("/api/restore")
+        }
+        self.assertEqual(route_names, {backup_router.__name__})
+
+    def test_subtitle_routes_live_in_subtitles_router(self):
+        route_names = {
+            getattr(route.endpoint, "__module__", "")
+            for route in main.app.routes
+            if getattr(route, "path", "").startswith((
+                "/api/subtitle",
+                "/api/external-play",
+            ))
+        }
+        self.assertEqual(route_names, {subtitles_router.__name__})
+
+    def test_media_routes_live_in_media_router(self):
+        media_paths = {
+            "/api/stream/{movie_id}",
+            "/api/media-info/{movie_id}",
+            "/api/cover/{movie_id}",
+            "/api/cached-cover/{cache_key}",
+            "/api/episode-still/{movie_id}",
+            "/api/thumbnail/{movie_id}/{index}",
+        }
+        route_names = {
+            getattr(route.endpoint, "__module__", "")
+            for route in main.app.routes
+            if getattr(route, "path", "") in media_paths
+        }
+        self.assertEqual(route_names, {media_router.__name__})
 
     def test_auth_setup_bootstraps_first_admin_session(self):
         config.settings.auth_user = ""

@@ -8,6 +8,35 @@
 
 ## 未发布
 
+### 发布流水线
+
+- 精简 Docker 构建：完整 Noto CJK 和 emoji 字体改为按需构建参数，默认保留 WenQuanYi 和前端内置字幕兜底字体
+- 新增共享 `scripts/build-app-package.sh` 打包脚本，本地和 GitHub release 打包都会统一剔除 pycache、bytecode、source map 和本地元数据
+- 更新构建/更新规则，后续 Docker 与应用包构建默认保持瘦身；调整运行时字体策略时必须走完整 Docker 镜像更新
+
+### 发布类型
+
+- 需要完整 Docker 镜像更新，因为本次调整了 Dockerfile/runtime 字体策略和 release 打包路径
+
+---
+
+## 1.0.15 (2026-06-14)
+
+### Windows 桌面版
+
+- 设置页新增 `移动端访问`，可将 Windows 内置后端开放到局域网，让 `mediatree-app` 连接 Windows 桌面版后端使用
+- 默认仍只监听本机回环地址；只有用户启用移动端访问并从设置页重启本机服务后，后端才会绑定 `0.0.0.0`
+- `移动端访问` 区域合并登录用户名/密码设置；用户保存账密后，Windows 本机和 `mediatree-app` 后续都使用这组账号访问同一个本地后端
+
+### 媒体库
+
+- 媒体库数量统计会将电视剧季和文件夹条目作为一个显示项统计，避免季集型内容在首页数量中过度展开
+
+### 播放
+
+- 优化播放器控制栏自动隐藏时机，减少播放中控件遮挡画面的情况
+- 调整剧集切换按钮的玻璃质感样式，让播放器工具区更轻量
+
 ### 移除
 
 - 移除 Jellyfin/Emby 兼容 API 层，包括旧的 `/System`、`/Users`、`/Items`、`/Videos`、`/Sessions`、`/Shows`、`/Library`、`/DisplayPreferences`、`/Genres` 和 `/emby` 路由
@@ -16,20 +45,17 @@
 
 ### 文档
 
-- 更新 README 和 Wiki，当前安装/使用说明不再宣称服务端支持 Jellyfin/Emby 兼容访问
+- 移除仓库内维护的 GitHub Wiki 镜像目录 `docs/wiki*`，统一以 VitePress 文档站作为文档入口
+- 更新 README 和开发文档，用户说明统一指向文档站，不再保留旧 Wiki 入口
+- 更新 README 和文档站，当前安装/使用说明不再宣称服务端支持 Jellyfin/Emby 兼容访问
 
----
+### 发布流水线
 
-## 1.0.15 (2026-06-11)
-
-### Windows 桌面版
-
-- 设置页新增 `移动端访问`，可将 Windows 内置后端开放到局域网，让 `mediatree-app` 连接 Windows 桌面版后端使用
-- 默认仍只监听本机回环地址；只有用户启用移动端访问并从设置页重启本机服务后，后端才会绑定 `0.0.0.0`
-- `移动端访问` 区域合并登录用户名/密码设置；用户保存账密后，Windows 本机和 `mediatree-app` 后续都使用这组账号访问同一个本地后端
+- 发布流程保持手动触发，普通 `push` 不会自动发布版本
 
 ### 发布类型
 
+- 应用包级更新；不需要完整 Docker 镜像更新
 - 需要 Windows 全量更新；本次改动涉及 WinUI 设置页、后端启动行为和 Windows 运行时边界
 
 ---

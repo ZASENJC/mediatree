@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github" / "workflows" / "release-tag.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
 LOCAL_DOCKER_PUSH = ROOT / "scripts" / "push-docker-release.sh"
+APP_PACKAGE_BUILDER = ROOT / "scripts" / "build-app-package.sh"
 TELEGRAM_NOTIFY = ROOT / ".github" / "scripts" / "notify-telegram-release.sh"
 DOCKERFILE = ROOT / "Dockerfile"
 
@@ -103,15 +104,23 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("linux/amd64,linux/arm64", script)
 
     def test_release_manifest_includes_windows_base_update_metadata(self):
-        app_package = self._step_block("Build app update package")
         metadata = (ROOT / ".github" / "release-metadata.json").read_text(encoding="utf-8")
+        builder = APP_PACKAGE_BUILDER.read_text(encoding="utf-8")
 
-        self.assertIn("requires_windows_base_update", app_package)
-        self.assertIn("windows_reason", app_package)
+        self.assertIn("requires_windows_base_update", builder)
+        self.assertIn("windows_reason", builder)
         self.assertIn("RELEASE_REQUIRES_WINDOWS_BASE_UPDATE", self.workflow)
         self.assertIn("RELEASE_WINDOWS_UPDATE_REASON", self.workflow)
         self.assertIn("requires_windows_base_update", metadata)
         self.assertIn("windows_reason", metadata)
+
+    def test_local_docker_push_script_exposes_size_tuning_build_args(self):
+        script = LOCAL_DOCKER_PUSH.read_text(encoding="utf-8")
+
+        self.assertIn("INCLUDE_FULL_CJK_FONTS", script)
+        self.assertIn('--build-arg "INCLUDE_FULL_CJK_FONTS=$INCLUDE_FULL_CJK_FONTS"', script)
+        self.assertIn("INCLUDE_EMOJI_FONT", script)
+        self.assertIn('--build-arg "INCLUDE_EMOJI_FONT=$INCLUDE_EMOJI_FONT"', script)
 
     def test_docker_release_push_labels_latest_with_version_baseline(self):
         script = LOCAL_DOCKER_PUSH.read_text(encoding="utf-8")
@@ -120,6 +129,38 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn('--build-arg "MEDIATREE_VERSION=$VERSION"', script)
         self.assertIn("ARG MEDIATREE_VERSION=unknown", dockerfile)
         self.assertIn("org.opencontainers.image.version=$MEDIATREE_VERSION", dockerfile)
+
+    def test_dockerfile_keeps_large_fonts_optional_and_avoids_base_gnupg(self):
+        dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+        base_install = dockerfile.split("ARG INCLUDE_DOCKER_CLI", 1)[0]
+
+        self.assertIn("ARG INCLUDE_FULL_CJK_FONTS=false", dockerfile)
+        self.assertIn("ARG INCLUDE_EMOJI_FONT=false", dockerfile)
+        self.assertIn("fonts-wqy-microhei", dockerfile)
+        self.assertIn("fonts-noto-cjk", dockerfile)
+        self.assertIn("fonts-noto-color-emoji", dockerfile)
+        self.assertNotIn("gnupg", base_install)
+
+    def test_dockerfile_copies_runtime_backend_only(self):
+        dockerfile = DOCKERFILE.read_text(encoding="utf-8")
+
+        self.assertIn("ENV PYTHONDONTWRITEBYTECODE=1", dockerfile)
+        self.assertIn("COPY backend/app ./app", dockerfile)
+        self.assertNotIn("COPY backend/ ./", dockerfile)
+
+    def test_release_workflow_uses_shared_app_package_builder(self):
+        self.assertIn("scripts/build-app-package.sh", self.workflow)
+        self.assertNotIn('tar -czf "$ARCHIVE"', self.workflow)
+
+    def test_app_package_builder_strips_bytecode_and_uses_max_compression(self):
+        script = APP_PACKAGE_BUILDER.read_text(encoding="utf-8")
+
+        self.assertIn("rm -rf", script)
+        self.assertIn("__pycache__", script)
+        self.assertIn("*.pyc", script)
+        self.assertIn("compresslevel=9", script)
+        self.assertIn("mtime=0", script)
+        self.assertIn("sorted(pkg_dir.rglob", script)
 
 
 if __name__ == "__main__":

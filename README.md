@@ -10,11 +10,11 @@
 </p>
 
 <p align="center">
-  <strong>简体中文</strong> · <a href="README_en.md">English</a> · <a href="#快速部署">快速部署</a> · <a href="https://github.com/ZASENJC/mediatree/wiki">Wiki</a> · <a href="CHANGELOG_zh-CN.md">更新日志</a>
+  <strong>简体中文</strong> · <a href="README_en.md">English</a> · <a href="#快速部署">快速部署</a> · <a href="https://zasenjc.github.io/mediatree/">文档站</a> · <a href="CHANGELOG_zh-CN.md">更新日志</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG_zh-CN.md"><img src="https://img.shields.io/badge/版本-1.0.14-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG_zh-CN.md"><img src="https://img.shields.io/badge/版本-1.0.15-blue?style=flat-square" alt="Version"></a>
   <a href="https://github.com/ZASENJC/mediatree/blob/main/LICENSE"><img src="https://img.shields.io/badge/许可证-MIT-green?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react" alt="React">
@@ -135,6 +135,8 @@ Windows 桌面版不复用 Web 端 React 前端。Web 使用 `frontend/`，Windo
 pwsh packaging/windows/build-windows.ps1 -Configuration Release
 ```
 
+默认镜像为了减小体积，只内置轻量中文字体 `fonts-wqy-microhei`，并使用前端随包的字幕兜底字体；不再默认包含完整 Noto CJK 和 emoji 字体。需要更完整的字幕字体覆盖时，可以在设置页上传字体；维护者只有在发布内容明确需要时才会用 `INCLUDE_FULL_CJK_FONTS=true` 或 `INCLUDE_EMOJI_FONT=true` 构建完整字体镜像。
+
 ## 常用配置
 
 | 变量 | 作用 |
@@ -148,7 +150,7 @@ pwsh packaging/windows/build-windows.ps1 -Configuration Release
 
 刮削器缓存有效期和 Javdatabase 请求间隔由应用内部管理，不再需要在设置页或环境变量里调整。手动扫描、重新刮削和手动应用结果会绕过缓存，空结果不会写入缓存，避免旧的空结果挡住后续补齐的数据。
 
-完整配置见 [.env.example](.env.example)。高级配置、刮削逻辑、播放和排障说明放在 [Wiki](https://github.com/ZASENJC/mediatree/wiki)。
+完整配置见 [.env.example](.env.example)。高级配置、刮削逻辑、播放和排障说明放在 [文档站](https://zasenjc.github.io/mediatree/)。
 
 ## 更新
 
@@ -171,7 +173,7 @@ docker compose up -d
 
 | 文档 | 说明 |
 |---|---|
-| [Wiki](https://github.com/ZASENJC/mediatree/wiki) | 完整使用指南、高级配置、刮削说明和排障 |
+| [文档站](https://zasenjc.github.io/mediatree/) | 推荐入口，包含部署、配置、刮削、升级、API 和开发文档 |
 | [README_en.md](README_en.md) | English README |
 | [CHANGELOG_zh-CN.md](CHANGELOG_zh-CN.md) | 中文版本历史 |
 | [CHANGELOG.md](CHANGELOG.md) | 英文版本历史 |

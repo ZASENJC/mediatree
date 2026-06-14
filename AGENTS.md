@@ -138,6 +138,10 @@ scripts/push-docker-release.sh
 - Windows 架构按三层管理：`windows/MediaTree.Windows/` 是独立 WinUI 前端；`backend/app/` 是 Web/Docker/Windows 共享的 MediaTree 后端逻辑，Windows 只通过 `windows_entry.py`、`windows_runtime.py`、打包脚本和环境变量做平台迁移；远程 MediaTree、Jellyfin、Emby 等外部媒体库连接放在 WinUI 的 Provider/媒体源适配层，不复用已删除的 MediaTree 后端 Jellyfin/Emby 兼容层。
 - Windows 前端重构优先顺序：先拆分 MediaTree API 客户端和 DTO/服务边界，再建立 Provider contracts 与 `LocalMediaTreeProvider`，随后将页面逐步改为依赖 Provider 接口；远程 MediaTree Provider 优先于 Jellyfin/Emby Provider，因为它最接近现有 MediaTree API 语义。
 
+Default Docker builds are size-optimized. Keep `INCLUDE_FULL_CJK_FONTS=false` and `INCLUDE_EMOJI_FONT=false` unless a release explicitly needs the full Noto CJK or emoji font packages; the default image keeps `fonts-wqy-microhei` plus the bundled frontend subtitle fallback font. If full Noto fonts are enabled or Dockerfile/runtime font policy changes, treat the release as a full Docker image update.
+
+Application update packages must be built with `scripts/build-app-package.sh`. Do not reintroduce inline release-workflow packaging logic; the shared builder strips bytecode, pycache, source maps, and local metadata before creating the release archive.
+
 ## Security Without Hooks
 
 Codex does not provide Claude Code hooks in this repo, so enforce security through review and verification:
@@ -168,6 +172,7 @@ Codex does not provide Claude Code hooks in this repo, so enforce security throu
   - Treat Web React UI changes as Web-only unless the same feature is explicitly implemented in `windows/MediaTree.Windows/`; if a Web UI feature must appear in Windows, adapt it in WinUI and use Windows `全量更新`.
   - Use Windows `全量更新` when the change touches WinUI pages/components, Windows DTO/API consumption, player UI, settings UI, Python dependencies, bundled binaries, ffmpeg/libmpv, PyInstaller packaging, Windows bootstrap/session behavior, or any native/runtime surface; set `requires_windows_base_update: true` and publish a new Windows full package asset.
   - For shared backend changes, check whether Windows API consumers and DTOs still match. If no Windows frontend/native change is needed, app-package can sync the backend; if Windows models/pages must change, ship the backend change together with a Windows full package.
+- Keep build artifacts small by default: app-package releases use `scripts/build-app-package.sh`; DockerHub pushes use `scripts/push-docker-release.sh` with the default font build args unless the release notes call out a runtime-font requirement.
 - Every release must refresh DockerHub `zasenjc/mediatree:latest` so new Docker installs start from the newest application baseline. Do this from a local build/push with `scripts/push-docker-release.sh`, not GitHub Actions. App-package releases publish only `latest`; full Docker image releases publish both `zasenjc/mediatree:<version>` and `latest`.
 - Keep GitHub Release notes user-facing: write concise functional changes and upgrade guidance for users there, and put implementation details, configuration changes, test notes, and maintainer bookkeeping in `CHANGELOG.md` / `CHANGELOG_zh-CN.md`.
 - When the chosen path is full Docker image update, keep Settings/release messaging aligned so users are guided to host-side `docker compose pull && docker compose up -d` when in-container image replacement is unavailable.

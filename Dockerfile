@@ -1,7 +1,10 @@
+# syntax=docker/dockerfile:1.7
+
 FROM node:22-alpine AS frontend-build
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --legacy-peer-deps
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --legacy-peer-deps --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
@@ -13,16 +16,22 @@ LABEL org.opencontainers.image.title="MediaTree" \
       org.opencontainers.image.source="https://github.com/ZASENJC/mediatree" \
       org.opencontainers.image.version=$MEDIATREE_VERSION
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    ffmpeg \
-    fontconfig \
-    fonts-noto-cjk \
-    fonts-noto-color-emoji \
-    fonts-wqy-microhei \
-    gnupg \
-    && rm -rf /var/lib/apt/lists/*
+ARG INCLUDE_FULL_CJK_FONTS=false
+ARG INCLUDE_EMOJI_FONT=false
+RUN set -eux; \
+    apt-get update; \
+    packages="ca-certificates curl ffmpeg fontconfig fonts-wqy-microhei"; \
+    if [ "$INCLUDE_FULL_CJK_FONTS" = "true" ]; then packages="$packages fonts-noto-cjk"; fi; \
+    if [ "$INCLUDE_EMOJI_FONT" = "true" ]; then packages="$packages fonts-noto-color-emoji"; fi; \
+    apt-get install -y --no-install-recommends $packages; \
+    rm -rf \
+      /var/lib/apt/lists/* \
+      /usr/share/doc/* \
+      /usr/share/man/* \
+      /usr/share/info/* \
+      /usr/share/lintian \
+      /usr/share/locale/* \
+      /var/cache/debconf/*-old
 
 ARG INCLUDE_DOCKER_CLI=false
 RUN if [ "$INCLUDE_DOCKER_CLI" = "true" ]; then \
@@ -36,9 +45,10 @@ RUN if [ "$INCLUDE_DOCKER_CLI" = "true" ]; then \
     fi
 
 COPY backend/requirements.txt backend/constraints.txt ./
-RUN pip install --no-cache-dir -r requirements.txt -c constraints.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -r requirements.txt -c constraints.txt
 
-COPY backend/ ./
+COPY backend/app ./app
 COPY --from=frontend-build /build/dist /opt/mediatree/base/frontend/dist
 
 RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin mediatree \
@@ -52,6 +62,8 @@ RUN chmod +x /usr/local/bin/mediatree-entrypoint
 ENV MEDIA_ROOT=/media
 ENV DATA_DIR=/app/data
 ENV MEDIATREE_BASE_DIR=/opt/mediatree/base
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 ENV JAVDB_ENABLED=true
 ENV SCAN_ON_STARTUP=true
 

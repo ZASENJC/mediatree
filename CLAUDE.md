@@ -60,6 +60,10 @@ docker compose up -d --build
 scripts/push-docker-release.sh
 ```
 
+Default Docker builds are size-optimized. Keep `INCLUDE_FULL_CJK_FONTS=false` and `INCLUDE_EMOJI_FONT=false` unless a release explicitly needs full Noto CJK or emoji packages; the base image keeps `fonts-wqy-microhei` plus the frontend bundled subtitle fallback font. Enabling those build args or changing Dockerfile/runtime font policy requires the full Docker image update path.
+
+Application update packages must be produced by `scripts/build-app-package.sh`. Keep GitHub Actions and local release work on that shared builder so archives strip bytecode, pycache, source maps, and local metadata consistently.
+
 ### Configuration
 
 Copy `.env.example` to `.env` and configure:
@@ -123,6 +127,7 @@ In production, the backend serves the built frontend at `/`. In development, run
 ### Update / self-upgrade system (`updater.py`)
 - Two-tier update strategy: lightweight app-package (default) and full Docker image (optional, requires Docker socket mount and a Docker-CLI-capable image)
 - GitHub Actions publishes the app package for every release. DockerHub sync is local-only: run `scripts/push-docker-release.sh` after release validation to refresh `zasenjc/mediatree:latest`; full image releases additionally publish `zasenjc/mediatree:<version>`
+- App-package archives must be built by `scripts/build-app-package.sh`; Docker image pushes use slim defaults unless full CJK or emoji fonts are required and documented for that release.
 - App-package flow: `GET /api/update/check` → `POST /api/update/perform` downloads `mediatree-app-<version>.tar.gz` into `data/releases/` → `mark_update_success_after_restart()` on next startup marks success and cleans older packages → `POST /api/update/rollback` to revert to previous version
 - Docker flow: `docker pull zasenjc/mediatree:<tag>` + `docker compose up -d` restart
 - `GET /api/version` — return the user-visible current version (highest installed version), plus runtime/image details for internal update decisions (public, no auth)

@@ -4,7 +4,6 @@ import json
 import hashlib
 import asyncio
 from pathlib import Path
-from xml.etree import ElementTree as ET
 from datetime import datetime
 from .config import settings
 from .anime_naming import parse_anime_filename
@@ -13,6 +12,12 @@ from .scrapers.registry import get_scraper
 from .scrapers.utils import scrape_result_to_legacy, _candidate_to_dict
 from .scrapers.tmdb_scraper import tmdb_title_search
 from .scraper_cache_policy import bypass_scraper_cache
+from .services.folders import (
+    build_local_metadata,
+    detect_special_parent_levels,
+    find_cover_recursive,
+    should_skip_dir,
+)
 from .title_match import (
     TmdbIdToken, CODE_PATTERN, CODE_PATTERN_UNDERSCORE,
     extract_code, extract_tmdb_token_from_name, extract_tmdb_ref,
@@ -72,145 +77,6 @@ def _set_scan_progress(media_root: str, **fields):
 
 
 # ── File system scanning ───────────────────────────────────────────────────
-
-COVER_NAMES = {"poster.jpg", "poster.png", "cover.jpg", "cover.png", "folder.jpg", "folder.png",
-               "movie-poster.jpg", "movie-poster.png", "season-poster.jpg", "season-poster.png",
-               "banner.jpg", "banner.png", "fanart.jpg", "fanart.png", "backdrop.jpg", "backdrop.png"}
-NFO_NAMES = {"movie.nfo", "tvshow.nfo"}
-SKIP_DIRS = {".DS_Store", "__MACOSX", "Thumbs.db", ".Trashes"}
-
-def _should_skip_dir(name: str) -> bool:
-    return name in SKIP_DIRS or name.startswith(".")
-
-def find_cover(folder: Path) -> str | None:
-    for name in COVER_NAMES:
-        p = folder / name
-        if p.exists():
-            return str(p)
-    for f in sorted(folder.glob("*.jpg")):
-        return str(f)
-    for f in sorted(folder.glob("*.png")):
-        return str(f)
-    return None
-
-def find_cover_recursive(folder: Path, media_root: str) -> str | None:
-    current = folder
-    root = Path(media_root)
-    while current >= root:
-        cover = find_cover(current)
-        if cover:
-            return cover
-        if current == root:
-            break
-        current = current.parent
-    return None
-
-def find_nfo_file(folder: Path) -> str | None:
-    for name in NFO_NAMES:
-        p = folder / name
-        if p.exists():
-            return str(p)
-    for f in sorted(folder.glob("*.nfo")):
-        return str(f)
-    return None
-
-def parse_nfo(filepath: str) -> dict:
-    try:
-        parser = ET.XMLParser(resolve_entities=False)
-        tree = ET.parse(filepath, parser=parser)
-        root = tree.getroot()
-    except Exception:
-        return {}
-    result = {"nfo_type": (root.tag or "").lower()}
-    def _text(tag: str) -> str | None:
-        el = root.find(tag)
-        return el.text.strip() if el is not None and el.text else None
-    title = _text("title")
-    if title: result["title"] = title
-    original_title = _text("originaltitle")
-    if original_title: result["original_title"] = original_title
-    plot = _text("plot")
-    if plot: result["plot"] = plot
-    year = _text("year")
-    if year:
-        try: result["year"] = int(year)
-        except ValueError: pass
-    premiered = _text("premiered") or _text("release_date")
-    if premiered:
-        date_match = re.search(r"\d{4}-\d{2}-\d{2}", premiered)
-        if date_match: result["premiered"] = date_match.group()
-    rating = _text("rating")
-    if rating:
-        try: result["rating"] = float(rating)
-        except ValueError: pass
-    runtime = _text("runtime")
-    if runtime:
-        try: result["runtime"] = int(runtime)
-        except ValueError: pass
-    genres = [g.text.strip() for g in root.findall("genre") if g.text]
-    if genres: result["genre"] = ", ".join(genres)
-    actors = []
-    for actor_el in root.findall("actor"):
-        name_el = actor_el.find("name")
-        if name_el is not None and name_el.text:
-            actors.append(name_el.text.strip())
-    if actors: result["actors"] = actors
-    director = _text("director")
-    if director: result["director"] = director
-    studio = _text("studio")
-    if studio: result["studio"] = studio
-    return result
-
-def extract_year_from_name(name: str) -> int | None:
-    match = re.search(r'[\(\[](\d{4})[\)\]]', name)
-    if match: return int(match.group(1))
-    match = re.search(r'(?:^|[._\-\s])(\d{4})(?:[._\-\s]|$)', name.replace('1080p', '').replace('2160p', '').replace('720p', ''))
-    if match:
-        year = int(match.group(1))
-        if 1888 <= year <= 2030: return year
-    return None
-
-def build_local_metadata(folder: Path, folder_name: str, code: str) -> dict:
-    metadata: dict = {}
-    nfo_path = find_nfo_file(folder)
-    if nfo_path:
-        nfo_data = parse_nfo(nfo_path)
-        if nfo_data: metadata["nfo"] = nfo_data
-    year = extract_year_from_name(folder_name)
-    if year: metadata["detected_year"] = year
-    return metadata
-
-SPECIAL_DIR_NAMES = {
-    "sp",
-    "sps",
-    "special",
-    "specials",
-    "extra",
-    "extras",
-    "bonus",
-    "bonuses",
-    "featurette",
-    "featurettes",
-    "behind the scenes",
-    "cm",
-    "cms",
-    "menu",
-    "menus",
-    "ncop",
-    "nced",
-    "pv",
-    "pvs",
-    "映像特典",
-    "特典",
-    "花絮",
-}
-
-def detect_special_parent_levels(folder_levels: str) -> str | None:
-    parts = [part.strip() for part in folder_levels.replace("\\", "/").split("/") if part.strip() and part.strip() != "."]
-    for index, part in enumerate(parts):
-        if part.lower() in SPECIAL_DIR_NAMES:
-            return "/".join(parts[:index])
-    return None
 
 def scan_media(root: str = None, javdatabase_roots: set[str] | None = None) -> list[dict]:
     from .covers import find_local_episode_still
@@ -312,7 +178,7 @@ def scan_media(root: str = None, javdatabase_roots: set[str] | None = None) -> l
                 if folder_mtime:
                     item["created_at"] = datetime.fromtimestamp(folder_mtime).strftime("%Y-%m-%d %H:%M:%S")
                 results.append(item)
-            dirnames[:] = [d for d in dirnames if not _should_skip_dir(d)]
+            dirnames[:] = [d for d in dirnames if not should_skip_dir(d)]
         _set_scan_progress(media_root, status="scanned", done=0, total=0, trigger=trigger)
     return results
 
