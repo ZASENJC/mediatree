@@ -4,6 +4,10 @@
     "reason": "应用包级更新；不需要完整 Docker 镜像更新。"
   },
   "versions": {
+    "1.0.15": {
+      "requires_image_update": false,
+      "reason": "应用包级更新；本版本包含应用代码、前端体验、文档站和兼容 API 清理，不需要完整 Docker 镜像更新。"
+    },
     "1.0.14": {
       "requires_image_update": false,
       "reason": "应用包级更新；本版本只包含前端播放页标题和更新卡片文案调整，不需要完整 Docker 镜像更新。"

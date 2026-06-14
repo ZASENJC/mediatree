@@ -8,6 +8,19 @@ All notable changes to MediaTree are documented here.
 
 ## Unreleased
 
+---
+
+## 1.0.15 (2026-06-14)
+
+### Library
+
+- Media library counts now treat TV-season and folder entries as one displayed item, avoiding over-counting season-based content on the home page
+
+### Playback
+
+- Tuned player chrome auto-hide timing to reduce controls covering the video during playback
+- Refined the episode switcher button glass styling so the player tool area feels lighter
+
 ### Removed
 
 - Removed the Jellyfin/Emby compatibility API layer, including legacy `/System`, `/Users`, `/Items`, `/Videos`, `/Sessions`, `/Shows`, `/Library`, `/DisplayPreferences`, `/Genres`, and `/emby` routes
@@ -18,6 +31,14 @@ All notable changes to MediaTree are documented here.
 - Removed the repository-maintained GitHub Wiki mirror under `docs/wiki*`; the VitePress docs site is now the canonical documentation entry
 - Updated README and development docs to point users to the docs site instead of the legacy Wiki
 - Updated README and docs-site pages so current setup guidance no longer advertises Jellyfin/Emby-compatible server access
+
+### Release Pipeline
+
+- Release publishing remains manually triggered, so ordinary `push` events do not publish a new version
+
+### Release Type
+
+- App-package update; no full Docker image update is required
 
 ---
 
