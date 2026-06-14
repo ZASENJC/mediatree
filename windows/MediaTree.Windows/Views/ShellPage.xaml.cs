@@ -15,6 +15,7 @@ public sealed partial class ShellPage : Page
     private readonly Frame _contentFrame;
     private readonly Button _browseButton;
     private readonly Button _favoritesButton;
+    private readonly Grid _globalOverlayHost;
     private readonly Button _homeButton;
     private readonly Border _navigationHost;
     private readonly ColumnDefinition _navigationColumn;
@@ -26,7 +27,7 @@ public sealed partial class ShellPage : Page
 
     public ShellPage()
     {
-        (_contentFrame, _homeButton, _browseButton, _favoritesButton, _settingsButton, _updateIndicatorButton, _navigationHost, _navigationColumn) = BuildContent();
+        (_contentFrame, _homeButton, _browseButton, _favoritesButton, _settingsButton, _updateIndicatorButton, _navigationHost, _navigationColumn, _globalOverlayHost) = BuildContent();
         Current = this;
         Loaded += OnLoaded;
     }
@@ -85,6 +86,32 @@ public sealed partial class ShellPage : Page
         _navigationColumn.Width = visible ? new GridLength(_isCompactNavigation ? 88 : 248) : new GridLength(0);
     }
 
+    public void ShowGlobalOverlay(UIElement overlay)
+    {
+        _globalOverlayHost.Children.Clear();
+        _globalOverlayHost.Children.Add(overlay);
+        _globalOverlayHost.Visibility = Visibility.Visible;
+        _globalOverlayHost.IsHitTestVisible = true;
+    }
+
+    public void CloseGlobalOverlay(UIElement? overlay)
+    {
+        if (overlay is null)
+        {
+            _globalOverlayHost.Children.Clear();
+        }
+        else
+        {
+            _globalOverlayHost.Children.Remove(overlay);
+        }
+
+        if (_globalOverlayHost.Children.Count == 0)
+        {
+            _globalOverlayHost.Visibility = Visibility.Collapsed;
+            _globalOverlayHost.IsHitTestVisible = false;
+        }
+    }
+
     private void RemoveTopPlayerPagesFromBackStack()
     {
         while (_contentFrame.BackStack.Count > 0)
@@ -127,7 +154,7 @@ public sealed partial class ShellPage : Page
         }
     }
 
-    private (Frame contentFrame, Button homeButton, Button browseButton, Button favoritesButton, Button settingsButton, Button updateIndicatorButton, Border navigationHost, ColumnDefinition navigationColumn) BuildContent()
+    private (Frame contentFrame, Button homeButton, Button browseButton, Button favoritesButton, Button settingsButton, Button updateIndicatorButton, Border navigationHost, ColumnDefinition navigationColumn, Grid globalOverlayHost) BuildContent()
     {
         AutomationProperties.SetAutomationId(this, "ShellPage");
 
@@ -195,6 +222,15 @@ public sealed partial class ShellPage : Page
         Grid.SetColumn(contentFrame, 1);
         root.Children.Add(contentFrame);
 
+        var globalOverlayHost = new Grid
+        {
+            Visibility = Visibility.Collapsed,
+            IsHitTestVisible = false,
+        };
+        AutomationProperties.SetAutomationId(globalOverlayHost, "ShellGlobalOverlayHost");
+        Grid.SetColumnSpan(globalOverlayHost, 2);
+        root.Children.Add(globalOverlayHost);
+
         root.SizeChanged += (_, args) =>
         {
             _isCompactNavigation = args.NewSize.Width < 900;
@@ -206,7 +242,7 @@ public sealed partial class ShellPage : Page
         };
 
         Content = root;
-        return (contentFrame, homeButton, browseButton, favoritesButton, settingsButton, updateIndicatorButton, navigationHost, navigationColumn);
+        return (contentFrame, homeButton, browseButton, favoritesButton, settingsButton, updateIndicatorButton, navigationHost, navigationColumn, globalOverlayHost);
     }
 
     private static Button CreateUpdateIndicatorButton()

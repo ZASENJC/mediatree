@@ -141,9 +141,16 @@ public sealed partial class PlayerPage : Page
     private readonly TextBlock _thumbnailsTitleText;
     private readonly GridView _thumbnailsGrid;
     private readonly List<ThumbnailPreviewItem> _thumbnailPreviewItems = [];
+    private Grid? _thumbnailPreviewOverlay;
+    private Image? _thumbnailPreviewImage;
+    private ScaleTransform? _thumbnailPreviewScale;
+    private Button? _thumbnailPreviewPreviousButton;
+    private Button? _thumbnailPreviewNextButton;
+    private TextBlock? _thumbnailPreviewCounterText;
     private IMpvPlayerService? _player;
     private MovieDto? _movie;
     private PlayerStateSnapshot _state = new(0, 0, true);
+    private int _thumbnailPreviewIndex = -1;
     private int _movieId;
     private bool _controlsVisible = true;
     private bool _episodePanelOpen;
@@ -161,6 +168,7 @@ public sealed partial class PlayerPage : Page
     private double _duration;
     private double _lastKnownVolume = 80;
     private double _resumePosition;
+    private double _thumbnailPreviewZoom = 1;
 
     public PlayerPage()
     {
@@ -1568,116 +1576,223 @@ public sealed partial class PlayerPage : Page
             return;
         }
 
-        var currentIndex = index;
+        CloseThumbnailPreview();
+        _thumbnailPreviewIndex = index;
+        _thumbnailPreviewZoom = 1;
+        var overlay = BuildThumbnailPreviewOverlay();
+        _thumbnailPreviewOverlay = overlay;
+        ShellPage.Current?.ShowGlobalOverlay(overlay);
+        UpdateThumbnailPreviewImage();
+        _ = overlay.Focus(FocusState.Programmatic);
+        await Task.CompletedTask;
+    }
+
+    private Grid BuildThumbnailPreviewOverlay()
+    {
+        var overlay = new Grid
+        {
+            Background = Brush(0, 0, 0, 0xCC),
+            IsTabStop = true,
+            RequestedTheme = ElementTheme.Dark,
+        };
+        AutomationProperties.SetAutomationId(overlay, "PlayerThumbnailPreviewOverlay");
+        overlay.KeyDown += HandleThumbnailPreviewKeyDown;
+        overlay.PointerWheelChanged += OnThumbnailPreviewPointerWheelChanged;
+
+        var background = new Border
+        {
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+        };
+        AutomationProperties.SetAutomationId(background, "PlayerThumbnailPreviewBackground");
+        background.PointerPressed += (_, args) =>
+        {
+            args.Handled = true;
+            CloseThumbnailPreview();
+        };
+        overlay.Children.Add(background);
+
+        _thumbnailPreviewScale = new ScaleTransform { ScaleX = 1, ScaleY = 1 };
         var previewImage = new Image
         {
-            MaxWidth = 920,
-            MaxHeight = 620,
+            MaxWidth = 1280,
+            MaxHeight = 840,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
+            RenderTransform = _thumbnailPreviewScale,
+            RenderTransformOrigin = new global::Windows.Foundation.Point(0.5, 0.5),
         };
         previewImage.Stretch = Stretch.Uniform;
         previewImage.ImageFailed += (_, _) => previewImage.Visibility = Visibility.Collapsed;
         AutomationProperties.SetAutomationId(previewImage, "PlayerThumbnailPreviewImage");
+        previewImage.PointerPressed += (_, args) => args.Handled = true;
+        overlay.Children.Add(previewImage);
+        _thumbnailPreviewImage = previewImage;
 
-        var previousButton = FluentTheme.ApplyButton(new Button
+        var previousButton = ThumbnailPreviewIconButton("\uE76B", "PlayerThumbnailPreviewPrevious", "上一张");
+        previousButton.HorizontalAlignment = HorizontalAlignment.Left;
+        previousButton.VerticalAlignment = VerticalAlignment.Center;
+        previousButton.Margin = new Thickness(28, 0, 0, 0);
+        previousButton.Click += (_, _) =>
         {
-            Width = 44,
-            Height = 36,
-            Content = new FontIcon { Glyph = "\uE76B", FontSize = 16 },
-            Padding = new Thickness(0),
-        });
-        AutomationProperties.SetAutomationId(previousButton, "PlayerThumbnailPreviewPrevious");
-        ToolTipService.SetToolTip(previousButton, "上一张");
+            ShowAdjacentThumbnailPreview(-1);
+        };
+        overlay.Children.Add(previousButton);
+        _thumbnailPreviewPreviousButton = previousButton;
 
-        var nextButton = FluentTheme.ApplyButton(new Button
+        var nextButton = ThumbnailPreviewIconButton("\uE76C", "PlayerThumbnailPreviewNext", "下一张");
+        nextButton.HorizontalAlignment = HorizontalAlignment.Right;
+        nextButton.VerticalAlignment = VerticalAlignment.Center;
+        nextButton.Margin = new Thickness(0, 0, 28, 0);
+        nextButton.Click += (_, _) =>
         {
-            Width = 44,
-            Height = 36,
-            Content = new FontIcon { Glyph = "\uE76C", FontSize = 16 },
-            Padding = new Thickness(0),
-        });
-        AutomationProperties.SetAutomationId(nextButton, "PlayerThumbnailPreviewNext");
-        ToolTipService.SetToolTip(nextButton, "下一张");
+            ShowAdjacentThumbnailPreview(1);
+        };
+        overlay.Children.Add(nextButton);
+        _thumbnailPreviewNextButton = nextButton;
+
+        var closeButton = ThumbnailPreviewIconButton("\uE711", "PlayerThumbnailPreviewClose", "关闭");
+        closeButton.HorizontalAlignment = HorizontalAlignment.Right;
+        closeButton.VerticalAlignment = VerticalAlignment.Top;
+        closeButton.Margin = new Thickness(0, 28, 28, 0);
+        closeButton.Click += (_, _) =>
+        {
+            CloseThumbnailPreview();
+        };
+        overlay.Children.Add(closeButton);
 
         var counterText = new TextBlock
         {
-            Foreground = FluentTheme.TextSecondary,
+            Foreground = Brush(0xF2, 0xF5, 0xF9),
             FontSize = 13,
             HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, 0, 28),
+            Padding = new Thickness(10, 5, 10, 5),
         };
         AutomationProperties.SetAutomationId(counterText, "PlayerThumbnailPreviewCounter");
+        counterText.PointerPressed += (_, args) => args.Handled = true;
+        overlay.Children.Add(counterText);
+        _thumbnailPreviewCounterText = counterText;
 
-        var actionBar = new Grid
-        {
-            Margin = new Thickness(0, 14, 0, 0),
-            ColumnDefinitions =
-            {
-                new ColumnDefinition { Width = GridLength.Auto },
-                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
-                new ColumnDefinition { Width = GridLength.Auto },
-            },
-        };
-        Grid.SetColumn(previousButton, 0);
-        Grid.SetColumn(counterText, 1);
-        Grid.SetColumn(nextButton, 2);
-        actionBar.Children.Add(previousButton);
-        actionBar.Children.Add(counterText);
-        actionBar.Children.Add(nextButton);
+        return overlay;
+    }
 
-        var content = new Grid
+    private static Button ThumbnailPreviewIconButton(string glyph, string automationId, string tooltip)
+    {
+        var button = FluentTheme.ApplyButton(new Button
         {
-            MaxWidth = 960,
-            MaxHeight = 700,
-            RowDefinitions =
-            {
-                new RowDefinition { Height = GridLength.Auto },
-                new RowDefinition { Height = GridLength.Auto },
-            },
-        };
-        content.Children.Add(new ScrollViewer
-        {
-            Content = previewImage,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            MaxWidth = 960,
-            MaxHeight = 640,
-        });
-        Grid.SetRow(actionBar, 1);
-        content.Children.Add(actionBar);
+            Width = 46,
+            Height = 46,
+            MinWidth = 46,
+            MinHeight = 46,
+            Content = new FontIcon { Glyph = glyph, FontSize = 18 },
+            Padding = new Thickness(0),
+            CornerRadius = new CornerRadius(23),
+            Background = Brush(0, 0, 0, 0x99),
+            BorderBrush = Brush(255, 255, 255, 0x33),
+        }, FluentButtonStyle.Overlay);
+        AutomationProperties.SetAutomationId(button, automationId);
+        ToolTipService.SetToolTip(button, tooltip);
+        return button;
+    }
 
-        var dialog = FluentTheme.ApplyContentDialog(new ContentDialog
+    private void UpdateThumbnailPreviewImage()
+    {
+        if (_thumbnailPreviewImage is null
+            || _thumbnailPreviewIndex < 0
+            || _thumbnailPreviewIndex >= _thumbnailPreviewItems.Count)
         {
-            Content = content,
-            CloseButtonText = "关闭",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = XamlRoot,
-        });
-        AutomationProperties.SetAutomationId(dialog, "PlayerThumbnailPreviewDialog");
-
-        void ShowAdjacentThumbnailPreview(int delta)
-        {
-            var targetIndex = currentIndex + delta;
-            if (targetIndex < 0 || targetIndex >= _thumbnailPreviewItems.Count)
-            {
-                return;
-            }
-
-            currentIndex = targetIndex;
-            var item = _thumbnailPreviewItems[currentIndex];
-            dialog.Title = item.Title;
-            previewImage.Visibility = Visibility.Visible;
-            previewImage.Source = new BitmapImage(new Uri(item.Url));
-            counterText.Text = $"{currentIndex + 1} / {_thumbnailPreviewItems.Count}";
-            previousButton.IsEnabled = currentIndex > 0;
-            nextButton.IsEnabled = currentIndex < _thumbnailPreviewItems.Count - 1;
+            return;
         }
 
-        previousButton.Click += (_, _) => ShowAdjacentThumbnailPreview(-1);
-        nextButton.Click += (_, _) => ShowAdjacentThumbnailPreview(1);
-        ShowAdjacentThumbnailPreview(0);
-        await dialog.ShowAsync();
+        var item = _thumbnailPreviewItems[_thumbnailPreviewIndex];
+        _thumbnailPreviewImage.Visibility = Visibility.Visible;
+        _thumbnailPreviewImage.Source = new BitmapImage(new Uri(item.Url));
+        _thumbnailPreviewZoom = 1;
+        UpdateThumbnailPreviewZoom();
+        if (_thumbnailPreviewCounterText is not null)
+        {
+            _thumbnailPreviewCounterText.Text = $"{_thumbnailPreviewIndex + 1} / {_thumbnailPreviewItems.Count}";
+        }
+
+        if (_thumbnailPreviewPreviousButton is not null)
+        {
+            _thumbnailPreviewPreviousButton.IsEnabled = _thumbnailPreviewItems.Count > 1;
+        }
+
+        if (_thumbnailPreviewNextButton is not null)
+        {
+            _thumbnailPreviewNextButton.IsEnabled = _thumbnailPreviewItems.Count > 1;
+        }
+    }
+
+    private void ShowAdjacentThumbnailPreview(int delta)
+    {
+        if (_thumbnailPreviewItems.Count == 0)
+        {
+            return;
+        }
+
+        _thumbnailPreviewIndex = (_thumbnailPreviewIndex + delta + _thumbnailPreviewItems.Count) % _thumbnailPreviewItems.Count;
+        UpdateThumbnailPreviewImage();
+    }
+
+    private void HandleThumbnailPreviewKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        switch (args.Key)
+        {
+            case VirtualKey.Left:
+                args.Handled = true;
+                ShowAdjacentThumbnailPreview(-1);
+                break;
+            case VirtualKey.Right:
+                args.Handled = true;
+                ShowAdjacentThumbnailPreview(1);
+                break;
+            case VirtualKey.Escape:
+                args.Handled = true;
+                CloseThumbnailPreview();
+                break;
+        }
+    }
+
+    private void OnThumbnailPreviewPointerWheelChanged(object sender, PointerRoutedEventArgs args)
+    {
+        var delta = args.GetCurrentPoint(_thumbnailPreviewOverlay ?? _root).Properties.MouseWheelDelta;
+        _thumbnailPreviewZoom = Math.Clamp(_thumbnailPreviewZoom + (delta > 0 ? 0.12 : -0.12), 0.5, 4);
+        UpdateThumbnailPreviewZoom();
+        args.Handled = true;
+    }
+
+    private void UpdateThumbnailPreviewZoom()
+    {
+        if (_thumbnailPreviewScale is null)
+        {
+            return;
+        }
+
+        _thumbnailPreviewScale.ScaleX = _thumbnailPreviewZoom;
+        _thumbnailPreviewScale.ScaleY = _thumbnailPreviewZoom;
+    }
+
+    private void CloseThumbnailPreview()
+    {
+        if (_thumbnailPreviewOverlay is not null)
+        {
+            ShellPage.Current?.CloseGlobalOverlay(_thumbnailPreviewOverlay);
+        }
+
+        _thumbnailPreviewOverlay = null;
+        _thumbnailPreviewImage = null;
+        _thumbnailPreviewScale = null;
+        _thumbnailPreviewPreviousButton = null;
+        _thumbnailPreviewNextButton = null;
+        _thumbnailPreviewCounterText = null;
+        _thumbnailPreviewIndex = -1;
+        _thumbnailPreviewZoom = 1;
+        _ = _root.Focus(FocusState.Programmatic);
     }
 
     private async Task<Button> CreateDetailMovieCardAsync(MovieDto movie, string logContext)
@@ -2362,6 +2477,7 @@ public sealed partial class PlayerPage : Page
         }
 
         _fullScreenMode = false;
+        CloseThumbnailPreview();
         CloseVolumePanel();
         _detailHost.Visibility = Visibility.Visible;
         ShellPage.Current?.SetNavigationChromeVisible(true);
@@ -2540,6 +2656,12 @@ public sealed partial class PlayerPage : Page
             return;
         }
 
+        if (_thumbnailPreviewOverlay is not null)
+        {
+            HandleThumbnailPreviewKeyDown(sender, args);
+            return;
+        }
+
         switch (args.Key)
         {
             case VirtualKey.Space:
@@ -2616,6 +2738,12 @@ public sealed partial class PlayerPage : Page
 
     private void HandleEscape()
     {
+        if (_thumbnailPreviewOverlay is not null)
+        {
+            CloseThumbnailPreview();
+            return;
+        }
+
         if (_volumePanelOpen)
         {
             CloseVolumePanel();
