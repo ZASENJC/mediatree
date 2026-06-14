@@ -69,6 +69,10 @@ function sortMovies(movies: Movie[], sort: SortMode): Movie[] {
   return sorted
 }
 
+function getHomeFolderCount(node: FolderNode): number {
+  return node.video_count ?? node.movie_count
+}
+
 export default function Home() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -127,7 +131,7 @@ export default function Home() {
     setLoading(true)
     api.folders().then((data) => {
       const ex = getExcluded()
-      const relevant = data.tree.filter(n => n.movie_count > 0 && !ex.has(n.path))
+      const relevant = data.tree.filter(n => getHomeFolderCount(n) > 0 && !ex.has(n.path))
       console.log('[load] tree covers:', relevant.map(n => ({ path: n.path, cover: n.cover?.slice(0, 60), random_cover: n.random_cover?.slice(0, 60) })))
       let filtered = relevant
       if (sort === 'name') {
@@ -314,7 +318,7 @@ export default function Home() {
       // Directly re-fetch folders to bypass all caches
       const data = await api.folders()
       const ex = getExcluded()
-      let filtered = data.tree.filter(n => n.movie_count > 0 && !ex.has(n.path))
+      let filtered = data.tree.filter(n => getHomeFolderCount(n) > 0 && !ex.has(n.path))
       if (sort === 'name') {
         filtered.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
       } else if (sort === 'created_desc') {
@@ -462,6 +466,7 @@ export default function Home() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid">
             {tree.map((node) => {
               const coverSrc = getCoverSrc(node.random_cover || node.cover, folderCoverVersion)
+              const folderCount = getHomeFolderCount(node)
               return (
                 <div key={node.path}
                   onClick={() => goFolder(node.path, node.media_root)}
@@ -504,7 +509,7 @@ export default function Home() {
                     <div className="absolute bottom-0 left-0 right-0 min-w-0 p-3">
                       <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-white drop-shadow">{showSourceName ? node.name : (node.display_title || node.name)}</p>
                       <p className="mt-1 text-xs text-gray-400">
-                        {node.movie_count} 项{node.special_count ? ` · ${node.special_count} 花絮` : ''}
+                        {folderCount} 项{node.special_count ? ` · ${node.special_count} 花絮` : ''}
                       </p>
                     </div>
                     </>

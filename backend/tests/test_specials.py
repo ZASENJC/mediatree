@@ -200,6 +200,10 @@ class SpecialDatabaseTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(by_path["Show"]["movie_count"], 2)
         self.assertEqual(show_children["Show/S01"]["movie_count"], 1)
         self.assertEqual(show_children["Show/S02"]["movie_count"], 1)
+        self.assertEqual(by_path["Movie"]["video_count"], 1)
+        self.assertEqual(by_path["Show"]["video_count"], 5)
+        self.assertEqual(show_children["Show/S01"]["video_count"], 3)
+        self.assertEqual(show_children["Show/S02"]["video_count"], 2)
 
     async def test_get_folder_specials_respects_visibility_setting(self):
         special_id = await self._movie(
