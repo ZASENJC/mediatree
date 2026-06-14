@@ -80,7 +80,8 @@ public sealed partial class PlayerPage : Page
         GridView SpecialsGrid,
         Border ThumbnailsCard,
         TextBlock ThumbnailsTitleText,
-        GridView ThumbnailsGrid);
+        GridView ThumbnailsGrid,
+        ScrollViewer PageScrollViewer);
 
     private sealed record ThumbnailPreviewItem(string Url, string Title);
 
@@ -141,6 +142,8 @@ public sealed partial class PlayerPage : Page
     private readonly TextBlock _thumbnailsTitleText;
     private readonly GridView _thumbnailsGrid;
     private readonly List<ThumbnailPreviewItem> _thumbnailPreviewItems = [];
+    private readonly ScrollViewer _pageScrollViewer;
+    private ScrollViewer? _thumbnailsGridScrollViewer;
     private Grid? _thumbnailPreviewOverlay;
     private Image? _thumbnailPreviewImage;
     private ScaleTransform? _thumbnailPreviewScale;
@@ -223,6 +226,7 @@ public sealed partial class PlayerPage : Page
         _thumbnailsCard = ui.ThumbnailsCard;
         _thumbnailsTitleText = ui.ThumbnailsTitleText;
         _thumbnailsGrid = ui.ThumbnailsGrid;
+        _pageScrollViewer = ui.PageScrollViewer;
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -736,6 +740,7 @@ public sealed partial class PlayerPage : Page
         detailHost.Children.Add(specialsCard);
 
         var thumbnailsGrid = DetailGrid("PlayerDetailThumbnailsGrid", 260);
+        thumbnailsGrid.AddHandler(UIElement.PointerWheelChangedEvent, new PointerEventHandler(OnThumbnailsGridPointerWheelChanged), handledEventsToo: true);
         var thumbnailsTitleText = SectionTitle("缩略图");
         AutomationProperties.SetAutomationId(thumbnailsTitleText, "PlayerDetailThumbnailsTitle");
         var thumbnailsCard = FluentTheme.Card(SectionStack(thumbnailsTitleText, thumbnailsGrid), new Thickness(16));
@@ -843,7 +848,8 @@ public sealed partial class PlayerPage : Page
             specialsGrid,
             thumbnailsCard,
             thumbnailsTitleText,
-            thumbnailsGrid);
+            thumbnailsGrid,
+            scrollViewer);
     }
 
     private static void ApplyPlayerResponsiveLayout(
@@ -2555,6 +2561,33 @@ public sealed partial class PlayerPage : Page
         }
     }
 
+    private void OnThumbnailsGridPointerWheelChanged(object sender, PointerRoutedEventArgs args)
+    {
+        _thumbnailsGridScrollViewer ??= FindDescendant<ScrollViewer>(_thumbnailsGrid);
+        var innerViewer = _thumbnailsGridScrollViewer;
+        if (innerViewer is null || _pageScrollViewer.ScrollableHeight <= 0)
+        {
+            return;
+        }
+
+        var delta = args.GetCurrentPoint(_thumbnailsGrid).Properties.MouseWheelDelta;
+        if (delta == 0)
+        {
+            return;
+        }
+
+        var scrollingUpAtTop = delta > 0 && innerViewer.VerticalOffset <= 0;
+        var scrollingDownAtBottom = delta < 0 && innerViewer.VerticalOffset >= innerViewer.ScrollableHeight;
+        if (!scrollingUpAtTop && !scrollingDownAtBottom)
+        {
+            return;
+        }
+
+        var targetOffset = Math.Clamp(_pageScrollViewer.VerticalOffset - delta, 0, _pageScrollViewer.ScrollableHeight);
+        _pageScrollViewer.ChangeView(null, targetOffset, null, disableAnimation: true);
+        args.Handled = true;
+    }
+
     private void HideTransientPlayerChrome()
     {
         CloseEpisodePanel(scheduleHide: false);
@@ -2589,6 +2622,28 @@ public sealed partial class PlayerPage : Page
         }
 
         return false;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject parent)
+        where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var index = 0; index < count; index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            var descendant = FindDescendant<T>(child);
+            if (descendant is not null)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
     }
 
     private void ScheduleChromeHide(double delaySeconds = PlayerDefaultHideDelaySeconds)
