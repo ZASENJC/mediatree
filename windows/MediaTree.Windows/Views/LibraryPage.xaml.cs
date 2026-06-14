@@ -552,7 +552,7 @@ public sealed partial class LibraryPage : Page
         }
     }
 
-    private async Task LoadFoldersAsync()
+    private async Task LoadFoldersAsync(bool rememberScroll = true)
     {
         if (string.IsNullOrWhiteSpace(_activeMediaRoot))
         {
@@ -563,7 +563,11 @@ public sealed partial class LibraryPage : Page
         var generation = ++_movieLoadGeneration;
         try
         {
-            RememberActiveScrollPosition();
+            if (rememberScroll)
+            {
+                RememberActiveScrollPosition();
+            }
+
             _trackLibraryScrollChanges = false;
             SetLoading(true);
             _activeView = "folders";
@@ -624,7 +628,7 @@ public sealed partial class LibraryPage : Page
         }
     }
 
-    private async Task LoadMoviesAsync(string folderPath = "", bool recent = false)
+    private async Task LoadMoviesAsync(string folderPath = "", bool recent = false, bool rememberScroll = true)
     {
         if (string.IsNullOrWhiteSpace(_activeMediaRoot))
         {
@@ -635,7 +639,11 @@ public sealed partial class LibraryPage : Page
         var generation = ++_movieLoadGeneration;
         try
         {
-            RememberActiveScrollPosition();
+            if (rememberScroll)
+            {
+                RememberActiveScrollPosition();
+            }
+
             _trackLibraryScrollChanges = false;
             SetLoading(true);
             _activeView = recent ? "recent" : "movies";
@@ -720,14 +728,15 @@ public sealed partial class LibraryPage : Page
         try
         {
             _activeMediaRoot = root.Path;
+            ResetLibraryScrollMemory();
             _searchBox.Text = "";
             if (_activeView == "recent")
             {
-                await LoadMoviesAsync("", true);
+                await LoadMoviesAsync("", true, rememberScroll: false);
             }
             else
             {
-                await LoadFoldersAsync();
+                await LoadFoldersAsync(rememberScroll: false);
             }
         }
         catch (Exception ex)
@@ -735,6 +744,17 @@ public sealed partial class LibraryPage : Page
             ShellLogger.Error(ex, "Failed to change native library selection.");
             ShowInfo($"切换媒体文件夹失败：{ex.Message}", InfoBarSeverity.Error);
         }
+    }
+
+    private void ResetLibraryScrollMemory()
+    {
+        _folderGridScrollOffset = 0;
+        _moviesGridScrollOffset = 0;
+        _libraryScrollRestoreGeneration++;
+        _trackLibraryScrollChanges = false;
+        AttachLibraryScrollMemory();
+        _folderGridScrollViewer?.ChangeView(null, 0, null, disableAnimation: true);
+        _moviesGridScrollViewer?.ChangeView(null, 0, null, disableAnimation: true);
     }
 
     private async void OnSortChanged(object sender, SelectionChangedEventArgs args)
