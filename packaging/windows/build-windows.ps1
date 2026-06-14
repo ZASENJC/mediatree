@@ -100,6 +100,28 @@ function Resolve-PowershellTool {
   throw "PowerShell was not found. Install PowerShell 7 or use Windows PowerShell."
 }
 
+function Stop-ProcessesUnderPath {
+  param([string]$Path)
+
+  $trimChars = [char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+  $fullPath = [System.IO.Path]::GetFullPath($Path).TrimEnd($trimChars) + [System.IO.Path]::DirectorySeparatorChar
+  $processes = Get-CimInstance Win32_Process |
+    Where-Object {
+      if (-not $_.ExecutablePath) {
+        $false
+      } else {
+        $processPath = [System.IO.Path]::GetFullPath($_.ExecutablePath)
+        $processPath.StartsWith($fullPath, [System.StringComparison]::OrdinalIgnoreCase)
+      }
+    }
+
+  foreach ($process in $processes) {
+    Write-Host "Stopping process using build output: $($process.Name) ($($process.ProcessId))"
+    Stop-Process -Id $process.ProcessId -Force -ErrorAction Stop
+    Wait-Process -Id $process.ProcessId -Timeout 10 -ErrorAction SilentlyContinue
+  }
+}
+
 function New-ExpandedAppxManifest {
   param(
     [string]$SourceManifest,
@@ -286,7 +308,7 @@ Copy-Item $Logo (Join-Path $Assets "Square310x310Logo.png") -Force
 Copy-Item $Logo (Join-Path $Assets "Wide310x150Logo.png") -Force
 
 $ManifestPath = Join-Path $Root "windows/MediaTree.Windows/Package.appxmanifest"
-$OriginalManifest = Get-Content $ManifestPath -Raw
+$OriginalManifestBytes = [System.IO.File]::ReadAllBytes($ManifestPath)
 $GeneratedCert = $null
 try {
   [xml]$Manifest = Get-Content $ManifestPath
@@ -295,6 +317,7 @@ try {
 
   $ShellOutput = Join-Path $Root "dist/windows/publish/MediaTree.Windows"
   if (Test-Path $ShellOutput) {
+    Stop-ProcessesUnderPath -Path $ShellOutput
     Remove-Item $ShellOutput -Recurse -Force
   }
   $MsBuild = Resolve-MSBuild
@@ -406,7 +429,7 @@ try {
     throw "Public signing certificate was not exported: $PublicCertPath"
   }
 } finally {
-  Set-Content -Path $ManifestPath -Value $OriginalManifest -Encoding UTF8
+  [System.IO.File]::WriteAllBytes($ManifestPath, $OriginalManifestBytes)
   if ($GeneratedCert -and $GeneratedCert.Thumbprint) {
     Remove-Item -Path "Cert:\CurrentUser\My\$($GeneratedCert.Thumbprint)" -ErrorAction SilentlyContinue
   }
