@@ -7,6 +7,21 @@ import { getUiPrefs, setUiPrefs } from '../store'
 import artplayerPluginAss from './artplayerPluginAss'
 import VRVideoLayer, { VRMode } from './VRVideoLayer'
 import { useTheater } from '../theater'
+import { EpisodeMenu, episodeLabel } from '../player/EpisodeMenu'
+import { bindGestureLayer, type GestureCleanup, type SeekPreviewPayload } from '../player/gesture'
+import { useAmbientColor, usePlayerRect, useTheaterPlayerSize } from '../player/useAmbientColor'
+import { usePlaybackTitle } from '../player/usePlaybackTitle'
+import {
+  buildAssFontConfig,
+  fetchOffsetSubtitleBlob,
+  getAssPlugin,
+  htmlLabel,
+  isAssTrack,
+  isTextTrack,
+  sortSubtitleTracks,
+  subtitleLanguagePriority,
+  trackLabel,
+} from '../player/subtitles'
 
 interface Props {
   src: string
@@ -18,7 +33,6 @@ interface Props {
   onWatched?: () => void
 }
 
-const SITE_TITLE = 'MediaTree'
 const POS_KEY = 'mediatree_pos_'
 const WATCHED_AFTER = 60
 const WATCHED_RATIO = 0.9
@@ -26,26 +40,6 @@ const SEEK_SMALL = 5
 const POS_SAVE_INTERVAL = 5000
 const AUTO_TRANSCODE_AUDIO = new Set(['ac3'])
 const BROWSER_UNSUPPORTED_AUDIO = new Set([...AUTO_TRANSCODE_AUDIO, 'eac3', 'truehd', 'dts', 'dca', 'mlp'])
-const BUNDLED_CJK_FALLBACK_FONT = '/fonts/SourceHanSansCN-Bold.woff2'
-const CJK_FONT_RE = /source\s*han|noto\s*sans\s*cjk|noto\s*serif\s*cjk|noto.*cjk|wenquanyi|wqy|pingfang|hiragino|yu\s*gothic|meiryo|simhei|simsun|yahei|microsoft\s*yahei|思源|宋体|黑体|微软雅黑|蘋方|苹方|ヒラギノ|游ゴシック|メイリオ/i
-const ASS_CJK_FONT_ALIASES = [
-  'source han sans cn', 'source han sans sc', 'source han sans',
-  'noto sans cjk sc', 'noto sans cjk jp', 'noto sans cjk kr', 'noto sans sc',
-  'noto serif cjk sc', 'microsoft yahei', 'microsoft jhenghei',
-  'simhei', 'simsun', 'nsimsun', 'simkai', 'kaiti', 'fangsong',
-  'wenquanyi micro hei', 'wenquanyi zen hei', 'pingfang sc', 'pingfang tc',
-  'hiragino sans gb', 'hiragino kaku gothic pro', 'yu gothic', 'meiryo',
-  'arial unicode ms', '宋体', '新宋体', '黑体', '微软雅黑', '微軟雅黑',
-  '楷体', '仿宋', '华文黑体', '蘋方', '苹方', 'ヒラギノ角ゴ', '游ゴシック', 'メイリオ',
-]
-
-type SubtitleFont = { name: string; size: number; family: string }
-type AssPluginController = {
-  setVisible: (visible: boolean) => void
-  switch: (subtitleUrl: string, nextOptions?: Record<string, unknown>) => Promise<void>
-  clear: () => void
-  destroy: () => void
-}
 
 Artplayer.PLAYBACK_RATE = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4]
 Artplayer.SEEK_STEP = SEEK_SMALL
@@ -79,22 +73,6 @@ function fmt(t: number) {
     : `${m}:${s.toString().padStart(2, '0')}`
 }
 
-function episodeLabel(movie: Movie) {
-  const number = movie.tmdb_episode ?? movie.episode_number
-  const prefix = number != null
-    ? `${movie.tmdb_season != null ? `S${String(movie.tmdb_season).padStart(2, '0')}` : ''}E${String(number).padStart(2, '0')}`
-    : ''
-  const title = movie.episode_title || movie.display_title || movie.title || movie.code
-  if (!prefix) return title
-  return title.toLowerCase().includes(prefix.toLowerCase()) ? title : `${prefix} ${title}`
-}
-
-function playbackDocumentTitle(title?: string, state: 'playing' | 'paused' = 'paused') {
-  const trimmed = (title || '').trim()
-  const icon = state === 'playing' ? '▶' : '⏸'
-  return trimmed ? `${icon} ${trimmed} - ${SITE_TITLE}` : SITE_TITLE
-}
-
 function localPlayerOrigin() {
   const url = new URL(window.location.href)
   if (url.hostname === '0.0.0.0' || url.hostname === '::' || url.hostname === '[::]') {
@@ -105,494 +83,6 @@ function localPlayerOrigin() {
 
 function absoluteApiUrl(url: string) {
   return new URL(resolveMediaUrl(url), window.location.origin).toString()
-}
-
-function bundledCjkFontUrl() {
-  return new URL(BUNDLED_CJK_FALLBACK_FONT, window.location.origin).toString()
-}
-
-function parseVttTimestamp(ts: string): number {
-  const parts = ts.split(':')
-  if (parts.length === 3) {
-    return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2])
-  }
-  if (parts.length === 2) {
-    return parseFloat(parts[0]) * 60 + parseFloat(parts[1])
-  }
-  return parseFloat(parts[0]) || 0
-}
-
-function formatVttTimestamp(totalSeconds: number): string {
-  const h = Math.floor(totalSeconds / 3600)
-  const m = Math.floor((totalSeconds % 3600) / 60)
-  const s = totalSeconds % 60
-  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toFixed(3).padStart(7, '0')}`
-}
-
-function offsetVttTimestamps(vtt: string, offsetSeconds: number): string {
-  if (Math.abs(offsetSeconds) < 0.001) return vtt
-  return vtt.replace(
-    /(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})/g,
-    (_match, start, end) => {
-      const newStart = formatVttTimestamp(Math.max(0, parseVttTimestamp(start) - offsetSeconds))
-      const newEnd = formatVttTimestamp(Math.max(0, parseVttTimestamp(end) - offsetSeconds))
-      return `${newStart} --> ${newEnd}`
-    }
-  )
-}
-
-async function fetchOffsetSubtitleBlob(baseUrl: string, offsetSeconds: number): Promise<string> {
-  const response = await fetch(baseUrl)
-  const text = await response.text()
-  const adjusted = offsetVttTimestamps(text, offsetSeconds)
-  const blob = new Blob([adjusted], { type: 'text/vtt' })
-  return URL.createObjectURL(blob)
-}
-
-function normalizeAssFontName(name: string) {
-  return name.trim().replace(/^@/, '').toLowerCase()
-}
-
-function addFontAlias(map: Record<string, string>, name: string | undefined, url: string, overwrite = false) {
-  if (!name) return
-  const key = normalizeAssFontName(name)
-  if (!key) return
-  if (overwrite || !map[key]) map[key] = url
-}
-
-function fontStem(name: string) {
-  const base = name.split('/').pop() || name
-  return base.replace(/\.(ttf|otf|ttc|woff2?|collection)$/i, '')
-}
-
-function isCjkFont(font: SubtitleFont) {
-  return CJK_FONT_RE.test(font.family || '') || CJK_FONT_RE.test(font.name || '')
-}
-
-function buildAssFontConfig(fonts: SubtitleFont[]) {
-  const bundledFallback = bundledCjkFontUrl()
-  const map: Record<string, string> = {}
-  const urls = new Set<string>([bundledFallback])
-  const uploadedCjkFont = fonts.find(font => !font.name.startsWith('system/') && isCjkFont(font) && /\.(ttf|otf|woff2?)$/i.test(font.name))
-  const fallbackFont = uploadedCjkFont ? absoluteApiUrl(api.fontUrl(uploadedCjkFont.name)) : bundledFallback
-
-  fonts.forEach(font => {
-    const url = absoluteApiUrl(api.fontUrl(font.name))
-    if (!font.name.startsWith('system/')) urls.add(url)
-    addFontAlias(map, font.family, url)
-    addFontAlias(map, fontStem(font.name), url)
-  })
-  ASS_CJK_FONT_ALIASES.forEach(name => addFontAlias(map, name, fallbackFont, true))
-  addFontAlias(map, 'SourceHanSansCN-Bold', bundledFallback, true)
-  addFontAlias(map, 'Source Han Sans CN', bundledFallback, true)
-
-  return {
-    fonts: Array.from(urls),
-    availableFonts: map,
-    fallbackFont,
-  }
-}
-
-function isAssTrack(track: SubtitleTrack) {
-  const codec = (track.codec || '').toLowerCase()
-  const title = (track.title || '').toLowerCase()
-  const name = (track.name || '').toLowerCase()
-  return codec.includes('ass') || codec.includes('ssa') || title.endsWith('.ass') || title.endsWith('.ssa') || name.endsWith('.ass') || name.endsWith('.ssa')
-}
-
-function isTextTrack(track: SubtitleTrack) {
-  const codec = (track.codec || '').toLowerCase()
-  const title = (track.title || '').toLowerCase()
-  const name = (track.name || '').toLowerCase()
-  if (track.web_supported === false) return false
-  if (track.source === 'external') {
-    return ['ass', 'ssa', 'srt', 'vtt'].includes(codec)
-      || /\.(ass|ssa|srt|vtt)$/i.test(title)
-      || /\.(ass|ssa|srt|vtt)$/i.test(name)
-  }
-  return ['ass', 'ssa', 'srt', 'subrip', 'webvtt', 'vtt', 'mov_text'].includes(codec)
-}
-
-function subtitleLanguagePriority(track: SubtitleTrack) {
-  const language = (track.language || '').toLowerCase()
-  const label = `${track.title || ''} ${track.name || ''}`.toLowerCase()
-  const hasToken = (token: string) => new RegExp(`(^|[\\s._-])${token}($|[\\s._-])`, 'i').test(label)
-  if (language === 'zh' || language === 'chi') return 0
-  if (language === 'chs' || hasToken('chs')) return 1
-  if (language === 'cht' || hasToken('cht')) return 2
-  if (language === 'sc' || hasToken('sc')) return 3
-  if (language === 'tc' || hasToken('tc')) return 4
-  if (language === 'zh-cn' || language === 'zh-hans' || /zh[\s._-]?cn|zh[\s._-]?hans/.test(label)) return 5
-  if (language === 'zh-tw' || language === 'zh-hant' || /zh[\s._-]?tw|zh[\s._-]?hant/.test(label)) return 6
-  if (/chinese|中文|简体|繁体/.test(label)) return 7
-  return 100
-}
-
-function trackLabel(track: SubtitleTrack) {
-  if (track.source === 'external') {
-    return track.name || track.title || track.codec || `Subtitle ${track.index}`
-  }
-  const source = '内嵌'
-  const lang = track.language || '--'
-  const title = track.title || track.codec || `Track ${track.index}`
-  return `${source} ${lang} ${title}`
-}
-
-function sortSubtitleTracks(trackList: SubtitleTrack[]) {
-  return [...trackList].filter(isTextTrack).sort((a, b) => {
-    const sourceRank = (track: SubtitleTrack) => track.source === 'external' ? 0 : 1
-    const bySource = sourceRank(a) - sourceRank(b)
-    if (bySource) return bySource
-    return a.index - b.index
-  })
-}
-
-function getAssPlugin(art: Artplayer): AssPluginController | null {
-  const plugin = art.plugins.artplayerPluginAss as AssPluginController | undefined
-  return plugin || null
-}
-
-function htmlLabel(text: string) {
-  const span = document.createElement('span')
-  span.title = text
-  span.textContent = text
-  span.style.cssText = [
-    'display:-webkit-box',
-    'max-width:210px',
-    'overflow:hidden',
-    'text-overflow:ellipsis',
-    '-webkit-line-clamp:2',
-    '-webkit-box-orient:vertical',
-    'white-space:normal',
-    'word-break:break-word',
-    'font-size:12px',
-    'line-height:1.35',
-  ].join(';')
-  return span
-}
-
-type GestureCleanup = () => void
-type GestureHandler = (gesture: string) => void
-type SeekPreviewHandler = (payload: { target: number; delta: number; duration: number } | null, commit?: boolean) => void
-
-function bindGestureLayer(element: HTMLElement, isMobile: () => boolean, onGesture: GestureHandler, onSeekPreview: SeekPreviewHandler, getSeekState: () => { current: number; duration: number; playing: boolean; disabled: boolean }): GestureCleanup {
-  let lastTap = { time: 0, x: 0, y: 0, zone: 'center' }
-  let pointer = { id: -1, type: '', x: 0, y: 0, zone: 'center', down: false, longPressed: false }
-  let seekGesture: null | { startX: number; startY: number; base: number; duration: number; playing: boolean; target: number } = null
-  let timer = 0
-
-  const zoneFor = (clientX: number) => {
-    const rect = element.getBoundingClientRect()
-    const x = clientX - rect.left
-    if (x < rect.width / 3) return 'left'
-    if (x > rect.width * 2 / 3) return 'right'
-    return 'center'
-  }
-  const clearTimer = () => {
-    window.clearTimeout(timer)
-    timer = 0
-  }
-  const stopLongPress = () => {
-    if (pointer.longPressed) {
-      pointer.longPressed = false
-      onGesture('speed-hold-end')
-    }
-  }
-  const onPointerDown = (event: PointerEvent) => {
-    if (event.pointerType === 'mouse' && event.button !== 0) return
-    const zone = zoneFor(event.clientX)
-    pointer = {
-      id: event.pointerId,
-      type: event.pointerType,
-      x: event.clientX,
-      y: event.clientY,
-      zone,
-      down: true,
-      longPressed: false,
-    }
-    element.setPointerCapture?.(event.pointerId)
-    clearTimer()
-    const longPressEnabled = isMobile() || event.pointerType !== 'mouse' || zone !== 'center'
-    if (longPressEnabled) {
-      timer = window.setTimeout(() => {
-        if (!pointer.down) return
-        pointer.longPressed = true
-        onGesture('speed-hold-start')
-      }, 420)
-    }
-  }
-  const onPointerMove = (event: PointerEvent) => {
-    if (!pointer.down || pointer.id !== event.pointerId) return
-    const dx = Math.abs(event.clientX - pointer.x)
-    const dy = Math.abs(event.clientY - pointer.y)
-    const touchLike = isMobile() || pointer.type !== 'mouse'
-    if (touchLike && !pointer.longPressed) {
-      if (seekGesture) {
-        event.preventDefault()
-        const rawDelta = event.clientX - seekGesture.startX
-        const secondsPerPx = seekGesture.duration > 7200 ? 0.8 : seekGesture.duration > 3600 ? 0.5 : 0.3
-        const delta = Math.round(rawDelta * secondsPerPx)
-        const target = Math.max(0, Math.min(seekGesture.duration, seekGesture.base + delta))
-        seekGesture.target = target
-        onSeekPreview({ target, delta, duration: seekGesture.duration })
-        return
-      }
-      if (dx > 20 && dx > dy * 1.35) {
-        const state = getSeekState()
-        if (!state.disabled && state.duration > 0 && isFinite(state.duration)) {
-          clearTimer()
-          seekGesture = {
-            startX: pointer.x,
-            startY: pointer.y,
-            base: state.current,
-            duration: state.duration,
-            playing: state.playing,
-            target: state.current,
-          }
-          event.preventDefault()
-          onSeekPreview({ target: state.current, delta: 0, duration: state.duration })
-          return
-        }
-      }
-    }
-    if ((dx > 28 || dy > 28) && !pointer.longPressed) clearTimer()
-  }
-  const onPointerUp = (event: PointerEvent) => {
-    if (!pointer.down || pointer.id !== event.pointerId) return
-    clearTimer()
-    if (seekGesture) {
-      const sg = seekGesture
-      seekGesture = null
-      pointer.down = false
-      element.releasePointerCapture?.(event.pointerId)
-      onSeekPreview({ target: sg.target, delta: Math.round(sg.target - sg.base), duration: sg.duration }, true)
-      return
-    }
-    const state = pointer
-    pointer.down = false
-    element.releasePointerCapture?.(event.pointerId)
-    if (state.longPressed) {
-      stopLongPress()
-      return
-    }
-    const dx = Math.abs(event.clientX - state.x)
-    const dy = Math.abs(event.clientY - state.y)
-    if (dx > 28 || dy > 28) return
-    const touchLike = isMobile() || state.type !== 'mouse'
-    if (!touchLike) {
-      onGesture('tap')
-      return
-    }
-    const now = Date.now()
-    const samePlace = now - lastTap.time < 330
-      && Math.abs(event.clientX - lastTap.x) < 28
-      && Math.abs(event.clientY - lastTap.y) < 28
-      && lastTap.zone === state.zone
-    if (samePlace) {
-      onGesture(`doubletap-${state.zone}`)
-      lastTap = { time: 0, x: 0, y: 0, zone: state.zone }
-      return
-    }
-    lastTap = { time: now, x: event.clientX, y: event.clientY, zone: state.zone }
-  }
-  const onPointerCancel = (event: PointerEvent) => {
-    if (pointer.id !== event.pointerId) return
-    clearTimer()
-    pointer.down = false
-    seekGesture = null
-    onSeekPreview(null)
-    stopLongPress()
-  }
-
-  element.addEventListener('pointerdown', onPointerDown)
-  element.addEventListener('pointermove', onPointerMove)
-  element.addEventListener('pointerup', onPointerUp)
-  element.addEventListener('pointercancel', onPointerCancel)
-  return () => {
-    clearTimer()
-    element.removeEventListener('pointerdown', onPointerDown)
-    element.removeEventListener('pointermove', onPointerMove)
-    element.removeEventListener('pointerup', onPointerUp)
-    element.removeEventListener('pointercancel', onPointerCancel)
-  }
-}
-
-type AmbientColor = { r: number; g: number; b: number } | null
-
-const AMBIENT_SAMPLE_INTERVAL = 200
-const AMBIENT_COLOR_THRESHOLD = 12
-
-function useAmbientColor(
-  artRef: { current: Artplayer | null },
-  enabled: boolean,
-): AmbientColor {
-  const [color, setColor] = useState<AmbientColor>(null)
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const lastSampleAtRef = useRef(0)
-  const lastColorRef = useRef({ r: 10, g: 10, b: 12 })
-  const visibleRef = useRef(true)
-
-  useEffect(() => {
-    if (!enabled) {
-      setColor(null)
-      return
-    }
-
-    const handleVisibility = () => { visibleRef.current = !document.hidden }
-    document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [enabled])
-
-  useEffect(() => {
-    if (!enabled) return
-
-    const sample = () => {
-      if (!visibleRef.current) return
-      const art = artRef.current
-      const video = art?.video as HTMLVideoElement | undefined
-      if (!video || video.paused || video.readyState < 2) return
-      if (video.videoWidth === 0 || video.videoHeight === 0) return
-
-      const now = Date.now()
-      if (now - lastSampleAtRef.current < AMBIENT_SAMPLE_INTERVAL) return
-      lastSampleAtRef.current = now
-
-      try {
-        if (!canvasRef.current) {
-          canvasRef.current = document.createElement('canvas')
-          canvasRef.current.width = 1
-          canvasRef.current.height = 1
-        }
-        const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true })
-        if (!ctx) return
-        ctx.drawImage(video, 0, 0, 1, 1)
-        const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
-        const prev = lastColorRef.current
-        if (
-          Math.abs(r - prev.r) > AMBIENT_COLOR_THRESHOLD ||
-          Math.abs(g - prev.g) > AMBIENT_COLOR_THRESHOLD ||
-          Math.abs(b - prev.b) > AMBIENT_COLOR_THRESHOLD
-        ) {
-          const next = { r, g, b }
-          lastColorRef.current = next
-          setColor(next)
-        }
-      } catch {
-        // cross-origin canvas pollution — silently skip
-      }
-    }
-
-    let raf = 0
-    const loop = () => { sample(); raf = requestAnimationFrame(loop) }
-    raf = requestAnimationFrame(loop)
-    return () => cancelAnimationFrame(raf)
-  }, [enabled])
-
-  return color
-}
-
-function usePlayerRect(
-  targetRef: React.RefObject<HTMLDivElement | null>,
-  enabled: boolean,
-): DOMRect | null {
-  const [rect, setRect] = useState<DOMRect | null>(null)
-
-  useEffect(() => {
-    if (!enabled) {
-      setRect(null)
-      return
-    }
-    const el = targetRef.current
-    if (!el) return
-
-    let raf = 0
-    const update = () => {
-      cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(() => {
-        setRect(el.getBoundingClientRect())
-      })
-    }
-
-    update()
-    const ro = new ResizeObserver(update)
-    ro.observe(el)
-    window.addEventListener('scroll', update, { passive: true })
-    window.addEventListener('resize', update, { passive: true })
-
-    return () => {
-      cancelAnimationFrame(raf)
-      ro.disconnect()
-      window.removeEventListener('scroll', update)
-      window.removeEventListener('resize', update)
-    }
-    // targetRef is stable (from useRef)
-  }, [enabled])
-
-  return rect
-}
-
-type TheaterPlayerSize = { width: number; height: number }
-
-function useTheaterPlayerSize(
-  wrapperRef: React.RefObject<HTMLDivElement | null>,
-  enabled: boolean,
-  aspect: number,
-): TheaterPlayerSize | null {
-  const [size, setSize] = useState<TheaterPlayerSize | null>(null)
-
-  useEffect(() => {
-    if (!enabled) {
-      setSize(null)
-      return
-    }
-
-    const el = wrapperRef.current
-    if (!el) return
-
-    const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9
-    let raf = 0
-
-    const update = () => {
-      cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(() => {
-        const maxWidth = el.clientWidth
-        const maxHeight = el.clientHeight
-        if (maxWidth <= 0 || maxHeight <= 0) return
-
-        let width = maxWidth
-        let height = width / safeAspect
-        if (height > maxHeight) {
-          height = maxHeight
-          width = height * safeAspect
-        }
-
-        const next = {
-          width: Math.floor(Math.min(width, maxWidth)),
-          height: Math.floor(Math.min(height, maxHeight)),
-        }
-        setSize(prev => (
-          prev && Math.abs(prev.width - next.width) < 1 && Math.abs(prev.height - next.height) < 1
-            ? prev
-            : next
-        ))
-      })
-    }
-
-    update()
-    const ro = new ResizeObserver(update)
-    ro.observe(el)
-    window.addEventListener('resize', update, { passive: true })
-    window.visualViewport?.addEventListener('resize', update, { passive: true })
-
-    return () => {
-      cancelAnimationFrame(raf)
-      ro.disconnect()
-      window.removeEventListener('resize', update)
-      window.visualViewport?.removeEventListener('resize', update)
-    }
-  }, [enabled, aspect])
-
-  return size
 }
 
 export default function VideoPlayer({ src, poster, movieId, title, episodes = [], onEpisodeSelect, onWatched }: Props) {
@@ -630,12 +120,6 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
   const switchUrlSeqRef = useRef(0)
   const lastPosSaveAtRef = useRef(0)
   const autoTranscodedAudioRef = useRef('')
-  const documentTitleBeforePlaybackRef = useRef('')
-  const playbackTitleActiveRef = useRef(false)
-  const playingDocumentTitleRef = useRef(SITE_TITLE)
-  const pausedDocumentTitleRef = useRef(SITE_TITLE)
-  const restoringDocumentTitleRef = useRef(false)
-
   const [resumePos, setResumePos] = useState(() => getSavedPos(movieId))
   const [showResume, setShowResume] = useState(() => false)
   const [seekOsd, setSeekOsd] = useState<{ target: number; delta: number; duration: number } | null>(null)
@@ -694,6 +178,12 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
   const effectiveAmbient = ambientEnabled || theaterMode
   const ambientColor = useAmbientColor(artRef, effectiveAmbient && !useTranscode)
   const playerRect = usePlayerRect(playerFrameRef, effectiveAmbient)
+  const {
+    restoringDocumentTitleRef,
+    restoreDocumentTitle,
+    showPausedDocumentTitle,
+    showPlayingDocumentTitle,
+  } = usePlaybackTitle(currentPlaybackTitle, artRef)
 
   const toggleAmbient = useCallback(() => {
     setAmbientEnabled(prev => {
@@ -723,29 +213,6 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
     setEpisodeMenuOpen(false)
   }, [])
 
-  const ensureDocumentTitleBaseline = useCallback(() => {
-    if (!playbackTitleActiveRef.current) {
-      documentTitleBeforePlaybackRef.current = document.title || SITE_TITLE
-      playbackTitleActiveRef.current = true
-    }
-  }, [])
-
-  const showPlayingDocumentTitle = useCallback(() => {
-    ensureDocumentTitleBaseline()
-    document.title = playingDocumentTitleRef.current
-  }, [ensureDocumentTitleBaseline])
-
-  const showPausedDocumentTitle = useCallback(() => {
-    ensureDocumentTitleBaseline()
-    document.title = pausedDocumentTitleRef.current
-  }, [ensureDocumentTitleBaseline])
-
-  const restoreDocumentTitle = useCallback(() => {
-    if (!playbackTitleActiveRef.current) return
-    document.title = documentTitleBeforePlaybackRef.current || SITE_TITLE
-    playbackTitleActiveRef.current = false
-  }, [])
-
   useEffect(() => {
     const el = document.getElementById('ambient-root')
     if (!el) return
@@ -759,16 +226,6 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
       el.style.removeProperty('--ambient-b')
     }
   }, [ambientColor, effectiveAmbient])
-
-  useEffect(() => {
-    playingDocumentTitleRef.current = playbackDocumentTitle(currentPlaybackTitle, 'playing')
-    pausedDocumentTitleRef.current = playbackDocumentTitle(currentPlaybackTitle, 'paused')
-    if (artRef.current?.playing) {
-      showPlayingDocumentTitle()
-    } else {
-      showPausedDocumentTitle()
-    }
-  }, [currentPlaybackTitle, showPausedDocumentTitle, showPlayingDocumentTitle])
 
   const clearNativeSubtitle = useCallback((art: Artplayer) => {
     try { art.subtitle.show = false } catch {}
@@ -1052,7 +509,7 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
     }
   }, [skipBack, skipForward, startSpeedHold, stopSpeedHold, togglePlay])
 
-  const handleSeekPreview = useCallback((payload: { target: number; delta: number; duration: number } | null, commit?: boolean) => {
+  const handleSeekPreview = useCallback((payload: SeekPreviewPayload | null, commit?: boolean) => {
     if (!payload) {
       setSeekOsd(null)
       return
@@ -1842,57 +1299,15 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
         <VRVideoLayer art={artInstance} mode={vrMode} />
 
         {selectableEpisodes.length > 0 && (
-          <div className={`episode-switcher absolute right-3 top-1/2 z-50 flex items-center justify-end sm:right-4 ${playerChromeVisible ? 'episode-switcher-visible' : ''}`}>
-            {episodeMenuOpen && (
-              <div className="player-episode-menu mr-2 max-h-[min(22rem,70dvh)] w-[min(18rem,calc(100vw-5rem))] overflow-hidden rounded-2xl">
-                <div className="player-episode-menu-header flex items-center justify-between px-3 py-2">
-                  <p className="text-xs font-semibold">选集</p>
-                  <span className="player-episode-count text-[11px]">{selectableEpisodes.length}</span>
-                </div>
-                <div className="max-h-[calc(min(22rem,70dvh)-2.5rem)] overflow-y-auto p-1.5">
-                  {selectableEpisodes.map(episode => {
-                    const active = episode.id === movieId
-                    const progress = Math.max(0, Math.min(100, episode.progress_percent || 0))
-                    return (
-                      <button
-                        key={episode.id}
-                        onClick={() => {
-                          setEpisodeMenuOpen(false)
-                          if (!active) onEpisodeSelect?.(episode)
-                        }}
-                        className={`mb-1 flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-all last:mb-0 ${
-                          active ? 'player-episode-item-active' : 'player-episode-item'
-                        }`}
-                      >
-                        <span className={`h-2 w-2 shrink-0 rounded-full ${active ? 'player-episode-dot-active' : 'player-episode-dot'}`} />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-xs font-medium">{episodeLabel(episode)}</span>
-                          <span className="player-episode-meta mt-0.5 block truncate text-[11px]">
-                            {episode.duration ? `${episode.duration}分` : episode.code}
-                            {progress > 0 && progress < 90 ? ` · ${Math.round(progress)}%` : ''}
-                          </span>
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-            <button
-              onClick={() => setEpisodeMenuOpen(open => !open)}
-              className={`episode-switcher-button ${episodeMenuOpen ? 'episode-switcher-button-active' : ''}`}
-              aria-label="选集"
-              aria-expanded={episodeMenuOpen}
-              title="选集"
-            >
-              <span className="sr-only">选集</span>
-              <span className="episode-switcher-icon" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </span>
-            </button>
-          </div>
+          <EpisodeMenu
+            activeMovieId={movieId}
+            episodes={selectableEpisodes}
+            open={episodeMenuOpen}
+            visible={playerChromeVisible}
+            onClose={() => setEpisodeMenuOpen(false)}
+            onSelect={onEpisodeSelect}
+            onToggle={() => setEpisodeMenuOpen(open => !open)}
+          />
         )}
 
         {seekOsd && (
