@@ -8,7 +8,9 @@
   "versions": {
     "1.0.15": {
       "requires_image_update": false,
-      "reason": "应用包级更新；本版本包含应用代码、前端体验、文档站和兼容 API 清理，不需要完整 Docker 镜像更新。"
+      "requires_windows_base_update": true,
+      "reason": "应用包级更新；本版本包含应用代码、前端体验、文档站和兼容 API 清理，不需要完整 Docker 镜像更新。",
+      "windows_reason": "Windows 桌面版设置页、后端启动行为和本机运行时边界发生变化，需要下载新版 Windows 完整包。"
     },
     "1.0.14": {
       "requires_image_update": false,

@@ -1,3 +1,4 @@
+import json
 import re
 import unittest
 from pathlib import Path
@@ -113,6 +114,13 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn("RELEASE_WINDOWS_UPDATE_REASON", self.workflow)
         self.assertIn("requires_windows_base_update", metadata)
         self.assertIn("windows_reason", metadata)
+
+    def test_windows_full_update_versions_are_marked_in_metadata(self):
+        metadata = json.loads((ROOT / ".github" / "release-metadata.json").read_text(encoding="utf-8"))
+        version = metadata["versions"]["1.0.15"]
+
+        self.assertIs(version.get("requires_windows_base_update"), True)
+        self.assertIn("Windows", version.get("windows_reason", ""))
 
     def test_local_docker_push_script_exposes_size_tuning_build_args(self):
         script = LOCAL_DOCKER_PUSH.read_text(encoding="utf-8")
