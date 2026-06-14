@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -14,6 +15,8 @@ class EntrypointVersionChoiceTest(unittest.TestCase):
         self.base_dir.mkdir(parents=True)
         self.releases_dir.mkdir(parents=True)
         self.entrypoint = Path(__file__).resolve().parents[2] / "docker" / "entrypoint.sh"
+        if shutil.which("sh") is None:
+            self.skipTest("docker entrypoint choice tests require a POSIX sh executable")
 
     def tearDown(self):
         self.tmpdir.cleanup()
