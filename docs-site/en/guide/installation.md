@@ -88,4 +88,4 @@ Then open `http://localhost:3000`.
 
 ### Subtitle Fonts
 
-The Docker image includes Noto CJK and WenQuanYi Micro Hei. Upload custom subtitle fonts from Settings when needed.
+The default Docker image includes WenQuanYi Micro Hei and ships a Source Han Sans frontend fallback font to keep the image smaller. Use `INCLUDE_FULL_CJK_FONTS=true` or `INCLUDE_EMOJI_FONT=true` for custom builds that need full Noto CJK or emoji fonts, or upload subtitle fonts from Settings.

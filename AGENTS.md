@@ -115,6 +115,10 @@ docker compose up -d --build
 scripts/push-docker-release.sh
 ```
 
+Default Docker builds are size-optimized. Keep `INCLUDE_FULL_CJK_FONTS=false` and `INCLUDE_EMOJI_FONT=false` unless a release explicitly needs the full Noto CJK or emoji font packages; the default image keeps `fonts-wqy-microhei` plus the bundled frontend subtitle fallback font. If full Noto fonts are enabled or Dockerfile/runtime font policy changes, treat the release as a full Docker image update.
+
+Application update packages must be built with `scripts/build-app-package.sh`. Do not reintroduce inline release-workflow packaging logic; the shared builder strips bytecode, pycache, source maps, and local metadata before creating the release archive.
+
 ## Security Without Hooks
 
 Codex does not provide Claude Code hooks in this repo, so enforce security through review and verification:
@@ -140,6 +144,7 @@ Codex does not provide Claude Code hooks in this repo, so enforce security throu
   - Use `app-package` when the change is limited to application code or built frontend assets and does not require a new base image/runtime layer.
   - Use full Docker image update when the change touches the runtime/base image surface, including Dockerfile, system packages, Python version or pinned dependency layer, ffmpeg/fonts, container user/permissions, entrypoint/bootstrap behavior, Docker self-update prerequisites, or any change that cannot be delivered safely by replacing only the app package.
 - Ordinary pushes must not run the release workflow. Trigger `.github/workflows/release-tag.yml` manually only when performing an app-package or full Docker image release.
+- Keep build artifacts small by default: app-package releases use `scripts/build-app-package.sh`; DockerHub pushes use `scripts/push-docker-release.sh` with the default font build args unless the release notes call out a runtime-font requirement.
 - Every release must refresh DockerHub `zasenjc/mediatree:latest` so new Docker installs start from the newest application baseline. Do this from a local build/push with `scripts/push-docker-release.sh`, not GitHub Actions. App-package releases publish only `latest`; full Docker image releases publish both `zasenjc/mediatree:<version>` and `latest`.
 - Keep GitHub Release notes user-facing: write concise functional changes and upgrade guidance for users there, and put implementation details, configuration changes, test notes, and maintainer bookkeeping in `CHANGELOG.md` / `CHANGELOG_zh-CN.md`.
 - When the chosen path is full Docker image update, keep Settings/release messaging aligned so users are guided to host-side `docker compose pull && docker compose up -d` when in-container image replacement is unavailable.

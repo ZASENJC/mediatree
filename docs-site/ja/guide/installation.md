@@ -88,4 +88,4 @@ ports:
 
 ### 字幕フォント
 
-Docker イメージには Noto CJK と WenQuanYi Micro Hei が含まれています。必要に応じて Settings からカスタム字幕フォントをアップロードできます。
+標準の Docker イメージには WenQuanYi Micro Hei が含まれ、イメージサイズを抑えるためにフロントエンド側の Source Han Sans フォールバックフォントも同梱しています。完全な Noto CJK や emoji フォントが必要なカスタムビルドでは `INCLUDE_FULL_CJK_FONTS=true` または `INCLUDE_EMOJI_FONT=true` を指定してください。Settings からカスタム字幕フォントをアップロードすることもできます。

@@ -8,6 +8,16 @@
 
 ## 未发布
 
+### 发布流水线
+
+- 精简 Docker 构建：完整 Noto CJK 和 emoji 字体改为按需构建参数，默认保留 WenQuanYi 和前端内置字幕兜底字体
+- 新增共享 `scripts/build-app-package.sh` 打包脚本，本地和 GitHub release 打包都会统一剔除 pycache、bytecode、source map 和本地元数据
+- 更新构建/更新规则，后续 Docker 与应用包构建默认保持瘦身；调整运行时字体策略时必须走完整 Docker 镜像更新
+
+### 发布类型
+
+- 需要完整 Docker 镜像更新，因为本次调整了 Dockerfile/runtime 字体策略和 release 打包路径
+
 ---
 
 ## 1.0.15 (2026-06-14)

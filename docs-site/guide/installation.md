@@ -88,4 +88,4 @@ ports:
 
 ### 中文字幕字体
 
-Docker 镜像内置 Noto CJK 和 WenQuanYi Micro Hei。需要自定义字体时，在设置页上传字幕字体即可。
+默认 Docker 镜像内置 WenQuanYi Micro Hei，并随前端提供 Source Han Sans 兜底字体以降低镜像体积。需要更完整的 Noto CJK 或 emoji 字体时，可在自定义构建中设置 `INCLUDE_FULL_CJK_FONTS=true` 或 `INCLUDE_EMOJI_FONT=true`；也可以在设置页上传字幕字体。

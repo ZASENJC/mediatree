@@ -119,6 +119,8 @@ docker compose up -d
 
 Docker Hub image: `zasenjc/mediatree:latest`
 
+The default image is size-optimized. It includes the lightweight `fonts-wqy-microhei` package and the bundled frontend subtitle fallback font, but it does not include full Noto CJK or emoji font packages by default. Upload custom fonts in Settings when you need wider subtitle coverage; maintainers only build with `INCLUDE_FULL_CJK_FONTS=true` or `INCLUDE_EMOJI_FONT=true` when a release explicitly needs those larger font packages.
+
 ## Configuration You Usually Need
 
 | Variable | What it does |

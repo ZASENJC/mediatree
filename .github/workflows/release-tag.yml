@@ -109,52 +109,7 @@ jobs:
         id: app_package
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          PKG_DIR="/tmp/mediatree-app-$VERSION"
-          ARCHIVE="/tmp/mediatree-app-$VERSION.tar.gz"
-          MANIFEST="/tmp/mediatree-app-$VERSION.manifest.json"
-          SHA_FILE="/tmp/mediatree-app-$VERSION.sha256"
-
-          rm -rf "$PKG_DIR" "$ARCHIVE" "$MANIFEST" "$SHA_FILE"
-          mkdir -p "$PKG_DIR/frontend"
-          cp -R backend/app "$PKG_DIR/app"
-          cp backend/requirements.txt "$PKG_DIR/requirements.txt"
-          cp backend/constraints.txt "$PKG_DIR/constraints.txt"
-          cp -R frontend/dist "$PKG_DIR/frontend/dist"
-          cp VERSION "$PKG_DIR/VERSION"
-
-          cat > "$PKG_DIR/manifest.json" <<EOF
-          {
-            "version": "$VERSION",
-            "base_api": 1,
-            "requires_image_update": $RELEASE_REQUIRES_IMAGE_UPDATE,
-            "reason": "$RELEASE_UPDATE_REASON",
-            "archive": "mediatree-app-$VERSION.tar.gz",
-            "sha256": "",
-            "size": 0,
-            "notes": ""
-          }
-          EOF
-
-          tar -czf "$ARCHIVE" -C /tmp --transform "s#^mediatree-app-$VERSION/##" "mediatree-app-$VERSION"
-          SHA="$(sha256sum "$ARCHIVE" | awk '{print $1}')"
-          SIZE="$(stat -c%s "$ARCHIVE")"
-          printf '%s  mediatree-app-%s.tar.gz\n' "$SHA" "$VERSION" > "$SHA_FILE"
-          cat > "$MANIFEST" <<EOF
-          {
-            "version": "$VERSION",
-            "base_api": 1,
-            "requires_image_update": $RELEASE_REQUIRES_IMAGE_UPDATE,
-            "reason": "$RELEASE_UPDATE_REASON",
-            "archive": "mediatree-app-$VERSION.tar.gz",
-            "sha256": "$SHA",
-            "size": $SIZE,
-            "notes": ""
-          }
-          EOF
-
-          echo "archive=$ARCHIVE" >> $GITHUB_OUTPUT
-          echo "manifest=$MANIFEST" >> $GITHUB_OUTPUT
-          echo "sha_file=$SHA_FILE" >> $GITHUB_OUTPUT
+          scripts/build-app-package.sh "$VERSION"
 
       - name: Update tag after validation
         run: |

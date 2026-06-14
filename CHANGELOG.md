@@ -8,6 +8,16 @@ All notable changes to MediaTree are documented here.
 
 ## Unreleased
 
+### Release Pipeline
+
+- Slimmed Docker builds by making full Noto CJK and emoji fonts opt-in build arguments while keeping the default WenQuanYi and bundled subtitle fallback fonts
+- Added a shared `scripts/build-app-package.sh` builder so local and GitHub release packaging strip pycache, bytecode, source maps, and local metadata consistently
+- Updated the build/update rules to keep Docker and app-package artifacts small by default, with full Docker image updates required for runtime font policy changes
+
+### Release Type
+
+- Full Docker image update is required because this changes the Dockerfile/runtime font policy and release packaging path
+
 ---
 
 ## 1.0.15 (2026-06-14)

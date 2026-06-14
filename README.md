@@ -120,6 +120,8 @@ docker compose up -d
 
 Docker Hub 镜像：`zasenjc/mediatree:latest`
 
+默认镜像为了减小体积，只内置轻量中文字体 `fonts-wqy-microhei`，并使用前端随包的字幕兜底字体；不再默认包含完整 Noto CJK 和 emoji 字体。需要更完整的字幕字体覆盖时，可以在设置页上传字体；维护者只有在发布内容明确需要时才会用 `INCLUDE_FULL_CJK_FONTS=true` 或 `INCLUDE_EMOJI_FONT=true` 构建完整字体镜像。
+
 ## 常用配置
 
 | 变量 | 作用 |

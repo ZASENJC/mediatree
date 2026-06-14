@@ -18,6 +18,8 @@ An app-package release produces:
 
 Maintainers also refresh DockerHub `zasenjc/mediatree:latest` locally so new installs start from the newest application baseline.
 
+App packages must be built with `scripts/build-app-package.sh`. Do not duplicate packaging logic in GitHub Actions or local release commands; the shared builder strips bytecode, `__pycache__`, source maps, and local metadata, then creates the archive with stable compression settings.
+
 ## Full Docker Image Updates
 
 Use a full image update for:
@@ -28,6 +30,8 @@ Use a full image update for:
 - Any change that cannot be safely delivered by replacing only the app package.
 
 Full image updates should publish both the version tag and `latest`.
+
+Docker builds stay slim by default: do not include full `fonts-noto-cjk` or `fonts-noto-color-emoji` packages, and rely on `fonts-wqy-microhei` plus the bundled frontend subtitle fallback font. Set `INCLUDE_FULL_CJK_FONTS=true` or `INCLUDE_EMOJI_FONT=true` only when the release explicitly needs full Noto CJK or emoji fonts. Enabling those args or changing Dockerfile/runtime font policy requires a full Docker image update.
 
 ## Docs Site Deployment
 
@@ -41,4 +45,5 @@ Before publishing, verify:
 - Backend compiles.
 - Frontend builds.
 - Docs and README match current behavior.
+- App packages are produced by `scripts/build-app-package.sh`, and Docker images are built by `scripts/push-docker-release.sh` with slim default args unless the release explicitly needs full fonts.
 - `git diff` only contains intended changes.
