@@ -383,7 +383,7 @@ export default function Settings() {
         const applied = setActiveTheme(nextName)
         setActiveThemeName(applied.name)
       }
-      setThemeMsg(`已导入 ${importedThemes.length} 个主题`)
+      setThemeMsg(`已导入 ${importedThemes.length} 个外观主题`)
     } catch (err) {
       setThemeMsg(`主题导入失败：${err instanceof Error ? err.message : '文件格式错误'}`)
     }
@@ -602,8 +602,8 @@ export default function Settings() {
             <div className="mt-4 border-t border-white/10 pt-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h3 className="text-sm font-semibold text-white">主题</h3>
-                  <p className="mt-0.5 text-xs text-gray-500">可导入 JSON 主题包，主题保存在当前浏览器。</p>
+                  <h3 className="text-sm font-semibold text-white">外观主题</h3>
+                  <p className="mt-0.5 text-xs text-gray-500">导入主题文件即可更换整体外观。主题只保存在此浏览器。</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
@@ -611,17 +611,17 @@ export default function Settings() {
                     onClick={() => downloadTextFile('mediatree-theme-example.json', createExampleTheme())}
                     className={btnDark}
                   >
-                    下载示例
+                    下载示例主题
                   </button>
                   <button
                     type="button"
                     onClick={() => downloadTextFile('mediatree-themes.json', createThemeExport(activeTheme, customThemes))}
                     className={btnDark}
                   >
-                    导出主题
+                    导出我的主题
                   </button>
                   <label className={`${btnPrimary} cursor-pointer`}>
-                    上传主题
+                    导入主题
                     <input
                       type="file"
                       accept=".json,application/json"
@@ -642,6 +642,11 @@ export default function Settings() {
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {themeOptions.map(theme => {
                   const active = theme.name === activeThemeName
+                  const colorSchemeLabel = theme.colorScheme === 'light'
+                    ? '浅色外观'
+                    : theme.colorScheme === 'auto'
+                      ? '跟随系统'
+                      : '深色外观'
                   return (
                     <div
                       key={theme.name}
@@ -661,7 +666,7 @@ export default function Settings() {
                             <p className="truncate text-sm font-medium text-white">{theme.label}</p>
                           </div>
                           <p className="text-[11px] text-gray-500">
-                            {theme.builtin ? '内置' : '自定义'} · {theme.colorScheme || 'dark'}
+                            {theme.builtin ? '内置主题' : '我的主题'} · {colorSchemeLabel}
                           </p>
                           {theme.description && (
                             <p className="mt-1 line-clamp-2 text-xs text-gray-500">{theme.description}</p>

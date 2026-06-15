@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   applyTheme,
   BUILTIN_THEMES,
+  createExampleTheme,
   createThemeExport,
   importCustomThemes,
   parseThemeFileContent,
@@ -101,6 +102,48 @@ test('parseThemeFileContent validates and normalizes a theme package', () => {
   assert.equal(parsed.customCss, ':root[data-mediatree-theme] .movie-title { color: var(--mt-color-accent); }')
 })
 
+test('parseThemeFileContent preserves advanced skin metadata and design tokens', () => {
+  const parsed = parseThemeFileContent(JSON.stringify({
+    schemaVersion: 2,
+    name: 'md3-soft',
+    label: 'MD3 Soft',
+    version: '1.0.0',
+    capabilities: ['tokens', 'custom-css', 'stable-selectors', 'layout', 'density', 'motion', 'unknown'],
+    colorScheme: 'light',
+    tokens: {
+      '--mt-font-family': 'Roboto, "Noto Sans SC", sans-serif',
+      '--mt-density-scale': '0.92',
+      '--mt-layout-content-max': '118rem',
+      '--mt-layout-gap': '1rem',
+      '--mt-layout-page-padding-x-wide': '2rem',
+      '--mt-layout-page-padding-y-wide': '2rem',
+      '--mt-motion-fast': '120ms',
+      '--mt-motion-normal': '240ms',
+      '--mt-color-surface-container': '#f3edf7',
+      '--mt-color-surface-container-high': '#ece6f0',
+      '--mt-shadow-elevation-2': '0 2px 10px rgba(0,0,0,0.12)',
+      '--mt-theme-style': 'md3',
+    },
+    customCss: '.mt-panel { border-radius: 28px; }\n.mt-button-primary { box-shadow: none; }',
+  }), 'md3-soft.json')
+
+  assert.equal(parsed.schemaVersion, 2)
+  assert.equal(parsed.version, '1.0.0')
+  assert.deepEqual(parsed.capabilities, ['tokens', 'custom-css', 'stable-selectors', 'layout', 'density', 'motion'])
+  assert.equal(parsed.tokens['--mt-font-family'], 'Roboto, "Noto Sans SC", sans-serif')
+  assert.equal(parsed.tokens['--mt-density-scale'], '0.92')
+  assert.equal(parsed.tokens['--mt-layout-content-max'], '118rem')
+  assert.equal(parsed.tokens['--mt-layout-page-padding-x-wide'], '2rem')
+  assert.equal(parsed.tokens['--mt-motion-fast'], '120ms')
+  assert.equal(parsed.tokens['--mt-color-surface-container'], '#f3edf7')
+  assert.equal(parsed.tokens['--mt-shadow-elevation-2'], '0 2px 10px rgba(0,0,0,0.12)')
+  assert.equal(parsed.tokens['--mt-theme-style'], 'md3')
+  assert.equal(
+    parsed.customCss,
+    ':root[data-mediatree-theme] .mt-panel { border-radius: 28px; }\n:root[data-mediatree-theme] .mt-button-primary { box-shadow: none; }'
+  )
+})
+
 test('parseThemeFileContent rejects unsafe custom CSS', () => {
   assert.throws(
     () => parseThemeFileContent(JSON.stringify({
@@ -112,11 +155,65 @@ test('parseThemeFileContent rejects unsafe custom CSS', () => {
   )
 })
 
+test('built-in themes do not include the removed Material You light scheme', () => {
+  assert.equal(
+    BUILTIN_THEMES.some(item => item.name === 'material-you-light' || item.label === 'Material You 浅色'),
+    false
+  )
+  assert.ok(BUILTIN_THEMES.every(theme => theme.schemaVersion === 2))
+  assert.ok(BUILTIN_THEMES.every(theme => theme.capabilities?.includes('stable-selectors')))
+})
+
+test('createExampleTheme emits advanced skin metadata and stable selector CSS', () => {
+  const example = JSON.parse(createExampleTheme())
+
+  assert.equal(example.schemaVersion, 2)
+  assert.equal(example.version, '1.0.0')
+  assert.ok(example.capabilities.includes('stable-selectors'))
+  assert.ok(example.capabilities.includes('layout'))
+  assert.equal(example.tokens['--mt-font-family'], 'Inter, "Noto Sans SC", "Microsoft YaHei", sans-serif')
+  assert.equal(example.tokens['--mt-density-scale'], '0.96')
+  assert.equal(example.tokens['--mt-theme-style'], 'advanced-skin')
+  assert.match(example.customCss, /\.mt-panel/)
+  assert.match(example.customCss, /\.mt-media-card/)
+})
+
 test('sanitizeCustomCss scopes broad selectors to the theme root', () => {
   assert.equal(
     sanitizeCustomCss('body { color: red; }\n.glass-panel { border-radius: 10px; }'),
     ':root[data-mediatree-theme] body { color: red; }\n:root[data-mediatree-theme] .glass-panel { border-radius: 10px; }'
   )
+})
+
+test('global CSS exposes stable theme hook selectors', () => {
+  const css = readFileSync('src/index.css', 'utf8')
+  for (const selector of [
+    '.mt-app-shell',
+    '.mt-topbar',
+    '.mt-content',
+    '.mt-panel',
+    '.mt-card',
+    '.mt-button',
+    '.mt-button-primary',
+    '.mt-input',
+    '.mt-chip',
+    '.mt-popover',
+    '.mt-dialog',
+    '.mt-media-card',
+  ]) {
+    assert.ok(css.includes(selector), `missing stable selector: ${selector}`)
+  }
+})
+
+test('settings theme copy is user-facing', () => {
+  const source = readFileSync('src/pages/Settings.tsx', 'utf8')
+
+  assert.ok(source.includes('外观主题'))
+  assert.ok(source.includes('导入主题文件即可更换整体外观'))
+  assert.ok(source.includes('下载示例主题'))
+  assert.ok(source.includes('导出我的主题'))
+  assert.ok(source.includes('导入主题'))
+  assert.doesNotMatch(source, /JSON 主题包|上传主题/)
 })
 
 test('applyTheme writes tokens, color scheme, dataset, and custom CSS', () => {
@@ -156,7 +253,7 @@ test('createThemeExport includes the active built-in and custom themes', () => {
 
   assert.equal(exported.activeTheme, BUILTIN_THEMES[0].name)
   assert.equal(exported.themes[0].name, customTheme.name)
-  assert.equal(exported.version, 1)
+  assert.equal(exported.version, 2)
 })
 
 test('importCustomThemes rejects built-in names without changing stored custom themes', () => {

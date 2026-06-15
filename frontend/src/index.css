@@ -25,6 +25,17 @@
 }
 
 :root {
+  --mt-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  --mt-density-scale: 1;
+  --mt-layout-content-max: 80rem;
+  --mt-layout-gap: 1.25rem;
+  --mt-layout-page-padding-x: 1rem;
+  --mt-layout-page-padding-y: 1.25rem;
+  --mt-layout-page-padding-x-wide: 1.5rem;
+  --mt-layout-page-padding-y-wide: 1.75rem;
+  --mt-motion-fast: 160ms;
+  --mt-motion-normal: 260ms;
+  --mt-theme-style: liquid-glass;
   --mt-color-bg-start: #03040a;
   --mt-color-bg-mid: #070911;
   --mt-color-bg-end: #0c0f17;
@@ -37,6 +48,8 @@
   --mt-color-surface: rgba(255,255,255,0.07);
   --mt-color-surface-elevated: rgba(255,255,255,0.11);
   --mt-color-surface-muted: rgba(255,255,255,0.06);
+  --mt-color-surface-container: rgba(255,255,255,0.08);
+  --mt-color-surface-container-high: rgba(255,255,255,0.12);
   --mt-color-surface-strong: rgba(0,0,0,0.35);
   --mt-color-control: rgba(255,255,255,0.08);
   --mt-color-control-hover: rgba(255,255,255,0.14);
@@ -54,6 +67,9 @@
   --mt-shadow-glass: 0 24px 80px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   --mt-shadow-card: 0 18px 50px rgba(0, 0, 0, 0.34);
   --mt-shadow-glow: 0 18px 48px rgba(10, 132, 255, 0.22);
+  --mt-shadow-elevation-1: 0 1px 3px rgba(0, 0, 0, 0.18);
+  --mt-shadow-elevation-2: 0 8px 24px rgba(0, 0, 0, 0.22);
+  --mt-shadow-elevation-3: 0 18px 50px rgba(0, 0, 0, 0.28);
   --mt-backdrop-panel: blur(22px) saturate(170%);
   --mt-backdrop-card: blur(6px) saturate(130%);
 }
@@ -67,6 +83,28 @@
 }
 
 @layer components {
+  .mt-app-shell {
+    font-family: var(--mt-font-family);
+  }
+
+  .mt-content {
+    max-width: var(--mt-layout-content-max);
+    padding-inline: var(--mt-layout-page-padding-x);
+    padding-block: var(--mt-layout-page-padding-y);
+  }
+
+  @media (min-width: 640px) {
+    .mt-content {
+      padding-inline: var(--mt-layout-page-padding-x-wide);
+      padding-block: var(--mt-layout-page-padding-y-wide);
+    }
+  }
+
+  .mt-topbar {
+    font-family: var(--mt-font-family);
+  }
+
+  .mt-panel,
   .glass-panel {
     border: 1px solid var(--mt-color-border);
     border-radius: var(--mt-radius-panel);
@@ -76,78 +114,93 @@
     -webkit-backdrop-filter: var(--mt-backdrop-panel);
   }
 
+  .mt-card,
   .glass-card {
     border: 1px solid var(--mt-color-border);
     border-radius: var(--mt-radius-card);
-    background: var(--mt-color-surface-muted);
+    background: var(--mt-color-surface-container, var(--mt-color-surface-muted));
     box-shadow: var(--mt-shadow-card);
     /* 用 backdrop-blur-sm 替代 md，减少滚动时高斯模糊重算开销 */
     backdrop-filter: var(--mt-backdrop-card);
     -webkit-backdrop-filter: var(--mt-backdrop-card);
   }
 
+  .mt-button,
   .glass-button {
-    @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium shadow-sm backdrop-blur-xl transition-all duration-200 focus:outline-none disabled:pointer-events-none disabled:opacity-50;
+    @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium shadow-sm backdrop-blur-xl transition-all focus:outline-none disabled:pointer-events-none disabled:opacity-50;
     border: 1px solid var(--mt-color-border);
     border-radius: var(--mt-radius-control);
     background: var(--mt-color-control);
     color: var(--mt-color-text);
+    transition-duration: var(--mt-motion-fast);
   }
 
+  .mt-button:hover,
   .glass-button:hover {
     border-color: var(--mt-color-border-strong);
     background: var(--mt-color-control-hover);
   }
 
+  .mt-button:focus-visible,
   .glass-button:focus-visible {
     box-shadow: 0 0 0 2px var(--mt-color-accent-soft);
   }
 
+  .mt-button-primary,
   .glass-button-primary {
-    @apply inline-flex items-center justify-center px-4 py-2 text-sm font-semibold backdrop-blur-xl transition-all duration-200 focus:outline-none disabled:pointer-events-none disabled:opacity-50;
+    @apply inline-flex items-center justify-center px-4 py-2 text-sm font-semibold backdrop-blur-xl transition-all focus:outline-none disabled:pointer-events-none disabled:opacity-50;
     border: 1px solid color-mix(in srgb, var(--mt-color-accent) 48%, transparent);
     border-radius: var(--mt-radius-control);
     background: color-mix(in srgb, var(--mt-color-accent) 82%, transparent);
     color: #fff;
     box-shadow: var(--mt-shadow-glow);
+    transition-duration: var(--mt-motion-fast);
   }
 
+  .mt-button-primary:hover,
   .glass-button-primary:hover {
     background: var(--mt-color-accent);
     box-shadow: var(--mt-shadow-glow);
   }
 
+  .mt-button-primary:focus-visible,
   .glass-button-primary:focus-visible {
     box-shadow: var(--mt-shadow-glow), 0 0 0 2px var(--mt-color-accent-soft);
   }
 
+  .mt-input,
   .glass-input {
-    @apply shadow-inner backdrop-blur-xl transition-all duration-200 focus:outline-none;
+    @apply shadow-inner backdrop-blur-xl transition-all focus:outline-none;
     border: 1px solid var(--mt-color-border);
     border-radius: var(--mt-radius-card);
     background: var(--mt-color-surface);
     color: var(--mt-color-text);
+    transition-duration: var(--mt-motion-fast);
   }
 
+  .mt-input::placeholder,
   .glass-input::placeholder {
     color: var(--mt-color-text-faint);
   }
 
+  .mt-input:focus,
   .glass-input:focus {
     border-color: color-mix(in srgb, var(--mt-color-accent) 62%, transparent);
     background: var(--mt-color-surface-elevated);
     box-shadow: inset 0 1px 2px rgba(0,0,0,0.18), 0 0 0 2px var(--mt-color-accent-soft);
   }
 
+  .mt-popover,
   .glass-popover {
     border: 1px solid var(--mt-color-border);
     border-radius: var(--mt-radius-card);
-    background: var(--mt-color-surface-muted);
+    background: var(--mt-color-surface-container-high, var(--mt-color-surface-muted));
     box-shadow: var(--mt-shadow-glass);
     backdrop-filter: var(--mt-backdrop-panel);
     -webkit-backdrop-filter: var(--mt-backdrop-panel);
   }
 
+  .mt-dialog,
   .glass-modal {
     border: 1px solid var(--mt-color-border);
     border-radius: var(--mt-radius-panel);
@@ -157,6 +210,7 @@
     -webkit-backdrop-filter: var(--mt-backdrop-panel);
   }
 
+  .mt-chip,
   .glass-chip {
     @apply inline-flex items-center px-2.5 py-1 text-xs font-medium backdrop-blur-xl;
     border: 1px solid var(--mt-color-border);
@@ -165,9 +219,15 @@
     color: var(--mt-color-text);
   }
 
+  .mt-media-card,
+  .media-grid-card {
+    border-radius: var(--mt-radius-card);
+    transition-duration: var(--mt-motion-normal);
+  }
+
   .apple-focus {
     /* 仅过渡实际变化的属性，避免 transition-all 触发 layout/paint */
-    transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+    transition: transform var(--mt-motion-normal) ease, box-shadow var(--mt-motion-normal) ease, border-color var(--mt-motion-normal) ease;
     will-change: transform;
     @apply hover:-translate-y-1 hover:scale-[1.02] hover:border-white/25 hover:shadow-glow focus:outline-none focus:ring-2 focus:ring-apple-blue/50;
   }
@@ -176,7 +236,7 @@
     position: relative;
     border-radius: var(--mt-radius-panel);
     border: 1px solid var(--mt-color-border-strong);
-    background: var(--mt-color-surface-elevated);
+    background: var(--mt-color-surface-container-high, var(--mt-color-surface-elevated));
     backdrop-filter: var(--mt-backdrop-panel) brightness(1.1) contrast(1.04);
     -webkit-backdrop-filter: var(--mt-backdrop-panel) brightness(1.1) contrast(1.04);
     box-shadow: var(--mt-shadow-glass);
@@ -272,7 +332,7 @@ html {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--mt-font-family);
   background:
     radial-gradient(circle at 12% 0%, var(--mt-color-bg-glow), transparent 34rem),
     linear-gradient(135deg, var(--mt-color-bg-start) 0%, var(--mt-color-bg-mid) 48%, var(--mt-color-bg-end) 100%);

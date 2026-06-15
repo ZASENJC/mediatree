@@ -1,19 +1,22 @@
 const ACTIVE_THEME_KEY = 'mediatree_active_theme'
 const CUSTOM_THEMES_KEY = 'mediatree_custom_themes'
 const CUSTOM_THEME_STYLE_ID = 'mediatree-custom-theme-style'
-const THEME_EXPORT_VERSION = 1
+const THEME_EXPORT_VERSION = 2
 const MAX_THEME_FILE_BYTES = 128 * 1024
 const MAX_CUSTOM_CSS_LENGTH = 60 * 1024
 const THEME_ROOT_SELECTOR = ':root[data-mediatree-theme]'
 
 export type ThemeColorScheme = 'dark' | 'light' | 'auto'
+export type ThemeCapability = 'tokens' | 'custom-css' | 'stable-selectors' | 'layout' | 'density' | 'motion'
 
 export interface ThemePackage {
+  schemaVersion?: number
   name: string
   label: string
   description?: string
   author?: string
   version?: string
+  capabilities?: ThemeCapability[]
   colorScheme?: ThemeColorScheme
   tokens: Record<string, string>
   customCss?: string
@@ -28,6 +31,17 @@ export interface ThemeImportResult {
 export const DEFAULT_THEME_NAME = 'mediatree-dark'
 
 const DEFAULT_DARK_TOKENS: Record<string, string> = {
+  '--mt-font-family': '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif',
+  '--mt-density-scale': '1',
+  '--mt-layout-content-max': '80rem',
+  '--mt-layout-gap': '1.25rem',
+  '--mt-layout-page-padding-x': '1rem',
+  '--mt-layout-page-padding-y': '1.25rem',
+  '--mt-layout-page-padding-x-wide': '1.5rem',
+  '--mt-layout-page-padding-y-wide': '1.75rem',
+  '--mt-motion-fast': '160ms',
+  '--mt-motion-normal': '260ms',
+  '--mt-theme-style': 'liquid-glass',
   '--mt-color-bg-start': '#03040a',
   '--mt-color-bg-mid': '#070911',
   '--mt-color-bg-end': '#0c0f17',
@@ -40,6 +54,8 @@ const DEFAULT_DARK_TOKENS: Record<string, string> = {
   '--mt-color-surface': 'rgba(255,255,255,0.07)',
   '--mt-color-surface-elevated': 'rgba(255,255,255,0.11)',
   '--mt-color-surface-muted': 'rgba(255,255,255,0.06)',
+  '--mt-color-surface-container': 'rgba(255,255,255,0.08)',
+  '--mt-color-surface-container-high': 'rgba(255,255,255,0.12)',
   '--mt-color-surface-strong': 'rgba(0,0,0,0.35)',
   '--mt-color-control': 'rgba(255,255,255,0.08)',
   '--mt-color-control-hover': 'rgba(255,255,255,0.14)',
@@ -57,6 +73,9 @@ const DEFAULT_DARK_TOKENS: Record<string, string> = {
   '--mt-shadow-glass': '0 24px 80px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.12)',
   '--mt-shadow-card': '0 18px 50px rgba(0, 0, 0, 0.34)',
   '--mt-shadow-glow': '0 18px 48px rgba(10, 132, 255, 0.22)',
+  '--mt-shadow-elevation-1': '0 1px 3px rgba(0, 0, 0, 0.18)',
+  '--mt-shadow-elevation-2': '0 8px 24px rgba(0, 0, 0, 0.22)',
+  '--mt-shadow-elevation-3': '0 18px 50px rgba(0, 0, 0, 0.28)',
   '--mt-backdrop-panel': 'blur(22px) saturate(170%)',
   '--mt-backdrop-card': 'blur(6px) saturate(130%)',
 }
@@ -66,6 +85,8 @@ export const BUILTIN_THEMES: ThemePackage[] = [
     name: DEFAULT_THEME_NAME,
     label: 'MediaTree 暗色',
     description: '默认玻璃质感暗色主题。',
+    schemaVersion: 2,
+    capabilities: ['tokens', 'custom-css', 'stable-selectors', 'layout', 'density', 'motion'],
     colorScheme: 'dark',
     builtin: true,
     tokens: DEFAULT_DARK_TOKENS,
@@ -74,6 +95,8 @@ export const BUILTIN_THEMES: ThemePackage[] = [
     name: 'soft-daylight',
     label: '晨光浅色',
     description: '适合白天使用的浅色主题。',
+    schemaVersion: 2,
+    capabilities: ['tokens', 'custom-css', 'stable-selectors', 'layout', 'density', 'motion'],
     colorScheme: 'light',
     builtin: true,
     tokens: {
@@ -90,6 +113,8 @@ export const BUILTIN_THEMES: ThemePackage[] = [
       '--mt-color-surface': 'rgba(255,255,255,0.66)',
       '--mt-color-surface-elevated': 'rgba(255,255,255,0.82)',
       '--mt-color-surface-muted': 'rgba(15,23,42,0.055)',
+      '--mt-color-surface-container': 'rgba(255,255,255,0.7)',
+      '--mt-color-surface-container-high': 'rgba(255,255,255,0.88)',
       '--mt-color-surface-strong': 'rgba(255,255,255,0.76)',
       '--mt-color-control': 'rgba(15,23,42,0.06)',
       '--mt-color-control-hover': 'rgba(15,23,42,0.1)',
@@ -101,6 +126,9 @@ export const BUILTIN_THEMES: ThemePackage[] = [
       '--mt-shadow-glass': '0 20px 64px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.72)',
       '--mt-shadow-card': '0 16px 42px rgba(15, 23, 42, 0.12)',
       '--mt-shadow-glow': '0 16px 42px rgba(13, 148, 136, 0.16)',
+      '--mt-shadow-elevation-1': '0 1px 3px rgba(15, 23, 42, 0.08)',
+      '--mt-shadow-elevation-2': '0 8px 22px rgba(15, 23, 42, 0.1)',
+      '--mt-shadow-elevation-3': '0 18px 42px rgba(15, 23, 42, 0.12)',
     },
     customCss: `
 .media-grid-card img { filter: saturate(1.04) contrast(1.02); }
@@ -111,6 +139,8 @@ export const BUILTIN_THEMES: ThemePackage[] = [
     name: 'cinema-ember',
     label: '深影院',
     description: '降低蓝色占比的观影暗色主题。',
+    schemaVersion: 2,
+    capabilities: ['tokens', 'custom-css', 'stable-selectors', 'layout', 'density', 'motion'],
     colorScheme: 'dark',
     builtin: true,
     tokens: {
@@ -125,6 +155,8 @@ export const BUILTIN_THEMES: ThemePackage[] = [
       '--mt-color-surface': 'rgba(255,246,238,0.075)',
       '--mt-color-surface-elevated': 'rgba(255,246,238,0.12)',
       '--mt-color-surface-muted': 'rgba(255,246,238,0.06)',
+      '--mt-color-surface-container': 'rgba(255,246,238,0.08)',
+      '--mt-color-surface-container-high': 'rgba(255,246,238,0.13)',
       '--mt-color-control': 'rgba(255,246,238,0.085)',
       '--mt-color-control-hover': 'rgba(255,246,238,0.145)',
       '--mt-color-border': 'rgba(255,238,224,0.11)',
@@ -178,6 +210,22 @@ function normalizeThemeName(value: unknown, fallback?: string) {
 
 function normalizeColorScheme(value: unknown): ThemeColorScheme {
   return value === 'light' || value === 'auto' || value === 'dark' ? value : 'dark'
+}
+
+function normalizeSchemaVersion(value: unknown) {
+  const version = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : 0
+  return Number.isInteger(version) && version > 0 && version <= THEME_EXPORT_VERSION ? version : undefined
+}
+
+const ALLOWED_THEME_CAPABILITIES: ThemeCapability[] = ['tokens', 'custom-css', 'stable-selectors', 'layout', 'density', 'motion']
+const ALLOWED_THEME_CAPABILITY_SET = new Set<string>(ALLOWED_THEME_CAPABILITIES)
+
+function normalizeCapabilities(value: unknown): ThemeCapability[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const capabilities = value
+    .filter((item): item is ThemeCapability => typeof item === 'string' && ALLOWED_THEME_CAPABILITY_SET.has(item))
+    .filter((item, index, items) => items.indexOf(item) === index)
+  return capabilities.length > 0 ? capabilities : undefined
 }
 
 function isAllowedThemeToken(name: string) {
@@ -313,11 +361,13 @@ function normalizeThemePackage(input: unknown, fallbackName?: string): ThemePack
   const name = normalizeThemeName(data.name, fallbackName)
   const label = normalizeText(data.label, name, 80)
   const theme: ThemePackage = {
+    schemaVersion: normalizeSchemaVersion(data.schemaVersion ?? (typeof data.version === 'number' ? data.version : undefined)),
     name,
     label,
     description: normalizeText(data.description, '', 220) || undefined,
     author: normalizeText(data.author, '', 80) || undefined,
     version: normalizeText(data.version, '', 32) || undefined,
+    capabilities: normalizeCapabilities(data.capabilities),
     colorScheme: normalizeColorScheme(data.colorScheme),
     tokens: normalizeTokens(data.tokens),
     customCss: sanitizeCustomCss(typeof data.customCss === 'string' ? data.customCss : ''),
@@ -483,27 +533,57 @@ export function createThemeExport(activeTheme: ThemePackage, customThemes?: Them
 
 export function createExampleTheme() {
   return JSON.stringify({
-    version: 1,
-    name: 'my-theme',
-    label: '我的主题',
-    description: '自定义 MediaTree 主题示例',
+    schemaVersion: 2,
+    name: 'advanced-skin',
+    label: '我的高级外观',
+    description: '可作为大幅改造 MediaTree 外观的主题模板。',
     author: 'MediaTree user',
-    colorScheme: 'dark',
+    version: '1.0.0',
+    capabilities: ['tokens', 'custom-css', 'stable-selectors', 'layout', 'density', 'motion'],
+    colorScheme: 'light',
     tokens: {
-      '--mt-color-bg-start': '#07120f',
-      '--mt-color-bg-mid': '#101820',
-      '--mt-color-bg-end': '#18151f',
-      '--mt-color-bg-glow': 'rgba(45, 212, 191, 0.18)',
-      '--mt-color-text': '#f8fafc',
-      '--mt-color-text-muted': '#a7b4c2',
-      '--mt-color-surface': 'rgba(255,255,255,0.08)',
-      '--mt-color-surface-elevated': 'rgba(255,255,255,0.13)',
-      '--mt-color-border': 'rgba(255,255,255,0.12)',
-      '--mt-color-accent': '#2dd4bf',
-      '--mt-color-accent-strong': '#fb7185',
-      '--mt-radius-panel': '1.25rem',
-      '--mt-shadow-glow': '0 18px 48px rgba(45, 212, 191, 0.18)',
+      '--mt-font-family': 'Inter, "Noto Sans SC", "Microsoft YaHei", sans-serif',
+      '--mt-density-scale': '0.96',
+      '--mt-layout-content-max': '92rem',
+      '--mt-layout-gap': '1rem',
+      '--mt-layout-page-padding-x': '1.25rem',
+      '--mt-layout-page-padding-y': '1.25rem',
+      '--mt-layout-page-padding-x-wide': '1.5rem',
+      '--mt-layout-page-padding-y-wide': '1.5rem',
+      '--mt-motion-fast': '140ms',
+      '--mt-motion-normal': '240ms',
+      '--mt-theme-style': 'advanced-skin',
+      '--mt-color-bg-start': '#f8fafc',
+      '--mt-color-bg-mid': '#eef6f6',
+      '--mt-color-bg-end': '#f7f1fb',
+      '--mt-color-bg-glow': 'rgba(20, 184, 166, 0.14)',
+      '--mt-color-page-overlay': 'linear-gradient(180deg, rgba(255,255,255,0.64), transparent 34%, rgba(15,23,42,0.04))',
+      '--mt-color-noise-opacity': '0',
+      '--mt-color-text': '#111827',
+      '--mt-color-text-muted': '#4b5563',
+      '--mt-color-text-faint': '#6b7280',
+      '--mt-color-surface': 'rgba(255,255,255,0.82)',
+      '--mt-color-surface-elevated': 'rgba(255,255,255,0.94)',
+      '--mt-color-surface-muted': 'rgba(15,23,42,0.055)',
+      '--mt-color-surface-container': '#eef6f6',
+      '--mt-color-surface-container-high': '#e7f0f3',
+      '--mt-color-border': 'rgba(15,23,42,0.12)',
+      '--mt-color-border-strong': 'rgba(15,23,42,0.2)',
+      '--mt-color-accent': '#0f766e',
+      '--mt-color-accent-strong': '#7c3aed',
+      '--mt-color-accent-soft': 'rgba(15,118,110,0.14)',
+      '--mt-radius-panel': '24px',
+      '--mt-radius-card': '18px',
+      '--mt-radius-control': '999px',
+      '--mt-shadow-glass': '0 16px 40px rgba(15, 23, 42, 0.12)',
+      '--mt-shadow-card': '0 10px 28px rgba(15, 23, 42, 0.1)',
+      '--mt-shadow-glow': '0 12px 32px rgba(15, 118, 110, 0.14)',
+      '--mt-shadow-elevation-1': '0 1px 3px rgba(15, 23, 42, 0.08)',
+      '--mt-shadow-elevation-2': '0 8px 22px rgba(15, 23, 42, 0.1)',
+      '--mt-shadow-elevation-3': '0 18px 42px rgba(15, 23, 42, 0.12)',
+      '--mt-backdrop-panel': 'none',
+      '--mt-backdrop-card': 'none',
     },
-    customCss: '.media-grid-card { transform-origin: center; }\\n.media-grid-card:hover { filter: saturate(1.08); }',
+    customCss: '.mt-panel { border-width: 1px; }\\n.mt-topbar .liquid-glass { background: var(--mt-color-surface-container-high); }\\n.mt-media-card:hover { filter: saturate(1.08); transform: translateY(-3px); }',
   }, null, 2)
 }

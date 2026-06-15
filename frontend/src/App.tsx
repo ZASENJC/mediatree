@@ -324,9 +324,9 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="mt-app-shell min-h-screen flex flex-col">
       {!theaterMode && (
-      <header className="sticky top-0 z-50 pt-2 sm:pt-3">
+      <header className="mt-topbar sticky top-0 z-50 pt-2 sm:pt-3">
         <div className="mx-auto flex h-12 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6 transform-gpu sm:h-14 sm:gap-3">
           <div className="relative">
           <div className="flex min-w-0 items-center gap-2 liquid-glass pl-3 pr-3 py-1.5 sm:pl-4 sm:pr-4 sm:py-2">
@@ -475,7 +475,7 @@ export default function App() {
       </header>
       )}
 
-      <main className={`flex-1 w-full min-h-0 ${theaterMode ? 'flex flex-col max-w-none mx-0 px-0 py-0' : 'max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-7'}`}>
+      <main className={`flex-1 w-full min-h-0 ${theaterMode ? 'flex flex-col max-w-none mx-0 px-0 py-0' : 'mt-content mx-auto'}`}>
         <Routes key={activeLib}>
           <Route path="/" element={<Home />} />
           <Route path="/browse" element={<Browse />} />
