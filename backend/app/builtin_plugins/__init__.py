@@ -1,0 +1,1 @@
+"""Application-shipped plugin bundles."""

@@ -1,0 +1,12 @@
+{
+  "name": "none",
+  "version": "1.0.0",
+  "label": "None",
+  "description": "Disable network scraping",
+  "entrypoint": "plugin.py",
+  "class_name": "BuiltinNoneScraper",
+  "supported_media_types": [],
+  "requires_api_key": false,
+  "enabled": false,
+  "builtin": true
+}

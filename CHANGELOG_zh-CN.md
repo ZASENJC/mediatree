@@ -8,6 +8,11 @@
 
 ## 未发布
 
+### 刮削
+
+- 将应用内置刮削器改为由 `backend/app/builtin_plugins/scrapers` 下的 manifest 驱动加载
+- 用户上传的刮削器插件继续隔离安装在 `settings.data_dir/scraper_plugins`，`/api/scrapers` 统一返回内置刮削器和已启用上传插件
+
 ---
 
 ## 1.0.16 (2026-06-15)

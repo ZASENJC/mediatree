@@ -1,0 +1,12 @@
+{
+  "name": "auto",
+  "version": "1.0.0",
+  "label": "Auto",
+  "description": "MediaTree fallback chain: IMDB/TMDB ID, TMDB title, then Bangumi",
+  "entrypoint": "plugin.py",
+  "class_name": "BuiltinAutoScraper",
+  "supported_media_types": ["movie", "tv", "anime", "jav"],
+  "requires_api_key": false,
+  "enabled": true,
+  "builtin": true
+}

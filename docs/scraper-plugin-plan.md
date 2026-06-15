@@ -51,3 +51,16 @@ This v1 treats uploaded plugins as trusted local code. It does not sandbox third
 - Existing scanner and scraper tests must continue passing.
 - Frontend build must pass after dynamic scraper option typing updates.
 
+## Phase 2: Built-in Scrapers as Plugins
+
+The next step moves the built-in scraper registry to the same manifest-driven shape as uploaded plugins:
+
+- Add application-shipped plugin directories under `backend/app/builtin_plugins/scrapers/`.
+- Each built-in scraper has a `plugin.json` manifest and a `plugin.py` entrypoint.
+- Built-in plugins are always available and are not installed into `settings.data_dir`.
+- Uploaded plugins remain separate runtime state under `settings.data_dir/scraper_plugins/`.
+- Keep the existing mature scraper implementations under `backend/app/scrapers/` as reusable core classes, but load/register them through built-in plugin manifests.
+- Keep built-in scraper names reserved so uploaded plugins cannot override them.
+- `GET /api/scrapers` should expose built-in plugin scrapers and enabled uploaded plugins through one list.
+- `GET /api/scraper-plugins` should continue to show only user-installed runtime plugins, not built-ins.
+- A fresh Docker container with an empty data directory must still expose built-in scrapers and no user-installed plugins.

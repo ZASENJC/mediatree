@@ -1,0 +1,12 @@
+{
+  "name": "bangumi",
+  "version": "1.0.0",
+  "label": "Bangumi",
+  "description": "Bangumi anime and TV scraper",
+  "entrypoint": "plugin.py",
+  "class_name": "BuiltinBangumiScraper",
+  "supported_media_types": ["tv", "anime"],
+  "requires_api_key": false,
+  "enabled": true,
+  "builtin": true
+}

@@ -1,0 +1,12 @@
+{
+  "name": "tmdb_collection",
+  "version": "1.0.0",
+  "label": "TMDB Collection",
+  "description": "The Movie Database collection scraper",
+  "entrypoint": "plugin.py",
+  "class_name": "BuiltinTMDBCollectionScraper",
+  "supported_media_types": ["collection"],
+  "requires_api_key": true,
+  "enabled": true,
+  "builtin": true
+}

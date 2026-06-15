@@ -8,6 +8,11 @@ All notable changes to MediaTree are documented here.
 
 ## Unreleased
 
+### Scraping
+
+- Converted application-shipped scrapers to manifest-driven built-in plugins under `backend/app/builtin_plugins/scrapers`
+- Kept uploaded scraper plugins isolated under `settings.data_dir/scraper_plugins` while `/api/scrapers` exposes built-ins and enabled uploaded plugins through the same registry
+
 ---
 
 ## 1.0.16 (2026-06-15)

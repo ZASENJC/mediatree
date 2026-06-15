@@ -91,13 +91,16 @@ In production, the backend serves the built frontend at `/`. In development, run
 - `title_match.py` — Title matching utilities: code extraction, TMDB ID token parsing, CJK/romaji extraction, season inference, folder clean name generation.
 - `updater.py` — Two-tier self-update system. App-package mode: downloads `mediatree-app-<version>.tar.gz` into `data/releases/`, supports rollback to previous version, and cleans older packages after successful restart. Docker mode: `get_available_versions()` polls DockerHub tags, `perform_update()` pulls target image then restarts via `docker compose up -d`. `fetch_github_release_body()` fetches full GitHub release notes for the CHANGELOG modal.
 
-### Scraper plugin system (`backend/app/scrapers/`)
+### Scraper plugin system
 - `base.py` — `BaseScraper` abstract class with `search() -> ScrapeCandidate` and `get_detail() -> ScrapeResult`. Dataclasses defined here.
-- `registry.py` — Maps scraper names to instances. Built-in: `tmdb_movie`, `tmdb_tv`, `bangumi`, `javdatabase`, `auto` (TMDB ID → Bangumi → TMDB title search chain), `none` (no-op). Use `register_scraper()`/`get_scraper()`.
+- `registry.py` — Maps scraper names to instances. Built-ins are loaded from `backend/app/builtin_plugins/scrapers/*/plugin.json` manifests. Built-in: `tmdb_movie`, `tmdb_tv`, `tmdb_collection`, `bangumi`, `javdatabase`, `auto` (IMDB/TMDB ID → TMDB title → Bangumi chain), `none` (no-op). Use `get_scraper()` and `list_scrapers()`.
+- `scraper_plugins.py` — Runtime uploaded scraper plugin service. Installs trusted local `.zip` plugins into `settings.data_dir/scraper_plugins/<name>/<version>/`, validates archive boundaries and manifests, keeps uploaded plugins disabled until explicitly enabled, and prevents names reserved by built-ins/aliases.
 - `tmdb_scraper.py`, `bangumi_scraper.py`, `javdatabase_scraper.py` — Thin adapters wrapping `tmdb.py`, `bangumi.py`, `javdb.py`.
+- `auto_scraper.py`, `none_scraper.py` — Core classes used by the built-in `auto` and `none` plugin entrypoints.
+- `backend/app/builtin_plugins/scrapers/<name>/plugin.py` — Thin built-in plugin entrypoint that subclasses or configures the reusable scraper class.
 - `utils.py` — Shared helper functions for scraper result processing.
 - Scraper cache TTLs are internal defaults (TMDB/Bangumi 168h, Javdatabase 24h). Empty results are not cached; manual scans/rescrapes/manual apply bypass scraper cache. Javdatabase network requests are internally spaced at least 3s apart.
-- To add a scraper: create new file here, subclass `BaseScraper`, register in `registry.py`.
+- To add an application-shipped scraper: add the reusable class under `backend/app/scrapers/`, then add `plugin.json` and `plugin.py` under `backend/app/builtin_plugins/scrapers/<name>/`. To add a user-installed scraper: upload a valid plugin zip from Settings and enable it.
 
 ### Subtitle rendering pipeline
 1. Backend: `subtitles.py` detects embedded (ffprobe) + external subtitles (basename + lang suffix matching). ASS passthrough; SRT/other converted to WebVTT via ffmpeg.
@@ -215,7 +218,7 @@ scan_media(root)
 - Style changes: `index.css` (`@layer components` for global glass-* / apple-focus classes) + `tailwind.config.js` (color palette, shadows, backgrounds) + `pages/*.tsx` / `components/*.tsx` (use predefined component classes)
 - Glass component class reference: `glass-panel` (large container), `glass-card` (card), `glass-button` (default button), `glass-button-primary` (primary button), `glass-input` (input field), `glass-popover` (popover), `glass-modal` (dialog), `glass-chip` (tag), `apple-focus` (hover animation)
 - New API: `main.py` (route) + `database.py` (CRUD) + `api.ts` (frontend client)
-- New scraper: create in `backend/app/scrapers/`, subclass `BaseScraper`, register in `registry.py`
+- New built-in scraper: create the reusable class under `backend/app/scrapers/`, then add `plugin.json` and `plugin.py` under `backend/app/builtin_plugins/scrapers/<name>/`
 - Scan logic: `scanner.py` `scan_media()` / `scrape_for_library()`
 - Cover handling: `scanner.py:_apply_scraped_data()` + `database.py:_normalize_cover_path()`
 - Player/subtitles: `VideoPlayer.tsx` + `artplayerPluginAss.ts`; playback pages update `document.title` with `▶` / `⏸` plus the current title until the user leaves the page
