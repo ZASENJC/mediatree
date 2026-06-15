@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { marked } from 'marked'
 import { api, Config, MediaRoot, LibrarySetting, UpdateCheckResult, UpdateStatus, ScraperInfo, ScraperPlugin, clearCache, getServerUrl, setServerUrl as saveServerUrl, isNativeApp, resolveApiUrl } from '../api'
+import { buildLibraryScraperOptions } from '../scrapers'
 import { getUiPrefs, setUiPrefs, dismissUpdate } from '../store'
 
 const SCRAPER_META: Record<string, { label: string; desc: string; hasKey: boolean }> = {
@@ -65,23 +66,7 @@ export default function Settings() {
   const [logVisible, setLogVisible] = useState<Record<string, boolean>>({})
   const scanTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
   const libraryScraperOptions = useMemo(
-    () => {
-      const merged = [...scrapers]
-      const seen = new Set(merged.map(item => item.name))
-      plugins.forEach(plugin => {
-        if (seen.has(plugin.name)) return
-        merged.push({
-          name: plugin.name,
-          label: plugin.enabled ? plugin.label : `${plugin.label || plugin.name}（已停用）`,
-          description: plugin.description,
-          supported_media_types: plugin.supported_media_types,
-          requires_api_key: false,
-          enabled: plugin.enabled,
-          builtin: plugin.builtin,
-        })
-      })
-      return merged
-    },
+    () => buildLibraryScraperOptions(scrapers, plugins),
     [scrapers, plugins],
   )
 
@@ -605,6 +590,8 @@ export default function Settings() {
             const progress = st && st.total > 0 ? Math.round((st.done / st.total) * 100) : 0
             const isScanning = st && st.status === 'scanning'
             const isClearing = st && st.status === 'clearing'
+            const selectedScraper = libScraper[lib.path] || 'auto'
+            const selectedScraperAvailable = libraryScraperOptions.some(item => item.name === selectedScraper)
             return (
               <div key={lib.path} className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
                 <div className="flex flex-wrap items-center gap-3">
@@ -613,15 +600,25 @@ export default function Settings() {
                     <p className="text-xs text-gray-500">{lib.movie_count} 部</p>
                   </div>
                   <select
-                    value={libScraper[lib.path] || 'auto'}
+                    value={selectedScraperAvailable ? selectedScraper : ''}
                     onChange={e => setLibScraper(prev => ({ ...prev, [lib.path]: e.target.value }))}
+                    disabled={libraryScraperOptions.length === 0}
                     className="glass-input px-2 py-1.5 text-xs text-gray-300"
                   >
-                    {libraryScraperOptions.map(item => (
-                      <option key={item.name} value={item.name} disabled={!item.enabled && !item.builtin}>
-                        {item.label}
-                      </option>
-                    ))}
+                    {libraryScraperOptions.length === 0 ? (
+                      <option value="">无可用刮削器</option>
+                    ) : (
+                      <>
+                        {!selectedScraperAvailable && (
+                          <option value="" disabled>当前刮削器不可用</option>
+                        )}
+                        {libraryScraperOptions.map(item => (
+                          <option key={item.name} value={item.name}>
+                            {item.label || item.name}
+                          </option>
+                        ))}
+                      </>
+                    )}
                   </select>
                   <input type="password" placeholder="密码"
                     value={libPasswords[lib.path] || ''}
