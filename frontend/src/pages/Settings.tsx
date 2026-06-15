@@ -698,24 +698,6 @@ export default function Settings() {
               </div>
 
               <div className="mt-3 border-t border-white/10 pt-3">
-                <h3 className="mb-3 text-sm font-semibold text-gray-400">刮削器说明</h3>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  {scrapers.map(item => (
-                    <div key={item.name} className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
-                      <p className="text-sm font-medium text-white">{item.label}</p>
-                      <p className="mt-0.5 text-xs text-gray-500">{item.description || SCRAPER_META[item.name]?.desc || '自定义刮削器'}</p>
-                      <span className={`mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] ${item.builtin ? 'border-apple-mint/30 bg-apple-mint/10 text-apple-mint' : 'border-apple-blue/30 bg-apple-blue/10 text-apple-blue'}`}>
-                        {item.builtin ? '已内置' : '插件'}
-                      </span>
-                      {item.name.startsWith('tmdb') && item.name !== 'tmdb_collection' && (
-                        <span className="mt-2 ml-1 inline-flex rounded-full border border-apple-yellow/30 bg-apple-yellow/10 px-2 py-0.5 text-[10px] text-apple-yellow">推荐</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-3 border-t border-white/10 pt-3">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold text-gray-400">插件管理</h3>
                   <label className={`${btnDark} cursor-pointer`}>
