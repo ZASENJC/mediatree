@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { marked } from 'marked'
-import { api, Config, MediaRoot, LibrarySetting, UpdateCheckResult, UpdateStatus, clearCache, getServerUrl, setServerUrl as saveServerUrl, isNativeApp, resolveApiUrl } from '../api'
+import { api, Config, MediaRoot, LibrarySetting, UpdateCheckResult, UpdateStatus, ScraperInfo, ScraperPlugin, clearCache, getServerUrl, setServerUrl as saveServerUrl, isNativeApp, resolveApiUrl } from '../api'
 import { getUiPrefs, setUiPrefs, dismissUpdate } from '../store'
 
 const SCRAPER_META: Record<string, { label: string; desc: string; hasKey: boolean }> = {
@@ -13,18 +13,20 @@ const SCRAPER_META: Record<string, { label: string; desc: string; hasKey: boolea
   none: { label: '不刮削', desc: '只扫描本地文件，不联网刮削元数据', hasKey: false },
 }
 
-const SCRAPER_HELP = [
-  ...Object.entries(SCRAPER_META).filter(([key]) => key !== 'none').map(([key, val]) => ({ key, ...val })),
-  {
-    key: 'tmdb_collection',
-    label: 'TMDB 合集',
-    desc: '适合电影系列合集元数据，如合集封面、背景和简介',
-    hasKey: true,
-  },
-]
-
 function normalizeScraper(scraper?: string) {
   return scraper === 'tmdb' ? 'tmdb_movie' : (scraper || 'auto')
+}
+
+function fallbackScrapers(): ScraperInfo[] {
+  return Object.entries(SCRAPER_META).map(([name, meta]) => ({
+    name,
+    label: meta.label,
+    description: meta.desc,
+    supported_media_types: [],
+    requires_api_key: meta.hasKey,
+    enabled: name !== 'none',
+    builtin: true,
+  }))
 }
 
 interface ScanState {
@@ -53,11 +55,35 @@ export default function Settings() {
   const [libPasswords, setLibPasswords] = useState<Record<string, string>>({})
   const [libSaving, setLibSaving] = useState<string | null>(null)
   const [libMsg, setLibMsg] = useState('')
+  const [scrapers, setScrapers] = useState<ScraperInfo[]>(fallbackScrapers())
+  const [plugins, setPlugins] = useState<ScraperPlugin[]>([])
+  const [pluginMsg, setPluginMsg] = useState('')
+  const [pluginBusy, setPluginBusy] = useState<string | null>(null)
 
   const [scanStates, setScanStates] = useState<Record<string, ScanState>>({})
   const [scanLogs, setScanLogs] = useState<Record<string, string[]>>({})
   const [logVisible, setLogVisible] = useState<Record<string, boolean>>({})
   const scanTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
+  const libraryScraperOptions = useMemo(
+    () => {
+      const merged = [...scrapers]
+      const seen = new Set(merged.map(item => item.name))
+      plugins.forEach(plugin => {
+        if (seen.has(plugin.name)) return
+        merged.push({
+          name: plugin.name,
+          label: plugin.enabled ? plugin.label : `${plugin.label || plugin.name}（已停用）`,
+          description: plugin.description,
+          supported_media_types: plugin.supported_media_types,
+          requires_api_key: false,
+          enabled: plugin.enabled,
+          builtin: plugin.builtin,
+        })
+      })
+      return merged
+    },
+    [scrapers, plugins],
+  )
 
   // auth
   const [oldUser, setOldUser] = useState('')
@@ -227,6 +253,28 @@ export default function Settings() {
     }
   }
 
+  const loadScrapers = async () => {
+    try {
+      const data = await api.scrapers()
+      setScrapers(data.items || fallbackScrapers())
+    } catch {
+      setScrapers(fallbackScrapers())
+    }
+  }
+
+  const loadPlugins = async () => {
+    try {
+      const data = await api.scraperPlugins()
+      setPlugins(data.items || [])
+    } catch {
+      setPlugins([])
+    }
+  }
+
+  const reloadScraperState = async () => {
+    await Promise.all([loadScrapers(), loadPlugins()])
+  }
+
 
   useEffect(() => {
     api.getConfig().then(d => {
@@ -247,6 +295,8 @@ export default function Settings() {
       })
       setLibScraper(sp)
     }).catch(() => {}).finally(() => setLibrariesLoading(false))
+
+    reloadScraperState()
 
     // 自动检查更新
     checkUpdates(true)
@@ -302,6 +352,51 @@ export default function Settings() {
       setLibMsg('保存失败')
     }
     setLibSaving(null)
+  }
+
+  const uploadPlugin = async (file?: File) => {
+    if (!file) return
+    setPluginBusy('install')
+    setPluginMsg('')
+    try {
+      await api.installScraperPlugin(file)
+      await reloadScraperState()
+      setPluginMsg('插件已安装，默认未启用')
+    } catch (err) {
+      setPluginMsg(`插件安装失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
+    } finally {
+      setPluginBusy(null)
+    }
+  }
+
+  const togglePlugin = async (plugin: ScraperPlugin) => {
+    setPluginBusy(plugin.name)
+    setPluginMsg('')
+    try {
+      if (plugin.enabled) await api.disableScraperPlugin(plugin.name)
+      else await api.enableScraperPlugin(plugin.name)
+      await reloadScraperState()
+      setPluginMsg(plugin.enabled ? '插件已停用' : '插件已启用')
+    } catch (err) {
+      setPluginMsg(`操作失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
+    } finally {
+      setPluginBusy(null)
+    }
+  }
+
+  const removePlugin = async (plugin: ScraperPlugin) => {
+    if (!confirm(`确定删除刮削器插件 "${plugin.label || plugin.name}"？`)) return
+    setPluginBusy(plugin.name)
+    setPluginMsg('')
+    try {
+      await api.deleteScraperPlugin(plugin.name)
+      await reloadScraperState()
+      setPluginMsg('插件已删除')
+    } catch (err) {
+      setPluginMsg(`删除失败：${err instanceof Error ? err.message : '请确认没有媒体库正在使用该插件'}`)
+    } finally {
+      setPluginBusy(null)
+    }
   }
 
   const doScan = async (media_root: string) => {
@@ -522,8 +617,10 @@ export default function Settings() {
                     onChange={e => setLibScraper(prev => ({ ...prev, [lib.path]: e.target.value }))}
                     className="glass-input px-2 py-1.5 text-xs text-gray-300"
                   >
-                    {Object.entries(SCRAPER_META).map(([k, v]) => (
-                      <option key={k} value={k}>{v.label}</option>
+                    {libraryScraperOptions.map(item => (
+                      <option key={item.name} value={item.name} disabled={!item.enabled && !item.builtin}>
+                        {item.label}
+                      </option>
                     ))}
                   </select>
                   <input type="password" placeholder="密码"
@@ -603,14 +700,82 @@ export default function Settings() {
               <div className="mt-3 border-t border-white/10 pt-3">
                 <h3 className="mb-3 text-sm font-semibold text-gray-400">刮削器说明</h3>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  {SCRAPER_HELP.map(({ key, label, desc }) => (
-                    <div key={key} className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
-                      <p className="text-sm font-medium text-white">{label}</p>
-                      <p className="mt-0.5 text-xs text-gray-500">{desc}</p>
-                      <span className="mt-2 inline-flex rounded-full border border-apple-mint/30 bg-apple-mint/10 px-2 py-0.5 text-[10px] text-apple-mint">已内置</span>
-                      {key.startsWith('tmdb') && key !== 'tmdb_collection' && (
+                  {scrapers.map(item => (
+                    <div key={item.name} className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
+                      <p className="text-sm font-medium text-white">{item.label}</p>
+                      <p className="mt-0.5 text-xs text-gray-500">{item.description || SCRAPER_META[item.name]?.desc || '自定义刮削器'}</p>
+                      <span className={`mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] ${item.builtin ? 'border-apple-mint/30 bg-apple-mint/10 text-apple-mint' : 'border-apple-blue/30 bg-apple-blue/10 text-apple-blue'}`}>
+                        {item.builtin ? '已内置' : '插件'}
+                      </span>
+                      {item.name.startsWith('tmdb') && item.name !== 'tmdb_collection' && (
                         <span className="mt-2 ml-1 inline-flex rounded-full border border-apple-yellow/30 bg-apple-yellow/10 px-2 py-0.5 text-[10px] text-apple-yellow">推荐</span>
                       )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-3 border-t border-white/10 pt-3">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-gray-400">插件管理</h3>
+                  <label className={`${btnDark} cursor-pointer`}>
+                    {pluginBusy === 'install' ? '安装中...' : '上传插件'}
+                    <input
+                      type="file"
+                      accept=".zip"
+                      disabled={pluginBusy === 'install'}
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0]
+                        uploadPlugin(file)
+                        e.currentTarget.value = ''
+                      }}
+                    />
+                  </label>
+                </div>
+                <p className="mb-3 text-xs text-gray-500">
+                  插件包必须是包含 plugin.json 的 zip。上传的插件是受信任本地代码，安装后需手动启用。
+                </p>
+                {pluginMsg && (
+                  <p className={`mb-3 text-xs ${pluginMsg.includes('失败') ? 'text-red-400' : 'text-apple-mint'}`}>
+                    {pluginMsg}
+                  </p>
+                )}
+                <div className="space-y-2">
+                  {plugins.length === 0 && (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-xs text-gray-500">
+                      暂无已安装插件
+                    </div>
+                  )}
+                  {plugins.map(plugin => (
+                    <div key={plugin.name} className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-white">{plugin.label || plugin.name}</p>
+                        <p className="mt-0.5 text-xs text-gray-500">
+                          {plugin.name} · v{plugin.version} · {plugin.supported_media_types.join(', ') || 'unknown'}
+                        </p>
+                        {plugin.description && <p className="mt-1 text-xs text-gray-500">{plugin.description}</p>}
+                        {plugin.error && <p className="mt-1 text-xs text-red-400">{plugin.error}</p>}
+                      </div>
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] ${plugin.enabled ? 'border-apple-mint/30 bg-apple-mint/10 text-apple-mint' : 'border-white/10 bg-white/[0.06] text-gray-400'}`}>
+                        {plugin.enabled ? '已启用' : '未启用'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => togglePlugin(plugin)}
+                        disabled={pluginBusy === plugin.name}
+                        className={btnDark}
+                      >
+                        {pluginBusy === plugin.name ? '处理中...' : plugin.enabled ? '停用' : '启用'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removePlugin(plugin)}
+                        disabled={pluginBusy === plugin.name}
+                        className={btnDark}
+                      >
+                        删除
+                      </button>
                     </div>
                   ))}
                 </div>

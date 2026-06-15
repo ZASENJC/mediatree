@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { api, type ManualScraperName, type ScrapeSearchResult } from '../api'
+import { useEffect, useState } from 'react'
+import { api, type ManualScraperName, type ScrapeSearchResult, type ScraperInfo } from '../api'
+import { normalizeScraperOptions } from '../scrapers'
 import { showToast } from '../toast'
 
 export type ScrapeResult = ScrapeSearchResult
@@ -26,15 +27,6 @@ interface ManualScrapeModalProps {
   onClose: () => void
 }
 
-const SCRAPER_OPTIONS: { value: ManualScraperName; label: string }[] = [
-  { value: 'auto', label: '自动' },
-  { value: 'tmdb_movie', label: 'TMDB 电影' },
-  { value: 'tmdb_tv', label: 'TMDB 剧集/番剧' },
-  { value: 'tmdb_collection', label: 'TMDB 合集' },
-  { value: 'bangumi', label: 'Bangumi' },
-  { value: 'javdatabase', label: 'Javdatabase' },
-]
-
 export default function ManualScrapeModal({
   title,
   initialQuery = '',
@@ -51,6 +43,13 @@ export default function ManualScrapeModal({
   const [backdrops, setBackdrops] = useState<BackdropResult[]>([])
   const [searching, setSearching] = useState(false)
   const [applying, setApplying] = useState(false)
+  const [scraperOptions, setScraperOptions] = useState<ScraperInfo[]>(normalizeScraperOptions(undefined, allowJavdatabase))
+
+  useEffect(() => {
+    api.scrapers()
+      .then(data => setScraperOptions(normalizeScraperOptions(data.items, allowJavdatabase)))
+      .catch(() => setScraperOptions(normalizeScraperOptions(undefined, allowJavdatabase)))
+  }, [allowJavdatabase])
 
   const handleSearch = async () => {
     const trimmedQuery = query.trim()
@@ -116,8 +115,8 @@ export default function ManualScrapeModal({
             onChange={e => setScraper(e.target.value as ManualScraperName)}
             className="glass-input px-3 py-2 text-sm text-gray-300"
           >
-            {SCRAPER_OPTIONS.filter(o => allowJavdatabase || o.value !== 'javdatabase').map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+            {scraperOptions.map(o => (
+              <option key={o.name} value={o.name}>{o.label}</option>
             ))}
           </select>
           <button

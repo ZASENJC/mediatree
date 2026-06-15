@@ -18,6 +18,8 @@ export type {
   Movie,
   ScrapeMediaType,
   ScrapeSearchResult,
+  ScraperInfo,
+  ScraperPlugin,
   SubtitleTrack,
   UpdateCheckResult,
   UpdateInfo,

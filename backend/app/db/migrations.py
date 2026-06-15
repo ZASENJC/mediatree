@@ -197,6 +197,22 @@ async def init_schema(get_db):
 
         CREATE INDEX IF NOT EXISTS idx_scraper_cache_query ON scraper_cache(source, query);
 
+        CREATE TABLE IF NOT EXISTS scraper_plugins (
+            name TEXT PRIMARY KEY,
+            version TEXT NOT NULL,
+            label TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            supported_media_types TEXT DEFAULT '[]',
+            entrypoint TEXT NOT NULL,
+            class_name TEXT NOT NULL,
+            installed_path TEXT NOT NULL,
+            enabled INTEGER DEFAULT 0,
+            builtin INTEGER DEFAULT 0,
+            installed_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            error TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS user_data (
             user_id TEXT NOT NULL,
             item_id TEXT NOT NULL,

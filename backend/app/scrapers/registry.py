@@ -5,6 +5,11 @@ from .bangumi_scraper import BangumiScraper
 from .javdatabase_scraper import JavdatabaseScraper
 from .tmdb_collection_scraper import TMDBCollectionScraper
 from .tmdb_scraper import TMDBScraper, tmdb_title_search
+from ..scraper_plugins import (
+    load_plugin_scraper,
+    list_enabled_plugin_rows_sync,
+    refresh_plugin_cache,
+)
 
 
 _registry: dict[str, BaseScraper] = {}
@@ -22,13 +27,18 @@ def get_scraper(name: str) -> BaseScraper:
     normalized = _normalize_name(name)
     scraper = _registry.get(normalized)
     if not scraper:
+        plugin = _get_enabled_plugin_scraper(normalized)
+        if plugin:
+            return plugin
         raise KeyError(f"Unknown scraper: {name}")
     return scraper
 
 
 def list_scrapers() -> list[ScraperInfo]:
     ensure_builtin_scrapers()
-    return [scraper.info() for scraper in _registry.values()]
+    infos = [scraper.info() for scraper in _registry.values()]
+    infos.extend(_load_enabled_plugin_infos())
+    return infos
 
 
 def ensure_builtin_scrapers():
@@ -43,6 +53,42 @@ def ensure_builtin_scrapers():
     register_scraper(AutoScraper())
     register_scraper(NoneScraper())
     _initialized = True
+
+
+def refresh_scraper_plugins() -> None:
+    refresh_plugin_cache()
+
+
+def _load_enabled_plugin_infos() -> list[ScraperInfo]:
+    infos: list[ScraperInfo] = []
+    try:
+        for row in _load_enabled_plugin_rows():
+            try:
+                scraper = load_plugin_scraper(row)
+                infos.append(scraper.info())
+            except Exception:
+                continue
+    except Exception:
+        return []
+    return infos
+
+
+def _get_enabled_plugin_scraper(name: str) -> BaseScraper | None:
+    try:
+        for row in _load_enabled_plugin_rows():
+            if row.get("name") != name:
+                continue
+            try:
+                return load_plugin_scraper(row)
+            except Exception:
+                return None
+    except Exception:
+        return None
+    return None
+
+
+def _load_enabled_plugin_rows() -> list[dict]:
+    return list_enabled_plugin_rows_sync()
 
 
 def _normalize_name(name: str | None) -> str:

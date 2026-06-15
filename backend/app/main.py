@@ -30,6 +30,7 @@ from .javdb import search_javdb
 from .routers.auth import router as auth_router
 from .routers.backup import router as backup_router
 from .routers.media import router as media_router
+from .routers.scrapers import router as scrapers_router
 from .routers.subtitles import router as subtitles_router
 from .routers.update import router as update_router
 from .security import (
@@ -108,6 +109,7 @@ app = FastAPI(title="MediaTree", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(backup_router)
 app.include_router(media_router)
+app.include_router(scrapers_router)
 app.include_router(subtitles_router)
 app.include_router(update_router)
 app.add_middleware(AuthMiddleware)

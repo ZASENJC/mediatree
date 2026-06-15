@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { api, FolderNode, Movie, resolveMediaUrl, type ManualScraperName, type ScrapeSearchResult } from '../api'
+import { api, FolderNode, Movie, resolveMediaUrl, type ManualScraperName, type ScrapeSearchResult, type ScraperInfo } from '../api'
 import { getExcluded, getUiPrefs } from '../store'
 import { saveScrollPos, restoreScrollPos } from '../scroll'
 import { showToast } from '../toast'
@@ -13,6 +13,7 @@ import ContextMenu, { ContextMenuItem } from '../components/ContextMenu'
 import EditModal from '../components/EditModal'
 import CoverPickerModal from '../components/CoverPickerModal'
 import { WatchedBadge } from '../components/WatchedBadge'
+import { normalizeScraperOptions } from '../scrapers'
 
 function encodeMediaPath(path: string): string {
   return path.split('/').map(encodeURIComponent).join('/')
@@ -81,6 +82,7 @@ export default function Home() {
 
   const [tree, setTree] = useState<FolderNode[]>([])
   const [libraryScrapers, setLibraryScrapers] = useState<Record<string, string>>({})
+  const [scraperOptions, setScraperOptions] = useState<ScraperInfo[]>(normalizeScraperOptions(undefined, false))
   const [recentMovies, setRecentMovies] = useState<Movie[]>([])
   const [recentTotal, setRecentTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -126,6 +128,7 @@ export default function Home() {
   const [showFolderEdit, setShowFolderEdit] = useState(false)
   const [editFolderMovie, setEditFolderMovie] = useState<Movie | null>(null)
   const activeFolderUsesJavdatabase = libraryScrapers[activeMediaRoot] === 'javdatabase'
+  const folderScraperOptions = normalizeScraperOptions(scraperOptions, activeFolderUsesJavdatabase)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -159,6 +162,9 @@ export default function Home() {
       ;(data.items || []).forEach(item => { scrapers[item.path] = item.scraper || 'auto' })
       setLibraryScrapers(scrapers)
     }).catch(() => {})
+    api.scrapers()
+      .then(data => setScraperOptions(normalizeScraperOptions(data.items, false)))
+      .catch(() => setScraperOptions(normalizeScraperOptions(undefined, false)))
   }, [sort])
 
   const loadRecent = useCallback(() => {
@@ -539,12 +545,9 @@ export default function Home() {
                 className="glass-input flex-1 px-3 py-2 text-sm" />
               <select value={folderScrapeSrc} onChange={e => setFolderScrapeSrc(e.target.value as ManualScraperName)}
                 className="glass-input px-3 py-2 text-sm text-gray-300">
-                <option value="auto">自动</option>
-                <option value="tmdb_movie">TMDB 电影</option>
-                <option value="tmdb_tv">TMDB 剧集/番剧</option>
-                <option value="tmdb_collection">TMDB 合集</option>
-                <option value="bangumi">Bangumi</option>
-                {activeFolderUsesJavdatabase && <option value="javdatabase">Javdatabase</option>}
+                {folderScraperOptions.map(option => (
+                  <option key={option.name} value={option.name}>{option.label}</option>
+                ))}
               </select>
               <button onClick={handleFolderScrapeSearch} disabled={folderScrapeSearching}
                 className="glass-button-primary px-4 py-2 text-sm">

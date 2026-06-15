@@ -99,7 +99,28 @@ def _valid_scraper(scraper: str | None) -> str:
     value = (scraper or "auto").strip().lower()
     if value == "tmdb":
         return "tmdb_movie"
-    return value if value in {"auto", "javdatabase", "tmdb_movie", "tmdb_tv", "bangumi", "none"} else "auto"
+    builtin = {"auto", "javdatabase", "tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi", "none"}
+    if value in builtin:
+        return value
+    return value if _enabled_scraper_plugin_exists_sync(value) else "auto"
+
+
+def _enabled_scraper_plugin_exists_sync(name: str) -> bool:
+    if not name:
+        return False
+    db_path = Path(settings.db_path)
+    if not db_path.exists():
+        return False
+    try:
+        import sqlite3
+        with sqlite3.connect(str(db_path)) as conn:
+            cur = conn.execute(
+                "SELECT 1 FROM scraper_plugins WHERE name=? AND enabled=1",
+                (name,),
+            )
+            return cur.fetchone() is not None
+    except sqlite3.Error:
+        return False
 
 
 def _normalize_special_movie_data(data: dict) -> dict:

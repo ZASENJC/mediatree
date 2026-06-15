@@ -31,7 +31,7 @@ class TMDBCollectionScraperTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(scanner.normalize_scraper_name("tmdb_collection"), "tmdb_collection")
         self.assertEqual(scanner.build_fallback_chain("tmdb_collection"), [])
         self.assertNotIn("tmdb_collection", scanner.build_fallback_chain("auto"))
-        self.assertEqual(_valid_scraper("tmdb_collection"), "auto")
+        self.assertEqual(_valid_scraper("tmdb_collection"), "tmdb_collection")
 
     async def test_search_for_scrape_returns_collection_candidates(self):
         async def search(query, lang="zh-CN"):

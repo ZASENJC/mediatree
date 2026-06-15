@@ -12,6 +12,8 @@ import type {
   Movie,
   ScrapeMediaType,
   ScrapeSearchResult,
+  ScraperInfo,
+  ScraperPlugin,
   SubtitleTrack,
   UpdateCheckResult,
   UpdateInfo,
@@ -222,6 +224,42 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     }),
+
+  scrapers: () => request<{ items: ScraperInfo[] }>('/scrapers', undefined, 'scrapers'),
+
+  scraperPlugins: () => request<{ items: ScraperPlugin[] }>('/scraper-plugins'),
+
+  installScraperPlugin: async (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await request<{ ok: boolean; plugin: ScraperPlugin }>('/scraper-plugins/install', {
+      method: 'POST',
+      body: formData,
+    })
+    clearCache('scrapers')
+    return res
+  },
+
+  enableScraperPlugin: (name: string) =>
+    request<{ ok: boolean; plugin: ScraperPlugin }>(`/scraper-plugins/${encodeURIComponent(name)}/enable`, { method: 'POST' })
+      .then(result => {
+        clearCache('scrapers')
+        return result
+      }),
+
+  disableScraperPlugin: (name: string) =>
+    request<{ ok: boolean; plugin: ScraperPlugin }>(`/scraper-plugins/${encodeURIComponent(name)}/disable`, { method: 'POST' })
+      .then(result => {
+        clearCache('scrapers')
+        return result
+      }),
+
+  deleteScraperPlugin: (name: string) =>
+    request<{ ok: boolean }>(`/scraper-plugins/${encodeURIComponent(name)}`, { method: 'DELETE' })
+      .then(result => {
+        clearCache('scrapers')
+        return result
+      }),
 
   subtitleTracks: (movieId: number, signal?: AbortSignal) => request<SubtitleTrack[]>(`/subtitle-tracks/${movieId}`, signal ? { signal } : undefined),
 

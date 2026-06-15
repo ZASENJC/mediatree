@@ -1,5 +1,28 @@
-export type ManualScraperName = 'auto' | 'tmdb_movie' | 'tmdb_tv' | 'tmdb_collection' | 'bangumi' | 'javdatabase'
+export type ManualScraperName = 'auto' | 'tmdb_movie' | 'tmdb_tv' | 'tmdb_collection' | 'bangumi' | 'javdatabase' | (string & {})
 export type ScrapeMediaType = 'movie' | 'tv' | 'collection' | (string & {})
+
+export interface ScraperInfo {
+  name: ManualScraperName
+  label: string
+  description: string
+  supported_media_types: string[]
+  requires_api_key: boolean
+  enabled: boolean
+  builtin: boolean
+}
+
+export interface ScraperPlugin {
+  name: string
+  version: string
+  label: string
+  description: string
+  supported_media_types: string[]
+  enabled: boolean
+  builtin: boolean
+  installed_at?: string
+  updated_at?: string
+  error?: string
+}
 
 export interface ScrapeSearchResult {
   source: string

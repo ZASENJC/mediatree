@@ -8,6 +8,7 @@ from datetime import datetime
 from .config import settings
 from .anime_naming import parse_anime_filename
 from .scrapers.base import ScrapeCandidate, ScrapeResult, ScrapeStaff
+from .scraper_plugins import is_enabled_plugin_name_sync
 from .scrapers.registry import get_scraper
 from .scrapers.utils import scrape_result_to_legacy, _candidate_to_dict
 from .scrapers.tmdb_scraper import tmdb_title_search
@@ -188,6 +189,8 @@ def normalize_scraper_name(scraper: str | None) -> str:
         return "tmdb_movie"
     if value in {"tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi", "javdatabase", "auto", "none"}:
         return value
+    if is_enabled_plugin_name_sync(value):
+        return value
     return "auto"
 
 
@@ -207,6 +210,8 @@ def build_fallback_chain(preferred: str) -> list[str]:
         return []
     if preferred == "bangumi":
         return ["bangumi", "tmdb_tv_search", "tmdb_movie_search"]
+    if is_enabled_plugin_name_sync(preferred):
+        return [preferred]
     return ["auto"]
 
 
@@ -215,6 +220,8 @@ def build_configured_rescrape_chain(preferred: str) -> list[str]:
     if preferred == "none":
         return []
     if preferred in {"auto", "tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi", "javdatabase"}:
+        return [preferred]
+    if is_enabled_plugin_name_sync(preferred):
         return [preferred]
     return ["auto"]
 
@@ -269,6 +276,8 @@ async def _fetch_detail_legacy(
         scraper_name = "tmdb_tv" if media_type == "tv" or value == "tmdb_tv" else "tmdb_movie"
     elif value == "tmdb_collection":
         scraper_name = "tmdb_collection"
+    elif is_enabled_plugin_name_sync(value):
+        scraper_name = value
     else:
         scraper_name = normalize_scraper_name(value)
     try:
@@ -1128,6 +1137,8 @@ async def rescrape_movie_manual(
             data = await _fetch_detail_legacy("bangumi", source_id, "tv")
         elif preferred == "javdatabase":
             data = await _fetch_detail_legacy("javdatabase", source_id, "movie")
+        elif is_enabled_plugin_name_sync(preferred):
+            data = await _fetch_detail_legacy(preferred, source_id, media_type)
 
         if data and data.get("title"):
             async with _sqlite_write_semaphore:
@@ -1148,7 +1159,10 @@ async def rescrape_movie_manual(
         else:
             return {"ok": False, "error": f"Failed to fetch detail from {preferred_scraper}"}
 
-    if preferred_scraper and preferred in {"tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi", "javdatabase", "auto"}:
+    if preferred_scraper and (
+        preferred in {"tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi", "javdatabase", "auto"}
+        or is_enabled_plugin_name_sync(preferred)
+    ):
         chain = [preferred]
     else:
         lib_setting = await get_library_settings(media_root)
@@ -1386,6 +1400,9 @@ async def search_for_scrape(query: str, scraper: str = "tmdb", media_root: str =
             raise ValueError("Javdatabase is only available for libraries using the javdatabase scraper")
         items = await _search_scraper_candidates("javdatabase", query, media_type="movie", limit=10)
         return [_candidate_to_search_result(item, "javdatabase") for item in items]
+    elif is_enabled_plugin_name_sync(scraper):
+        items = await _search_scraper_candidates(scraper, query, limit=10)
+        return [_candidate_to_search_result(item, scraper) for item in items]
     return []
 
 
@@ -1407,6 +1424,8 @@ async def fetch_search_backdrops(results: list[dict]) -> list[dict]:
             detail = await _fetch_detail_legacy("tmdb_collection", sid, "collection")
         elif src == "bangumi":
             detail = await _fetch_detail_legacy("bangumi", sid, "tv")
+        elif is_enabled_plugin_name_sync(src):
+            detail = await _fetch_detail_legacy(src, sid, mtype)
         else:
             detail = None
         backdrop = detail.get("backdrop_url") if detail else None
@@ -1467,7 +1486,10 @@ async def rescrape_folder_manual(
     if preferred == "javdatabase" and not await ensure_javdatabase_allowed(media_root):
         return {"ok": False, "error": "Javdatabase is only available for libraries using the javdatabase scraper"}
 
-    if preferred_scraper and preferred in {"tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi", "javdatabase", "auto"}:
+    if preferred_scraper and (
+        preferred in {"tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi", "javdatabase", "auto"}
+        or is_enabled_plugin_name_sync(preferred)
+    ):
         chain = [preferred]
     else:
         lib_setting = await get_library_settings(media_root)
@@ -1569,6 +1591,8 @@ async def apply_folder_scrape_result(
         data = await _fetch_detail_legacy("bangumi", source_id, "tv")
     elif source == "javdatabase":
         data = await _fetch_detail_legacy("javdatabase", source_id, "movie")
+    elif is_enabled_plugin_name_sync(source):
+        data = await _fetch_detail_legacy(source, source_id, media_type)
 
     if not data or not data.get("title"):
         return {"ok": False, "error": f"Failed to fetch detail from {source}"}

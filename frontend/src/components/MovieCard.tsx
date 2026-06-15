@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { api, Movie, type ManualScraperName, type ScrapeSearchResult } from '../api'
+import { api, Movie, type ManualScraperName, type ScrapeSearchResult, type ScraperInfo } from '../api'
 import { saveScrollPos } from '../scroll'
 import { showToast } from '../toast'
 import { showTaskProgress, hideTaskProgress } from '../taskProgress'
@@ -11,6 +11,7 @@ import EditModal from './EditModal'
 import { clearCache } from '../cache'
 import CoverPickerModal from './CoverPickerModal'
 import { specialMovieTitle } from '../movieTitle'
+import { normalizeScraperOptions } from '../scrapers'
 
 interface MovieCardProps {
   movie: Movie
@@ -36,6 +37,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const prevMovieId = useRef(movie.id)
   const [hovered, setHovered] = useState(false)
   const [libraryScrapers, setLibraryScrapers] = useState<Record<string, string>>({})
+  const [scraperOptions, setScraperOptions] = useState<ScraperInfo[]>(normalizeScraperOptions(undefined, false))
 
   useEffect(() => {
     if (prevMovieId.current !== movie.id) {
@@ -49,6 +51,9 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       ;(data.items || []).forEach(item => { scrapers[item.path] = item.scraper || 'auto' })
       setLibraryScrapers(scrapers)
     }).catch(() => {})
+    api.scrapers()
+      .then(data => setScraperOptions(normalizeScraperOptions(data.items, false)))
+      .catch(() => setScraperOptions(normalizeScraperOptions(undefined, false)))
   }, [])
   const [localWatched, setLocalWatched] = useState<boolean | null>(null)
 
@@ -96,6 +101,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const showProgress = !watched && progressPercent > 0 && progressPercent < 90
   const movieLibraryScraper = movie.media_root ? libraryScrapers[movie.media_root] : undefined
   const canUseJavdatabase = movieLibraryScraper === 'javdatabase'
+  const manualScraperOptions = normalizeScraperOptions(scraperOptions, canUseJavdatabase)
 
   const checkTmdbConfig = useCallback(async (scraperName: string = manualScraper) => {
     try {
@@ -345,12 +351,9 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
                 value={manualScraper} onChange={e => setManualScraper(e.target.value as ManualScraperName)}
                 className="glass-input px-3 py-2 text-sm text-gray-300"
               >
-                <option value="auto">自动</option>
-                <option value="tmdb_movie">TMDB 电影</option>
-                <option value="tmdb_tv">TMDB 剧集/番剧</option>
-                <option value="tmdb_collection">TMDB 合集</option>
-                <option value="bangumi">Bangumi</option>
-                {canUseJavdatabase && <option value="javdatabase">Javdatabase</option>}
+                {manualScraperOptions.map(option => (
+                  <option key={option.name} value={option.name}>{option.label}</option>
+                ))}
               </select>
               <button onClick={handleSearch} disabled={searching}
                 className="glass-button-primary px-4 py-2 text-sm">
