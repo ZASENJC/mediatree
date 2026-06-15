@@ -6,8 +6,6 @@ import { FALLBACK_SCRAPER_OPTIONS, normalizeScraperOptions } from '../scrapers'
 import { getUiPrefs, setUiPrefs, dismissUpdate } from '../store'
 import {
   BUILTIN_THEMES,
-  createExampleTheme,
-  createThemeExport,
   getActiveThemeName,
   getAvailableThemes,
   getCustomThemes,
@@ -354,11 +352,6 @@ export default function Settings() {
     [customThemes],
   )
 
-  const activeTheme = useMemo(
-    () => themeOptions.find(theme => theme.name === activeThemeName) || BUILTIN_THEMES[0],
-    [activeThemeName, themeOptions],
-  )
-
   const refreshCustomThemes = () => {
     setCustomThemes(getCustomThemes())
   }
@@ -399,16 +392,6 @@ export default function Settings() {
       setActiveThemeName(applied.name)
     }
     setThemeMsg('主题已删除')
-  }
-
-  const downloadTextFile = (fileName: string, text: string) => {
-    const blob = new Blob([text], { type: 'application/json;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fileName
-    a.click()
-    URL.revokeObjectURL(url)
   }
 
   const togglePlugin = async (plugin: ScraperPlugin) => {
@@ -606,20 +589,6 @@ export default function Settings() {
                   <p className="mt-0.5 text-xs text-gray-500">导入主题文件即可更换整体外观。主题只保存在此浏览器。</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => downloadTextFile('mediatree-theme-example.json', createExampleTheme())}
-                    className={btnDark}
-                  >
-                    下载示例主题
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => downloadTextFile('mediatree-themes.json', createThemeExport(activeTheme, customThemes))}
-                    className={btnDark}
-                  >
-                    导出我的主题
-                  </button>
                   <label className={`${btnPrimary} cursor-pointer`}>
                     导入主题
                     <input

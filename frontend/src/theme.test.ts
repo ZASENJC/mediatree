@@ -210,10 +210,8 @@ test('settings theme copy is user-facing', () => {
 
   assert.ok(source.includes('外观主题'))
   assert.ok(source.includes('导入主题文件即可更换整体外观'))
-  assert.ok(source.includes('下载示例主题'))
-  assert.ok(source.includes('导出我的主题'))
   assert.ok(source.includes('导入主题'))
-  assert.doesNotMatch(source, /JSON 主题包|上传主题/)
+  assert.doesNotMatch(source, /JSON 主题包|上传主题|下载示例主题|导出我的主题/)
 })
 
 test('applyTheme writes tokens, color scheme, dataset, and custom CSS', () => {
