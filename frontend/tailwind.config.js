@@ -33,12 +33,12 @@ export default {
         },
       },
       boxShadow: {
-        glass: '0 24px 80px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.12)',
-        glow: '0 18px 48px rgba(10, 132, 255, 0.22)',
-        card: '0 18px 50px rgba(0, 0, 0, 0.34)',
+        glass: 'var(--mt-shadow-glass)',
+        glow: 'var(--mt-shadow-glow)',
+        card: 'var(--mt-shadow-card)',
       },
       backgroundImage: {
-        aurora: 'radial-gradient(circle at 18% 8%, rgba(10,132,255,0.22), transparent 32%), linear-gradient(135deg, #03040a 0%, #070911 42%, #0c0f17 100%)',
+        aurora: 'radial-gradient(circle at 18% 8%, var(--mt-color-bg-glow), transparent 32%), linear-gradient(135deg, var(--mt-color-bg-start) 0%, var(--mt-color-bg-mid) 42%, var(--mt-color-bg-end) 100%)',
       },
     },
   },

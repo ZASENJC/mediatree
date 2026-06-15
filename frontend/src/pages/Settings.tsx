@@ -4,6 +4,19 @@ import { marked } from 'marked'
 import { api, Config, MediaRoot, LibrarySetting, UpdateCheckResult, UpdateStatus, ScraperInfo, ScraperPlugin, clearCache, getServerUrl, setServerUrl as saveServerUrl, isNativeApp, resolveApiUrl } from '../api'
 import { FALLBACK_SCRAPER_OPTIONS, normalizeScraperOptions } from '../scrapers'
 import { getUiPrefs, setUiPrefs, dismissUpdate } from '../store'
+import {
+  BUILTIN_THEMES,
+  createExampleTheme,
+  createThemeExport,
+  getActiveThemeName,
+  getAvailableThemes,
+  getCustomThemes,
+  importCustomThemes,
+  parseThemeImportContent,
+  removeCustomTheme,
+  setActiveTheme,
+  type ThemePackage,
+} from '../theme'
 
 function normalizeScraper(scraper?: string) {
   return scraper === 'tmdb' ? 'tmdb_movie' : (scraper || 'auto')
@@ -29,6 +42,9 @@ export default function Settings() {
   const [serverMsg, setServerMsg] = useState('')
   const [hideHomeTitleText, setHideHomeTitleText] = useState(() => getUiPrefs().hideHomeTitleText || false)
   const [showSourceName, setShowSourceName] = useState(() => getUiPrefs().showSourceName || false)
+  const [customThemes, setCustomThemes] = useState<ThemePackage[]>(() => getCustomThemes())
+  const [activeThemeName, setActiveThemeName] = useState(() => getActiveThemeName())
+  const [themeMsg, setThemeMsg] = useState('')
 
   const [libraries, setLibraries] = useState<(MediaRoot & { settings?: LibrarySetting })[]>([])
   const [libScraper, setLibScraper] = useState<Record<string, string>>({})
@@ -333,6 +349,68 @@ export default function Settings() {
     }
   }
 
+  const themeOptions = useMemo(
+    () => getAvailableThemes(customThemes),
+    [customThemes],
+  )
+
+  const activeTheme = useMemo(
+    () => themeOptions.find(theme => theme.name === activeThemeName) || BUILTIN_THEMES[0],
+    [activeThemeName, themeOptions],
+  )
+
+  const refreshCustomThemes = () => {
+    setCustomThemes(getCustomThemes())
+  }
+
+  const chooseTheme = (name: string) => {
+    const applied = setActiveTheme(name)
+    setActiveThemeName(applied.name)
+    setThemeMsg(`已切换到 ${applied.label}`)
+  }
+
+  const importThemeFile = async (file?: File) => {
+    if (!file) return
+    setThemeMsg('')
+    try {
+      const result = parseThemeImportContent(await file.text(), file.name)
+      const importedThemes = importCustomThemes(result.themes)
+      refreshCustomThemes()
+      const nextName = result.activeTheme && result.themes.some(theme => theme.name === result.activeTheme)
+        ? result.activeTheme
+        : result.themes[result.themes.length - 1]?.name
+      if (nextName) {
+        const applied = setActiveTheme(nextName)
+        setActiveThemeName(applied.name)
+      }
+      setThemeMsg(`已导入 ${importedThemes.length} 个主题`)
+    } catch (err) {
+      setThemeMsg(`主题导入失败：${err instanceof Error ? err.message : '文件格式错误'}`)
+    }
+  }
+
+  const deleteTheme = (theme: ThemePackage) => {
+    if (theme.builtin) return
+    if (!confirm(`确定删除主题 "${theme.label}"？`)) return
+    removeCustomTheme(theme.name)
+    refreshCustomThemes()
+    if (activeThemeName === theme.name) {
+      const applied = setActiveTheme(BUILTIN_THEMES[0].name)
+      setActiveThemeName(applied.name)
+    }
+    setThemeMsg('主题已删除')
+  }
+
+  const downloadTextFile = (fileName: string, text: string) => {
+    const blob = new Blob([text], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = fileName
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const togglePlugin = async (plugin: ScraperPlugin) => {
     setPluginBusy(plugin.name)
     setPluginMsg('')
@@ -520,6 +598,100 @@ export default function Settings() {
                 />
               </button>
             </label>
+
+            <div className="mt-4 border-t border-white/10 pt-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-white">主题</h3>
+                  <p className="mt-0.5 text-xs text-gray-500">可导入 JSON 主题包，主题保存在当前浏览器。</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => downloadTextFile('mediatree-theme-example.json', createExampleTheme())}
+                    className={btnDark}
+                  >
+                    下载示例
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadTextFile('mediatree-themes.json', createThemeExport(activeTheme, customThemes))}
+                    className={btnDark}
+                  >
+                    导出主题
+                  </button>
+                  <label className={`${btnPrimary} cursor-pointer`}>
+                    上传主题
+                    <input
+                      type="file"
+                      accept=".json,application/json"
+                      className="hidden"
+                      onChange={e => {
+                        importThemeFile(e.target.files?.[0])
+                        e.currentTarget.value = ''
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+              {themeMsg && (
+                <p className={`mb-3 text-xs ${themeMsg.includes('失败') ? 'text-red-400' : 'text-apple-mint'}`}>
+                  {themeMsg}
+                </p>
+              )}
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {themeOptions.map(theme => {
+                  const active = theme.name === activeThemeName
+                  return (
+                    <div
+                      key={theme.name}
+                      className={`rounded-2xl border p-3 backdrop-blur-xl transition-colors ${
+                        active
+                          ? 'border-apple-blue/40 bg-apple-blue/15'
+                          : 'border-white/10 bg-white/[0.06]'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="mb-2 flex items-center gap-1.5">
+                            <span
+                              className="h-4 w-4 shrink-0 rounded-full border border-white/20"
+                              style={{ background: theme.tokens['--mt-color-accent'] || '#0A84FF' }}
+                            />
+                            <p className="truncate text-sm font-medium text-white">{theme.label}</p>
+                          </div>
+                          <p className="text-[11px] text-gray-500">
+                            {theme.builtin ? '内置' : '自定义'} · {theme.colorScheme || 'dark'}
+                          </p>
+                          {theme.description && (
+                            <p className="mt-1 line-clamp-2 text-xs text-gray-500">{theme.description}</p>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 flex-col gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => chooseTheme(theme.name)}
+                            disabled={active}
+                            className={`${active ? btnPrimary : btnDark} px-2 py-1 text-[11px] disabled:opacity-70`}
+                          >
+                            {active ? '使用中' : '切换'}
+                          </button>
+                          {!theme.builtin && (
+                            <button
+                              type="button"
+                              onClick={() => deleteTheme(theme)}
+                              className={`${btnDark} px-2 py-1 text-[11px]`}
+                            >
+                              删除
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
           </div>
 
           {/* 账号安全 */}
