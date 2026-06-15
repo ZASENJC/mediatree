@@ -73,7 +73,6 @@ macOS ではローカルの `python3` が古いバージョンを指す場合が
 
 ## スクレイパーを追加する
 
-1. `backend/app/scrapers/` にスクレイパーを追加します。
-2. `BaseScraper` を継承し、`search()` と `get_detail()` を実装します。
-3. `registry.py` に登録します。
-4. ユーザーから見える挙動について、バックエンドテストとドキュメントを追加します。
+ユーザーがインストールできるスクレイパーは、`plugin.json` と `BaseScraper` を継承する Python entry class を含む `.zip` plugin package として作成します。package structure、manifest fields、install/enable flow、test checklist は中国語版の [Scraper Plugin Guide](/development/scraper-plugin-guide) にまとめています。
+
+built-in scrapers を保守する場合は、`backend/app/builtin_plugins/scrapers/<name>/plugin.json` と `plugin.py` で manifest-driven registry に接続します。共有する core logic は引き続き `backend/app/scrapers/` に置けます。

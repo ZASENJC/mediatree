@@ -73,7 +73,6 @@ cd frontend && npm run build
 
 ## 添加刮削器
 
-1. 在 `backend/app/scrapers/` 新增 scraper。
-2. 继承 `BaseScraper`，实现 `search()` 和 `get_detail()`。
-3. 在 `registry.py` 注册。
-4. 根据行为补充后端测试和文档说明。
+用户可上传安装的刮削器应做成 `.zip` 插件包，包含 `plugin.json` 和继承 `BaseScraper` 的 Python 入口类。完整包结构、manifest 字段、安装启用流程和测试方法见[刮削器插件开发指南](/development/scraper-plugin-guide)。
+
+维护内置刮削器时，使用 `backend/app/builtin_plugins/scrapers/<name>/plugin.json` 和 `plugin.py` 接入 manifest 驱动注册表；核心复用逻辑仍可放在 `backend/app/scrapers/`。

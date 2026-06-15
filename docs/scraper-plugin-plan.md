@@ -6,6 +6,8 @@ Implement trusted local scraper plugins that can be uploaded from the Settings p
 
 This v1 treats uploaded plugins as trusted local code. It does not sandbox third-party code. Safety comes from authentication, archive validation, path isolation, manifest validation, explicit enablement, and reserved-name protection.
 
+The implementation is now documented for plugin authors in [`docs-site/development/scraper-plugin-guide.md`](../docs-site/development/scraper-plugin-guide.md).
+
 ## Backend Changes
 
 - Add persistent plugin state in SQLite via `scraper_plugins`:

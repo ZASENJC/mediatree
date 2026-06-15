@@ -2,6 +2,8 @@
 
 本目录只放“统一接口适配层”。外部站点的 HTTP 细节、字段解析和缓存逻辑保留在各自模块中，`scanner.py` 尽量只消费 `ScrapeCandidate` 和 `ScrapeResult`。
 
+面向用户上传安装的刮削器，请按 [刮削器插件开发指南](../../../docs-site/development/scraper-plugin-guide.md) 制作 `.zip` 插件包。内置刮削器通过 `backend/app/builtin_plugins/scrapers/<name>/plugin.json` 和 `plugin.py` 接入 manifest 驱动注册表。
+
 ## 推荐目录结构
 
 - `base.py`：统一数据结构和 `BaseScraper`。
@@ -65,9 +67,11 @@
 - 来源 id：按来源填 `tmdb_id`、`bangumi_id`、`javdb_id`，并填通用 `source_id`。
 - `raw` 保留原始数据。
 
-## 注册方式
+## 内置注册方式
 
-在 `registry.py` 中注册实例：
+维护内置刮削器时，通过 `backend/app/builtin_plugins/scrapers/<name>/plugin.json` 声明入口类，并在 `plugin.py` 中导出继承 `BaseScraper` 的类。上传插件不需要修改 `registry.py`，启用后会由运行时插件注册表加载。
+
+历史上的直接注册方式如下，仅用于理解旧代码路径：
 
 ```python
 from .my_scraper import MyScraper

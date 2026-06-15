@@ -50,4 +50,6 @@ MediaTree 使用插件化刮削器从多个来源获取标题、海报、演员�
 
 ## 添加自定义刮削器
 
-开发者可以在 `backend/app/scrapers/` 中新增刮削器，继承 `BaseScraper`，实现 `search()` 和 `get_detail()`，再在 `registry.py` 注册。更多工程细节见[开发指南](/development/)。
+开发者可以把自定义刮削器做成 `.zip` 插件，在设置页上传安装并启用。插件复用后端 `BaseScraper`、`ScrapeCandidate` 和 `ScrapeResult` 接口，启用后会出现在媒体库刮削器下拉栏和手动刮削入口中。
+
+完整包结构、`plugin.json` 字段、安装启用流程和测试方法见[刮削器插件开发指南](/development/scraper-plugin-guide)。

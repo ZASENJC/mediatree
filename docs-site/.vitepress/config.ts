@@ -15,6 +15,7 @@ const zhReference = [
 
 const zhDevelopment = [
   { text: '开发指南', link: '/development/' },
+  { text: '刮削器插件', link: '/development/scraper-plugin-guide' },
   { text: '发布规则', link: '/development/release-policy' }
 ]
 
