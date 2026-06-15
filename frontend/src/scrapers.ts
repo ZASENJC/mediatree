@@ -1,4 +1,4 @@
-import type { ScraperInfo, ScraperPlugin } from './api'
+import type { ScraperInfo } from './api'
 
 export const FALLBACK_SCRAPER_OPTIONS: ScraperInfo[] = [
   { name: 'auto', label: '自动', description: '自动判断刮削源', supported_media_types: [], requires_api_key: false, enabled: true, builtin: true },
@@ -20,30 +20,4 @@ export function normalizeScraperOptions(items?: ScraperInfo[], allowJavdatabase 
     seen.add(name)
     return true
   })
-}
-
-export function buildLibraryScraperOptions(scrapers: ScraperInfo[], plugins: ScraperPlugin[]): ScraperInfo[] {
-  const merged: ScraperInfo[] = []
-  const seen = new Set<string>()
-
-  scrapers.forEach(item => {
-    if (!item.enabled || !item.name || seen.has(item.name)) return
-    seen.add(item.name)
-    merged.push(item)
-  })
-
-  plugins.forEach(plugin => {
-    if (!plugin.enabled || seen.has(plugin.name)) return
-    seen.add(plugin.name)
-    merged.push({
-      name: plugin.name,
-      label: plugin.label,
-      description: plugin.description,
-      supported_media_types: plugin.supported_media_types,
-      requires_api_key: false,
-      enabled: true,
-      builtin: plugin.builtin,
-    })
-  })
-  return merged
 }

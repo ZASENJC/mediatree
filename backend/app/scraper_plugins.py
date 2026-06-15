@@ -34,7 +34,6 @@ RESERVED_SCRAPER_ALIASES = frozenset({
     "tmdb_tv_search",
     "tmdb_movie_search",
 })
-BUILTIN_SCRAPER_NAMES = BUILTIN_SCRAPER_PLUGIN_NAMES | RESERVED_SCRAPER_ALIASES
 
 _plugin_instance_cache: dict[str, BaseScraper] = {}
 
@@ -88,18 +87,6 @@ def _plugin_public_row(row: dict) -> dict:
         "updated_at": row.get("updated_at"),
         "error": row.get("error") or "",
     }
-
-
-def plugin_row_to_info(row: dict) -> ScraperInfo:
-    public = _plugin_public_row(row)
-    return ScraperInfo(
-        name=public["name"],
-        label=public["label"],
-        description=public["description"],
-        supported_media_types=public["supported_media_types"],
-        requires_api_key=False,
-        enabled=public["enabled"],
-    )
 
 
 def serialize_scraper_info(info: ScraperInfo, *, builtin: bool = False) -> dict:
@@ -300,14 +287,6 @@ async def list_plugins() -> list[dict]:
     db = await get_db()
     cur = await db.execute("SELECT * FROM scraper_plugins ORDER BY builtin DESC, name")
     return [_plugin_public_row(dict(row)) for row in await cur.fetchall()]
-
-
-async def list_enabled_plugin_rows() -> list[dict]:
-    from .database import get_db
-
-    db = await get_db()
-    cur = await db.execute("SELECT * FROM scraper_plugins WHERE enabled=1 ORDER BY name")
-    return [dict(row) for row in await cur.fetchall()]
 
 
 def list_enabled_plugin_rows_sync() -> list[dict]:

@@ -2,32 +2,11 @@ import { useEffect, useState, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { marked } from 'marked'
 import { api, Config, MediaRoot, LibrarySetting, UpdateCheckResult, UpdateStatus, ScraperInfo, ScraperPlugin, clearCache, getServerUrl, setServerUrl as saveServerUrl, isNativeApp, resolveApiUrl } from '../api'
-import { buildLibraryScraperOptions } from '../scrapers'
+import { FALLBACK_SCRAPER_OPTIONS, normalizeScraperOptions } from '../scrapers'
 import { getUiPrefs, setUiPrefs, dismissUpdate } from '../store'
-
-const SCRAPER_META: Record<string, { label: string; desc: string; hasKey: boolean }> = {
-  tmdb_movie: { label: 'TMDB 电影', desc: '适合电影库；tmdbid 调用 /movie 精确刮削', hasKey: true },
-  tmdb_tv: { label: 'TMDB 剧集/番剧', desc: '适合剧集、番剧、电视剧库；tmdbid 调用 /tv 精确刮削', hasKey: true },
-  bangumi: { label: 'Bangumi', desc: '适合番剧、动画、二次元条目，数据可能不全', hasKey: false },
-  javdatabase: { label: 'Javdatabase', desc: '适合 JAV 番号识别和刮削；不加入自动刮削链，需要单独选择使用', hasKey: false },
-  auto: { label: '自动', desc: '自动判断刮削源，但可能效果不好', hasKey: true },
-  none: { label: '不刮削', desc: '只扫描本地文件，不联网刮削元数据', hasKey: false },
-}
 
 function normalizeScraper(scraper?: string) {
   return scraper === 'tmdb' ? 'tmdb_movie' : (scraper || 'auto')
-}
-
-function fallbackScrapers(): ScraperInfo[] {
-  return Object.entries(SCRAPER_META).map(([name, meta]) => ({
-    name,
-    label: meta.label,
-    description: meta.desc,
-    supported_media_types: [],
-    requires_api_key: meta.hasKey,
-    enabled: name !== 'none',
-    builtin: true,
-  }))
 }
 
 interface ScanState {
@@ -56,7 +35,7 @@ export default function Settings() {
   const [libPasswords, setLibPasswords] = useState<Record<string, string>>({})
   const [libSaving, setLibSaving] = useState<string | null>(null)
   const [libMsg, setLibMsg] = useState('')
-  const [scrapers, setScrapers] = useState<ScraperInfo[]>(fallbackScrapers())
+  const [scrapers, setScrapers] = useState<ScraperInfo[]>(FALLBACK_SCRAPER_OPTIONS)
   const [plugins, setPlugins] = useState<ScraperPlugin[]>([])
   const [pluginMsg, setPluginMsg] = useState('')
   const [pluginBusy, setPluginBusy] = useState<string | null>(null)
@@ -66,8 +45,8 @@ export default function Settings() {
   const [logVisible, setLogVisible] = useState<Record<string, boolean>>({})
   const scanTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
   const libraryScraperOptions = useMemo(
-    () => buildLibraryScraperOptions(scrapers, plugins),
-    [scrapers, plugins],
+    () => normalizeScraperOptions(scrapers),
+    [scrapers],
   )
 
   // auth
@@ -241,9 +220,9 @@ export default function Settings() {
   const loadScrapers = async () => {
     try {
       const data = await api.scrapers()
-      setScrapers(data.items || fallbackScrapers())
+      setScrapers(data.items || [])
     } catch {
-      setScrapers(fallbackScrapers())
+      setScrapers(FALLBACK_SCRAPER_OPTIONS)
     }
   }
 
