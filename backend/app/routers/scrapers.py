@@ -1,9 +1,9 @@
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from ..scraper_plugins import (
-    BUILTIN_SCRAPER_NAMES,
     delete_plugin,
     install_plugin_archive,
+    is_builtin_scraper_name,
     list_plugins,
     record_plugin_error,
     serialize_scraper_info,
@@ -18,7 +18,7 @@ router = APIRouter()
 async def api_list_scrapers():
     items = []
     for info in list_scrapers():
-        items.append(serialize_scraper_info(info, builtin=info.name in BUILTIN_SCRAPER_NAMES))
+        items.append(serialize_scraper_info(info, builtin=is_builtin_scraper_name(info.name)))
     return {"items": items}
 
 

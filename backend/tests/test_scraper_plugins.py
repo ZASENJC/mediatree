@@ -62,6 +62,7 @@ class ScraperPluginTest(unittest.TestCase):
         self.orig_auth_user = config.settings.auth_user
         self.orig_auth_pass = config.settings.auth_pass
         self.orig_auth_password_hash = config.settings.auth_password_hash
+        self.orig_enable_builtin_scraper_plugins = config.settings.enable_builtin_scraper_plugins
         self.orig_db_pool = database._db_pool
 
         config.settings.media_root = str(self.media_root)
@@ -69,11 +70,11 @@ class ScraperPluginTest(unittest.TestCase):
         config.settings.auth_user = "admin"
         config.settings.auth_pass = "secret"
         config.settings.auth_password_hash = ""
+        config.settings.enable_builtin_scraper_plugins = True
         database._db_pool = None
         refresh_scraper_plugins()
 
     def tearDown(self):
-        refresh_scraper_plugins()
         if database._db_pool is not None:
             asyncio.run(database.close_db_pool())
         database._db_pool = self.orig_db_pool
@@ -82,6 +83,8 @@ class ScraperPluginTest(unittest.TestCase):
         config.settings.auth_user = self.orig_auth_user
         config.settings.auth_pass = self.orig_auth_pass
         config.settings.auth_password_hash = self.orig_auth_password_hash
+        config.settings.enable_builtin_scraper_plugins = self.orig_enable_builtin_scraper_plugins
+        refresh_scraper_plugins()
         self.tmpdir.cleanup()
 
     def auth_headers(self):
@@ -176,6 +179,29 @@ class ScraperPluginTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("reserved", response.json()["detail"].lower())
+
+    def test_install_allows_builtin_named_plugin_when_builtin_scrapers_disabled(self):
+        config.settings.enable_builtin_scraper_plugins = False
+        refresh_scraper_plugins()
+
+        with TestClient(main.app) as client:
+            response = client.post(
+                "/api/scraper-plugins/install",
+                files={"file": ("tmdb.zip", self.plugin_zip(manifest={
+                    "name": "tmdb_movie",
+                    "version": "1.0.0",
+                    "label": "TMDB Movie Override",
+                    "description": "Test plugin",
+                    "entrypoint": "scraper.py",
+                    "class_name": "DemoPluginScraper",
+                    "supported_media_types": ["movie"],
+                }), "application/zip")},
+                headers=self.auth_headers(),
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["plugin"]["name"], "tmdb_movie")
+        self.assertFalse(response.json()["plugin"]["builtin"])
 
     def test_install_is_disabled_until_enabled_then_registry_loads_plugin(self):
         with TestClient(main.app) as client:

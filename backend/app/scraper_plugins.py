@@ -20,18 +20,21 @@ MAX_PLUGIN_FILES = 32
 MAX_PLUGIN_UNCOMPRESSED_BYTES = 4 * 1024 * 1024
 PLUGIN_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]{2,63}$")
 PLUGIN_VERSION_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$")
-BUILTIN_SCRAPER_NAMES = frozenset({
+BUILTIN_SCRAPER_PLUGIN_NAMES = frozenset({
     "auto",
     "none",
-    "tmdb",
     "tmdb_movie",
     "tmdb_tv",
     "tmdb_collection",
     "bangumi",
     "javdatabase",
+})
+RESERVED_SCRAPER_ALIASES = frozenset({
+    "tmdb",
     "tmdb_tv_search",
     "tmdb_movie_search",
 })
+BUILTIN_SCRAPER_NAMES = BUILTIN_SCRAPER_PLUGIN_NAMES | RESERVED_SCRAPER_ALIASES
 
 _plugin_instance_cache: dict[str, BaseScraper] = {}
 
@@ -111,6 +114,16 @@ def serialize_scraper_info(info: ScraperInfo, *, builtin: bool = False) -> dict:
     }
 
 
+def is_builtin_scraper_name(name: str) -> bool:
+    return bool(settings.enable_builtin_scraper_plugins and name in BUILTIN_SCRAPER_PLUGIN_NAMES)
+
+
+def is_reserved_plugin_name(name: str) -> bool:
+    if name in RESERVED_SCRAPER_ALIASES:
+        return True
+    return bool(settings.enable_builtin_scraper_plugins and name in BUILTIN_SCRAPER_PLUGIN_NAMES)
+
+
 def validate_manifest(raw: Any) -> ScraperPluginManifest:
     if not isinstance(raw, dict):
         raise HTTPException(status_code=400, detail="plugin.json must be an object")
@@ -125,7 +138,7 @@ def validate_manifest(raw: Any) -> ScraperPluginManifest:
 
     if not PLUGIN_NAME_PATTERN.fullmatch(name):
         raise HTTPException(status_code=400, detail="Invalid plugin name")
-    if name in BUILTIN_SCRAPER_NAMES:
+    if is_reserved_plugin_name(name):
         raise HTTPException(status_code=400, detail="Plugin name is reserved")
     if not version or not PLUGIN_VERSION_PATTERN.fullmatch(version):
         raise HTTPException(status_code=400, detail="Invalid plugin version")

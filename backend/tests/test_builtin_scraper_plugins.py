@@ -24,6 +24,7 @@ class BuiltinScraperPluginsTest(unittest.TestCase):
         self.orig_auth_user = config.settings.auth_user
         self.orig_auth_pass = config.settings.auth_pass
         self.orig_auth_password_hash = config.settings.auth_password_hash
+        self.orig_enable_builtin_scraper_plugins = config.settings.enable_builtin_scraper_plugins
         self.orig_db_pool = database._db_pool
 
         config.settings.media_root = str(self.media_root)
@@ -31,6 +32,7 @@ class BuiltinScraperPluginsTest(unittest.TestCase):
         config.settings.auth_user = "admin"
         config.settings.auth_pass = "secret"
         config.settings.auth_password_hash = ""
+        config.settings.enable_builtin_scraper_plugins = True
         database._db_pool = None
         refresh_scraper_plugins()
 
@@ -44,6 +46,7 @@ class BuiltinScraperPluginsTest(unittest.TestCase):
         config.settings.auth_user = self.orig_auth_user
         config.settings.auth_pass = self.orig_auth_pass
         config.settings.auth_password_hash = self.orig_auth_password_hash
+        config.settings.enable_builtin_scraper_plugins = self.orig_enable_builtin_scraper_plugins
         self.tmpdir.cleanup()
 
     def auth_headers(self):
@@ -87,6 +90,22 @@ class BuiltinScraperPluginsTest(unittest.TestCase):
         self.assertIn("tmdb_movie", {item["name"] for item in scrapers.json()["items"]})
         self.assertTrue(all(item["builtin"] for item in scrapers.json()["items"]))
         self.assertEqual([], plugins.json()["items"])
+
+    def test_builtin_scrapers_can_be_disabled_for_empty_test_containers(self):
+        config.settings.enable_builtin_scraper_plugins = False
+        refresh_scraper_plugins()
+        asyncio.run(database.init_db())
+
+        with TestClient(main.app) as client:
+            scrapers = client.get("/api/scrapers", headers=self.auth_headers())
+            plugins = client.get("/api/scraper-plugins", headers=self.auth_headers())
+
+        self.assertEqual(scrapers.status_code, 200)
+        self.assertEqual(plugins.status_code, 200)
+        self.assertEqual([], scrapers.json()["items"])
+        self.assertEqual([], plugins.json()["items"])
+        with self.assertRaises(KeyError):
+            get_scraper("tmdb_movie")
 
 
 if __name__ == "__main__":

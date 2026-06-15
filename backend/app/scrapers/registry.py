@@ -66,6 +66,10 @@ def ensure_builtin_scrapers():
     global _initialized
     if _initialized:
         return
+    from ..config import settings
+    if not settings.enable_builtin_scraper_plugins:
+        _initialized = True
+        return
     for manifest in list_builtin_scraper_manifests():
         register_scraper(load_builtin_scraper(manifest))
     _initialized = True

@@ -19,6 +19,7 @@ _INTERNAL_SCRAPER_POLICY_DEFAULTS = {
     "bangumi_cache_hours": 168,
 }
 _INTERNAL_SCRAPER_POLICY_KEYS = set(_INTERNAL_SCRAPER_POLICY_DEFAULTS)
+_ENV_ONLY_KEYS = {"enable_builtin_scraper_plugins"}
 
 
 def setup_file_logging(data_dir: str):
@@ -38,6 +39,7 @@ def setup_file_logging(data_dir: str):
 class Settings(BaseSettings):
     media_root: str = "/media"
     data_dir: str = str(Path(__file__).parent.parent.parent / "data")
+    enable_builtin_scraper_plugins: bool = True
 
     javdb_enabled: bool = True
     javdb_base_url: str = "https://www.javdatabase.com"
@@ -147,7 +149,7 @@ class Settings(BaseSettings):
                 with open(self.config_path, "r") as f:
                     data = json.load(f)
                 for key, val in data.items():
-                    if key in _INTERNAL_SCRAPER_POLICY_KEYS:
+                    if key in _INTERNAL_SCRAPER_POLICY_KEYS or key in _ENV_ONLY_KEYS:
                         continue
                     if hasattr(self, key):
                         if key in ("auth_user", "auth_password_hash") and val:
