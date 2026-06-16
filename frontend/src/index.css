@@ -27,12 +27,13 @@
 :root {
   --mt-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
   --mt-density-scale: 1;
-  --mt-layout-content-max: 80rem;
+  --mt-layout-content-max: none;
   --mt-layout-gap: 1.25rem;
   --mt-layout-page-padding-x: 1rem;
   --mt-layout-page-padding-y: 1.25rem;
   --mt-layout-page-padding-x-wide: 1.5rem;
   --mt-layout-page-padding-y-wide: 1.75rem;
+  --mt-media-grid-min: clamp(9.25rem, 10vw, 13rem);
   --mt-motion-fast: 160ms;
   --mt-motion-normal: 260ms;
   --mt-theme-style: liquid-glass;
@@ -88,6 +89,8 @@
   }
 
   .mt-content {
+    width: 100%;
+    min-width: 0;
     max-width: var(--mt-layout-content-max);
     padding-inline: var(--mt-layout-page-padding-x);
     padding-block: var(--mt-layout-page-padding-y);
@@ -1050,10 +1053,19 @@ textarea {
 /* 网格容器本身的 containment */
 .media-grid {
   contain: layout style;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--mt-media-grid-min)), 1fr));
 }
 
 .media-grid-adaptive > .media-grid-card {
   align-self: start;
+}
+
+@media (max-width: 380px) {
+  .media-grid {
+    --mt-media-grid-min: 8.75rem;
+  }
 }
 
 /* ── Theater Mode (影院模式) ── */

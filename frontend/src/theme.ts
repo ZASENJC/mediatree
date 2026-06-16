@@ -33,7 +33,7 @@ export const DEFAULT_THEME_NAME = 'mediatree-dark'
 const DEFAULT_DARK_TOKENS: Record<string, string> = {
   '--mt-font-family': '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif',
   '--mt-density-scale': '1',
-  '--mt-layout-content-max': '80rem',
+  '--mt-layout-content-max': 'none',
   '--mt-layout-gap': '1.25rem',
   '--mt-layout-page-padding-x': '1rem',
   '--mt-layout-page-padding-y': '1.25rem',
@@ -544,7 +544,7 @@ export function createExampleTheme() {
     tokens: {
       '--mt-font-family': 'Inter, "Noto Sans SC", "Microsoft YaHei", sans-serif',
       '--mt-density-scale': '0.96',
-      '--mt-layout-content-max': '92rem',
+      '--mt-layout-content-max': 'none',
       '--mt-layout-gap': '1rem',
       '--mt-layout-page-padding-x': '1.25rem',
       '--mt-layout-page-padding-y': '1.25rem',

@@ -194,6 +194,34 @@ cd backend && PYTHONPATH=. python3.11 -m unittest discover -s tests -p 'test_*.p
 - 后续拆分有稳定检查入口。
 - 没有无关格式化噪音。
 
+## 阶段 8：前端自适应宽度铺满
+
+目标：让主要前端页面和播放相关视图根据可用视口宽度自适应铺满，减少固定宽度、窄屏留白和宽屏内容被过度约束的问题，同时保持现有移动端、桌面端和 Capacitor 行为不变。
+
+建议范围：
+
+- 应用主布局、媒体列表、详情页、设置页、搜索/筛选区域。
+- 播放页外层容器、剧院模式和选集/字幕等浮层的宽度约束。
+- 现有卡片网格、工具栏、弹窗和滚动容器的响应式断点。
+
+允许改动：
+
+- 将不必要的固定宽度、过小 `max-width` 和硬编码横向间距改为 `width: 100%`、`minmax()`、容器约束或 Tailwind 响应式类。
+- 为列表、网格、播放器区域补稳定的 `min-width: 0`、`overflow` 和 `box-sizing` 约束，避免内容撑破布局。
+- 调整页面级 padding / gap，让窄屏不溢出、宽屏能充分利用可用宽度。
+
+验证：
+
+```bash
+cd frontend && npm run build
+```
+
+完成条件：
+
+- 主要页面在移动端、平板和桌面宽度下都能铺满可用区域且不产生横向滚动。
+- 播放页、列表页、详情页和设置页没有明显无意义留白。
+- 文本、按钮、浮层和播放器控件不重叠，原有播放、字幕、转码和导航行为不变。
+
 ## 当前执行记录
 
 - 阶段 0：已创建本规划文件。
@@ -204,3 +232,4 @@ cd backend && PYTHONPATH=. python3.11 -m unittest discover -s tests -p 'test_*.p
 - 阶段 5：已拆出 `frontend/src/api/` 下的 `session.ts`、`client.ts`、`mediaUrls.ts`、`types.ts`、`endpoints.ts`，顶层 `frontend/src/api.ts` 保持兼容导出。
 - 阶段 6：已拆出 `backend/app/db/migrations.py` 和 `backend/app/services/folders.py`，保留 `database.py` / `scanner.py` 的公共入口。
 - 阶段 7：已新增 `scripts/check-local.sh` 作为本地综合检查入口。
+- 阶段 8：已将前端主内容、顶部栏、设置页和媒体网格改为自适应铺满可用宽度。

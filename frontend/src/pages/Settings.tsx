@@ -496,7 +496,7 @@ export default function Settings() {
   const btnDark = `${btnClass} border border-white/10 bg-white/[0.08] text-gray-300 hover:bg-white/[0.14] hover:text-white`
 
   return (
-    <div className="space-y-5 max-w-7xl mx-auto">
+    <div className="w-full min-w-0 space-y-5">
       <div className="glass-panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
         <div>
           <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">MediaTree</p>

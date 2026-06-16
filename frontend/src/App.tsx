@@ -327,7 +327,7 @@ export default function App() {
     <div className="mt-app-shell min-h-screen flex flex-col">
       {!theaterMode && (
       <header className="mt-topbar sticky top-0 z-50 pt-2 sm:pt-3">
-        <div className="mx-auto flex h-12 max-w-7xl items-center justify-between gap-2 px-4 sm:px-6 transform-gpu sm:h-14 sm:gap-3">
+        <div className="flex h-12 w-full min-w-0 items-center justify-between gap-2 px-4 sm:px-6 transform-gpu sm:h-14 sm:gap-3">
           <div className="relative">
           <div className="flex min-w-0 items-center gap-2 liquid-glass pl-3 pr-3 py-1.5 sm:pl-4 sm:pr-4 sm:py-2">
             <Link to="/" className="shrink-0 text-base font-semibold tracking-tight text-white transition-colors hover:text-apple-blue sm:text-lg">
@@ -454,7 +454,7 @@ export default function App() {
           </div>
         </div>
         {mobileSearchOpen && (
-          <form onSubmit={handleSearch} className="relative mx-auto mt-2 max-w-7xl px-4 sm:hidden">
+          <form onSubmit={handleSearch} className="relative mt-2 w-full min-w-0 px-4 sm:hidden">
             <div className="relative">
             <input
               ref={searchInputRef}

@@ -173,6 +173,7 @@ test('createExampleTheme emits advanced skin metadata and stable selector CSS', 
   assert.ok(example.capabilities.includes('layout'))
   assert.equal(example.tokens['--mt-font-family'], 'Inter, "Noto Sans SC", "Microsoft YaHei", sans-serif')
   assert.equal(example.tokens['--mt-density-scale'], '0.96')
+  assert.equal(example.tokens['--mt-layout-content-max'], 'none')
   assert.equal(example.tokens['--mt-theme-style'], 'advanced-skin')
   assert.match(example.customCss, /\.mt-panel/)
   assert.match(example.customCss, /\.mt-media-card/)
@@ -203,6 +204,21 @@ test('global CSS exposes stable theme hook selectors', () => {
   ]) {
     assert.ok(css.includes(selector), `missing stable selector: ${selector}`)
   }
+})
+
+test('global layout fills available width responsively', () => {
+  const css = readFileSync('src/index.css', 'utf8')
+  const root = cssRuleBody(css, ':root')
+  const content = cssRuleBody(css, '.mt-content')
+  const mediaGrid = cssRuleBody(css, '.media-grid {')
+
+  assert.equal(BUILTIN_THEMES[0].tokens['--mt-layout-content-max'], 'none')
+  assert.match(root, /--mt-layout-content-max:\s*none;/)
+  assert.match(content, /width:\s*100%;/)
+  assert.match(content, /min-width:\s*0;/)
+  assert.match(mediaGrid, /width:\s*100%;/)
+  assert.match(mediaGrid, /min-width:\s*0;/)
+  assert.match(mediaGrid, /grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(min\(100%,\s*var\(--mt-media-grid-min\)\),\s*1fr\)\);/)
 })
 
 test('settings theme copy is user-facing', () => {
