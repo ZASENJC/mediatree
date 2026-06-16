@@ -243,45 +243,60 @@
 
   .liquid-glass {
     position: relative;
-    border-radius: var(--mt-radius-panel);
-    border: 1px solid var(--mt-color-border-strong);
-    background: var(--mt-color-surface-container-high, var(--mt-color-surface-elevated));
-    backdrop-filter: var(--mt-backdrop-panel) brightness(1.1) contrast(1.04);
-    -webkit-backdrop-filter: var(--mt-backdrop-panel) brightness(1.1) contrast(1.04);
-    box-shadow: var(--mt-shadow-glass);
+    overflow: hidden;
+    isolation: isolate;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(8, 10, 18, 0.62);
+    backdrop-filter: blur(4px) saturate(140%);
+    -webkit-backdrop-filter: blur(4px) saturate(140%);
+    box-shadow: none;
+    transition:
+      background-color var(--mt-motion-fast) ease,
+      border-color var(--mt-motion-fast) ease;
   }
 
-  /* 折射光晕渐变层 */
   .liquid-glass::before {
     content: '';
     position: absolute;
     inset: 0;
     border-radius: inherit;
     pointer-events: none;
-    z-index: -1;
-    background: linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.08) 0%,
-      rgba(255, 255, 255, 0.03) 22%,
-      transparent 42%,
-      var(--mt-color-accent-soft) 66%,
-      rgba(191, 90, 242, 0.035) 100%
-    );
-    opacity: 0.35;
+    z-index: 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 58%);
   }
 
-  /* 边缘色散高光环 */
   .liquid-glass::after {
     content: '';
     position: absolute;
     inset: 0;
     border-radius: inherit;
     pointer-events: none;
-    z-index: -1;
-    box-shadow:
-      inset 0 0 0 1px rgba(255, 255, 255, 0.08),
-      inset 0 0 0 2px var(--mt-color-accent-soft);
-    opacity: 0.32;
+    z-index: 0;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .liquid-glass > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  :root[data-mediatree-color-scheme="light"] .liquid-glass {
+    border-color: rgba(15, 23, 42, 0.12);
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow: none;
+  }
+
+  .mt-topbar .glass-button,
+  .mt-topbar .glass-chip,
+  .mt-topbar .glass-input,
+  .mt-topbar .glass-button:focus-visible,
+  .mt-topbar .glass-input:focus {
+    box-shadow: none;
+  }
+
+  .mt-topbar .glass-input::placeholder {
+    color: rgba(255, 255, 255, 0.72);
   }
 }
 
@@ -304,6 +319,15 @@
 :root[data-mediatree-color-scheme="light"] .text-gray-500,
 :root[data-mediatree-color-scheme="light"] .text-gray-600 {
   color: var(--mt-color-text-faint);
+}
+
+.mt-topbar .liquid-glass,
+.mt-topbar .liquid-glass a,
+.mt-topbar .liquid-glass button,
+.mt-topbar .liquid-glass svg,
+.mt-topbar .glass-chip,
+.mt-topbar .glass-input {
+  color: #fff;
 }
 
 :root[data-mediatree-color-scheme="light"] .hover\:text-white:hover {
@@ -1105,6 +1129,14 @@ textarea {
 @media (max-width: 380px) {
   .media-grid {
     --mt-media-grid-min: 8.75rem;
+  }
+}
+
+@media (max-width: 640px), (orientation: portrait) and (max-width: 820px) {
+  .media-grid {
+    --mt-media-mobile-grid-width: calc(100% - var(--mt-media-grid-column-gap, var(--mt-media-grid-gap)) - var(--mt-media-grid-column-gap, var(--mt-media-grid-gap)));
+    --mt-media-card-width: min(11rem, calc(var(--mt-media-mobile-grid-width) / 3)) !important;
+    --mt-media-card-height: min(16.5rem, calc(var(--mt-media-mobile-grid-width) / 2)) !important;
   }
 }
 

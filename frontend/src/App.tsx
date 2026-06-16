@@ -332,7 +332,7 @@ export default function App() {
         <div className="flex h-12 w-full min-w-0 items-center justify-between gap-2 px-4 sm:px-6 transform-gpu sm:h-14 sm:gap-3">
           <div className="relative">
           <div className="flex min-w-0 items-center gap-2 liquid-glass pl-3 pr-3 py-1.5 sm:pl-4 sm:pr-4 sm:py-2">
-            <Link to="/" className="shrink-0 text-base font-semibold tracking-tight text-white transition-colors hover:text-apple-blue sm:text-lg">
+            <Link to="/" className="shrink-0 text-base font-semibold tracking-tight text-white transition-colors hover:text-white sm:text-lg">
               <span className="hidden min-[380px]:inline">MediaTree</span>
               <span className="min-[380px]:hidden">MT</span>
             </Link>
@@ -346,14 +346,13 @@ export default function App() {
                 } ${
                   location.pathname === item.path
                     ? 'bg-white/18 text-white shadow-sm'
-                    : 'text-gray-400 hover:bg-white/10 hover:text-white'
+                    : 'text-white hover:bg-white/10'
                 }`}
               >
                 <span className="relative">
                   {item.label}
                   {item.path === '/settings' && hasUpdate && (
-                    <span className="absolute -top-1 -right-2.5 h-2 w-2 rounded-full bg-red-500"
-                          style={{ boxShadow: '0 0 6px rgba(239, 68, 68, 0.7)' }} />
+                    <span className="absolute -top-1 -right-2.5 h-2 w-2 rounded-full bg-red-500" />
                   )}
                 </span>
               </Link>
@@ -362,7 +361,7 @@ export default function App() {
               <button
                 ref={moreBtnRef}
                 onClick={() => setMobileNavOpen(v => !v)}
-                className="rounded-full px-1.5 py-1.5 text-xs text-gray-400 transition-colors hover:bg-white/10 hover:text-white sm:px-2"
+                className="rounded-full px-1.5 py-1.5 text-xs text-white transition-colors hover:bg-white/10 sm:px-2"
                 aria-label="更多导航"
               >
                 ···
@@ -380,14 +379,13 @@ export default function App() {
                     className={`block rounded-3xl px-3 py-2 text-sm transition-colors ${
                       location.pathname === item.path
                         ? 'bg-white/15 text-white'
-                        : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                        : 'text-white hover:bg-white/10'
                     }`}
                   >
                     <span className="relative">
                       {item.label}
                       {item.path === '/settings' && hasUpdate && (
-                        <span className="absolute -top-1 -right-3 h-2 w-2 rounded-full bg-red-500"
-                              style={{ boxShadow: '0 0 6px rgba(239, 68, 68, 0.7)' }} />
+                        <span className="absolute -top-1 -right-3 h-2 w-2 rounded-full bg-red-500" />
                       )}
                     </span>
                   </Link>
@@ -412,7 +410,7 @@ export default function App() {
               </button>
             )}
             {currentLibraryLabel && libraries.length <= 1 && (
-              <span className="glass-chip hidden max-w-32 truncate text-gray-400 sm:inline-flex">
+              <span className="glass-chip hidden max-w-32 truncate text-white sm:inline-flex">
                 {currentLibraryLabel}
               </span>
             )}
@@ -427,7 +425,7 @@ export default function App() {
                 placeholder="搜索..."
                 className="glass-input w-44 py-1.5 pl-8 pr-3 text-sm md:w-52 md:focus:w-60"
               />
-              <svg className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               </div>
@@ -435,7 +433,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setMobileSearchOpen(v => !v)}
-              className="rounded-full p-1.5 text-gray-400 transition-colors hover:bg-white/10 hover:text-white sm:p-2 sm:hidden"
+              className="rounded-full p-1.5 text-white transition-colors hover:bg-white/10 sm:p-2 sm:hidden"
               aria-label="搜索"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -444,7 +442,7 @@ export default function App() {
             </button>
             <button
               onClick={() => api.logout()}
-              className="rounded-full p-1.5 text-gray-500 transition-colors hover:bg-red-500/10 hover:text-red-300 sm:p-2"
+              className="rounded-full p-1.5 text-white transition-colors hover:bg-red-500/10 hover:text-white sm:p-2"
               title="登出"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -467,7 +465,7 @@ export default function App() {
               placeholder="搜索..."
               className="glass-input w-full py-2 pl-9 pr-3 text-sm"
             />
-            <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
             </div>

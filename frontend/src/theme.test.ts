@@ -207,12 +207,53 @@ test('global CSS exposes stable theme hook selectors', () => {
     '.mt-button-primary',
     '.mt-input',
     '.mt-chip',
+    '.liquid-glass',
     '.mt-popover',
     '.mt-dialog',
     '.mt-media-card',
   ]) {
     assert.ok(css.includes(selector), `missing stable selector: ${selector}`)
   }
+})
+
+test('topbar keeps split liquid glass groups', () => {
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const topbar = app.match(/<header className="mt-topbar[\s\S]*?<\/header>/)?.[0] ?? ''
+
+  assert.match(topbar, /<header className="mt-topbar sticky top-0 z-50/)
+  assert.match(topbar, /className="flex min-w-0 items-center gap-2 liquid-glass/)
+  assert.match(topbar, /className="flex items-center justify-end gap-1 liquid-glass/)
+  assert.match(topbar, /className="shrink-0 text-base font-semibold tracking-tight text-white transition-colors hover:text-white sm:text-lg"/)
+  assert.match(topbar, /\? 'bg-white\/18 text-white shadow-sm'\s*:\s*'text-white hover:bg-white\/10'/)
+  assert.match(topbar, /className="rounded-full px-1\.5 py-1\.5 text-xs text-white transition-colors hover:bg-white\/10 sm:px-2"/)
+  assert.match(topbar, /className="rounded-full p-1\.5 text-white transition-colors hover:bg-white\/10 sm:p-2 sm:hidden"/)
+  assert.match(topbar, /className="rounded-full p-1\.5 text-white transition-colors hover:bg-red-500\/10 hover:text-white sm:p-2"/)
+  assert.doesNotMatch(topbar, /text-gray-[0-9]+/)
+  assert.doesNotMatch(topbar, /hover:text-(?!white)/)
+  assert.doesNotMatch(topbar, /style=\{\{ boxShadow:/)
+  assert.doesNotMatch(app, /<header[^>]*liquid-glass/)
+})
+
+test('liquid glass uses a compact dark frosted surface', () => {
+  const css = readFileSync('src/index.css', 'utf8')
+  const liquidGlass = cssRuleBody(css, '.liquid-glass {')
+  const lightTextRemapIndex = css.indexOf(':root[data-mediatree-color-scheme="light"] .text-white')
+  const topbarWhiteIndex = css.indexOf('.mt-topbar .liquid-glass,')
+
+  assert.match(liquidGlass, /overflow:\s*hidden;/)
+  assert.match(liquidGlass, /isolation:\s*isolate;/)
+  assert.match(liquidGlass, /border-radius:\s*18px;/)
+  assert.match(liquidGlass, /border:\s*1px solid rgba\(255,\s*255,\s*255,\s*0\.12\);/)
+  assert.match(liquidGlass, /background:\s*rgba\(8,\s*10,\s*18,\s*0\.62\);/)
+  assert.match(liquidGlass, /backdrop-filter:\s*blur\(4px\) saturate\(140%\);/)
+  assert.match(liquidGlass, /box-shadow:\s*none;/)
+  assert.doesNotMatch(liquidGlass, /var\(--mt-shadow-glass\)/)
+  assert.doesNotMatch(liquidGlass, /brightness\(/)
+  assert.match(css, /\.liquid-glass::after\s*\{[^}]*border:\s*1px solid rgba\(255,\s*255,\s*255,\s*0\.06\);[^}]*\}/s)
+  assert.doesNotMatch(cssRuleBody(css, '.liquid-glass::after {'), /box-shadow:/)
+  assert.match(css, /\.mt-topbar \.glass-button,[^}]*\.mt-topbar \.glass-input:focus\s*\{[^}]*box-shadow:\s*none;/s)
+  assert.ok(lightTextRemapIndex !== -1 && topbarWhiteIndex > lightTextRemapIndex)
+  assert.match(css, /\.mt-topbar \.liquid-glass,[^}]*\.mt-topbar \.glass-input\s*\{[^}]*color:\s*#fff;/s)
 })
 
 test('global layout fills available width responsively', () => {
@@ -251,6 +292,7 @@ test('global layout fills available width responsively', () => {
   assert.match(mediaGrid, /row-gap:\s*var\(--mt-media-grid-row-gap,\s*var\(--mt-media-grid-gap\)\)\s*!important;/)
   assert.match(mediaGrid, /justify-content:\s*center;/)
   assert.doesNotMatch(mediaGrid, /grid-template-columns:/)
+  assert.match(css, /@media \(max-width:\s*640px\),\s*\(orientation:\s*portrait\) and \(max-width:\s*820px\)\s*\{[^}]*\.media-grid\s*\{[^}]*--mt-media-mobile-grid-width:\s*calc\(100% - var\(--mt-media-grid-column-gap,\s*var\(--mt-media-grid-gap\)\) - var\(--mt-media-grid-column-gap,\s*var\(--mt-media-grid-gap\)\)\);[^}]*--mt-media-card-width:\s*min\(11rem,\s*calc\(var\(--mt-media-mobile-grid-width\) \/ 3\)\)\s*!important;[^}]*--mt-media-card-height:\s*min\(16\.5rem,\s*calc\(var\(--mt-media-mobile-grid-width\) \/ 2\)\)\s*!important;/s)
   assert.match(css, /\.media-grid-card\s*\{[^}]*contain-intrinsic-size:\s*var\(--mt-media-card-width\)\s+var\(--mt-media-card-height\);/s)
   assert.match(css, /\.media-grid\s*>\s*\.media-grid-card\s*\{[^}]*width:\s*var\(--mt-media-card-width\);[^}]*height:\s*var\(--mt-media-card-height\);[^}]*min-width:\s*var\(--mt-media-card-width\);[^}]*max-width:\s*var\(--mt-media-card-width\);[^}]*min-height:\s*var\(--mt-media-card-height\);[^}]*max-height:\s*var\(--mt-media-card-height\);/s)
   assert.match(css, /\.media-grid\s+\.media-grid-card\s*\{[^}]*transition:\s*box-shadow\s+var\(--mt-motion-normal\)\s+ease,\s*border-color\s+var\(--mt-motion-normal\)\s+ease;[^}]*transform:\s*none;[^}]*will-change:\s*auto;/s)
@@ -262,16 +304,32 @@ test('global layout fills available width responsively', () => {
 test('media grid layout shifts animate with translate-only FLIP motion', () => {
   const app = readFileSync('src/App.tsx', 'utf8')
   const hook = readFileSync('src/hooks/useMediaGridMotion.ts', 'utf8')
+  const handleWindowResizeBody = hook.match(/const handleWindowResize = \(\) => \{([\s\S]*?)\n    \}/)?.[1] ?? ''
 
   assert.match(app, /useMediaGridMotion\(\)/)
   assert.match(hook, /prefers-reduced-motion:\s*reduce/)
   assert.match(hook, /ResizeObserver/)
   assert.match(hook, /MutationObserver/)
-  assert.match(hook, /const ANIMATION_MS = 140/)
+  assert.match(hook, /window\.addEventListener\('resize',\s*handleWindowResize/)
+  assert.match(hook, /const MOVE_THRESHOLD_PX = 0\.5/)
+  assert.match(hook, /const RESIZE_TRACK_MS = 220/)
+  assert.match(hook, /window\.requestAnimationFrame\(trackResizeMotion\)/)
+  assert.match(hook, /window\.performance\.now\(\) \+ RESIZE_TRACK_MS/)
+  assert.match(hook, /runAnimationNow\(\)/)
+  assert.match(hook, /window\.innerWidth === lastViewportWidth/)
+  assert.doesNotMatch(handleWindowResizeBody, /lastRects\s*=\s*readRects\(grids\)/)
+  assert.match(hook, /const ANIMATION_MS = 180/)
   assert.match(hook, /card\.animate/)
+  assert.match(hook, /DOMMatrixReadOnly/)
   assert.match(hook, /getComputedStyle\(card\)\.transform/)
-  assert.match(hook, /__mediaGridAnimation\?\.cancel\(\)/)
-  assert.match(hook, /translate\(\$\{dx\}px,\s*\$\{dy\}px\)/)
+  assert.match(hook, /left:\s*after\.left\s*-\s*activeOffset\.left/)
+  assert.match(hook, /top:\s*after\.top\s*-\s*activeOffset\.top/)
+  assert.match(hook, /const fromX = dx \+ activeOffset\.left/)
+  assert.match(hook, /const fromY = dy \+ activeOffset\.top/)
+  assert.match(hook, /__mediaGridAnimationCount/)
+  assert.doesNotMatch(hook, /animation\.cancel\(\)/)
+  assert.doesNotMatch(hook, /__mediaGridAnimation\?\.cancel\(\)/)
+  assert.match(hook, /translate\(\$\{fromX\}px,\s*\$\{fromY\}px\)/)
   assert.doesNotMatch(hook, /scale\(/)
 })
 
