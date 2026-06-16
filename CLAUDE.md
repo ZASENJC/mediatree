@@ -144,7 +144,7 @@ In production, the backend serves the built frontend at `/`. In development, run
 - `GET /api/version` — return the user-visible current version (highest installed version), plus runtime/image details for internal update decisions (public, no auth)
 - `GET /api/update/changelog?version=0.0.00` — fetch full GitHub release body for CHANGELOG modal
 - `GET /api/update/status` — return current app-package update status
-- Frontend auto-checks every 15 minutes in `App.tsx`, shows red dot on Settings nav when update available
+- Frontend auto-checks every 15 minutes in `App.tsx`, shows red dot on the Settings gear in the right action capsule when update available
 - Settings page update panel: version list with "更新日志" (modal), app-package "下载并更新", old-version "回滚此版本", and full-image "完整镜像更新" actions
 - CHANGELOG modal: full-screen darkened backdrop (`bg-black/60 backdrop-blur-sm`), centered `glass-modal` panel
 - Docker self-upgrade requires `docker.sock` access and a Docker-CLI-capable image; app-package mode does not require Docker socket access
@@ -212,7 +212,7 @@ scan_media(root)
   - `apple-focus` — card hover animation (translate-y -1, scale 1.02, glow shadow)
   - `liquid-glass` — animated liquid glass background effect
 - Also includes: theater/cinema mode styles (`.theater-active`), player customizations, scroll optimization (content-visibility, will-change), markdown changelog rendering styles
-- Navigation header: two separate glass capsules (brand+nav left, actions right). On mobile (<380px), "MediaTree" abbreviates to "MT". Favorites/Settings hidden in "..." dropdown on mobile.
+- Navigation header: two separate glass capsules (brand+nav left, actions right). Settings lives as a gear icon in the right action capsule next to search, with the update red dot anchored to that icon. On mobile (<380px), "MediaTree" abbreviates to "MT"; Favorites is hidden in the "..." dropdown on mobile.
 - Search: desktop inline search in actions capsule; mobile standalone search bar triggered by magnifying glass icon. Both share same results panel (`glass-popover`).
 
 ### Android / Capacitor native app

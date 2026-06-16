@@ -20,7 +20,6 @@ const navItems = [
   { path: '/', label: '首页' },
   { path: '/browse', label: '浏览' },
   { path: '/favorites', label: '收藏' },
-  { path: '/settings', label: '设置' },
 ]
 
 const TOPBAR_LIBRARY_LABEL_LIMIT = 5
@@ -517,7 +516,7 @@ export default function App() {
                 key={item.path}
                 to={item.path}
                 className={`shrink-0 rounded-full px-1.5 py-1.5 text-xs transition-all sm:px-3 sm:text-sm ${
-                  item.path === '/favorites' || item.path === '/settings' ? 'hidden sm:inline-flex' : 'inline-flex'
+                  item.path === '/favorites' ? 'hidden sm:inline-flex' : 'inline-flex'
                 } ${
                   location.pathname === item.path
                     ? 'bg-white/18 text-white shadow-sm'
@@ -526,9 +525,6 @@ export default function App() {
               >
                 <span className="relative">
                   {item.label}
-                  {item.path === '/settings' && hasUpdate && (
-                    <span className="absolute -top-1 -right-2.5 h-2 w-2 rounded-full bg-red-500" />
-                  )}
                 </span>
               </Link>
             ))}
@@ -547,7 +543,7 @@ export default function App() {
           {mobileNavOpen && (
             <>
               <div className="absolute right-0 top-full z-[70] mt-2 w-32 p-1 liquid-glass">
-                {navItems.filter(item => item.path === '/favorites' || item.path === '/settings').map(item => (
+                {navItems.filter(item => item.path === '/favorites').map(item => (
                   <Link
                     key={item.path}
                     to={item.path}
@@ -559,9 +555,6 @@ export default function App() {
                   >
                     <span className="relative">
                       {item.label}
-                      {item.path === '/settings' && hasUpdate && (
-                        <span className="absolute -top-1 -right-3 h-2 w-2 rounded-full bg-red-500" />
-                      )}
                     </span>
                   </Link>
                 ))}
@@ -642,6 +635,18 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </button>
+            <Link
+              to="/settings"
+              className={`topbar-icon-button relative inline-flex ${location.pathname === '/settings' ? 'bg-white/18 text-white shadow-sm' : ''}`}
+              aria-label="设置"
+              title="设置"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317a1.724 1.724 0 012.354 0l.9.9c.25.25.61.36.954.29l1.258-.252a1.724 1.724 0 012.012 1.238l.208 1.276c.056.346.276.642.58.807l1.184.64a1.724 1.724 0 01.708 2.299l-.536 1.1c-.155.319-.155.69 0 1.009l.536 1.1a1.724 1.724 0 01-.708 2.3l-1.184.64a1.724 1.724 0 00-.58.806l-.208 1.276a1.724 1.724 0 01-2.012 1.238l-1.258-.252a1.724 1.724 0 00-.954.29l-.9.9a1.724 1.724 0 01-2.354 0l-.9-.9a1.724 1.724 0 00-.954-.29l-1.258.252a1.724 1.724 0 01-2.012-1.238l-.208-1.276a1.724 1.724 0 00-.58-.806l-1.184-.64a1.724 1.724 0 01-.708-2.3l.536-1.1a1.724 1.724 0 000-1.009l-.536-1.1a1.724 1.724 0 01.708-2.299l1.184-.64c.304-.165.524-.46.58-.807l.208-1.276a1.724 1.724 0 012.012-1.238l1.258.252c.344.07.704-.04.954-.29l.9-.9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              {hasUpdate && <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />}
+            </Link>
             <button
               onClick={() => api.logout()}
               className="topbar-round-button rounded-full text-white transition-colors hover:bg-red-500/10 hover:text-white"
