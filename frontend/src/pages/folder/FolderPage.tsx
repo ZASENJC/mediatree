@@ -289,6 +289,7 @@ export default function FolderPage() {
   const displayedMoviesLoading = specialsSelected && (specialsLoading || (specialsToggling && !showSpecials))
   const displayedEmptyText = specialsSelected ? '此文件夹下没有花絮' : '此文件夹下没有影片'
   const displayedCountText = specialsSelected ? `${specialCount} 个花絮` : `${movies.length} 部影片`
+  const backdropImageClass = 'pointer-events-none absolute inset-0 h-full w-full object-cover object-center saturate-115'
 
   if (loading) {
     return (
@@ -327,33 +328,31 @@ export default function FolderPage() {
         </div>,
         document.body,
       )}
-      <div className="relative space-y-6">
+      <div className="relative z-0 space-y-6">
+      {activeBackdrop && (
+        <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+          {exitBackdrop && (
+            <img
+              key={`exit-${fadeKey}`}
+              src={exitBackdrop}
+              alt=""
+              className={`${backdropImageClass} animate-backdrop-out`}
+            />
+          )}
+          <img
+            key={`enter-${fadeKey}`}
+            src={activeBackdrop}
+            alt=""
+            className={`${backdropImageClass} animate-backdrop-in`}
+          />
+          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,transparent_58%,rgba(3,4,10,0.72)_100%)]" />
+        </div>
+      )}
       {activeBackdrop ? (
         <div className="relative -mt-5 min-h-[56vh] sm:-mt-7 sm:min-h-[62vh]"
           onMouseEnter={() => setBackdropHover(true)}
           onMouseLeave={() => setBackdropHover(false)}
         >
-          <div className="absolute inset-x-[calc(50%-50vw)] -top-20 h-[calc(100%+10rem)] overflow-hidden">
-            {/* Crossfade: exiting backdrop (animate-out) */}
-            {exitBackdrop && (
-              <img
-                key={`exit-${fadeKey}`}
-                src={exitBackdrop}
-                alt=""
-                className="pointer-events-none absolute inset-0 h-full w-full scale-[1.04] object-cover saturate-115 animate-backdrop-out [mask-image:linear-gradient(to_bottom,transparent_5%,black_15%,black_55%,rgba(0,0,0,0.82)_70%,rgba(0,0,0,0.45)_84%,rgba(0,0,0,0.08)_95%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_5%,black_15%,black_55%,rgba(0,0,0,0.82)_70%,rgba(0,0,0,0.45)_84%,rgba(0,0,0,0.08)_95%,transparent_100%)]"
-              />
-            )}
-            {/* Crossfade: entering backdrop (animate-in) */}
-            <img
-              key={`enter-${fadeKey}`}
-              src={activeBackdrop}
-              alt=""
-              className="pointer-events-none absolute inset-0 h-full w-full scale-[1.04] object-cover saturate-115 animate-backdrop-in [mask-image:linear-gradient(to_bottom,transparent_5%,black_15%,black_55%,rgba(0,0,0,0.82)_70%,rgba(0,0,0,0.45)_84%,rgba(0,0,0,0.08)_95%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_5%,black_15%,black_55%,rgba(0,0,0,0.82)_70%,rgba(0,0,0,0.45)_84%,rgba(0,0,0,0.08)_95%,transparent_100%)]"
-            />
-            {/* Fade overlay: top edge soft + bottom gradient to page bg */}
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_32%,rgba(3,4,10,0.12)_68%,transparent_100%),linear-gradient(180deg,rgba(3,4,10,0)_0%,rgba(3,4,10,0.04)_30%,rgba(3,4,10,0.15)_50%,rgba(3,4,10,0.4)_65%,rgba(3,4,10,0.7)_78%,rgba(3,4,10,0.94)_90%,transparent_100%)]" />
-          </div>
-
           {/* Arrow controls — visible on hover only when multiple backdrops */}
           {backdrops.length > 1 && (
             <>
@@ -478,9 +477,9 @@ export default function FolderPage() {
           <p>{displayedEmptyText}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 media-grid">
+        <div className="folder-episode-grid grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 media-grid">
           {displayedMovies.map((movie) => (
-            <MovieCard key={movie.id} movie={movie} onUpdated={specialsSelected ? loadSpecials : load} showBadges={false} />
+            <MovieCard key={movie.id} movie={movie} onUpdated={specialsSelected ? loadSpecials : load} showBadges={false} coverStrategy="episode-still-only" />
           ))}
         </div>
       )}
