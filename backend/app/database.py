@@ -9,6 +9,7 @@ _db_pool = None
 WEB_USER_ID = "web"
 WATCHED_THRESHOLD = 0.9
 CONTINUE_WATCHING_MIN_SECONDS = 60
+CONTINUE_WATCHING_MAX_AGE_DAYS = 14
 CONTENT_ROLE_MAIN = "main"
 CONTENT_ROLE_SPECIAL = "special"
 MAIN_CONTENT_WHERE = "COALESCE(content_role, 'main') != 'special'"
@@ -563,7 +564,12 @@ async def get_recent_watched(media_root: str = "", limit: int = 200, offset: int
     db = await get_db()
     min_continue_ticks = CONTINUE_WATCHING_MIN_SECONDS * 10_000_000
     cols = MOVIE_RESPONSE_COLUMNS_M
-    activity_where = f"WHERE {MAIN_CONTENT_WHERE_M} AND (ud.playback_position_ticks>? OR ud.played=1 OR watched_tags.movie_id IS NOT NULL)"
+    recent_activity_expr = "MAX(COALESCE(ud.last_played_date, ''), COALESCE(watched_tags.created_at, ''))"
+    activity_where = (
+        f"WHERE {MAIN_CONTENT_WHERE_M} "
+        f"AND (ud.playback_position_ticks>? OR ud.played=1 OR watched_tags.movie_id IS NOT NULL) "
+        f"AND {recent_activity_expr} >= datetime('now', '-{CONTINUE_WATCHING_MAX_AGE_DAYS} days')"
+    )
     activity_params: list = [min_continue_ticks]
     if media_root:
         activity_where += " AND m.media_root=?"

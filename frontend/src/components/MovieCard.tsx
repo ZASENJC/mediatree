@@ -12,6 +12,9 @@ import { clearCache } from '../cache'
 import CoverPickerModal from './CoverPickerModal'
 import { specialMovieTitle } from '../movieTitle'
 import { normalizeScraperOptions } from '../scrapers'
+import { formatMovieCardEpisodePrefix, formatMovieCardEpisodeTitle, getMovieCardCover, type MovieCardCoverStrategy } from './movieCardCover'
+
+const CONTINUE_SNAPSHOT_RETRY_DELAYS_MS = [1200, 2500, 5000, 10000, 20000]
 
 interface MovieCardProps {
   movie: Movie
@@ -19,9 +22,10 @@ interface MovieCardProps {
   showBadges?: boolean
   hideTitle?: boolean
   adaptiveCover?: boolean
+  coverStrategy?: MovieCardCoverStrategy
 }
 
-export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = false, adaptiveCover = false }: MovieCardProps) {
+export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = false, adaptiveCover = false, coverStrategy = 'auto' }: MovieCardProps) {
   const navigate = useNavigate()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [showEdit, setShowEdit] = useState(false)
@@ -34,6 +38,8 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const [searching, setSearching] = useState(false)
   const [applying, setApplying] = useState(false)
   const [coverVersion, setCoverVersion] = useState(() => movie.updated_at || '')
+  const [coverLoadFailed, setCoverLoadFailed] = useState(false)
+  const [continueSnapshotRetryIndex, setContinueSnapshotRetryIndex] = useState(0)
   const prevMovieId = useRef(movie.id)
   const [hovered, setHovered] = useState(false)
   const [libraryScrapers, setLibraryScrapers] = useState<Record<string, string>>({})
@@ -43,6 +49,8 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
     if (prevMovieId.current !== movie.id) {
       prevMovieId.current = movie.id
       setCoverVersion(movie.updated_at || '')
+      setCoverLoadFailed(false)
+      setContinueSnapshotRetryIndex(0)
     }
   }, [movie.id, movie.updated_at])
   useEffect(() => {
@@ -84,17 +92,22 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
     }
   }, [movie.id, movie.tags])
 
-  const isEpisode = movie.tmdb_type === 'tv' && movie.tmdb_episode != null
+  const coverState = getMovieCardCover(movie, coverStrategy)
+  const isEpisode = coverState.isEpisode
   const isSpecial = movie.content_role === 'special'
-  const hasEpisodeStill = !!(isEpisode && movie.episode_still)
+  const episodePrefix = formatMovieCardEpisodePrefix(movie)
+  const displayEpisodeTitle = formatMovieCardEpisodeTitle(movie)
   const withVersion = (url: string) => coverVersion ? `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(coverVersion)}` : url
-  const coverSrc = (hasEpisodeStill
+  const coverSrc = coverState.kind === 'episode-still'
     ? api.episodeStillUrl(movie.id)
-    : api.coverUrl(movie.id))
+    : coverState.kind === 'continue-snapshot'
+    ? api.continueCoverUrl(movie.id)
+    : api.coverUrl(movie.id)
+  const coverPlaceholder = coverState.kind === 'continue-snapshot' ? '暂无继续观看封面' : '暂无单集海报'
   const displayTitle = isSpecial
     ? specialMovieTitle(movie)
     : isEpisode
-    ? `E${String(movie.tmdb_episode).padStart(2, '0')} ${movie.episode_title || movie.title || movie.code}`
+    ? displayEpisodeTitle
     : (movie.title || movie.code)
   const watched = localWatched !== null ? localWatched : (movie.tags || []).includes('watched')
   const progressPercent = Math.max(0, Math.min(100, movie.progress_percent || 0))
@@ -102,6 +115,18 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const movieLibraryScraper = movie.media_root ? libraryScrapers[movie.media_root] : undefined
   const canUseJavdatabase = movieLibraryScraper === 'javdatabase'
   const manualScraperOptions = normalizeScraperOptions(scraperOptions, canUseJavdatabase)
+
+  useEffect(() => {
+    if (coverState.kind !== 'continue-snapshot' || !coverLoadFailed) return
+    if (continueSnapshotRetryIndex >= CONTINUE_SNAPSHOT_RETRY_DELAYS_MS.length) return
+    const delay = CONTINUE_SNAPSHOT_RETRY_DELAYS_MS[continueSnapshotRetryIndex]
+    const timer = window.setTimeout(() => {
+      setCoverVersion(String(Date.now()))
+      setCoverLoadFailed(false)
+      setContinueSnapshotRetryIndex(index => Math.min(index + 1, CONTINUE_SNAPSHOT_RETRY_DELAYS_MS.length))
+    }, delay)
+    return () => window.clearTimeout(timer)
+  }, [coverLoadFailed, continueSnapshotRetryIndex, coverState.kind, movie.id])
 
   const checkTmdbConfig = useCallback(async (scraperName: string = manualScraper) => {
     try {
@@ -247,21 +272,29 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
         onMouseLeave={() => setHovered(false)}
         className="glass-card apple-focus media-grid-card group cursor-pointer overflow-hidden"
       >
-        <div className={`${adaptiveCover ? 'min-h-40 overflow-hidden' : (hasEpisodeStill ? 'aspect-video' : 'aspect-[2/3]')} relative bg-white/[0.04]`}>
-          <img
-            src={withVersion(coverSrc)}
-            alt={movie.code}
-            className={`${adaptiveCover ? 'h-auto' : 'h-full'} w-full object-cover transition-transform duration-500 group-hover:scale-105`}
-            loading="lazy"
-            onError={(e) => {
-              const img = e.target as HTMLImageElement
-              if (hasEpisodeStill) {
-                img.src = withVersion(api.coverUrl(movie.id))
-              } else {
-                img.style.display = 'none'
-              }
-            }}
-          />
+        <div className={`${adaptiveCover ? 'min-h-40 overflow-hidden' : (coverState.usesLandscape ? 'aspect-video' : 'aspect-[2/3]')} relative bg-white/[0.04]`}>
+          {coverState.kind === 'placeholder' || (coverStrategy !== 'auto' && coverLoadFailed) ? (
+            <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))] p-3 text-center text-xs font-medium text-white/30">
+              {coverPlaceholder}
+            </div>
+          ) : (
+            <img
+              src={withVersion(coverSrc)}
+              alt={movie.code}
+              className={`${adaptiveCover ? 'h-auto' : 'h-full'} w-full object-cover transition-transform duration-500 group-hover:scale-105`}
+              loading="lazy"
+              onError={(e) => {
+                const img = e.target as HTMLImageElement
+                if (coverStrategy !== 'episode-still-only' && coverState.kind === 'episode-still') {
+                  img.src = withVersion(api.coverUrl(movie.id))
+                } else if (coverState.kind === 'continue-snapshot') {
+                  setCoverLoadFailed(true)
+                } else {
+                  setCoverLoadFailed(true)
+                }
+              }}
+            />
+          )}
           <WatchedBadge watched={watched} />
 
           {hovered && (
@@ -295,9 +328,9 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
           </div>
           )}
 
-          {showBadges && isEpisode && (
+          {showBadges && isEpisode && episodePrefix && (
             <span className="absolute left-2 top-2 z-10 rounded-full border border-apple-blue/35 bg-apple-blue/70 px-2 py-0.5 text-[10px] font-semibold text-white shadow-glow backdrop-blur-xl">
-              S{movie.tmdb_season}·E{movie.tmdb_episode}
+              {episodePrefix}
             </span>
           )}
 

@@ -1,3 +1,5 @@
+name = "explorer"
+description = "Read-only MediaTree exploration role for tracing code paths and gathering evidence."
 model = "gpt-5.5"
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"

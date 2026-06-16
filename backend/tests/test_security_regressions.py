@@ -283,6 +283,8 @@ class SecurityRegressionTest(unittest.TestCase):
             "/api/stream/{movie_id}",
             "/api/media-info/{movie_id}",
             "/api/cover/{movie_id}",
+            "/api/continue-cover/{movie_id}",
+            "/api/continue-cover-reset/{movie_id}",
             "/api/cached-cover/{cache_key}",
             "/api/episode-still/{movie_id}",
             "/api/thumbnail/{movie_id}/{index}",

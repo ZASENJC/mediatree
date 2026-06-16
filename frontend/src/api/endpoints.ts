@@ -102,11 +102,12 @@ export const api = {
 
   getProgress: (id: number) => request<{ position: number; played: boolean; progress_percent: number }>(`/progress/${id}`),
 
-  saveProgress: (id: number, position: number, duration?: number, stopped?: boolean) =>
+  saveProgress: (id: number, position: number, duration?: number, stopped?: boolean, snapshot?: boolean) =>
     request<{ ok: boolean; played: boolean; progress_percent: number }>(`/progress/${id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ position, duration, stopped }),
+      body: JSON.stringify({ position, duration, stopped, snapshot }),
+      keepalive: !!snapshot,
     }),
 
   ensureMediaToken,
@@ -116,6 +117,11 @@ export const api = {
   externalPlaylistUrl: (id: number) => appendMediaToken(`${getApiBase()}/external-play/${id}.m3u`),
 
   coverUrl: (id: number) => appendMediaToken(`${getApiBase()}/cover/${id}`),
+
+  continueCoverUrl: (id: number) => appendMediaToken(`${getApiBase()}/continue-cover/${id}`),
+
+  resetContinueCover: (id: number) =>
+    request<{ ok: boolean }>(`/continue-cover-reset/${id}`, { method: 'POST' }),
 
   thumbnailUrl: (id: number, index: number) => appendMediaToken(`${getApiBase()}/thumbnail/${id}/${index}`),
 

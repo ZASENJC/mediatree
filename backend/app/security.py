@@ -18,6 +18,8 @@ AUTH_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60
 MEDIA_ROUTE_PREFIXES = (
     "/api/stream/",
     "/api/cover/",
+    "/api/continue-cover/",
+    "/api/continue-cover-reset/",
     "/api/episode-still/",
     "/api/thumbnail/",
     "/api/subtitle-tracks/",

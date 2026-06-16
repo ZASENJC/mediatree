@@ -23,6 +23,18 @@ const navItems = [
   { path: '/settings', label: '设置' },
 ]
 
+const TOPBAR_LIBRARY_LABEL_LIMIT = 5
+const TOPBAR_LIBRARY_LABEL_PREFIX = 2
+
+function formatTopbarLibraryLabel(label: string) {
+  const normalized = label.trim()
+  if (!normalized) return ''
+
+  const chars = Array.from(normalized)
+  if (chars.length <= TOPBAR_LIBRARY_LABEL_LIMIT) return normalized
+  return `${chars.slice(0, TOPBAR_LIBRARY_LABEL_PREFIX).join('')}...`
+}
+
 export default function App() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -41,8 +53,9 @@ export default function App() {
   const [scanToast, setScanToast] = useState<{ visible: boolean; status: string; done: number; total: number }>({ visible: false, status: '', done: 0, total: 0 })
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
+  const [desktopSearchOpen, setDesktopSearchOpen] = useState(false)
   const [hasUpdate, setHasUpdate] = useState(() => getUpdateNotification().available)
-  const [topbarAwayFromTop, setTopbarAwayFromTop] = useState(() => (typeof window !== 'undefined' ? window.scrollY > 8 : false))
+  const [topbarWheelDirection, setTopbarWheelDirection] = useState<'up' | 'down' | null>(null)
   const [topbarCompact, setTopbarCompact] = useState(false)
   const [topbarHovering, setTopbarHovering] = useState(false)
   const [topbarFocused, setTopbarFocused] = useState(false)
@@ -55,55 +68,78 @@ export default function App() {
   const moreBtnRef = useRef<HTMLButtonElement | null>(null)
   const topbarLeftRef = useRef<HTMLDivElement | null>(null)
   const topbarRightRef = useRef<HTMLDivElement | null>(null)
+  const desktopSearchRootRef = useRef<HTMLDivElement | null>(null)
 
   const currentLibraryLabel = (() => {
     if (!activeLib) return ''
     const parts = activeLib.split('/').filter(Boolean)
     return parts[parts.length - 1] || activeLib
   })()
+  const currentLibraryDisplayLabel = formatTopbarLibraryLabel(currentLibraryLabel)
 
-  const topbarOpenByInteraction = topbarHovering || topbarFocused || searchOpen || mobileNavOpen || mobileSearchOpen || showLibraryModal
-  const topbarShouldCompact = topbarAwayFromTop && !topbarOpenByInteraction
+  const topbarOpenByInteraction = topbarHovering || desktopSearchOpen || mobileNavOpen || mobileSearchOpen || showLibraryModal
+  const topbarShouldCompact = topbarWheelDirection === 'down' && !topbarOpenByInteraction
 
   const mountedRef = useRef(true)
   useEffect(() => { return () => { mountedRef.current = false } }, [])
 
+  const measureExpandedTopbarGlass = useCallback((element: HTMLElement) => {
+    if (typeof document === 'undefined' || !document.body) {
+      return Math.ceil(Math.max(element.scrollWidth, element.getBoundingClientRect().width))
+    }
+
+    const host = document.createElement('div')
+    host.className = 'mt-topbar is-expanded topbar-measure-host'
+    const clone = element.cloneNode(true) as HTMLElement
+    clone.style.removeProperty('--mt-topbar-expanded-width')
+    clone.style.setProperty('inline-size', 'max-content')
+    clone.style.setProperty('max-inline-size', 'none')
+    clone.style.setProperty('transition', 'none')
+    host.appendChild(clone)
+    document.body.appendChild(host)
+    const width = Math.ceil(Math.max(clone.scrollWidth, clone.getBoundingClientRect().width))
+    host.remove()
+    return width
+  }, [])
+
   const measureTopbarGlass = useCallback(() => {
     ;[topbarLeftRef.current, topbarRightRef.current].forEach((element) => {
       if (!element) return
-      const width = Math.ceil(Math.max(element.scrollWidth, element.getBoundingClientRect().width))
+      const width = measureExpandedTopbarGlass(element)
       if (width > 0) element.style.setProperty('--mt-topbar-expanded-width', `${width}px`)
     })
-  }, [])
+  }, [measureExpandedTopbarGlass])
 
   const flushTopbarLayout = useCallback(() => {
     void topbarLeftRef.current?.offsetWidth
     void topbarRightRef.current?.offsetWidth
   }, [])
 
-  const setTopbarAwayFromTopWithMeasure = useCallback((away: boolean) => {
-    if (away && !topbarCompact) measureTopbarGlass()
-    setTopbarAwayFromTop(away)
+  const setTopbarWheelDirectionWithMeasure = useCallback((direction: 'up' | 'down' | null) => {
+    if (direction === 'down') {
+      setTopbarFocused(false)
+      setDesktopSearchOpen(false)
+      setSearchOpen(false)
+      setMobileSearchOpen(false)
+      if (!topbarCompact) measureTopbarGlass()
+    }
+    setTopbarWheelDirection(direction)
   }, [topbarCompact, measureTopbarGlass])
 
   useEffect(() => {
-    let frame = 0
-    const updateTopbarPosition = () => {
-      frame = 0
-      setTopbarAwayFromTopWithMeasure(window.scrollY > 8)
-    }
-    const onScroll = () => {
-      if (frame) return
-      frame = window.requestAnimationFrame(updateTopbarPosition)
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY > 0) {
+        setTopbarWheelDirectionWithMeasure('down')
+      } else if (event.deltaY < 0) {
+        setTopbarWheelDirectionWithMeasure('up')
+      }
     }
 
-    updateTopbarPosition()
-    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('wheel', onWheel, { passive: true })
     return () => {
-      window.removeEventListener('scroll', onScroll)
-      if (frame) window.cancelAnimationFrame(frame)
+      window.removeEventListener('wheel', onWheel)
     }
-  }, [setTopbarAwayFromTopWithMeasure])
+  }, [setTopbarWheelDirectionWithMeasure])
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return
@@ -136,7 +172,7 @@ export default function App() {
     if (topbarShouldCompact || topbarCompact || typeof window === 'undefined') return
     const frame = window.requestAnimationFrame(measureTopbarGlass)
     return () => window.cancelAnimationFrame(frame)
-  }, [topbarShouldCompact, topbarCompact, measureTopbarGlass, currentLibraryLabel, libraries.length, location.pathname, hasUpdate])
+  }, [topbarShouldCompact, topbarCompact, measureTopbarGlass, currentLibraryDisplayLabel, libraries.length, location.pathname, hasUpdate, desktopSearchOpen])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -193,7 +229,12 @@ export default function App() {
   useEffect(() => {
     setMobileNavOpen(false)
     setMobileSearchOpen(false)
+    setDesktopSearchOpen(false)
+    setSearchOpen(false)
   }, [location.pathname])
+  useEffect(() => {
+    if (desktopSearchOpen) searchInputRef.current?.focus()
+  }, [desktopSearchOpen])
   useEffect(() => {
     if (mobileSearchOpen) searchInputRef.current?.focus()
   }, [mobileSearchOpen])
@@ -328,7 +369,33 @@ export default function App() {
     setSearchLoading(false)
   }
 
+  const openDesktopSearch = useCallback(() => {
+    setDesktopSearchOpen(true)
+    if (searchQuery.trim() || searchResults.length > 0) {
+      setSearchOpen(true)
+    }
+  }, [searchQuery, searchResults.length])
+
+  const closeDesktopSearch = useCallback(() => {
+    setDesktopSearchOpen(false)
+    setSearchOpen(false)
+  }, [])
+
+  useEffect(() => {
+    if (!desktopSearchOpen) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (!desktopSearchRootRef.current?.contains(target)) closeDesktopSearch()
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    return () => document.removeEventListener('pointerdown', handlePointerDown, true)
+  }, [desktopSearchOpen, closeDesktopSearch])
+
   const closeSearch = () => {
+    closeDesktopSearch()
     setSearchOpen(false)
     setMobileSearchOpen(false)
   }
@@ -436,9 +503,9 @@ export default function App() {
           }
         }}
       >
-        <div className="flex h-12 w-full min-w-0 items-center justify-between gap-2 px-4 sm:px-6 transform-gpu sm:h-14 sm:gap-3">
+        <div className="topbar-shell flex h-12 w-full min-w-0 items-center justify-between gap-2 transform-gpu sm:h-14 sm:gap-3">
           <div className="relative">
-          <div ref={topbarLeftRef} className="flex min-w-0 items-center gap-2 liquid-glass topbar-glass topbar-left-glass pl-3 pr-3 py-1.5 sm:pl-4 sm:pr-4 sm:py-2">
+          <div ref={topbarLeftRef} className="flex min-w-0 items-center gap-1.5 liquid-glass topbar-glass topbar-left-glass px-3 py-1.5 sm:px-4 sm:py-2">
             <Link to="/" className="topbar-brand-link shrink-0 text-base font-semibold tracking-tight text-white transition-colors hover:text-white sm:text-lg">
               <img className="topbar-logo-mark" src="/site-logo.png" alt="" aria-hidden="true" />
               <span className="topbar-brand-text hidden min-[380px]:inline">MediaTree</span>
@@ -502,55 +569,68 @@ export default function App() {
               <div className="fixed inset-0 z-[60]" onClick={() => setMobileNavOpen(false)} />
             </>
           )}
-          </div>
-          <div className="relative shrink-0">
-            <div ref={topbarRightRef} className="flex items-center justify-end gap-1 liquid-glass topbar-glass topbar-right-glass px-2 py-1.5 sm:gap-2 sm:px-3 sm:py-2">
-            <button
-              type="button"
-              onClick={() => {
-                if (libraries.length > 1) setShowLibraryModal(true)
-              }}
-              className="topbar-compact-library-trigger"
-              title={currentLibraryLabel || '切换媒体库'}
-              aria-label="切换媒体库"
-            >
-              <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
-            </button>
-            <div className="topbar-collapsible topbar-right-expanded flex items-center justify-end gap-1 sm:gap-2">
+        </div>
+        <div ref={desktopSearchRootRef} className="relative shrink-0">
+            <div ref={topbarRightRef} className="flex items-center justify-end gap-1.5 liquid-glass topbar-glass topbar-right-glass px-3 py-1.5 sm:gap-2 sm:px-4 sm:py-2">
+            <div className="topbar-collapsible topbar-right-expanded flex items-center justify-end gap-1.5 sm:gap-2">
             {libraries.length > 1 && (
               <button
+                type="button"
                 onClick={() => setShowLibraryModal(true)}
-                className="glass-button h-8 max-w-9 gap-1.5 px-2 text-xs sm:max-w-none sm:px-3"
+                className="glass-button topbar-library-button h-8 max-w-9 gap-1.5 px-2 text-xs sm:max-w-none sm:px-3"
                 title={currentLibraryLabel || '切换媒体库'}
               >
                 <svg className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                 </svg>
-                <span className="hidden truncate sm:inline">{currentLibraryLabel || '库'}</span>
+                <span className="topbar-library-label hidden truncate sm:inline-block">{currentLibraryDisplayLabel || '库'}</span>
               </button>
             )}
             {currentLibraryLabel && libraries.length <= 1 && (
-              <span className="glass-chip hidden max-w-32 truncate text-white sm:inline-flex">
-                {currentLibraryLabel}
+              <span className="glass-chip topbar-library-chip hidden max-w-32 truncate text-white sm:inline-flex" title={currentLibraryLabel}>
+                <span className="topbar-library-label">{currentLibraryDisplayLabel}</span>
               </span>
             )}
-            <form onSubmit={handleSearch} className="hidden sm:block">
-              <div className="relative">
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => setSearchOpen(true)}
-                placeholder="搜索..."
-                className="glass-input w-44 py-1.5 pl-8 pr-3 text-sm md:w-52 md:focus:w-60"
-              />
-              <svg className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              </div>
+            <form onSubmit={handleSearch} className={`topbar-search-form ${desktopSearchOpen ? 'is-open' : ''} hidden sm:flex`}>
+              {desktopSearchOpen ? (
+                <>
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onFocus={() => setSearchOpen(true)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') closeDesktopSearch()
+                    }}
+                    placeholder="搜索..."
+                    className="topbar-search-input glass-input"
+                    aria-label="搜索"
+                  />
+                  <button
+                    type="button"
+                    onClick={closeDesktopSearch}
+                    className="topbar-search-toggle topbar-icon-button"
+                    aria-label="收起搜索"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 6l12 12M18 6L6 18" />
+                    </svg>
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={openDesktopSearch}
+                  className="topbar-icon-button hidden sm:inline-flex"
+                  aria-label="展开搜索"
+                  title="展开搜索"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </button>
+              )}
             </form>
             <button
               type="button"
@@ -564,7 +644,7 @@ export default function App() {
             </button>
             <button
               onClick={() => api.logout()}
-              className="rounded-full p-1.5 text-white transition-colors hover:bg-red-500/10 hover:text-white sm:p-2"
+              className="topbar-round-button rounded-full text-white transition-colors hover:bg-red-500/10 hover:text-white"
               title="登出"
             >
               <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -572,6 +652,19 @@ export default function App() {
               </svg>
             </button>
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (libraries.length > 1) setShowLibraryModal(true)
+              }}
+              className="topbar-compact-library-trigger"
+              title={currentLibraryLabel || '切换媒体库'}
+              aria-label="切换媒体库"
+            >
+              <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+            </button>
             </div>
             {renderSearchPanel('hidden sm:block absolute right-0 top-full z-50 mt-2 max-h-96 w-96 overflow-y-auto p-1 liquid-glass')}
           </div>

@@ -8,6 +8,79 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 EPISODE_IMAGE_MARKERS = ("cover", "still", "thumb")
 
 
+def should_use_continue_snapshot(movie: dict | None) -> bool:
+    if not movie or (movie.get("content_role") or "main") == "special":
+        return False
+    return not (
+        movie.get("tmdb_type") == "tv"
+        or movie.get("tmdb_episode") is not None
+        or movie.get("episode_number") is not None
+    )
+
+
+def _video_cache_identity(video_path: str) -> str:
+    path = Path(video_path)
+    try:
+        stat = path.stat()
+        return f"{path.resolve()}:{stat.st_mtime_ns}:{stat.st_size}"
+    except OSError:
+        return str(path)
+
+
+def continue_snapshot_path(video_path: str) -> Path:
+    key = hashlib.md5(f"continue:{_video_cache_identity(video_path)}".encode()).hexdigest()[:16]
+    return Path(settings.data_dir) / "stills" / "continue" / f"{key}.jpg"
+
+
+def get_continue_snapshot(video_path: str) -> str | None:
+    path = continue_snapshot_path(video_path)
+    return str(path) if path.exists() and path.is_file() else None
+
+
+def delete_continue_snapshot(video_path: str) -> bool:
+    path = continue_snapshot_path(video_path)
+    try:
+        if path.exists():
+            path.unlink()
+            return True
+    except OSError as e:
+        logger.debug(f"Delete continue snapshot failed for {video_path}: {e}")
+    return False
+
+
+def generate_continue_snapshot(video_path: str, position_seconds: float) -> str | None:
+    path = Path(video_path)
+    if not path.exists():
+        return None
+    out_path = continue_snapshot_path(video_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = out_path.with_suffix(".tmp.jpg")
+    try:
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
+        result = subprocess.run(
+            [
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                "-ss", f"{max(1.0, float(position_seconds or 0.0)):.3f}", "-i", str(path),
+                "-frames:v", "1", "-vf", "scale='min(640,iw)':-2",
+                str(tmp_path),
+            ],
+            capture_output=True, timeout=25
+        )
+        if result.returncode == 0 and tmp_path.exists() and tmp_path.stat().st_size > 0:
+            tmp_path.replace(out_path)
+            return str(out_path)
+    except Exception as e:
+        logger.debug(f"Generate continue snapshot failed for {video_path}: {e}")
+    try:
+        tmp_path.unlink()
+    except OSError:
+        pass
+    return None
+
+
 async def download_and_compress_cover(url: str, cache_key: str, max_width: int = 500, quality: int = 80) -> str | None:
     cached_path = Path(settings.covers_dir) / f"{cache_key}.jpg"
     if cached_path.exists():

@@ -40,16 +40,34 @@ args = ["-y", "@modelcontextprotocol/server-memory"]
 type = "stdio"
 command = "npx"
 args = ["-y", "@playwright/mcp@latest"]
+startup_timeout_sec = 120
+
+[mcp_servers.playwright.tools.browser_tabs]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_evaluate]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_navigate]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_run_code_unsafe]
+approval_mode = "approve"
+
+[mcp_servers.playwright.tools.browser_close]
+approval_mode = "approve"
 
 [mcp_servers.sequential-thinking]
 type = "stdio"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+startup_timeout_sec = 120
 
 [mcp_servers.supabase]
 type = "stdio"
 command = "npx"
 args = ["-y", "@supabase/mcp-server-supabase"]
+startup_timeout_sec = 120
 
 [mcp_servers.supabase.env]
 SUPABASE_ACCESS_TOKEN = ""

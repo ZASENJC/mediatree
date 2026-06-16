@@ -12,7 +12,6 @@ import { MovieCard } from '../../components/MovieCard'
 import ContextMenu, { ContextMenuItem } from '../../components/ContextMenu'
 import EditModal from '../../components/EditModal'
 import CoverPickerModal from '../../components/CoverPickerModal'
-import { WatchedBadge } from '../../components/WatchedBadge'
 import { normalizeScraperOptions } from '../../scrapers'
 
 function encodeMediaPath(path: string): string {
@@ -74,6 +73,55 @@ function getHomeFolderCount(node: FolderNode): number {
   return node.video_count ?? node.movie_count
 }
 
+function getFolderLocalKey(node: FolderNode): string {
+  return `${node.media_root || ''}::${node.path}`
+}
+
+function getYearFromDate(value?: string): string {
+  return value?.match(/^(\d{4})/)?.[1] || ''
+}
+
+function getYearFromText(value?: string): string {
+  const match = value?.match(/(?:^|[^\d])((?:18|19|20)\d{2})(?!\d)/)
+  return match?.[1] || ''
+}
+
+function getHomeFolderYear(node: FolderNode): string {
+  return (
+    getYearFromDate(node.release_date_max)
+    || getYearFromText(node.display_title)
+    || getYearFromText(node.name)
+    || getYearFromDate(node.created_max)
+  )
+}
+
+function getHomeFolderTitle(node: FolderNode, showSourceName?: boolean): string {
+  return showSourceName ? node.name : (node.display_title || node.name)
+}
+
+function getHomeFolderWatchState(node: FolderNode, watchedOverride?: boolean) {
+  const totalCount = getHomeFolderCount(node)
+  const watchedCount = watchedOverride === true
+    ? totalCount
+    : watchedOverride === false
+    ? 0
+    : Math.max(0, node.watched_count || 0)
+  const watchedByCount = totalCount > 0 && watchedCount >= totalCount
+  const watched = watchedOverride ?? (!!node.folder_watched || watchedByCount)
+  return {
+    watched,
+    unwatchedCount: watched ? 0 : Math.max(0, totalCount - watchedCount),
+  }
+}
+
+function CheckIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  )
+}
+
 export default function Home() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -95,19 +143,19 @@ export default function Home() {
   const hideHomeTitleText = getUiPrefs().hideHomeTitleText
   const showSourceName = getUiPrefs().showSourceName
 
-  const [hoveredFolder, setHoveredFolder] = useState<string | null>(null)
   const [folderWatched, setFolderWatched] = useState<Record<string, boolean>>({})
 
   const handleToggleFolderWatched = async (e: React.MouseEvent, node: FolderNode) => {
     e.stopPropagation()
-    const current = folderWatched[node.path] ?? !!node.folder_watched
+    const key = getFolderLocalKey(node)
+    const current = folderWatched[key] ?? !!node.folder_watched
     const newVal = !current
-    setFolderWatched(prev => ({ ...prev, [node.path]: newVal }))
+    setFolderWatched(prev => ({ ...prev, [key]: newVal }))
     try {
       await api.setFolderWatched(node.path, node.media_root || '', newVal)
       clearCache()
     } catch {
-      setFolderWatched(prev => ({ ...prev, [node.path]: current }))
+      setFolderWatched(prev => ({ ...prev, [key]: current }))
     }
   }
 
@@ -422,7 +470,7 @@ export default function Home() {
 
   return (
     <div className="space-y-5">
-      <div className="glass-panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-1">
         <div>
           <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">Library</p>
           <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
@@ -455,9 +503,9 @@ export default function Home() {
             <p className="mt-2 text-sm text-gray-600">播放超过 1 分钟后会显示在这里</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid media-grid-adaptive">
+          <div className="folder-episode-grid grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4 media-grid">
             {recentMovies.map((movie) => (
-              <MovieCard key={movie.id} movie={movie} onUpdated={loadRecent} showBadges={false} hideTitle={hideHomeTitleText} adaptiveCover />
+              <MovieCard key={movie.id} movie={movie} onUpdated={loadRecent} showBadges={false} hideTitle={hideHomeTitleText} coverStrategy="continue-watching" />
             ))}
           </div>
         )
@@ -469,58 +517,55 @@ export default function Home() {
             <p className="mt-2 text-sm">请配置 MEDIA_ROOT 或检查浏览页勾选状态</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid">
+          <div className="home-poster-grid grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid">
             {tree.map((node) => {
               const coverSrc = getCoverSrc(node.random_cover || node.cover, folderCoverVersion)
-              const folderCount = getHomeFolderCount(node)
+              const localKey = getFolderLocalKey(node)
+              const watchState = getHomeFolderWatchState(node, folderWatched[localKey])
+              const yearText = getHomeFolderYear(node)
+              const titleText = getHomeFolderTitle(node, showSourceName)
               return (
                 <div key={node.path}
                   onClick={() => goFolder(node.path, node.media_root)}
                   onContextMenu={(e) => handleFolderContextMenu(e, node)}
-                  onMouseEnter={() => setHoveredFolder(node.path)}
-                  onMouseLeave={() => setHoveredFolder(null)}
-                  className="glass-card apple-focus media-grid-card group cursor-pointer overflow-hidden"
+                  className="home-poster-card media-grid-card group cursor-pointer"
                 >
-                  <div className="relative aspect-[2/3] bg-white/[0.04]">
+                  <div className="home-poster-cover relative aspect-[2/3] bg-white/[0.04]">
                     {coverSrc ? (
                       <img src={coverSrc} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" alt={node.name} loading="lazy"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-4xl text-white/10" />
                     )}
-                    <WatchedBadge watched={folderWatched[node.path] ?? !!node.folder_watched} />
-                    {hoveredFolder === node.path && (
-                      <button
-                        onClick={(e) => handleToggleFolderWatched(e, node)}
-                        className={`absolute right-2 top-2 z-20 flex h-8 w-8 items-center justify-center rounded-full shadow-lg backdrop-blur-xl transition-all ${
-                          (folderWatched[node.path] ?? !!node.folder_watched)
-                            ? 'border border-apple-mint/40 bg-apple-mint/80 text-white'
-                            : 'border border-white/20 bg-black/50 text-white/70 hover:bg-apple-mint/80 hover:text-white hover:border-apple-mint/40'
-                        }`}
-                        title={(folderWatched[node.path] ?? !!node.folder_watched) ? '取消已看' : '标记已看'}
-                      >
-                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      </button>
-                    )}
-                    {!hideHomeTitleText && (
-                    <>
-                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-transparent opacity-95" />
-                    {!(folderWatched[node.path] ?? !!node.folder_watched) && (node.progress_percent || 0) > 0 && (
-                      <div className="absolute bottom-0 left-0 right-0 z-20 h-1 bg-white/15 backdrop-blur">
-                        <div className="h-full rounded-r-full bg-apple-blue shadow-glow" style={{ width: `${node.progress_percent || 0}%` }} />
-                      </div>
-                    )}
-                    <div className="absolute bottom-0 left-0 right-0 min-w-0 p-3">
-                      <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-white drop-shadow">{showSourceName ? node.name : (node.display_title || node.name)}</p>
-                      <p className="mt-1 text-xs text-gray-400">
-                        {folderCount} 项{node.special_count ? ` · ${node.special_count} 花絮` : ''}
-                      </p>
-                    </div>
-                    </>
-                    )}
+                    <span
+                      className={`home-poster-watch-status absolute right-2 top-2 z-20 flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-xs font-bold shadow-lg backdrop-blur-xl ${
+                        watchState.watched
+                          ? 'border border-apple-mint/40 bg-apple-mint/85 text-white'
+                          : 'border border-apple-blue/35 bg-apple-blue/85 text-white'
+                      }`}
+                      title={watchState.watched ? '已看完' : `未观看 ${watchState.unwatchedCount} 集`}
+                    >
+                      {watchState.watched ? <CheckIcon className="h-3.5 w-3.5" /> : (watchState.unwatchedCount > 99 ? '99+' : watchState.unwatchedCount)}
+                    </span>
+                    <button
+                      onClick={(e) => handleToggleFolderWatched(e, node)}
+                      className={`home-poster-watched-action absolute bottom-2 right-2 z-30 flex h-8 w-8 items-center justify-center rounded-full shadow-lg backdrop-blur-xl transition-all ${
+                        watchState.watched
+                          ? 'border border-apple-mint/50 bg-apple-mint/85 text-white'
+                          : 'border border-white/20 bg-black/55 text-white/80 hover:border-apple-mint/45 hover:bg-apple-mint/85 hover:text-white'
+                      }`}
+                      title={watchState.watched ? '取消已看' : '标记已看'}
+                      aria-label={watchState.watched ? '取消已看' : '标记已看'}
+                    >
+                      <CheckIcon className="h-4 w-4" />
+                    </button>
                   </div>
+                  {!hideHomeTitleText && (
+                    <div className="home-poster-meta min-w-0 text-center">
+                      <p className="home-poster-title line-clamp-2 break-words text-sm font-medium leading-snug text-white/90">{titleText}</p>
+                      <p className="home-poster-year mt-1 truncate text-xs text-gray-500">{yearText || '年份未知'}</p>
+                    </div>
+                  )}
                 </div>
               )
             })}

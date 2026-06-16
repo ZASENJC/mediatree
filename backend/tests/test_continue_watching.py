@@ -68,6 +68,21 @@ class ContinueWatchingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["movies"][0]["playback_position"], 61)
         self.assertEqual(result["movies"][0]["progress_percent"], 5)
 
+    async def test_partial_movie_older_than_fourteen_days_is_not_included(self):
+        movie_id = await self._movie("expired-movie")
+        await database.save_progress(movie_id, position=61, duration=1200)
+        db = await database.get_db()
+        await db.execute(
+            "UPDATE user_data SET last_played_date='2000-01-01 00:00:00' WHERE item_id=?",
+            (str(movie_id),),
+        )
+        await db.commit()
+
+        result = await database.get_recent_watched()
+
+        self.assertEqual(result["movies"], [])
+        self.assertEqual(result["total"], 0)
+
     async def test_completed_movies_and_episodes_are_not_included(self):
         movie_id = await self._movie("completed-movie")
         episode_id = await self._episode(1)
@@ -110,6 +125,26 @@ class ContinueWatchingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["total"], 1)
         self.assertEqual(result["movies"][0]["tmdb_episode"], 2)
         self.assertEqual(result["movies"][0]["progress_percent"], 0)
+
+    async def test_completed_episode_older_than_fourteen_days_does_not_return_next_episode(self):
+        episode_1 = await self._episode(1)
+        await self._episode(2)
+        await database.save_progress(episode_1, position=1100, duration=1200)
+        db = await database.get_db()
+        await db.execute(
+            "UPDATE user_data SET last_played_date='2000-01-01 00:00:00' WHERE item_id=?",
+            (str(episode_1),),
+        )
+        await db.execute(
+            "UPDATE tags SET created_at='2000-01-01 00:00:00' WHERE movie_id=? AND tag='watched'",
+            (episode_1,),
+        )
+        await db.commit()
+
+        result = await database.get_recent_watched()
+
+        self.assertEqual(result["movies"], [])
+        self.assertEqual(result["total"], 0)
 
     async def test_completed_season_is_not_included(self):
         episode_ids = [await self._episode(ep) for ep in (1, 2, 3)]

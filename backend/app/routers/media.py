@@ -5,7 +5,13 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
 from ..config import fetch_safe_image, settings
-from ..covers import find_local_episode_still, generate_video_still
+from ..covers import (
+    delete_continue_snapshot,
+    find_local_episode_still,
+    generate_video_still,
+    get_continue_snapshot,
+    should_use_continue_snapshot,
+)
 from ..database import get_movie_detail
 from ..security import require_media_access
 from ..stream import get_media_info, get_video_stream
@@ -92,6 +98,27 @@ async def api_cover(movie_id: int, request: Request):
     if generated:
         return FileResponse(generated, headers={"Cache-Control": "no-store"})
     return Response(status_code=404, content="No cover available")
+
+
+@router.get("/api/continue-cover/{movie_id}")
+async def api_continue_cover(movie_id: int, request: Request):
+    require_media_access(request)
+    movie = await get_movie_detail(movie_id)
+    if not should_use_continue_snapshot(movie):
+        raise HTTPException(status_code=404)
+    snapshot = get_continue_snapshot(movie["path"])
+    if snapshot:
+        return FileResponse(snapshot, headers={"Cache-Control": "no-store"})
+    raise HTTPException(status_code=404)
+
+
+@router.post("/api/continue-cover-reset/{movie_id}")
+async def api_continue_cover_reset(movie_id: int, request: Request):
+    require_media_access(request)
+    movie = await get_movie_detail(movie_id)
+    if should_use_continue_snapshot(movie):
+        delete_continue_snapshot(movie["path"])
+    return {"ok": True}
 
 
 @router.get("/api/cached-cover/{cache_key}")

@@ -14,6 +14,13 @@ This supplements `CLAUDE.md` with Codex-specific guidance for this repository.
 - Keep user-facing explanations, plans, summaries, questions, and change reports in Chinese.
 - Keep code identifiers, file names, paths, commands, config keys, API routes, function names, class names, and logs in their original English.
 
+## Product Collaboration Rules
+
+- Treat the user as a product manager with no programming background: translate natural-language requests into product goals, user workflows, and acceptance criteria before choosing the technical implementation.
+- Do not require the user to provide technical terminology. When a request is vague, first infer the likely product intent from the repository context, state the interpretation in Chinese, and ask only the minimum necessary clarification if implementation would otherwise be risky.
+- Before every code change, read the current project guidance (`AGENTS.md`, `CLAUDE.md`, and any task-relevant docs) so implementation stays aligned with product constraints, release policy, and local conventions.
+- When a change is committed, keep the normative docs updated in the same commit whenever the change affects product behavior, architecture, workflows, release/update policy, or future agent instructions.
+
 ## Model Recommendations
 
 | Task Type | Recommended Model |
@@ -133,7 +140,9 @@ Codex does not provide Claude Code hooks in this repo, so enforce security throu
 ## Git Hygiene
 
 - Preserve user changes and ignored local files unless the user explicitly asks to remove or reset them.
+- Before each code change, read the current project guidance (`AGENTS.md`, `CLAUDE.md`, and any task-relevant docs).
 - Before each push, sync `CLAUDE.md`, `AGENTS.md`, `CHANGELOG.md`, and `README.md` to reflect the current code state.
+- Include any required normative-document updates in the same commit as the implementation they describe.
 - `docker-compose.yml`, `.env`, `data/`, `frontend/node_modules/`, and `frontend/dist/` are local/runtime artifacts.
 - Do not revert unrelated changes.
 

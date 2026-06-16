@@ -191,6 +191,7 @@ export default function Detail() {
   const cast = (movie.cast || []).filter(p => p.name)
   const crew = (movie.crew || []).filter(p => p.name)
   const isSpecial = movie.content_role === 'special'
+  const captureContinueSnapshot = !isSpecial && !(movie.tmdb_type === 'tv' || movie.tmdb_episode != null || movie.episode_number != null)
   const displayTitle = isSpecial ? specialMovieTitle(movie) : (movie.title || movie.code)
   const isJavdatabase = !isSpecial && (movie.scraper_source === 'javdatabase' || Boolean(movie.javdb_id || movie.javdb_url))
   const castNames = cast.map(p => p.name).filter(Boolean)
@@ -239,6 +240,7 @@ export default function Detail() {
       <VideoPlayer src={api.streamUrl(movie.id)} poster={api.coverUrl(movie.id)} movieId={movie.id}
         title={displayTitle}
         episodes={episodes}
+        captureContinueSnapshot={captureContinueSnapshot}
         onEpisodeSelect={(episode) => {
           if (episode.id !== movie.id) navigate(`/detail/${episode.id}`)
         }}

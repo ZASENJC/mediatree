@@ -4,11 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Push Workflow
 
+- Before each code change, read the current project guidance (`AGENTS.md`, `CLAUDE.md`, and any task-relevant docs).
 - Before each push, sync `CLAUDE.md`, `AGENTS.md`, `CHANGELOG.md`, and `README.md` to reflect the current code state.
 - Include documentation updates in the same commit; do not commit them separately.
+- Include normative-document updates in the same commit whenever the implementation changes product behavior, architecture, workflows, release/update policy, or future agent instructions.
 - Version rule: use `0.0.00` three-level format without `v` prefix (e.g., `1.0.01`, `1.0.02`), increment sequentially, no more skipping major/minor version numbers. When updating the version number, also create a corresponding GitHub Release (`gh release create 1.0.00`) synced with the CHANGELOG entry for that version.
 - Default release decision rule: unless the user explicitly overrides it, automatically decide whether a change should ship as `app-package` or require a full Docker image update. Use `app-package` for pure application/frontend changes; require a full image update for Dockerfile/runtime/system-package/python/entrypoint/self-update capability changes or anything unsafe to deliver as an app package. Treat app-package and image releases as sharing one version baseline rather than two separate tracks. Ordinary pushes must not run the release workflow; manually trigger `.github/workflows/release-tag.yml` only when performing an app-package or full Docker image release. Every release refreshes DockerHub `zasenjc/mediatree:latest` from a local build/push (`scripts/push-docker-release.sh`), not GitHub Actions; only full Docker image updates also publish a versioned DockerHub tag such as `zasenjc/mediatree:1.0.10`.
 - GitHub Release notes must stay user-facing: include concise functional changes and user upgrade guidance there; keep implementation details, configuration changes, test notes, and maintainer bookkeeping in `CHANGELOG.md` / `CHANGELOG_zh-CN.md`.
+
+## Product Collaboration Rules
+
+- Treat the user as a product manager with no programming background: translate natural-language requests into product goals, user workflows, and acceptance criteria before choosing the technical implementation.
+- Do not require the user to provide technical terminology. When a request is vague, first infer the likely product intent from the repository context, state the interpretation in Chinese, and ask only the minimum necessary clarification if implementation would otherwise be risky.
+- Build from the product outcome first, then map that outcome to code, tests, docs, and release steps.
 
 ## Interaction Language Rules
 

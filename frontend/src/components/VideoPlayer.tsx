@@ -31,6 +31,7 @@ interface Props {
   episodes?: Movie[]
   onEpisodeSelect?: (episode: Movie) => void
   onWatched?: () => void
+  captureContinueSnapshot?: boolean
 }
 
 const POS_KEY = 'mediatree_pos_'
@@ -85,7 +86,7 @@ function absoluteApiUrl(url: string) {
   return new URL(resolveMediaUrl(url), window.location.origin).toString()
 }
 
-export default function VideoPlayer({ src, poster, movieId, title, episodes = [], onEpisodeSelect, onWatched }: Props) {
+export default function VideoPlayer({ src, poster, movieId, title, episodes = [], onEpisodeSelect, onWatched, captureContinueSnapshot = false }: Props) {
   const artContainerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const playerFrameRef = useRef<HTMLDivElement>(null)
@@ -1078,7 +1079,7 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
       const pos = currentTimeRef.current || art.currentTime || 0
       const total = displayDurationRef.current || art.duration || undefined
       if (pos > 0) {
-        api.saveProgress(movieId, pos, total, true).catch(err => {
+        api.saveProgress(movieId, pos, total, true, captureContinueSnapshot).catch(err => {
           console.error('VideoPlayer: final progress save failed', err)
         })
       }
@@ -1109,7 +1110,7 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
       setArtInstance(null)
       setPlayerChromeVisible(true)
     }
-  }, [movieId])
+  }, [movieId, captureContinueSnapshot])
 
   useEffect(() => {
     const art = artRef.current

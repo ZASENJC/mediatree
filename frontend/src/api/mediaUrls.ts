@@ -75,6 +75,7 @@ function isMediaApiPath(path: string): boolean {
   return [
     '/api/stream/',
     '/api/cover/',
+    '/api/continue-cover/',
     '/api/episode-still/',
     '/api/thumbnail/',
     '/api/subtitle/',

@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Query, HTTPException, UploadFile, File
+from fastapi import BackgroundTasks, FastAPI, Request, Query, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +20,7 @@ from .database import (
     get_media_roots, get_folder_tree_from_db,
     get_library_passwords, set_library_password, verify_library_password_v2,
     get_all_library_settings, save_library_settings, has_any_library_setting,
-    get_library_settings, save_progress, get_progress,
+    get_library_settings, save_progress, get_progress, CONTINUE_WATCHING_MIN_SECONDS,
     get_review_queue, approve_review_item, clear_review_queue,
     get_folder_specials, set_folder_specials_visibility,
 )
@@ -326,13 +326,21 @@ async def api_get_progress(movie_id: int):
 
 
 @app.post("/api/progress/{movie_id}")
-async def api_save_progress(movie_id: int, data: dict):
-    return await save_progress(
+async def api_save_progress(movie_id: int, data: dict, background_tasks: BackgroundTasks):
+    result = await save_progress(
         movie_id,
         float(data.get("position") or 0),
         float(data.get("duration") or 0) if data.get("duration") is not None else None,
         bool(data.get("stopped", False)),
     )
+    if data.get("snapshot") and result.get("ok") and not result.get("played"):
+        position = float(result.get("position") or 0)
+        if position > CONTINUE_WATCHING_MIN_SECONDS:
+            movie = await get_movie_detail(movie_id)
+            from .covers import generate_continue_snapshot, should_use_continue_snapshot
+            if should_use_continue_snapshot(movie):
+                background_tasks.add_task(generate_continue_snapshot, movie["path"], position)
+    return result
 
 
 # ─── Config ───
