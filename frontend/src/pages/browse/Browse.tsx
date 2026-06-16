@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { api, Movie, FolderNode } from '../api'
-import { getExcluded, setExcluded } from '../store'
-import { getCached, setCache } from '../cache'
-import { saveScrollPos } from '../scroll'
-import { WatchedBadge } from '../components/WatchedBadge'
-import SortDropdown from '../components/SortDropdown'
+import { api, Movie, FolderNode } from '../../api'
+import { getExcluded, setExcluded } from '../../store'
+import { getCached, setCache } from '../../cache'
+import { saveScrollPos } from '../../scroll'
+import { WatchedBadge } from '../../components/WatchedBadge'
+import SortDropdown from '../../components/SortDropdown'
 
-import { BROWSE_SORT_OPTIONS } from '../constants/sortOptions'
+import { BROWSE_SORT_OPTIONS } from '../../constants/sortOptions'
 
 const MOBILE_TREE_EXIT_MS = 300
 

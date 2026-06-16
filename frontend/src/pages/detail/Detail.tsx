@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { api, Movie } from '../api'
-import VideoPlayer from '../components/VideoPlayer'
-import Lightbox from '../components/Lightbox'
-import { useTheater } from '../theater'
-import { specialMovieTitle } from '../movieTitle'
+import { api, Movie } from '../../api'
+import VideoPlayer from '../../components/VideoPlayer'
+import Lightbox from '../../components/Lightbox'
+import { useTheater } from '../../theater'
+import { specialMovieTitle } from '../../movieTitle'
 
 type ThumbnailImage = { src: string; fallback?: string; alt: string }
 

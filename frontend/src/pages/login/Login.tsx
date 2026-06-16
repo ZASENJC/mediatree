@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api, setToken, getToken, getServerUrl, setServerUrl, isNativeApp } from '../api'
+import { api, setToken, getToken, getServerUrl, setServerUrl, isNativeApp } from '../../api'
 
 export default function Login({ onLogin }: { onLogin?: () => void }) {
   const nativeApp = isNativeApp()

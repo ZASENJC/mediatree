@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
 import { getActiveLibrary, setActiveLibrary, api, clearCache, MediaRoot, getToken, getMediaTokenSync } from './api'
@@ -7,14 +7,14 @@ import { useToastController } from './toast'
 import { useTaskProgressController } from './taskProgress'
 import { useTheater } from './theater'
 import { useMediaGridMotion } from './hooks/useMediaGridMotion'
-import Home from './pages/Home'
-import Browse from './pages/Browse'
-import FolderPage from './pages/Folder'
-import Detail from './pages/Detail'
-import Favorites from './pages/Favorites'
-import Settings from './pages/Settings'
-import Login from './pages/Login'
-import SetupWizard from './pages/SetupWizard'
+import Home from './pages/home'
+import Browse from './pages/browse'
+import FolderPage from './pages/folder'
+import Detail from './pages/detail'
+import Favorites from './pages/favorites'
+import Settings from './pages/settings'
+import Login from './pages/login'
+import SetupWizard from './pages/setup'
 
 const navItems = [
   { path: '/', label: '首页' },
@@ -42,6 +42,10 @@ export default function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [hasUpdate, setHasUpdate] = useState(() => getUpdateNotification().available)
+  const [topbarAwayFromTop, setTopbarAwayFromTop] = useState(() => (typeof window !== 'undefined' ? window.scrollY > 8 : false))
+  const [topbarCompact, setTopbarCompact] = useState(false)
+  const [topbarHovering, setTopbarHovering] = useState(false)
+  const [topbarFocused, setTopbarFocused] = useState(false)
   const [, setMediaTokenVersion] = useState(0)
   const [checkingMediaToken, setCheckingMediaToken] = useState(() => Boolean(getToken()) && !getMediaTokenSync())
   const { theaterMode, setTheaterMode } = useTheater()
@@ -49,6 +53,8 @@ export default function App() {
   const taskProgress = useTaskProgressController()
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const moreBtnRef = useRef<HTMLButtonElement | null>(null)
+  const topbarLeftRef = useRef<HTMLDivElement | null>(null)
+  const topbarRightRef = useRef<HTMLDivElement | null>(null)
 
   const currentLibraryLabel = (() => {
     if (!activeLib) return ''
@@ -56,8 +62,99 @@ export default function App() {
     return parts[parts.length - 1] || activeLib
   })()
 
+  const topbarOpenByInteraction = topbarHovering || topbarFocused || searchOpen || mobileNavOpen || mobileSearchOpen || showLibraryModal
+  const topbarShouldCompact = topbarAwayFromTop && !topbarOpenByInteraction
+
   const mountedRef = useRef(true)
   useEffect(() => { return () => { mountedRef.current = false } }, [])
+
+  const measureTopbarGlass = useCallback(() => {
+    ;[topbarLeftRef.current, topbarRightRef.current].forEach((element) => {
+      if (!element) return
+      const width = Math.ceil(Math.max(element.scrollWidth, element.getBoundingClientRect().width))
+      if (width > 0) element.style.setProperty('--mt-topbar-expanded-width', `${width}px`)
+    })
+  }, [])
+
+  const flushTopbarLayout = useCallback(() => {
+    void topbarLeftRef.current?.offsetWidth
+    void topbarRightRef.current?.offsetWidth
+  }, [])
+
+  const setTopbarAwayFromTopWithMeasure = useCallback((away: boolean) => {
+    if (away && !topbarCompact) measureTopbarGlass()
+    setTopbarAwayFromTop(away)
+  }, [topbarCompact, measureTopbarGlass])
+
+  useEffect(() => {
+    let frame = 0
+    const updateTopbarPosition = () => {
+      frame = 0
+      setTopbarAwayFromTopWithMeasure(window.scrollY > 8)
+    }
+    const onScroll = () => {
+      if (frame) return
+      frame = window.requestAnimationFrame(updateTopbarPosition)
+    }
+
+    updateTopbarPosition()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      if (frame) window.cancelAnimationFrame(frame)
+    }
+  }, [setTopbarAwayFromTopWithMeasure])
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return
+    let frame = 0
+    let commitFrame = 0
+
+    if (topbarShouldCompact) {
+      if (topbarCompact) return
+      measureTopbarGlass()
+      flushTopbarLayout()
+      frame = window.requestAnimationFrame(() => {
+        commitFrame = window.requestAnimationFrame(() => {
+          setTopbarCompact(true)
+        })
+      })
+      return () => {
+        if (frame) window.cancelAnimationFrame(frame)
+        if (commitFrame) window.cancelAnimationFrame(commitFrame)
+      }
+    }
+
+    setTopbarCompact(false)
+    frame = window.requestAnimationFrame(measureTopbarGlass)
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame)
+    }
+  }, [topbarShouldCompact, topbarCompact, measureTopbarGlass, flushTopbarLayout])
+
+  useLayoutEffect(() => {
+    if (topbarShouldCompact || topbarCompact || typeof window === 'undefined') return
+    const frame = window.requestAnimationFrame(measureTopbarGlass)
+    return () => window.cancelAnimationFrame(frame)
+  }, [topbarShouldCompact, topbarCompact, measureTopbarGlass, currentLibraryLabel, libraries.length, location.pathname, hasUpdate])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    let frame = 0
+    const onResize = () => {
+      if (topbarCompact || frame) return
+      frame = window.requestAnimationFrame(() => {
+        frame = 0
+        measureTopbarGlass()
+      })
+    }
+
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      if (frame) window.cancelAnimationFrame(frame)
+    }
+  }, [topbarCompact, measureTopbarGlass])
 
   const loadLibraries = useCallback(async () => {
     if (!getToken()) return
@@ -328,15 +425,26 @@ export default function App() {
   return (
     <div className="mt-app-shell min-h-screen flex flex-col">
       {!theaterMode && (
-      <header className="mt-topbar sticky top-0 z-50 pt-2 sm:pt-3">
+      <header
+        className={`mt-topbar sticky top-0 z-50 pt-2 sm:pt-3 ${topbarCompact ? 'is-compact' : 'is-expanded'}`}
+        onPointerEnter={() => setTopbarHovering(true)}
+        onPointerLeave={() => setTopbarHovering(false)}
+        onFocusCapture={() => setTopbarFocused(true)}
+        onBlurCapture={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setTopbarFocused(false)
+          }
+        }}
+      >
         <div className="flex h-12 w-full min-w-0 items-center justify-between gap-2 px-4 sm:px-6 transform-gpu sm:h-14 sm:gap-3">
           <div className="relative">
-          <div className="flex min-w-0 items-center gap-2 liquid-glass pl-3 pr-3 py-1.5 sm:pl-4 sm:pr-4 sm:py-2">
-            <Link to="/" className="shrink-0 text-base font-semibold tracking-tight text-white transition-colors hover:text-white sm:text-lg">
-              <span className="hidden min-[380px]:inline">MediaTree</span>
-              <span className="min-[380px]:hidden">MT</span>
+          <div ref={topbarLeftRef} className="flex min-w-0 items-center gap-2 liquid-glass topbar-glass topbar-left-glass pl-3 pr-3 py-1.5 sm:pl-4 sm:pr-4 sm:py-2">
+            <Link to="/" className="topbar-brand-link shrink-0 text-base font-semibold tracking-tight text-white transition-colors hover:text-white sm:text-lg">
+              <img className="topbar-logo-mark" src="/site-logo.png" alt="" aria-hidden="true" />
+              <span className="topbar-brand-text hidden min-[380px]:inline">MediaTree</span>
+              <span className="topbar-brand-text min-[380px]:hidden">MT</span>
             </Link>
-            <nav className="flex min-w-0 items-center justify-center gap-1 overflow-visible">
+            <nav className="topbar-collapsible topbar-nav flex min-w-0 items-center justify-center gap-1 overflow-visible">
             {navItems.map((item) => (
               <Link
                 key={item.path}
@@ -396,7 +504,21 @@ export default function App() {
           )}
           </div>
           <div className="relative shrink-0">
-            <div className="flex items-center justify-end gap-1 liquid-glass px-2 py-1.5 sm:gap-2 sm:px-3 sm:py-2">
+            <div ref={topbarRightRef} className="flex items-center justify-end gap-1 liquid-glass topbar-glass topbar-right-glass px-2 py-1.5 sm:gap-2 sm:px-3 sm:py-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (libraries.length > 1) setShowLibraryModal(true)
+              }}
+              className="topbar-compact-library-trigger"
+              title={currentLibraryLabel || '切换媒体库'}
+              aria-label="切换媒体库"
+            >
+              <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+            </button>
+            <div className="topbar-collapsible topbar-right-expanded flex items-center justify-end gap-1 sm:gap-2">
             {libraries.length > 1 && (
               <button
                 onClick={() => setShowLibraryModal(true)}
@@ -449,6 +571,7 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
             </button>
+            </div>
             </div>
             {renderSearchPanel('hidden sm:block absolute right-0 top-full z-50 mt-2 max-h-96 w-96 overflow-y-auto p-1 liquid-glass')}
           </div>

@@ -1,15 +1,15 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { api, Movie, FolderNode, resolveApiUrl } from '../api'
-import { getExcluded } from '../store'
-import { getCached, setCache } from '../cache'
-import { saveScrollPos, restoreScrollPos } from '../scroll'
-import { MovieCard } from '../components/MovieCard'
-import SortDropdown from '../components/SortDropdown'
-import { showToast } from '../toast'
+import { api, Movie, FolderNode, resolveApiUrl } from '../../api'
+import { getExcluded } from '../../store'
+import { getCached, setCache } from '../../cache'
+import { saveScrollPos, restoreScrollPos } from '../../scroll'
+import { MovieCard } from '../../components/MovieCard'
+import SortDropdown from '../../components/SortDropdown'
+import { showToast } from '../../toast'
 
-import { LIBRARY_SORT_OPTIONS } from '../constants/sortOptions'
+import { LIBRARY_SORT_OPTIONS } from '../../constants/sortOptions'
 
 type SortMode = 'name' | 'created_desc' | 'created_asc' | 'release_date_desc' | 'release_date_asc' | 'random'
 

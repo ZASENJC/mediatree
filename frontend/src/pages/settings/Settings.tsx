@@ -1,9 +1,9 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { marked } from 'marked'
-import { api, Config, MediaRoot, LibrarySetting, UpdateCheckResult, UpdateStatus, ScraperInfo, ScraperPlugin, clearCache, getServerUrl, setServerUrl as saveServerUrl, isNativeApp, resolveApiUrl } from '../api'
-import { FALLBACK_SCRAPER_OPTIONS, normalizeScraperOptions } from '../scrapers'
-import { getUiPrefs, setUiPrefs, dismissUpdate } from '../store'
+import { api, Config, MediaRoot, LibrarySetting, UpdateCheckResult, UpdateStatus, ScraperInfo, ScraperPlugin, clearCache, getServerUrl, setServerUrl as saveServerUrl, isNativeApp, resolveApiUrl } from '../../api'
+import { FALLBACK_SCRAPER_OPTIONS, normalizeScraperOptions } from '../../scrapers'
+import { getUiPrefs, setUiPrefs, dismissUpdate } from '../../store'
 import {
   BUILTIN_THEMES,
   getActiveThemeName,
@@ -14,7 +14,7 @@ import {
   removeCustomTheme,
   setActiveTheme,
   type ThemePackage,
-} from '../theme'
+} from '../../theme'
 
 function normalizeScraper(scraper?: string) {
   return scraper === 'tmdb' ? 'tmdb_movie' : (scraper || 'auto')

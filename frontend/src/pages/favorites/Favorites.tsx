@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { api, Movie } from '../api'
-import { saveScrollPos, restoreScrollPos } from '../scroll'
-import { WatchedBadge } from '../components/WatchedBadge'
-import SortDropdown from '../components/SortDropdown'
+import { api, Movie } from '../../api'
+import { saveScrollPos, restoreScrollPos } from '../../scroll'
+import { WatchedBadge } from '../../components/WatchedBadge'
+import SortDropdown from '../../components/SortDropdown'
 
-import { FAVORITES_SORT_OPTIONS } from '../constants/sortOptions'
+import { FAVORITES_SORT_OPTIONS } from '../../constants/sortOptions'
 
 type SortMode = 'name' | 'created_desc' | 'created_asc' | 'random'
 
