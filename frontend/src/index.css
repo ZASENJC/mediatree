@@ -29,11 +29,15 @@
   --mt-density-scale: 1;
   --mt-layout-content-max: none;
   --mt-layout-gap: 1.25rem;
-  --mt-layout-page-padding-x: 1rem;
+  --mt-layout-page-padding-x: clamp(1rem, 1.8vw, 1.5rem);
   --mt-layout-page-padding-y: 1.25rem;
-  --mt-layout-page-padding-x-wide: 1.5rem;
+  --mt-layout-page-padding-x-wide: clamp(1rem, 1.8vw, 1.5rem);
   --mt-layout-page-padding-y-wide: 1.75rem;
-  --mt-media-grid-min: clamp(9.25rem, 10vw, 13rem);
+  --mt-media-grid-min: 9.75rem;
+  --mt-media-grid-max: 11rem;
+  --mt-media-card-width: 11rem;
+  --mt-media-card-height: 16.5rem;
+  --mt-media-grid-gap: 1rem;
   --mt-motion-fast: 160ms;
   --mt-motion-normal: 260ms;
   --mt-theme-style: liquid-glass;
@@ -1046,20 +1050,50 @@ textarea {
 /* 卡片网格容器：告知浏览器跳过离屏卡片的渲染 */
 .media-grid-card {
   content-visibility: auto;
-  /* 估算卡片固有尺寸，防止滚动条跳动 */
-  contain-intrinsic-size: auto 280px;
+  /* 与固定海报尺寸保持一致，避免离屏渲染时先占位再回缩 */
+  contain-intrinsic-size: var(--mt-media-card-width) var(--mt-media-card-height);
 }
 
 /* 网格容器本身的 containment */
 .media-grid {
   contain: layout style;
+  display: flex;
+  flex-wrap: wrap;
   width: 100%;
   min-width: 0;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--mt-media-grid-min)), 1fr));
+  column-gap: var(--mt-media-grid-gap) !important;
+  row-gap: var(--mt-media-grid-gap) !important;
+  justify-content: center;
+  align-items: start;
 }
 
 .media-grid-adaptive > .media-grid-card {
   align-self: start;
+}
+
+.media-grid > .media-grid-card {
+  width: var(--mt-media-card-width);
+  height: var(--mt-media-card-height);
+  min-width: var(--mt-media-card-width);
+  max-width: var(--mt-media-card-width);
+  min-height: var(--mt-media-card-height);
+  max-height: var(--mt-media-card-height);
+}
+
+.media-grid .media-grid-card {
+  transition: none !important;
+  transform: none !important;
+  will-change: auto;
+}
+
+.media-grid .media-grid-card:hover,
+.media-grid .media-grid-card:focus-visible {
+  transform: none !important;
+}
+
+.media-grid .media-grid-card img {
+  transition: none !important;
+  transform: none !important;
 }
 
 @media (max-width: 380px) {
