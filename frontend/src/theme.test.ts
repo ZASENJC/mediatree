@@ -477,6 +477,25 @@ test('global layout fills available width responsively', () => {
   assert.match(css, /\.media-grid\s+\.media-grid-card\s+img\s*\{[^}]*transition:\s*none\s*!important;[^}]*transform:\s*none\s*!important;/s)
 })
 
+test('home page stacks continue watching above library grid without tab switcher', () => {
+  const source = readFileSync('src/pages/home/Home.tsx', 'utf8')
+  const continueHeadingIndex = source.indexOf('home-section-title">继续观看')
+  const continueStripIndex = source.indexOf('home-continue-strip')
+  const libraryHeadingIndex = source.indexOf('home-section-title">媒体库')
+  const libraryGridIndex = source.indexOf('home-poster-grid')
+
+  assert.doesNotMatch(source, /text-xs uppercase tracking-\[0\.24em\][\s\S]*Library/)
+  assert.doesNotMatch(source, /tab === 'recent' \? '继续观看' : '我的媒体库'/)
+  assert.doesNotMatch(source, /tab === 'recent' \? `共 \$\{recentTotal\} 部` : `共 \$\{tree\.length\} 个目录`/)
+  assert.doesNotMatch(source, /setTab\('library'\)/)
+  assert.doesNotMatch(source, /setTab\('recent'\)/)
+  assert.ok(continueHeadingIndex !== -1, 'continue watching heading should be rendered')
+  assert.ok(continueStripIndex > continueHeadingIndex, 'continue strip should follow its heading')
+  assert.ok(libraryHeadingIndex > continueStripIndex, 'library heading should appear after continue watching')
+  assert.ok(libraryGridIndex > libraryHeadingIndex, 'poster grid should follow the library heading')
+  assert.match(source, /<SortDropdown options=\{sortOptions\}/)
+})
+
 test('home library uses poster grid cards with external title metadata', () => {
   const css = readFileSync('src/index.css', 'utf8')
   const source = readFileSync('src/pages/home/Home.tsx', 'utf8')
@@ -535,9 +554,14 @@ test('folder episode cards prefer episode stills and placeholder missing metadat
 
 test('continue watching cards use episode stills or cached movie snapshots', () => {
   const homeSource = readFileSync('src/pages/home/Home.tsx', 'utf8')
+  const css = readFileSync('src/index.css', 'utf8')
   const cardSource = readFileSync('src/components/MovieCard.tsx', 'utf8')
   const playerSource = readFileSync('src/components/VideoPlayer.tsx', 'utf8')
   const detailSource = readFileSync('src/pages/detail/Detail.tsx', 'utf8')
+  const strip = cssRuleBody(css, '.home-continue-strip {')
+  const item = cssRuleBody(css, '.home-continue-item {')
+  const cover = cssRuleBody(css, '.home-continue-cover {')
+  const heading = cssRuleBody(css, '.home-section-title {')
 
   assert.deepEqual(
     getMovieCardCover({ tmdb_type: 'tv', tmdb_episode: 3, episode_still: undefined }, 'continue-watching'),
@@ -547,7 +571,17 @@ test('continue watching cards use episode stills or cached movie snapshots', () 
     getMovieCardCover({ tmdb_type: 'movie', tmdb_episode: undefined, episode_number: undefined }, 'continue-watching'),
     { kind: 'continue-snapshot', isEpisode: false, hasEpisodeStill: false, usesLandscape: true }
   )
-  assert.match(homeSource, /folder-episode-grid[\s\S]*coverStrategy="continue-watching"/)
+  assert.match(homeSource, /home-continue-strip[\s\S]*recentMovies\.map/)
+  assert.match(homeSource, /getHomeContinueCoverSrc\(movie\)/)
+  assert.match(homeSource, /home-continue-progress-bar/)
+  assert.match(strip, /display:\s*flex;/)
+  assert.match(strip, /overflow-x:\s*auto;/)
+  assert.match(strip, /flex-wrap:\s*nowrap;/)
+  assert.match(item, /--mt-home-continue-width:\s*calc\(var\(--mt-media-card-width\) \* 1\.5 \+ var\(--mt-media-grid-column-gap,\s*var\(--mt-media-grid-gap\)\) \* 0\.5\);/)
+  assert.match(item, /flex:\s*0 0 min\(var\(--mt-home-continue-width\),\s*calc\(100vw - 2rem\)\);/)
+  assert.match(cover, /aspect-ratio:\s*16 \/ 9;/)
+  assert.match(heading, /font-size:\s*0\.9375rem;/)
+  assert.match(heading, /color:\s*rgba\(255,\s*255,\s*255,\s*0\.62\);/)
   assert.match(cardSource, /api\.continueCoverUrl\(movie\.id\)/)
   assert.match(cardSource, /CONTINUE_SNAPSHOT_RETRY_DELAYS_MS/)
   assert.match(cardSource, /setContinueSnapshotRetryIndex\(index => Math\.min\(index \+ 1, CONTINUE_SNAPSHOT_RETRY_DELAYS_MS\.length\)\)/)

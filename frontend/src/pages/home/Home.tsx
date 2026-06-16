@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api, FolderNode, Movie, resolveMediaUrl, type ManualScraperName, type ScrapeSearchResult, type ScraperInfo } from '../../api'
@@ -6,13 +6,13 @@ import { getExcluded, getUiPrefs } from '../../store'
 import { saveScrollPos, restoreScrollPos } from '../../scroll'
 import { showToast } from '../../toast'
 import { showTaskProgress, hideTaskProgress } from '../../taskProgress'
-import { getCached, setCache, clearCache } from '../../cache'
+import { clearCache } from '../../cache'
 import SortDropdown from '../../components/SortDropdown'
-import { MovieCard } from '../../components/MovieCard'
 import ContextMenu, { ContextMenuItem } from '../../components/ContextMenu'
 import EditModal from '../../components/EditModal'
 import CoverPickerModal from '../../components/CoverPickerModal'
 import { normalizeScraperOptions } from '../../scrapers'
+import { getMovieCardCover } from '../../components/movieCardCover'
 
 function encodeMediaPath(path: string): string {
   return path.split('/').map(encodeURIComponent).join('/')
@@ -114,6 +114,28 @@ function getHomeFolderWatchState(node: FolderNode, watchedOverride?: boolean) {
   }
 }
 
+function getHomeContinueCoverSrc(movie: Movie): string {
+  const coverState = getMovieCardCover(movie, 'continue-watching')
+  if (coverState.kind === 'episode-still') return api.episodeStillUrl(movie.id)
+  if (coverState.kind === 'continue-snapshot') return api.continueCoverUrl(movie.id)
+  return api.coverUrl(movie.id)
+}
+
+function getHomeContinueTitle(movie: Movie): string {
+  return movie.display_title || movie.title || movie.clean_title || movie.code
+}
+
+function getHomeContinueSubtitle(movie: Movie): string {
+  const episodeNumber = movie.tmdb_episode ?? movie.episode_number
+  if (episodeNumber != null) {
+    const seasonPrefix = movie.tmdb_season != null ? `S${movie.tmdb_season}:` : ''
+    const episodePrefix = `${seasonPrefix}E${episodeNumber}`
+    return movie.episode_title ? `${episodePrefix} - ${movie.episode_title}` : episodePrefix
+  }
+  const year = getYearFromDate(movie.release_date)
+  return year || movie.code
+}
+
 function CheckIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -126,14 +148,14 @@ export default function Home() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const sort = (searchParams.get('sort') || 'created_desc') as SortMode
-  const tab = searchParams.get('tab') || 'library'
+  const continueStripRef = useRef<HTMLDivElement>(null)
 
   const [tree, setTree] = useState<FolderNode[]>([])
   const [libraryScrapers, setLibraryScrapers] = useState<Record<string, string>>({})
   const [scraperOptions, setScraperOptions] = useState<ScraperInfo[]>(normalizeScraperOptions(undefined, false))
   const [recentMovies, setRecentMovies] = useState<Movie[]>([])
-  const [recentTotal, setRecentTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const [libraryLoading, setLibraryLoading] = useState(true)
+  const [recentLoading, setRecentLoading] = useState(true)
   const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; mediaRoot: string; folderPath: string; folderName: string } | null>(null)
   const [activeFolderPath, setActiveFolderPath] = useState('')
   const [activeMediaRoot, setActiveMediaRoot] = useState('')
@@ -179,7 +201,7 @@ export default function Home() {
   const folderScraperOptions = normalizeScraperOptions(scraperOptions, activeFolderUsesJavdatabase)
 
   const load = useCallback(() => {
-    setLoading(true)
+    setLibraryLoading(true)
     api.folders().then((data) => {
       const ex = getExcluded()
       const relevant = data.tree.filter(n => getHomeFolderCount(n) > 0 && !ex.has(n.path))
@@ -204,7 +226,7 @@ export default function Home() {
         }
       }
       setTree(filtered)
-    }).catch(() => {}).finally(() => setLoading(false))
+    }).catch(() => {}).finally(() => setLibraryLoading(false))
     api.mediaRoots().then(data => {
       const scrapers: Record<string, string> = {}
       ;(data.items || []).forEach(item => { scrapers[item.path] = item.scraper || 'auto' })
@@ -216,25 +238,20 @@ export default function Home() {
   }, [sort])
 
   const loadRecent = useCallback(() => {
-    setLoading(true)
+    setRecentLoading(true)
     api.getRecentWatched(200).then((data) => {
       setRecentMovies(sortMovies(data.movies, sort))
-      setRecentTotal(data.total)
-    }).catch(() => {}).finally(() => setLoading(false))
+    }).catch(() => {}).finally(() => setRecentLoading(false))
   }, [sort])
 
   useEffect(() => {
-    if (tab === 'recent') loadRecent()
-    else load()
-  }, [load, loadRecent, tab])
+    load()
+    loadRecent()
+  }, [load, loadRecent])
   useEffect(() => { restoreScrollPos() }, [])
 
   const handleSort = (s: string) => {
-    setSearchParams({ tab, sort: s }, { replace: true })
-  }
-
-  const setTab = (t: string) => {
-    setSearchParams({ tab: t }, { replace: true })
+    setSearchParams({ sort: s }, { replace: true })
   }
 
   const goFolder = (path: string, mediaRoot?: string) => {
@@ -243,6 +260,17 @@ export default function Home() {
     p.set('path', path)
     if (mediaRoot) p.set('media_root', mediaRoot)
     navigate(`/folder?${p.toString()}`)
+  }
+
+  const goMovie = (movieId: number) => {
+    saveScrollPos()
+    navigate(`/detail/${movieId}`)
+  }
+
+  const scrollContinue = (direction: -1 | 1) => {
+    const el = continueStripRef.current
+    if (!el) return
+    el.scrollBy({ left: direction * Math.max(320, el.clientWidth * 0.72), behavior: 'smooth' })
   }
 
   const handleFolderContextMenu = (e: React.MouseEvent, node: FolderNode) => {
@@ -460,7 +488,7 @@ export default function Home() {
     { label: '删除', danger: true, onClick: handleDeleteFolder },
   ]
 
-  if (loading) {
+  if (libraryLoading && recentLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="animate-pulse text-gray-400 text-lg">加载中...</div>
@@ -469,48 +497,56 @@ export default function Home() {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-1">
-        <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">Library</p>
-          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            {tab === 'recent' ? '继续观看' : '我的媒体库'}
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {tab === 'recent' ? `共 ${recentTotal} 部` : `共 ${tree.length} 个目录`}
-          </p>
-        </div>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <div className="flex rounded-full border border-white/10 bg-white/[0.06] p-1 backdrop-blur-xl">
-            <button onClick={() => setTab('library')}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${tab === 'library' ? 'bg-apple-blue/80 text-white shadow-glow' : 'text-gray-400 hover:text-white'}`}>
-              媒体库
-            </button>
-            <button onClick={() => setTab('recent')}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${tab === 'recent' ? 'bg-apple-blue/80 text-white shadow-glow' : 'text-gray-400 hover:text-white'}`}>
-              继续观看
-            </button>
+    <div className="space-y-8">
+      {recentMovies.length > 0 && (
+        <section className="home-section">
+          <div className="home-section-header">
+            <h2 className="home-section-title">继续观看</h2>
+            <div className="home-scroll-actions" aria-label="继续观看滚动控制">
+              <button type="button" className="home-scroll-button" aria-label="向左滚动继续观看" onClick={() => scrollContinue(-1)}>
+                ‹
+              </button>
+              <button type="button" className="home-scroll-button" aria-label="向右滚动继续观看" onClick={() => scrollContinue(1)}>
+                ›
+              </button>
+            </div>
           </div>
-          <SortDropdown options={sortOptions} current={sort} onChange={handleSort} variant="menu" />
-        </div>
-      </div>
-
-      {tab === 'recent' ? (
-        recentMovies.length === 0 ? (
-          <div className="glass-panel py-20 text-center text-gray-500">
-            <p className="mb-2 text-3xl font-light text-white/60">--</p>
-            <p>还没有继续观看记录</p>
-            <p className="mt-2 text-sm text-gray-600">播放超过 1 分钟后会显示在这里</p>
-          </div>
-        ) : (
-          <div className="folder-episode-grid grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4 media-grid">
+          <div ref={continueStripRef} className="home-continue-strip">
             {recentMovies.map((movie) => (
-              <MovieCard key={movie.id} movie={movie} onUpdated={loadRecent} showBadges={false} hideTitle={hideHomeTitleText} coverStrategy="continue-watching" />
+              <article key={movie.id} className="home-continue-item" onClick={() => goMovie(movie.id)}>
+                <div className="home-continue-cover">
+                  <div className="home-continue-cover-placeholder">暂无继续观看封面</div>
+                  <img
+                    src={getHomeContinueCoverSrc(movie)}
+                    alt={getHomeContinueTitle(movie)}
+                    loading="lazy"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                  />
+                  <div className="home-continue-cover-shade" />
+                  <div className="home-continue-progress-track" aria-hidden="true">
+                    <div
+                      className="home-continue-progress-bar"
+                      style={{ width: `${Math.max(0, Math.min(100, movie.progress_percent || 0))}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="home-continue-meta">
+                  <p className="home-continue-title">{getHomeContinueTitle(movie)}</p>
+                  <p className="home-continue-subtitle">{getHomeContinueSubtitle(movie)}</p>
+                </div>
+              </article>
             ))}
           </div>
-        )
-      ) : (
-        tree.length === 0 ? (
+        </section>
+      )}
+
+      <section className="home-section">
+        <div className="home-section-header">
+          <h2 className="home-section-title">媒体库</h2>
+          <SortDropdown options={sortOptions} current={sort} onChange={handleSort} variant="menu" />
+        </div>
+
+        {tree.length === 0 ? (
           <div className="glass-panel py-20 text-center text-gray-500">
             <p className="mb-2 text-3xl font-light text-white/60">--</p>
             <p className="text-lg text-white/70">未找到媒体文件</p>
@@ -570,8 +606,8 @@ export default function Home() {
               )
             })}
           </div>
-        )
-      )}
+        )}
+      </section>
 
       {folderMenu && (
         <ContextMenu x={folderMenu.x} y={folderMenu.y} items={folderMenuItems}

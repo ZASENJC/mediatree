@@ -8,6 +8,10 @@ All notable changes to MediaTree are documented here.
 
 ## Unreleased
 
+### Library
+
+- Reworked the home page so "Continue Watching" appears as a compact horizontal strip above the media library poster grid, with lighter section labels and no tab switcher
+
 ### Scraping
 
 - Converted application-shipped scrapers to manifest-driven built-in plugins under `backend/app/builtin_plugins/scrapers`
