@@ -38,6 +38,8 @@
   --mt-media-card-width: 11rem;
   --mt-media-card-height: 16.5rem;
   --mt-media-grid-gap: 1rem;
+  --mt-media-grid-column-gap: 1rem;
+  --mt-media-grid-row-gap: 1.25rem;
   --mt-motion-fast: 160ms;
   --mt-motion-normal: 260ms;
   --mt-theme-style: liquid-glass;
@@ -1061,8 +1063,8 @@ textarea {
   flex-wrap: wrap;
   width: 100%;
   min-width: 0;
-  column-gap: var(--mt-media-grid-gap) !important;
-  row-gap: var(--mt-media-grid-gap) !important;
+  column-gap: var(--mt-media-grid-column-gap, var(--mt-media-grid-gap)) !important;
+  row-gap: var(--mt-media-grid-row-gap, var(--mt-media-grid-gap)) !important;
   justify-content: center;
   align-items: start;
 }
@@ -1081,14 +1083,18 @@ textarea {
 }
 
 .media-grid .media-grid-card {
-  transition: none !important;
-  transform: none !important;
+  transition: box-shadow var(--mt-motion-normal) ease, border-color var(--mt-motion-normal) ease;
+  transform: none;
   will-change: auto;
+}
+
+.media-grid .media-grid-card.is-layout-animating {
+  will-change: transform;
 }
 
 .media-grid .media-grid-card:hover,
 .media-grid .media-grid-card:focus-visible {
-  transform: none !important;
+  transform: none;
 }
 
 .media-grid .media-grid-card img {

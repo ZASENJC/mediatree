@@ -6,6 +6,7 @@ import { getUiPrefs, setUiPrefs, getUpdateNotification } from './store'
 import { useToastController } from './toast'
 import { useTaskProgressController } from './taskProgress'
 import { useTheater } from './theater'
+import { useMediaGridMotion } from './hooks/useMediaGridMotion'
 import Home from './pages/Home'
 import Browse from './pages/Browse'
 import FolderPage from './pages/Folder'
@@ -25,6 +26,7 @@ const navItems = [
 export default function App() {
   const location = useLocation()
   const navigate = useNavigate()
+  useMediaGridMotion()
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<any[]>([])
