@@ -10,9 +10,13 @@ type AnimatedCard = HTMLElement & {
 }
 
 const MOVE_THRESHOLD_PX = 0.5
-const ANIMATION_MS = 180
-const ANIMATION_EASING = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
-const RESIZE_TRACK_MS = 220
+const LAYOUT_MOTION_FPS = 60
+const FRAME_MS = 1000 / LAYOUT_MOTION_FPS
+const ANIMATION_FRAMES = 18
+const ANIMATION_MS = Math.round(ANIMATION_FRAMES * FRAME_MS)
+const ANIMATION_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)'
+const RESIZE_TRACK_FRAMES = 24
+const RESIZE_TRACK_MS = Math.round(RESIZE_TRACK_FRAMES * FRAME_MS)
 
 function getCards(grid: Element) {
   return Array.from(grid.querySelectorAll<HTMLElement>(':scope > .media-grid-card'))
@@ -71,8 +75,8 @@ function animateGridShift(grid: Element, beforeRects: WeakMap<HTMLElement, CardR
     animatedCard.__mediaGridAnimationCount = (animatedCard.__mediaGridAnimationCount || 0) + 1
     const animation = card.animate(
       [
-        { transform: `translate(${fromX}px, ${fromY}px)` },
-        { transform: 'translate(0, 0)' },
+        { transform: `translate3d(${fromX}px, ${fromY}px, 0)` },
+        { transform: 'translate3d(0, 0, 0)' },
       ],
       {
         duration: ANIMATION_MS,
@@ -98,6 +102,7 @@ export function useMediaGridMotion() {
 
     const grids = new Set<Element>()
     let lastRects = new WeakMap<HTMLElement, CardRect>()
+    let animationFrame = 0
     let resizeFrame = 0
     let resizeTrackingUntil = 0
     let lastViewportWidth = window.innerWidth
@@ -122,7 +127,19 @@ export function useMediaGridMotion() {
       lastRects = nextRects
     }
     const runAnimationNow = () => {
+      if (animationFrame) {
+        window.cancelAnimationFrame(animationFrame)
+        animationFrame = 0
+      }
       runAnimation()
+    }
+    const runAnimationFrame = () => {
+      animationFrame = 0
+      runAnimationNow()
+    }
+    const scheduleAnimationFrame = () => {
+      if (animationFrame) return
+      animationFrame = window.requestAnimationFrame(runAnimationFrame)
     }
     const trackResizeMotion = (timestamp: number) => {
       resizeFrame = 0
@@ -143,20 +160,20 @@ export function useMediaGridMotion() {
     const handleWindowResize = () => {
       if (window.innerWidth === lastViewportWidth) return
       lastViewportWidth = window.innerWidth
-      runAnimationNow()
+      scheduleAnimationFrame()
       scheduleResizeTracking()
     }
 
     const resizeObserver = new ResizeObserver(() => {
       lastViewportWidth = window.innerWidth
-      runAnimationNow()
+      scheduleAnimationFrame()
       scheduleResizeTracking()
     })
     const mutationObserver = new MutationObserver((records) => {
       const hasStructuralChange = records.some((record) => record.type === 'childList' && (record.addedNodes.length > 0 || record.removedNodes.length > 0))
       if (!hasStructuralChange) return
       syncGrids()
-      runAnimationNow()
+      scheduleAnimationFrame()
     })
 
     syncGrids()
@@ -165,6 +182,7 @@ export function useMediaGridMotion() {
     window.addEventListener('resize', handleWindowResize, { passive: true })
 
     return () => {
+      if (animationFrame) window.cancelAnimationFrame(animationFrame)
       if (resizeFrame) window.cancelAnimationFrame(resizeFrame)
       window.removeEventListener('resize', handleWindowResize)
       resizeObserver.disconnect()

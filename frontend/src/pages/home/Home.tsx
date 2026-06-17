@@ -558,7 +558,7 @@ export default function Home() {
             <p className="mt-2 text-sm">请配置 MEDIA_ROOT 或检查浏览页勾选状态</p>
           </div>
         ) : (
-          <div className="home-poster-grid media-grid" data-media-grid-motion="off">
+          <div className="home-poster-grid media-grid">
             {tree.map((node) => {
               const coverSrc = getCoverSrc(node.random_cover || node.cover, folderCoverVersion)
               const localKey = getFolderLocalKey(node)
