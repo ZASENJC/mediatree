@@ -18,12 +18,19 @@ function getCards(grid: Element) {
   return Array.from(grid.querySelectorAll<HTMLElement>(':scope > .media-grid-card'))
 }
 
+function getDocumentCardRect(card: HTMLElement): CardRect {
+  const rect = card.getBoundingClientRect()
+  return {
+    left: rect.left + window.scrollX,
+    top: rect.top + window.scrollY,
+  }
+}
+
 function readRects(grids: Iterable<Element>) {
   const rects = new WeakMap<HTMLElement, CardRect>()
   for (const grid of grids) {
     for (const card of getCards(grid)) {
-      const rect = card.getBoundingClientRect()
-      rects.set(card, { left: rect.left, top: rect.top })
+      rects.set(card, getDocumentCardRect(card))
     }
   }
   return rects
@@ -46,7 +53,7 @@ function animateGridShift(grid: Element, beforeRects: WeakMap<HTMLElement, CardR
     const activeTransform = getComputedStyle(card).transform
     const activeOffset = readTransformOffset(activeTransform)
 
-    const after = card.getBoundingClientRect()
+    const after = getDocumentCardRect(card)
     const afterLayout = {
       left: after.left - activeOffset.left,
       top: after.top - activeOffset.top,

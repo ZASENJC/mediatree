@@ -14,8 +14,6 @@ import { specialMovieTitle } from '../movieTitle'
 import { normalizeScraperOptions } from '../scrapers'
 import { formatMovieCardEpisodePrefix, formatMovieCardEpisodeTitle, getMovieCardCover, type MovieCardCoverStrategy } from './movieCardCover'
 
-const CONTINUE_SNAPSHOT_RETRY_DELAYS_MS = [1200, 2500, 5000, 10000, 20000]
-
 interface MovieCardProps {
   movie: Movie
   onUpdated?: () => void
@@ -39,7 +37,6 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const [applying, setApplying] = useState(false)
   const [coverVersion, setCoverVersion] = useState(() => movie.updated_at || '')
   const [coverLoadFailed, setCoverLoadFailed] = useState(false)
-  const [continueSnapshotRetryIndex, setContinueSnapshotRetryIndex] = useState(0)
   const prevMovieId = useRef(movie.id)
   const [hovered, setHovered] = useState(false)
   const [libraryScrapers, setLibraryScrapers] = useState<Record<string, string>>({})
@@ -50,7 +47,6 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       prevMovieId.current = movie.id
       setCoverVersion(movie.updated_at || '')
       setCoverLoadFailed(false)
-      setContinueSnapshotRetryIndex(0)
     }
   }, [movie.id, movie.updated_at])
   useEffect(() => {
@@ -100,10 +96,8 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const withVersion = (url: string) => coverVersion ? `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(coverVersion)}` : url
   const coverSrc = coverState.kind === 'episode-still'
     ? api.episodeStillUrl(movie.id)
-    : coverState.kind === 'continue-snapshot'
-    ? api.continueCoverUrl(movie.id)
     : api.coverUrl(movie.id)
-  const coverPlaceholder = coverState.kind === 'continue-snapshot' ? '暂无继续观看封面' : '暂无单集海报'
+  const coverPlaceholder = '暂无单集海报'
   const displayTitle = isSpecial
     ? specialMovieTitle(movie)
     : isEpisode
@@ -115,18 +109,6 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const movieLibraryScraper = movie.media_root ? libraryScrapers[movie.media_root] : undefined
   const canUseJavdatabase = movieLibraryScraper === 'javdatabase'
   const manualScraperOptions = normalizeScraperOptions(scraperOptions, canUseJavdatabase)
-
-  useEffect(() => {
-    if (coverState.kind !== 'continue-snapshot' || !coverLoadFailed) return
-    if (continueSnapshotRetryIndex >= CONTINUE_SNAPSHOT_RETRY_DELAYS_MS.length) return
-    const delay = CONTINUE_SNAPSHOT_RETRY_DELAYS_MS[continueSnapshotRetryIndex]
-    const timer = window.setTimeout(() => {
-      setCoverVersion(String(Date.now()))
-      setCoverLoadFailed(false)
-      setContinueSnapshotRetryIndex(index => Math.min(index + 1, CONTINUE_SNAPSHOT_RETRY_DELAYS_MS.length))
-    }, delay)
-    return () => window.clearTimeout(timer)
-  }, [coverLoadFailed, continueSnapshotRetryIndex, coverState.kind, movie.id])
 
   const checkTmdbConfig = useCallback(async (scraperName: string = manualScraper) => {
     try {
@@ -287,8 +269,6 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
                 const img = e.target as HTMLImageElement
                 if (coverStrategy !== 'episode-still-only' && coverState.kind === 'episode-still') {
                   img.src = withVersion(api.coverUrl(movie.id))
-                } else if (coverState.kind === 'continue-snapshot') {
-                  setCoverLoadFailed(true)
                 } else {
                   setCoverLoadFailed(true)
                 }

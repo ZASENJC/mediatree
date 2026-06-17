@@ -492,7 +492,7 @@ export default function App() {
     <div className="mt-app-shell min-h-screen flex flex-col">
       {!theaterMode && (
       <header
-        className={`mt-topbar sticky top-0 z-50 pt-2 sm:pt-3 ${topbarCompact ? 'is-compact' : 'is-expanded'}`}
+        className={`mt-topbar sticky top-0 z-50 pt-6 sm:pt-9 ${topbarCompact ? 'is-compact' : 'is-expanded'}`}
         onPointerEnter={() => setTopbarHovering(true)}
         onPointerLeave={() => setTopbarHovering(false)}
         onFocusCapture={() => setTopbarFocused(true)}

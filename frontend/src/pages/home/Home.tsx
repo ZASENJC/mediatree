@@ -12,7 +12,6 @@ import ContextMenu, { ContextMenuItem } from '../../components/ContextMenu'
 import EditModal from '../../components/EditModal'
 import CoverPickerModal from '../../components/CoverPickerModal'
 import { normalizeScraperOptions } from '../../scrapers'
-import { getMovieCardCover } from '../../components/movieCardCover'
 
 function encodeMediaPath(path: string): string {
   return path.split('/').map(encodeURIComponent).join('/')
@@ -114,10 +113,16 @@ function getHomeFolderWatchState(node: FolderNode, watchedOverride?: boolean) {
   }
 }
 
+function getHomeContinueCoverKind(movie: Movie): 'episode-still' | 'continue-snapshot' {
+  const isEpisode = movie.tmdb_type === 'tv' || movie.tmdb_episode != null || movie.episode_number != null
+  if (isEpisode) return 'episode-still'
+  return 'continue-snapshot'
+}
+
 function getHomeContinueCoverSrc(movie: Movie): string {
-  const coverState = getMovieCardCover(movie, 'continue-watching')
-  if (coverState.kind === 'episode-still') return api.episodeStillUrl(movie.id)
-  if (coverState.kind === 'continue-snapshot') return api.continueCoverUrl(movie.id)
+  const coverKind = getHomeContinueCoverKind(movie)
+  if (coverKind === 'episode-still') return api.episodeStillUrl(movie.id)
+  if (coverKind === 'continue-snapshot') return api.continueCoverUrl(movie.id)
   return api.coverUrl(movie.id)
 }
 
@@ -497,7 +502,7 @@ export default function Home() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="home-page space-y-8">
       {recentMovies.length > 0 && (
         <section className="home-section">
           <div className="home-section-header">
@@ -540,8 +545,8 @@ export default function Home() {
         </section>
       )}
 
-      <section className="home-section">
-        <div className="home-section-header">
+      <section className="home-section home-library-section">
+        <div className="home-section-header home-library-header">
           <h2 className="home-section-title">媒体库</h2>
           <SortDropdown options={sortOptions} current={sort} onChange={handleSort} variant="menu" />
         </div>
@@ -553,7 +558,7 @@ export default function Home() {
             <p className="mt-2 text-sm">请配置 MEDIA_ROOT 或检查浏览页勾选状态</p>
           </div>
         ) : (
-          <div className="home-poster-grid grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid">
+          <div className="home-poster-grid media-grid">
             {tree.map((node) => {
               const coverSrc = getCoverSrc(node.random_cover || node.cover, folderCoverVersion)
               const localKey = getFolderLocalKey(node)

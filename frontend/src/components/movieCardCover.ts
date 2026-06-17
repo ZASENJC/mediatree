@@ -1,7 +1,7 @@
 import type { Movie } from '../api'
 
-export type MovieCardCoverStrategy = 'auto' | 'episode-still-only' | 'continue-watching'
-export type MovieCardCoverKind = 'cover' | 'episode-still' | 'continue-snapshot' | 'placeholder'
+export type MovieCardCoverStrategy = 'auto' | 'episode-still-only'
+export type MovieCardCoverKind = 'cover' | 'episode-still' | 'placeholder'
 
 export interface MovieCardCoverState {
   kind: MovieCardCoverKind
@@ -16,15 +16,6 @@ type EpisodeTitleMovie = Pick<Movie, 'tmdb_season' | 'tmdb_episode' | 'episode_n
 export function getMovieCardCover(movie: CoverMovie, strategy: MovieCardCoverStrategy = 'auto'): MovieCardCoverState {
   const isEpisode = movie.tmdb_type === 'tv' || movie.tmdb_episode != null || movie.episode_number != null
   const hasEpisodeStill = !!(isEpisode && (movie.episode_still || movie.episode_still_local))
-
-  if (strategy === 'continue-watching') {
-    return {
-      kind: isEpisode ? 'episode-still' : 'continue-snapshot',
-      isEpisode,
-      hasEpisodeStill,
-      usesLandscape: true,
-    }
-  }
 
   if (strategy === 'episode-still-only') {
     return {
