@@ -8,6 +8,11 @@ All notable changes to MediaTree are documented here.
 
 ## Unreleased
 
+### Settings
+
+- Changed Settings into a right-side drawer that opens above the current page instead of replacing the main route
+- Tightened the Settings category rail and redesigned theme and media-library rows so labels, descriptions, and actions stay aligned in narrow layouts
+
 ### Library
 
 - Reworked the home page so "Continue Watching" appears as a compact horizontal strip above the media library poster grid, with lighter section labels and no tab switcher

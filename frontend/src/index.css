@@ -1370,6 +1370,395 @@ textarea {
   pointer-events: none;
 }
 
+@keyframes settings-drawer-panel-in {
+  from {
+    opacity: 0.82;
+    transform: translateX(3.25rem) scale(0.985);
+    filter: saturate(0.92);
+  }
+  62% {
+    opacity: 0.96;
+    transform: translateX(-0.2rem) scale(1.003);
+    filter: saturate(1.02);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    filter: saturate(1);
+  }
+}
+
+@keyframes settings-drawer-panel-out {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    filter: saturate(1);
+  }
+  to {
+    opacity: 0.78;
+    transform: translateX(3.25rem) scale(0.99);
+    filter: saturate(0.9);
+  }
+}
+
+@keyframes settings-drawer-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes settings-drawer-backdrop-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes settings-tab-rail-in {
+  from {
+    opacity: 0;
+    transform: translateX(0.85rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.settings-drawer-shell {
+  align-items: stretch;
+}
+
+.settings-drawer-backdrop {
+  animation: settings-drawer-backdrop-in 0.18s ease-out both;
+}
+
+.settings-drawer-backdrop.is-closing {
+  animation: settings-drawer-backdrop-out 0.34s ease-in both;
+}
+
+.settings-drawer-panel {
+  inline-size: min(calc(100vw - 1rem), 36rem);
+  background: rgba(8, 10, 18, 0.56);
+  backdrop-filter: blur(4px) saturate(145%);
+  -webkit-backdrop-filter: blur(4px) saturate(145%);
+  animation: settings-drawer-panel-in 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity, filter;
+}
+
+.settings-drawer-panel.is-closing {
+  animation: settings-drawer-panel-out 0.42s cubic-bezier(0.76, 0, 0.24, 1) both;
+}
+
+.settings-drawer-body {
+  min-height: 0;
+}
+
+.settings-section {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: none;
+}
+
+.settings-section:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.settings-section-title {
+  margin: 0 0 0.9rem;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.settings-row-copy {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 0.1875rem;
+}
+
+.settings-tab-rail {
+  inline-size: 4.45rem;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  animation: settings-tab-rail-in 0.44s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.settings-tab-rail .settings-tab-button {
+  display: flex;
+  min-height: 1.7rem;
+  width: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  border: 0;
+  border-radius: 0.8rem;
+  background: transparent;
+  box-shadow: none;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0.32rem 0.48rem;
+  text-align: left;
+  white-space: nowrap;
+  line-height: 1.2;
+  transition:
+    background-color var(--mt-motion-fast) ease,
+    color var(--mt-motion-fast) ease,
+    box-shadow var(--mt-motion-fast) ease;
+}
+
+.settings-tab-rail .settings-tab-button.is-active {
+  background: rgba(255, 255, 255, 0.115);
+  color: #fff;
+  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.settings-theme-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.62rem;
+}
+
+.settings-theme-card {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1.1rem;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.72rem 0.78rem;
+  transition:
+    border-color var(--mt-motion-fast) ease,
+    background-color var(--mt-motion-fast) ease,
+    box-shadow var(--mt-motion-fast) ease;
+}
+
+.settings-theme-card.is-active {
+  border-color: rgba(10, 132, 255, 0.4);
+  background: rgba(10, 132, 255, 0.14);
+}
+
+.settings-theme-card-header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
+.settings-theme-card-dot {
+  inline-size: 0.82rem;
+  block-size: 0.82rem;
+  flex: 0 0 auto;
+  margin-top: 0.18rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.settings-theme-card-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.18rem;
+}
+
+.settings-theme-card-heading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 0.45rem;
+}
+
+.settings-theme-card-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.15;
+  color: #fff;
+}
+
+.settings-theme-card-meta {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  line-height: 1.1;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.settings-theme-card-desc {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.48);
+}
+
+.settings-theme-card-actions {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.settings-library-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.settings-library-card {
+  display: grid;
+  gap: 0.68rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1.1rem;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.78rem;
+  backdrop-filter: blur(12px) saturate(135%);
+  -webkit-backdrop-filter: blur(12px) saturate(135%);
+}
+
+.settings-library-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.settings-library-title-group {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.settings-library-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #fff;
+}
+
+.settings-library-path {
+  margin-top: 0.2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.settings-library-count {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.25rem 0.55rem;
+  font-size: 0.7rem;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.settings-library-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(7.5rem, 0.85fr);
+  gap: 0.6rem;
+}
+
+.settings-library-field {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.settings-library-field > span {
+  font-size: 0.68rem;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.settings-library-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.settings-library-status {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.settings-library-progress {
+  inline-size: min(8rem, 42%);
+  block-size: 0.4rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.settings-library-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+@media (max-width: 640px) {
+  .settings-drawer-shell {
+    padding: 0.5rem 0.5rem 1rem;
+  }
+
+  .settings-drawer-panel {
+    inline-size: min(calc(100vw - 0.75rem), 100vw);
+    block-size: calc(100dvh - 1rem);
+    border-radius: 1.5rem;
+  }
+
+  .settings-tab-rail {
+    inline-size: 4.15rem;
+  }
+
+  .settings-theme-card,
+  .settings-library-form {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-theme-card-actions,
+  .settings-library-footer,
+  .settings-library-actions {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .settings-library-footer {
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-drawer-backdrop,
+  .settings-drawer-backdrop.is-closing,
+  .settings-drawer-panel,
+  .settings-drawer-panel.is-closing,
+  .settings-tab-rail {
+    animation: none !important;
+  }
+}
+
 @keyframes backdrop-in {
   from { opacity: 0; }
   to { opacity: 0.8; }

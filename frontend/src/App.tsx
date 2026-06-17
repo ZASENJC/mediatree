@@ -69,6 +69,17 @@ export default function App() {
   const topbarRightRef = useRef<HTMLDivElement | null>(null)
   const desktopSearchRootRef = useRef<HTMLDivElement | null>(null)
 
+  const settingsDrawerOpen = location.pathname === '/settings'
+  const settingsBackgroundLocation = settingsDrawerOpen
+    ? (location.state as { settingsBackgroundLocation?: typeof location } | null)?.settingsBackgroundLocation
+    : null
+  const mainRouteLocation = settingsDrawerOpen
+    ? (settingsBackgroundLocation || { ...location, pathname: '/', search: '', hash: '' })
+    : location
+  const contentPathname = settingsDrawerOpen
+    ? mainRouteLocation.pathname
+    : location.pathname
+
   const currentLibraryLabel = (() => {
     if (!activeLib) return ''
     const parts = activeLib.split('/').filter(Boolean)
@@ -76,7 +87,7 @@ export default function App() {
   })()
   const currentLibraryDisplayLabel = formatTopbarLibraryLabel(currentLibraryLabel)
 
-  const topbarOpenByInteraction = topbarHovering || desktopSearchOpen || mobileNavOpen || mobileSearchOpen || showLibraryModal
+  const topbarOpenByInteraction = topbarHovering || desktopSearchOpen || mobileNavOpen || mobileSearchOpen || showLibraryModal || settingsDrawerOpen
   const topbarShouldCompact = topbarWheelDirection === 'down' && !topbarOpenByInteraction
 
   const mountedRef = useRef(true)
@@ -399,6 +410,22 @@ export default function App() {
     setMobileSearchOpen(false)
   }
 
+  const openSettingsDrawer = () => {
+    setMobileNavOpen(false)
+    closeSearch()
+    if (settingsDrawerOpen) return
+    navigate('/settings', { state: { settingsBackgroundLocation: mainRouteLocation } })
+  }
+
+  const closeSettingsDrawer = () => {
+    if (!settingsDrawerOpen) return
+    if (settingsBackgroundLocation) {
+      navigate(-1)
+      return
+    }
+    navigate('/', { replace: true })
+  }
+
   const clearSearch = () => {
     setSearchQuery('')
     setSearchResults([])
@@ -518,7 +545,7 @@ export default function App() {
                 className={`shrink-0 rounded-full px-1.5 py-1.5 text-xs transition-all sm:px-3 sm:text-sm ${
                   item.path === '/favorites' ? 'hidden sm:inline-flex' : 'inline-flex'
                 } ${
-                  location.pathname === item.path
+                  contentPathname === item.path
                     ? 'bg-white/18 text-white shadow-sm'
                     : 'text-white hover:bg-white/10'
                 }`}
@@ -548,7 +575,7 @@ export default function App() {
                     key={item.path}
                     to={item.path}
                     className={`block rounded-3xl px-3 py-2 text-sm transition-colors ${
-                      location.pathname === item.path
+                      contentPathname === item.path
                         ? 'bg-white/15 text-white'
                         : 'text-white hover:bg-white/10'
                     }`}
@@ -635,9 +662,10 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </button>
-            <Link
-              to="/settings"
-              className={`topbar-icon-button relative inline-flex ${location.pathname === '/settings' ? 'bg-white/18 text-white shadow-sm' : ''}`}
+            <button
+              type="button"
+              onClick={openSettingsDrawer}
+              className={`topbar-icon-button relative inline-flex ${settingsDrawerOpen ? 'bg-white/18 text-white shadow-sm' : 'text-white hover:bg-white/10'}`}
               aria-label="设置"
               title="设置"
             >
@@ -646,7 +674,7 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
               {hasUpdate && <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />}
-            </Link>
+            </button>
             <button
               onClick={() => api.logout()}
               className="topbar-round-button rounded-full text-white transition-colors hover:bg-red-500/10 hover:text-white"
@@ -697,14 +725,17 @@ export default function App() {
       )}
 
       <main className={`flex-1 w-full min-h-0 ${theaterMode ? 'flex flex-col max-w-none mx-0 px-0 py-0' : 'mt-content mx-auto'}`}>
-        <Routes key={activeLib}>
+        <Routes key={activeLib} location={mainRouteLocation}>
           <Route path="/" element={<Home />} />
           <Route path="/browse" element={<Browse />} />
           <Route path="/folder" element={<FolderPage />} />
           <Route path="/detail/:id" element={<Detail />} />
           <Route path="/favorites" element={<Favorites />} />
-          <Route path="/settings" element={<Settings />} />
+          <Route path="/settings" element={<Home />} />
         </Routes>
+        {settingsDrawerOpen && (
+          <Settings open onClose={closeSettingsDrawer} />
+        )}
         {searchOpen && (
           <div className="fixed inset-0 z-40" onClick={closeSearch} />
         )}
