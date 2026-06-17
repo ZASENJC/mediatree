@@ -505,14 +505,14 @@ export default function Home() {
     <div className="home-page space-y-8">
       {recentMovies.length > 0 && (
         <section className="home-section">
-          <div className="home-section-header">
+          <div className="home-section-header home-continue-header">
             <h2 className="home-section-title">继续观看</h2>
             <div className="home-scroll-actions" aria-label="继续观看滚动控制">
               <button type="button" className="home-scroll-button" aria-label="向左滚动继续观看" onClick={() => scrollContinue(-1)}>
-                ‹
+                <span className="home-scroll-icon" aria-hidden="true">‹</span>
               </button>
               <button type="button" className="home-scroll-button" aria-label="向右滚动继续观看" onClick={() => scrollContinue(1)}>
-                ›
+                <span className="home-scroll-icon" aria-hidden="true">›</span>
               </button>
             </div>
           </div>

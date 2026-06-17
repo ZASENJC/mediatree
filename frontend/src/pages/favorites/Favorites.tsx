@@ -41,15 +41,14 @@ export default function Favorites() {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="glass-panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+    <div className="home-aligned-page space-y-5">
+      <div className="home-section-header home-library-header">
         <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-apple-pink/80">Library</p>
-          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">我的收藏</h1>
-          <p className="mt-1 text-sm text-gray-500">共 {total} 部</p>
+          <h2 className="home-section-title">我的收藏</h2>
+          <p className="mt-1 text-xs text-gray-500">共 {total} 部</p>
         </div>
         <div className="flex items-center gap-1">
-          <SortDropdown options={FAVORITES_SORT_OPTIONS} current={sort} onChange={handleSort} variant="menu" />
+          <SortDropdown options={FAVORITES_SORT_OPTIONS} current={sort} onChange={handleSort} variant="menu" size="heading" />
         </div>
       </div>
 

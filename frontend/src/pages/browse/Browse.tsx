@@ -187,8 +187,8 @@ export default function Browse() {
   )
 
   return (
-    <div className="space-y-5">
-      <div className="glass-panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+    <div className="home-aligned-page space-y-5">
+      <div className="home-section-header home-library-header">
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2">
             <button
@@ -201,15 +201,14 @@ export default function Browse() {
               </svg>
             </button>
             <div className="min-w-0">
-              <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">Browse</p>
-              <h1 className="min-w-0 break-words text-2xl font-bold tracking-tight text-white sm:text-3xl">
+              <h2 className="home-section-title truncate">
                 {staff ? `Staff: ${decodeURIComponent(staff)}` : actress ? `演员: ${decodeURIComponent(actress)}` : codeQuery ? `搜索: ${decodeURIComponent(codeQuery)}` : folder ? `浏览: ${decodeURIComponent(folder)}` : '全部影片'}
-              </h1>
-              <p className="mt-1 text-sm text-gray-500">共 {total} 部</p>
+              </h2>
+              <p className="mt-1 text-xs text-gray-500">共 {total} 部</p>
             </div>
           </div>
         </div>
-        <SortDropdown options={BROWSE_SORT_OPTIONS} current={sort} onChange={handleSortChange} variant="menu" />
+        <SortDropdown options={BROWSE_SORT_OPTIONS} current={sort} onChange={handleSortChange} variant="menu" size="heading" />
       </div>
 
       {mobileTreeOpen && (

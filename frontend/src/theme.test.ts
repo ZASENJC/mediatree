@@ -481,8 +481,11 @@ test('global layout fills available width responsively', () => {
 })
 
 test('home page stacks continue watching above library grid without tab switcher', () => {
+  const css = readFileSync('src/index.css', 'utf8')
   const source = readFileSync('src/pages/home/Home.tsx', 'utf8')
   const sortDropdownSource = readFileSync('src/components/SortDropdown.tsx', 'utf8')
+  const scrollButton = cssRuleBody(css, '.home-scroll-button {')
+  const scrollIcon = cssRuleBody(css, '.home-scroll-icon {')
   const continueHeadingIndex = source.indexOf('home-section-title">继续观看')
   const continueStripIndex = source.indexOf('home-continue-strip')
   const libraryHeadingIndex = source.indexOf('home-section-title">媒体库')
@@ -499,6 +502,12 @@ test('home page stacks continue watching above library grid without tab switcher
   assert.ok(continueStripIndex > continueHeadingIndex, 'continue strip should follow its heading')
   assert.ok(libraryHeadingIndex > continueStripIndex, 'library heading should appear after continue watching')
   assert.ok(libraryGridIndex > libraryHeadingIndex, 'poster grid should follow the library heading')
+  assert.match(source, /<div className="home-section-header home-continue-header">/)
+  assert.match(source, /className="home-scroll-icon"/)
+  assert.match(scrollButton, /align-items:\s*flex-end;/)
+  assert.match(scrollButton, /height:\s*2rem;/)
+  assert.match(scrollIcon, /height:\s*1\.125rem;/)
+  assert.match(scrollIcon, /width:\s*1\.125rem;/)
   assert.match(source, /<SortDropdown options=\{sortOptions\} current=\{sort\} onChange=\{handleSort\} variant="menu" size="heading" \/>/)
   assert.match(sortDropdownSource, /size\?: 'default' \| 'heading'/)
   assert.match(sortDropdownSource, /const isHeadingSize = size === 'heading'/)
@@ -507,6 +516,24 @@ test('home page stacks continue watching above library grid without tab switcher
   assert.match(sortDropdownSource, /h-px/)
   assert.match(sortDropdownSource, /top-\[0\.28125rem\]/)
   assert.match(sortDropdownSource, /translate-y-px/)
+})
+
+test('browse favorites and settings align their page heading with home continue watching', () => {
+  const css = readFileSync('src/index.css', 'utf8')
+  const browseSource = readFileSync('src/pages/browse/Browse.tsx', 'utf8')
+  const favoritesSource = readFileSync('src/pages/favorites/Favorites.tsx', 'utf8')
+  const settingsSource = readFileSync('src/pages/settings/Settings.tsx', 'utf8')
+  const alignedPage = cssRuleBody(css, '.home-aligned-page {')
+
+  assert.match(alignedPage, /--mt-home-section-title-gap:\s*0\.85rem;/)
+  assert.match(alignedPage, /--mt-home-library-title-gap:\s*calc\(var\(--mt-home-section-title-gap\) \+ 3px\);/)
+  assert.match(alignedPage, /padding-top:\s*calc\(2rem - \(0\.9375rem \* 1\.2\)\);/)
+  assert.match(browseSource, /className="home-aligned-page space-y-5"/)
+  assert.match(favoritesSource, /className="home-aligned-page space-y-5"/)
+  assert.match(settingsSource, /className="home-aligned-page w-full min-w-0 space-y-5"/)
+  assert.match(browseSource, /<div className="home-section-header home-library-header">/)
+  assert.match(favoritesSource, /<div className="home-section-header home-library-header">/)
+  assert.match(settingsSource, /<div className="home-section-header home-library-header">/)
 })
 
 test('home library uses poster grid cards with external title metadata', () => {
