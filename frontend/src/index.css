@@ -1452,7 +1452,7 @@ textarea {
 }
 
 .settings-section {
-  padding: 0;
+  padding: 1.25rem 0 0;
   background: transparent;
   border: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -1478,7 +1478,7 @@ textarea {
 }
 
 .settings-tab-rail {
-  inline-size: 4.45rem;
+  inline-size: 6.6rem;
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -1487,18 +1487,18 @@ textarea {
 
 .settings-tab-rail .settings-tab-button {
   display: flex;
-  min-height: 1.7rem;
+  min-height: 2.15rem;
   width: 100%;
   align-items: center;
   justify-content: flex-start;
   border: 0;
-  border-radius: 0.8rem;
+  border-radius: 1rem;
   background: transparent;
   box-shadow: none;
   color: rgba(255, 255, 255, 0.68);
-  font-size: 0.74rem;
+  font-size: 0.76rem;
   font-weight: 600;
-  padding: 0.32rem 0.48rem;
+  padding: 0.45rem 0.78rem;
   text-align: left;
   white-space: nowrap;
   line-height: 1.2;
@@ -1511,7 +1511,14 @@ textarea {
 .settings-tab-rail .settings-tab-button.is-active {
   background: rgba(255, 255, 255, 0.115);
   color: #fff;
-  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.11);
+}
+
+.settings-tab-label {
+  display: block;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .settings-theme-grid {
@@ -1729,7 +1736,7 @@ textarea {
   }
 
   .settings-tab-rail {
-    inline-size: 4.15rem;
+    inline-size: 5.9rem;
   }
 
   .settings-theme-card,

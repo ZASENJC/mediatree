@@ -1434,7 +1434,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
                       onClick={() => setActiveTab(tab.id)}
                       className={tabButtonClass + " " + (active ? 'is-active text-white' : 'text-gray-400 hover:text-white')}
                     >
-                      <span className="truncate">{tab.label}</span>
+                      <span className="settings-tab-label">{tab.label}</span>
                     </button>
                   )
                 })}

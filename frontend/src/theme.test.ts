@@ -441,6 +441,8 @@ test('settings drawer aligns to the topbar and keeps selection weight only on ac
   assert.match(settings, /aria-orientation="vertical"/)
   assert.match(settings, /role="tab"/)
   assert.match(settings, /aria-selected=\{active\}/)
+  assert.match(settings, /className="settings-tab-label"/)
+  assert.doesNotMatch(settings, /<span className="truncate">\{tab\.label\}<\/span>/)
   assert.match(settings, /className=\{tabButtonClass \+ " " \+ \(active \? 'is-active text-white' : 'text-gray-400 hover:text-white'\)\}/)
   assert.doesNotMatch(settings, /is-active border-apple-blue\/40 bg-apple-blue\/18 text-apple-blue shadow-glow/)
   assert.doesNotMatch(settings, /settings-tab-strip/)
@@ -459,10 +461,20 @@ test('settings drawer aligns to the topbar and keeps selection weight only on ac
   assert.match(panelOutRule, /settings-drawer-panel-out 0\.42s cubic-bezier\(0\.76, 0, 0\.24, 1\) both/)
 
   const sectionRule = cssRuleBody(css, '.settings-section {')
+  assert.match(sectionRule, /padding:\s*1\.25rem 0 0;/)
   assert.match(sectionRule, /border-top:\s*1px solid rgba\(255, 255, 255, 0\.1\)/)
   assert.match(sectionRule, /background:\s*transparent;/)
   assert.match(sectionRule, /box-shadow:\s*none;/)
   assert.doesNotMatch(sectionRule, /border-radius:/)
+
+  const firstSectionRule = cssRuleBody(css, '.settings-section:first-child {')
+  assert.match(firstSectionRule, /border-top:\s*0;/)
+  assert.match(firstSectionRule, /padding-top:\s*0;/)
+
+  assert.match(settings, /mt-4 border-t border-white\/10 pt-4/)
+  assert.match(settings, /mt-3 border-t border-white\/10 pt-3/)
+  assert.match(settings, /flex shrink-0 items-start justify-between gap-4 border-b border-white\/10 px-4 py-4 sm:px-5/)
+  assert.match(settings, /flex shrink-0 items-center justify-between border-b border-white\/10 p-5/)
 
   const rowCopyRule = cssRuleBody(css, '.settings-row-copy {')
   assert.match(rowCopyRule, /display:\s*grid;/)
@@ -470,7 +482,7 @@ test('settings drawer aligns to the topbar and keeps selection weight only on ac
   assert.match(rowCopyRule, /gap:\s*0\.1875rem;/)
 
   const railRule = cssRuleBody(css, '.settings-tab-rail {')
-  assert.match(railRule, /inline-size:\s*4\.45rem/)
+  assert.match(railRule, /inline-size:\s*6\.6rem/)
   assert.match(railRule, /border:\s*0;/)
   assert.match(railRule, /background:\s*transparent;/)
   assert.match(railRule, /box-shadow:\s*none;/)
@@ -479,18 +491,23 @@ test('settings drawer aligns to the topbar and keeps selection weight only on ac
   assert.match(railRule, /animation:\s*settings-tab-rail-in 0\.44s cubic-bezier\(0\.22, 1, 0\.36, 1\) both/)
 
   const tabButtonRule = cssRuleBody(css, '.settings-tab-rail .settings-tab-button {')
-  assert.match(tabButtonRule, /min-height:\s*1\.7rem;/)
+  assert.match(tabButtonRule, /min-height:\s*2\.15rem;/)
   assert.match(tabButtonRule, /border:\s*0;/)
   assert.match(tabButtonRule, /background:\s*transparent;/)
   assert.match(tabButtonRule, /box-shadow:\s*none;/)
-  assert.match(tabButtonRule, /padding:\s*0\.32rem 0\.48rem;/)
-  assert.match(tabButtonRule, /font-size:\s*0\.74rem;/)
+  assert.match(tabButtonRule, /padding:\s*0\.45rem 0\.78rem;/)
+  assert.match(tabButtonRule, /font-size:\s*0\.76rem;/)
   assert.match(tabButtonRule, /font-weight:\s*600;/)
   assert.match(tabButtonRule, /line-height:\s*1\.2;/)
 
   const activeTabRule = cssRuleBody(css, '.settings-tab-rail .settings-tab-button.is-active {')
   assert.match(activeTabRule, /background:\s*rgba\(255, 255, 255, 0\.115\)/)
-  assert.match(activeTabRule, /box-shadow:\s*0 7px 18px rgba\(0, 0, 0, 0\.2\),\s*inset 0 1px 0 rgba\(255, 255, 255, 0\.1\)/)
+  assert.match(activeTabRule, /box-shadow:\s*0 10px 26px rgba\(0, 0, 0, 0\.24\),\s*inset 0 1px 0 rgba\(255, 255, 255, 0\.11\)/)
+
+  const tabLabelRule = cssRuleBody(css, '.settings-tab-label {')
+  assert.match(tabLabelRule, /overflow:\s*visible;/)
+  assert.match(tabLabelRule, /text-overflow:\s*clip;/)
+  assert.match(tabLabelRule, /white-space:\s*nowrap;/)
 
   assert.match(css, /@keyframes settings-drawer-panel-out/)
   assert.match(css, /@keyframes settings-drawer-backdrop-out/)
