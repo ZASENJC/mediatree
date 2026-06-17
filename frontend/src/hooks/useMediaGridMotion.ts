@@ -107,7 +107,7 @@ export function useMediaGridMotion() {
       resizeObserver.observe(grid)
     }
     const syncGrids = () => {
-      document.querySelectorAll('.media-grid').forEach(observeGrid)
+      document.querySelectorAll('.media-grid:not([data-media-grid-motion="off"])').forEach(observeGrid)
       for (const grid of Array.from(grids)) {
         if (!document.contains(grid)) {
           grids.delete(grid)

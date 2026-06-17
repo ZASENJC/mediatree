@@ -11,15 +11,17 @@ interface Props {
   current: string
   onChange: (key: string) => void
   variant?: 'select' | 'menu'
+  size?: 'default' | 'heading'
 }
 
-export default memo(function SortDropdown({ options, current, onChange, variant = 'select' }: Props) {
+export default memo(function SortDropdown({ options, current, onChange, variant = 'select', size = 'default' }: Props) {
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 })
   const [positionReady, setPositionReady] = useState(false)
   const currentLabel = options.find(opt => opt.key === current)?.label || '排序'
+  const isHeadingSize = size === 'heading'
 
   const updateMenuPosition = () => {
     const trigger = triggerRef.current
@@ -142,17 +144,17 @@ export default memo(function SortDropdown({ options, current, onChange, variant 
         <button
           type="button"
           onClick={toggleMenu}
-          className={`inline-flex h-8 w-12 select-none items-center justify-center rounded-full text-gray-200 shadow-[0_10px_26px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-xl transition-all duration-200 hover:bg-white/[0.14] active:scale-95 focus:outline-none [-webkit-tap-highlight-color:transparent] ${
+          className={`inline-flex ${isHeadingSize ? 'h-[1.125rem] w-[1.75rem]' : 'h-8 w-12'} select-none items-center justify-center rounded-full text-gray-200 shadow-[0_10px_26px_rgba(0,0,0,0.26),inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-xl transition-all duration-200 hover:bg-white/[0.14] active:scale-95 focus:outline-none [-webkit-tap-highlight-color:transparent] ${
             open ? 'bg-white/[0.16]' : 'bg-white/[0.08]'
           }`}
           aria-label={`排序方式：${currentLabel}`}
           aria-expanded={open}
           aria-haspopup="menu"
         >
-          <span className="relative h-3.5 w-4" aria-hidden="true">
-            <span className={`absolute left-0 top-0 h-0.5 w-4 rounded-full bg-current transition-transform duration-200 ${open ? 'translate-y-0.5' : ''}`} />
-            <span className="absolute left-0 top-1.5 h-0.5 w-4 rounded-full bg-current" />
-            <span className={`absolute bottom-0 left-0 h-0.5 w-4 rounded-full bg-current transition-transform duration-200 ${open ? '-translate-y-0.5' : ''}`} />
+          <span className={`relative ${isHeadingSize ? 'h-[0.625rem] w-3' : 'h-3.5 w-4'}`} aria-hidden="true">
+            <span className={`absolute left-0 top-0 ${isHeadingSize ? 'h-px w-3' : 'h-0.5 w-4'} rounded-full bg-current transition-transform duration-200 ${open ? (isHeadingSize ? 'translate-y-px' : 'translate-y-0.5') : ''}`} />
+            <span className={`absolute left-0 ${isHeadingSize ? 'top-[0.28125rem] h-px w-3' : 'top-1.5 h-0.5 w-4'} rounded-full bg-current`} />
+            <span className={`absolute bottom-0 left-0 ${isHeadingSize ? 'h-px w-3' : 'h-0.5 w-4'} rounded-full bg-current transition-transform duration-200 ${open ? (isHeadingSize ? '-translate-y-px' : '-translate-y-0.5') : ''}`} />
           </span>
         </button>
         {open && positionReady && typeof document !== 'undefined' && createPortal(menu, document.body)}

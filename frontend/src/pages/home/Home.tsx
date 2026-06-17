@@ -493,7 +493,7 @@ export default function Home() {
     { label: '删除', danger: true, onClick: handleDeleteFolder },
   ]
 
-  if (libraryLoading && recentLoading) {
+  if (libraryLoading || recentLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="animate-pulse text-gray-400 text-lg">加载中...</div>
@@ -548,7 +548,7 @@ export default function Home() {
       <section className="home-section home-library-section">
         <div className="home-section-header home-library-header">
           <h2 className="home-section-title">媒体库</h2>
-          <SortDropdown options={sortOptions} current={sort} onChange={handleSort} variant="menu" />
+          <SortDropdown options={sortOptions} current={sort} onChange={handleSort} variant="menu" size="heading" />
         </div>
 
         {tree.length === 0 ? (
@@ -558,7 +558,7 @@ export default function Home() {
             <p className="mt-2 text-sm">请配置 MEDIA_ROOT 或检查浏览页勾选状态</p>
           </div>
         ) : (
-          <div className="home-poster-grid media-grid">
+          <div className="home-poster-grid media-grid" data-media-grid-motion="off">
             {tree.map((node) => {
               const coverSrc = getCoverSrc(node.random_cover || node.cover, folderCoverVersion)
               const localKey = getFolderLocalKey(node)

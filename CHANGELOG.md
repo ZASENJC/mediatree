@@ -11,6 +11,7 @@ All notable changes to MediaTree are documented here.
 ### Library
 
 - Reworked the home page so "Continue Watching" appears as a compact horizontal strip above the media library poster grid, with lighter section labels and no tab switcher
+- Stabilized the home media library's initial layout so poster rows no longer slide down while the page finishes rendering
 
 ### Scraping
 

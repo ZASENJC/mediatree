@@ -1564,6 +1564,8 @@ textarea {
 }
 
 .home-continue-cover img {
+  position: relative;
+  z-index: 1;
   display: block;
   width: 100%;
   height: 100%;
@@ -1578,6 +1580,7 @@ textarea {
 
 .home-continue-cover-placeholder {
   position: absolute;
+  z-index: 0;
   inset: 0;
   display: flex;
   align-items: center;
@@ -1592,6 +1595,7 @@ textarea {
 
 .home-continue-cover-shade {
   position: absolute;
+  z-index: 2;
   inset: auto 0 0;
   height: 42%;
   pointer-events: none;
@@ -1600,6 +1604,7 @@ textarea {
 
 .home-continue-progress-track {
   position: absolute;
+  z-index: 3;
   left: 15%;
   right: 15%;
   bottom: 26%;
@@ -1728,6 +1733,7 @@ textarea {
   width: 100%;
   min-width: 0;
   max-width: none;
+  content-visibility: visible;
   height: auto;
   min-height: 0;
   max-height: none;
