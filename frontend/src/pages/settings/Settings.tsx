@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { marked } from 'marked'
 import { api, Config, MediaRoot, LibrarySetting, UpdateCheckResult, UpdateStatus, ScraperInfo, ScraperPlugin, clearCache, getServerUrl, setServerUrl as saveServerUrl, isNativeApp, resolveApiUrl } from '../../api'
-import { FALLBACK_SCRAPER_OPTIONS, normalizeScraperOptions } from '../../scrapers'
+import { FALLBACK_SCRAPER_OPTIONS, normalizeLibraryScraperOptions } from '../../scrapers'
 import { getUiPrefs, setUiPrefs, dismissUpdate } from '../../store'
 import {
   BUILTIN_THEMES,
@@ -59,7 +59,7 @@ export default function Settings() {
   const [logVisible, setLogVisible] = useState<Record<string, boolean>>({})
   const scanTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({})
   const libraryScraperOptions = useMemo(
-    () => normalizeScraperOptions(scrapers),
+    () => normalizeLibraryScraperOptions(scrapers),
     [scrapers],
   )
 

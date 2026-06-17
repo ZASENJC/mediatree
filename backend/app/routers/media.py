@@ -13,7 +13,7 @@ from ..covers import (
     should_use_continue_snapshot,
 )
 from ..database import get_movie_detail
-from ..security import require_media_access
+from ..security import has_app_auth, require_media_access
 from ..stream import get_media_info, get_video_stream
 from ..subtitles import find_external_audio_tracks
 
@@ -114,7 +114,8 @@ async def api_continue_cover(movie_id: int, request: Request):
 
 @router.post("/api/continue-cover-reset/{movie_id}")
 async def api_continue_cover_reset(movie_id: int, request: Request):
-    require_media_access(request)
+    if not has_app_auth(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
     movie = await get_movie_detail(movie_id)
     if should_use_continue_snapshot(movie):
         delete_continue_snapshot(movie["path"])

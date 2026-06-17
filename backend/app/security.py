@@ -19,7 +19,6 @@ MEDIA_ROUTE_PREFIXES = (
     "/api/stream/",
     "/api/cover/",
     "/api/continue-cover/",
-    "/api/continue-cover-reset/",
     "/api/episode-still/",
     "/api/thumbnail/",
     "/api/subtitle-tracks/",

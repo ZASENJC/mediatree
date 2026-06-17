@@ -130,6 +130,18 @@ class SecurityRegressionTest(unittest.TestCase):
             self.assertNotIn("path", body[0])
             self.assertNotIn("path", body[1])
 
+    def test_continue_cover_reset_requires_app_auth_not_media_token(self):
+        with TestClient(main.app) as client:
+            token_response = client.post("/api/media-token", headers=self.auth_headers())
+            self.assertEqual(token_response.status_code, 200)
+            media_token = token_response.json()["token"]
+
+            media_token_reset = client.post(f"/api/continue-cover-reset/1?token={media_token}")
+            self.assertEqual(media_token_reset.status_code, 401)
+
+            app_auth_reset = client.post("/api/continue-cover-reset/1", headers=self.auth_headers())
+            self.assertEqual(app_auth_reset.status_code, 200)
+
     def test_restore_upload_rejects_tar_members_that_escape_data_dir(self):
         payload = io.BytesIO()
         with tarfile.open(fileobj=payload, mode="w:gz") as tar:
