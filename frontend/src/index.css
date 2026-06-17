@@ -1436,11 +1436,28 @@ textarea {
 
 .settings-drawer-panel {
   inline-size: min(calc(100vw - 1rem), 36rem);
-  background: rgba(8, 10, 18, 0.56);
-  backdrop-filter: blur(4px) saturate(145%);
-  -webkit-backdrop-filter: blur(4px) saturate(145%);
+  background:
+    linear-gradient(180deg, rgba(18, 20, 30, 0.76), rgba(6, 8, 16, 0.8)),
+    rgba(8, 10, 18, 0.7);
+  backdrop-filter: blur(32px) saturate(180%) brightness(1.08);
+  -webkit-backdrop-filter: blur(32px) saturate(180%) brightness(1.08);
+  box-shadow:
+    0 28px 90px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
   animation: settings-drawer-panel-in 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
   will-change: transform, opacity, filter;
+}
+
+.settings-drawer-panel::before {
+  background: none;
+}
+
+.settings-drawer-panel::after {
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -44px 88px rgba(0, 0, 0, 0.18);
 }
 
 .settings-drawer-panel.is-closing {

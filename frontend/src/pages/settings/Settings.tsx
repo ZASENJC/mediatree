@@ -1366,7 +1366,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
   return createPortal(
     <>
       <div
-        className={"settings-drawer-backdrop fixed inset-0 z-[60] bg-black/40 backdrop-blur-2xl" + (closing ? ' is-closing' : '')}
+        className={"settings-drawer-backdrop fixed inset-0 z-[60]" + (closing ? ' is-closing' : '')}
         onClick={requestClose}
       >
         <div className="settings-drawer-shell flex h-full w-full justify-end px-3 py-6 sm:px-4 sm:py-9">

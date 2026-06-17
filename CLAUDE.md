@@ -196,7 +196,7 @@ scan_media(root)
 - `src/utils/`: `polling.ts`, `vttParser.ts` (WebVTT subtitle parser)
 - `src/hooks/`: `useSearch.ts`
 - `src/constants/`: `sortOptions.ts`
-- `App.tsx`: root component with glassmorphism nav bar, route definitions (`/`, `/folder`, `/browse`, `/detail/:id`, `/favorites`, `/settings`, `/login`, `/setup`), search overlay (desktop dropdown + mobile standalone bar), library modal. All modal/overlay backdrops use `bg-black/40 backdrop-blur-2xl z-[60]` to sit above sticky header (`z-50`).
+- `App.tsx`: root component with glassmorphism nav bar, route definitions (`/`, `/folder`, `/browse`, `/detail/:id`, `/favorites`, `/settings`, `/login`, `/setup`), search overlay (desktop dropdown + mobile standalone bar), library modal. Modal/overlay backdrops generally use `bg-black/40 backdrop-blur-2xl z-[60]` to sit above sticky header (`z-50`); the Settings drawer is the exception and keeps a transparent click-capture backdrop so liquid glass applies only to the drawer panel.
 - `ContextMenu.tsx`: singleton right-click menu with glassmorphism inline styles (backdrop blur, rounded-2xl, semi-transparent background)
 
 ### UI Design System (Glassmorphism + Apple style)

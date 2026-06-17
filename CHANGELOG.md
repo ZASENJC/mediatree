@@ -12,6 +12,7 @@ All notable changes to MediaTree are documented here.
 
 - Changed Settings into a right-side drawer that opens above the current page instead of replacing the main route
 - Expanded the Settings category rail so tab labels stay fully visible, while keeping the text small and the active selection surface wider
+- Kept the Settings liquid-glass effect on the drawer panel only, so opening Settings no longer blurs or dims the page underneath
 
 ### Library
 
