@@ -1446,6 +1446,8 @@ textarea {
   --mt-home-poster-three-column-width: calc((100% - (var(--mt-media-grid-column-gap, var(--mt-media-grid-gap)) * 2)) / 3);
   --mt-home-poster-width: clamp(var(--mt-home-poster-min), var(--mt-home-poster-three-column-width), var(--mt-home-poster-max));
   --mt-home-poster-grid-template: repeat(auto-fill, minmax(0, var(--mt-home-poster-width)));
+  --mt-home-section-title-gap: 0.85rem;
+  --mt-home-library-title-gap: calc(var(--mt-home-section-title-gap) + 3px);
   --mt-media-grid-gap: clamp(1rem, 2.6vw, 3rem);
   --mt-media-grid-column-gap: var(--mt-media-grid-gap);
   --mt-media-grid-row-gap: clamp(0.9rem, 1.4vw, 1.25rem);
@@ -1479,16 +1481,17 @@ textarea {
 
 .home-section-header {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 0.75rem;
   min-width: 0;
   padding-inline: 0.25rem;
-  margin-bottom: 0.85rem;
+  margin-bottom: var(--mt-home-section-title-gap);
 }
 
 .home-library-header {
   padding-inline: 0;
+  margin-bottom: var(--mt-home-library-title-gap);
 }
 
 .home-section-title {

@@ -515,6 +515,7 @@ test('home library uses poster grid cards with external title metadata', () => {
   const libraryGrid = source.match(/<div className="home-poster-grid[\s\S]*?\{tree\.map/)?.[0] ?? ''
   const card = source.match(/className="home-poster-card media-grid-card group cursor-pointer"[\s\S]*?<\/div>\s*\)\s*\}\)/)?.[0] ?? ''
   const homePage = cssRuleBody(css, '.home-page {')
+  const sectionHeader = cssRuleBody(css, '.home-section-header {')
   const posterGrid = cssRuleBody(css, '.home-poster-grid {')
   const libraryHeader = cssRuleBody(css, '.home-library-header {')
   const posterCard = cssRuleBody(css, '.home-poster-grid > .home-poster-card {')
@@ -535,8 +536,13 @@ test('home library uses poster grid cards with external title metadata', () => {
   assert.match(homePage, /--mt-home-poster-three-column-width:\s*calc\(\(100% - \(var\(--mt-media-grid-column-gap,\s*var\(--mt-media-grid-gap\)\) \* 2\)\) \/ 3\);/)
   assert.match(homePage, /--mt-home-poster-width:\s*clamp\(var\(--mt-home-poster-min\),\s*var\(--mt-home-poster-three-column-width\),\s*var\(--mt-home-poster-max\)\);/)
   assert.match(homePage, /--mt-home-poster-grid-template:\s*repeat\(auto-fill,\s*minmax\(0,\s*var\(--mt-home-poster-width\)\)\);/)
+  assert.match(homePage, /--mt-home-section-title-gap:\s*0\.85rem;/)
+  assert.match(homePage, /--mt-home-library-title-gap:\s*calc\(var\(--mt-home-section-title-gap\) \+ 3px\);/)
   assert.match(homePage, /--mt-media-grid-gap:\s*clamp\(1rem,\s*2\.6vw,\s*3rem\);/)
+  assert.match(sectionHeader, /align-items:\s*flex-end;/)
+  assert.match(sectionHeader, /margin-bottom:\s*var\(--mt-home-section-title-gap\);/)
   assert.match(libraryHeader, /padding-inline:\s*0;/)
+  assert.match(libraryHeader, /margin-bottom:\s*var\(--mt-home-library-title-gap\);/)
   assert.match(posterGrid, /display:\s*grid;/)
   assert.match(posterGrid, /width:\s*100%;/)
   assert.match(posterGrid, /min-width:\s*0;/)
