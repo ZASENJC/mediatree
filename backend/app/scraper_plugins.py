@@ -111,6 +111,36 @@ def is_reserved_plugin_name(name: str) -> bool:
     return bool(settings.enable_builtin_scraper_plugins and name in BUILTIN_SCRAPER_PLUGIN_NAMES)
 
 
+def is_builtin_scraper_available_sync(name: str) -> bool:
+    value = (name or "").strip().lower()
+    if value == "tmdb":
+        value = "tmdb_movie"
+    if not settings.enable_builtin_scraper_plugins or value not in BUILTIN_SCRAPER_PLUGIN_NAMES:
+        return False
+    row = builtin_plugin_control_rows_sync().get(value)
+    if row is None:
+        return True
+    return bool(row.get("builtin")) and bool(row.get("enabled")) and not bool(row.get("deleted"))
+
+
+def default_scraper_name_sync(exclude: set[str] | None = None) -> str:
+    excluded = {item.strip().lower() for item in (exclude or set())}
+    if "auto" not in excluded and is_builtin_scraper_available_sync("auto"):
+        return "auto"
+    preferred = ["tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi", "javdatabase", "none"]
+    for name in preferred:
+        if name not in excluded and is_builtin_scraper_available_sync(name):
+            return name
+    enabled_plugins = list_enabled_plugin_rows_sync()
+    for plugin in enabled_plugins:
+        name = str(plugin.get("name") or "none")
+        if name not in excluded:
+            return name
+    if enabled_plugins:
+        return str(enabled_plugins[0].get("name") or "none")
+    return "none"
+
+
 def validate_manifest(raw: Any) -> ScraperPluginManifest:
     if not isinstance(raw, dict):
         raise HTTPException(status_code=400, detail="plugin.json must be an object")
@@ -231,7 +261,7 @@ async def install_plugin_archive(filename: str, content: bytes) -> dict:
         raise HTTPException(status_code=400, detail="Invalid zip archive")
 
     await upsert_plugin_manifest(manifest, str(target_root), enabled=False, error="")
-    refresh_plugin_cache()
+    refresh_scraper_runtime_state()
     return await get_plugin(manifest.name) or {}
 
 
@@ -284,8 +314,9 @@ async def upsert_plugin_manifest(
 async def list_plugins() -> list[dict]:
     from .database import get_db
 
+    await sync_builtin_plugin_rows()
     db = await get_db()
-    cur = await db.execute("SELECT * FROM scraper_plugins ORDER BY builtin DESC, name")
+    cur = await db.execute("SELECT * FROM scraper_plugins WHERE COALESCE(deleted, 0)=0 ORDER BY builtin DESC, name")
     return [_plugin_public_row(dict(row)) for row in await cur.fetchall()]
 
 
@@ -297,10 +328,107 @@ def list_enabled_plugin_rows_sync() -> list[dict]:
         import sqlite3
         with sqlite3.connect(str(db_path)) as conn:
             conn.row_factory = sqlite3.Row
-            cur = conn.execute("SELECT * FROM scraper_plugins WHERE enabled=1 ORDER BY name")
+            cur = conn.execute("SELECT * FROM scraper_plugins WHERE enabled=1 AND builtin=0 AND COALESCE(deleted, 0)=0 ORDER BY name")
             return [dict(row) for row in cur.fetchall()]
     except sqlite3.Error:
         return []
+
+
+def builtin_plugin_control_rows_sync() -> dict[str, dict]:
+    db_path = Path(settings.db_path)
+    if not db_path.exists():
+        return {}
+    try:
+        import sqlite3
+        with sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.execute("SELECT * FROM scraper_plugins WHERE builtin=1")
+            return {str(row["name"]): dict(row) for row in cur.fetchall()}
+    except sqlite3.Error:
+        return {}
+
+
+def _builtin_manifest_row_values(manifest: "BuiltinScraperManifest") -> dict[str, Any]:
+    return {
+        "version": manifest.version,
+        "label": manifest.label,
+        "description": manifest.description,
+        "supported_media_types": json.dumps(manifest.supported_media_types),
+        "entrypoint": manifest.entrypoint,
+        "class_name": manifest.class_name,
+        "installed_path": str(Path("builtin") / manifest.name),
+    }
+
+
+async def sync_builtin_plugin_rows() -> None:
+    if not settings.enable_builtin_scraper_plugins:
+        return
+
+    from .database import get_db
+    from .scrapers.registry import list_builtin_scraper_manifests
+
+    db = await get_db()
+    changed = False
+    for manifest in list_builtin_scraper_manifests():
+        cur = await db.execute("SELECT * FROM scraper_plugins WHERE name=?", (manifest.name,))
+        row = await cur.fetchone()
+        if row:
+            raw = dict(row)
+            if not raw.get("builtin"):
+                continue
+            values = _builtin_manifest_row_values(manifest)
+            if all(str(raw.get(key) or "") == str(value or "") for key, value in values.items()):
+                continue
+            await db.execute(
+                """
+                UPDATE scraper_plugins
+                   SET version=?,
+                       label=?,
+                       description=?,
+                       supported_media_types=?,
+                       entrypoint=?,
+                       class_name=?,
+                       installed_path=?,
+                       builtin=1,
+                       updated_at=datetime('now')
+                 WHERE name=? AND builtin=1
+                """,
+                (
+                    values["version"],
+                    values["label"],
+                    values["description"],
+                    values["supported_media_types"],
+                    values["entrypoint"],
+                    values["class_name"],
+                    values["installed_path"],
+                    manifest.name,
+                ),
+            )
+        else:
+            values = _builtin_manifest_row_values(manifest)
+            await db.execute(
+                """
+                INSERT INTO scraper_plugins (
+                    name, version, label, description, supported_media_types,
+                    entrypoint, class_name, installed_path, enabled, builtin, deleted, error
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, '')
+                """,
+                (
+                    manifest.name,
+                    values["version"],
+                    values["label"],
+                    values["description"],
+                    values["supported_media_types"],
+                    values["entrypoint"],
+                    values["class_name"],
+                    values["installed_path"],
+                    1,
+                ),
+            )
+        changed = True
+    if changed:
+        await db.commit()
 
 
 def is_enabled_plugin_name_sync(name: str) -> bool:
@@ -315,8 +443,9 @@ def is_enabled_plugin_name_sync(name: str) -> bool:
 async def get_plugin(name: str) -> dict | None:
     from .database import get_db
 
+    await sync_builtin_plugin_rows()
     db = await get_db()
-    cur = await db.execute("SELECT * FROM scraper_plugins WHERE name=?", (name,))
+    cur = await db.execute("SELECT * FROM scraper_plugins WHERE name=? AND COALESCE(deleted, 0)=0", (name,))
     row = await cur.fetchone()
     return _plugin_public_row(dict(row)) if row else None
 
@@ -324,14 +453,17 @@ async def get_plugin(name: str) -> dict | None:
 async def set_plugin_enabled(name: str, enabled: bool) -> dict:
     from .database import get_db
 
+    await sync_builtin_plugin_rows()
     db = await get_db()
-    cur = await db.execute("SELECT * FROM scraper_plugins WHERE name=?", (name,))
+    cur = await db.execute("SELECT * FROM scraper_plugins WHERE name=? AND COALESCE(deleted, 0)=0", (name,))
     row = await cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Plugin not found")
     raw = dict(row)
-    if enabled:
+    if enabled and not raw.get("builtin"):
         load_plugin_scraper(raw)
+        error = ""
+    elif enabled:
         error = ""
     else:
         error = raw.get("error") or ""
@@ -340,7 +472,7 @@ async def set_plugin_enabled(name: str, enabled: bool) -> dict:
         (1 if enabled else 0, error, name),
     )
     await db.commit()
-    refresh_plugin_cache()
+    refresh_scraper_runtime_state()
     plugin = await get_plugin(name)
     return plugin or {}
 
@@ -355,35 +487,47 @@ async def record_plugin_error(name: str, error: str) -> dict:
         (message, name),
     )
     await db.commit()
-    refresh_plugin_cache()
+    refresh_scraper_runtime_state()
     plugin = await get_plugin(name)
     return plugin or {}
 
 
 async def delete_plugin(name: str) -> None:
-    from .database import get_all_library_settings, get_db
-
-    for setting in await get_all_library_settings():
-        if (setting.get("scraper") or "") == name:
-            raise HTTPException(status_code=409, detail="Plugin is used by a library")
+    from .database import get_db
 
     db = await get_db()
-    cur = await db.execute("SELECT installed_path FROM scraper_plugins WHERE name=?", (name,))
+    await sync_builtin_plugin_rows()
+    cur = await db.execute("SELECT installed_path, builtin FROM scraper_plugins WHERE name=? AND COALESCE(deleted, 0)=0", (name,))
     row = await cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Plugin not found")
     installed_path = row["installed_path"]
-    await db.execute("DELETE FROM scraper_plugins WHERE name=?", (name,))
+    if row["builtin"]:
+        fallback = default_scraper_name_sync(exclude={name})
+        await db.execute(
+            "UPDATE scraper_plugins SET enabled=0, deleted=1, updated_at=datetime('now') WHERE name=?",
+            (name,),
+        )
+        await db.execute(
+            "UPDATE library_settings SET scraper=? WHERE scraper=?",
+            (fallback, name),
+        )
+    else:
+        cur = await db.execute("SELECT 1 FROM library_settings WHERE scraper=?", (name,))
+        if await cur.fetchone():
+            raise HTTPException(status_code=409, detail="Plugin is used by a library")
+        await db.execute("DELETE FROM scraper_plugins WHERE name=?", (name,))
     await db.commit()
 
-    try:
-        path = Path(installed_path).resolve()
-        root = plugin_root().resolve()
-        if path.is_relative_to(root) and path.exists():
-            shutil.rmtree(path)
-    except Exception as exc:
-        logger.warning(f"Failed to remove scraper plugin files for {name}: {exc}")
-    refresh_plugin_cache()
+    if not row["builtin"]:
+        try:
+            path = Path(installed_path).resolve()
+            root = plugin_root().resolve()
+            if path.is_relative_to(root) and path.exists():
+                shutil.rmtree(path)
+        except Exception as exc:
+            logger.warning(f"Failed to remove scraper plugin files for {name}: {exc}")
+    refresh_scraper_runtime_state()
 
 
 def load_plugin_scraper(row: dict) -> BaseScraper:
@@ -427,3 +571,11 @@ def load_plugin_scraper(row: dict) -> BaseScraper:
 
 def refresh_plugin_cache() -> None:
     _plugin_instance_cache.clear()
+
+
+def refresh_scraper_runtime_state() -> None:
+    try:
+        from .scrapers.registry import refresh_scraper_plugins
+        refresh_scraper_plugins()
+    except Exception:
+        refresh_plugin_cache()

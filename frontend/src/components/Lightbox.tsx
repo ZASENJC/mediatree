@@ -81,7 +81,7 @@ export default function Lightbox({ images, index, onClose, onPrev, onNext }: Pro
       <img
         src={image.src}
         alt={image.alt || `thumbnail ${index + 1}`}
-        className="max-h-[90vh] max-w-[90vw] rounded-3xl border border-white/10 object-contain shadow-glass"
+        className="max-h-[90vh] max-w-[90vw] rounded-3xl object-contain shadow-glass"
         onClick={(e) => e.stopPropagation()}
         onError={(e) => {
           if (image.fallback && (e.currentTarget as HTMLImageElement).src !== image.fallback) {

@@ -125,6 +125,18 @@
     --mt-topbar-text-fade-duration: 960ms;
     --mt-topbar-ease: cubic-bezier(0.18, 0.82, 0.18, 1);
     font-family: var(--mt-font-family);
+    opacity: 1;
+    transform: translateY(0);
+    transition:
+      opacity 260ms ease,
+      transform 260ms ease;
+    will-change: opacity, transform;
+  }
+
+  .mt-topbar.is-settings-drawer-open {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-0.35rem);
   }
 
   .mt-topbar .topbar-shell {
@@ -480,7 +492,7 @@
 
   .mt-panel,
   .glass-panel {
-    border: 1px solid var(--mt-color-border);
+    border: 0;
     border-radius: var(--mt-radius-panel);
     background: var(--mt-color-surface);
     box-shadow: var(--mt-shadow-glass);
@@ -490,7 +502,7 @@
 
   .mt-card,
   .glass-card {
-    border: 1px solid var(--mt-color-border);
+    border: 0;
     border-radius: var(--mt-radius-card);
     background: var(--mt-color-surface-container, var(--mt-color-surface-muted));
     box-shadow: var(--mt-shadow-card);
@@ -566,7 +578,7 @@
 
   .mt-popover,
   .glass-popover {
-    border: 1px solid var(--mt-color-border);
+    border: 0;
     border-radius: var(--mt-radius-card);
     background: var(--mt-color-surface-container-high, var(--mt-color-surface-muted));
     box-shadow: var(--mt-shadow-glass);
@@ -576,7 +588,7 @@
 
   .mt-dialog,
   .glass-modal {
-    border: 1px solid var(--mt-color-border);
+    border: 0;
     border-radius: var(--mt-radius-panel);
     background: var(--mt-color-surface);
     box-shadow: var(--mt-shadow-glass);
@@ -611,14 +623,13 @@
     overflow: hidden;
     isolation: isolate;
     border-radius: 18px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 0;
     background: rgba(8, 10, 18, 0.78);
     backdrop-filter: blur(28px) saturate(170%);
     -webkit-backdrop-filter: blur(28px) saturate(170%);
     box-shadow: none;
     transition:
-      background-color var(--mt-motion-fast) ease,
-      border-color var(--mt-motion-fast) ease;
+      background-color var(--mt-motion-fast) ease;
   }
 
   .liquid-glass::after {
@@ -628,7 +639,7 @@
     border-radius: inherit;
     pointer-events: none;
     z-index: 0;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    border: 0;
   }
 
   .liquid-glass > * {
@@ -637,7 +648,7 @@
   }
 
   :root[data-mediatree-color-scheme="light"] .liquid-glass {
-    border-color: rgba(15, 23, 42, 0.12);
+    border: 0;
     background: rgba(255, 255, 255, 0.72);
     box-shadow: none;
   }
@@ -983,7 +994,7 @@ canvas[data-mediatree-subtitle="ass"] {
 .mediatree-artplayer .art-selector,
 .mediatree-artplayer .art-contextmenus,
 .mediatree-artplayer .art-info {
-  border: 1px solid var(--player-ui-border) !important;
+  border: 0 !important;
   background: var(--player-ui-surface-elevated) !important;
   color: var(--player-ui-text) !important;
   box-shadow: var(--player-ui-shadow) !important;
@@ -1107,7 +1118,7 @@ canvas[data-mediatree-subtitle="ass"] {
 .player-resume-prompt,
 .player-warning,
 .player-modal {
-  border: 1px solid var(--player-ui-border);
+  border: 0;
   background: var(--player-ui-surface-elevated);
   color: var(--player-ui-text);
   box-shadow: var(--player-ui-shadow);
@@ -1150,7 +1161,6 @@ canvas[data-mediatree-subtitle="ass"] {
 }
 
 .player-warning {
-  border-color: var(--player-ui-warning-border);
   background: var(--player-ui-warning-surface);
 }
 
@@ -1258,7 +1268,7 @@ canvas[data-mediatree-subtitle="ass"] {
   transform: translateX(-50%);
   z-index: 1;
   padding: 6px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 0;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.48);
   color: rgba(255, 255, 255, 0.86);
@@ -1439,6 +1449,7 @@ textarea {
 }
 
 .settings-drawer-backdrop {
+  overscroll-behavior: contain;
   animation: settings-drawer-backdrop-in 0.18s ease-out both;
 }
 
@@ -1455,7 +1466,7 @@ textarea {
 }
 
 :root .settings-drawer-panel.liquid-glass {
-  border-color: rgba(255, 255, 255, 0.12);
+  border: 0;
   background: rgba(5, 7, 13, 0.96);
   backdrop-filter: blur(34px) saturate(170%);
   -webkit-backdrop-filter: blur(34px) saturate(170%);
@@ -1474,6 +1485,7 @@ textarea {
 .settings-scroll-content {
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
@@ -1544,7 +1556,7 @@ textarea {
 
 .settings-option-group {
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 0;
   border-radius: 1.1rem;
   background: rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(12px) saturate(135%);
@@ -1731,19 +1743,17 @@ textarea {
   align-items: center;
   gap: 0.75rem;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 0;
   border-radius: 1.1rem;
   background: rgba(255, 255, 255, 0.06);
   padding: 0.72rem 0.78rem;
   transition:
-    border-color var(--mt-motion-fast) ease,
     background-color var(--mt-motion-fast) ease,
     box-shadow var(--mt-motion-fast) ease;
 }
 
 .settings-theme-card.is-active {
-  border-color: rgba(10, 132, 255, 0.4);
-  background: rgba(10, 132, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .settings-theme-card-header {
@@ -1818,7 +1828,7 @@ textarea {
 .settings-library-card {
   display: grid;
   gap: 0.68rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 0;
   border-radius: 1.1rem;
   background: rgba(255, 255, 255, 0.06);
   padding: 0.78rem;
@@ -1956,11 +1966,14 @@ textarea {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .mt-topbar,
+  .mt-topbar.is-settings-drawer-open,
   .settings-drawer-backdrop,
   .settings-drawer-backdrop.is-closing,
   .settings-drawer-panel,
   .settings-drawer-panel.is-closing,
   .settings-tab-rail {
+    transition: none !important;
     animation: none !important;
   }
 }
@@ -2186,7 +2199,7 @@ textarea {
   position: relative;
   aspect-ratio: 16 / 9;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 0;
   border-radius: var(--mt-radius-card);
   background: rgba(255, 255, 255, 0.04);
   box-shadow: var(--mt-shadow-card);
@@ -2281,7 +2294,7 @@ textarea {
 .home-poster-cover {
   flex: 0 0 auto;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 0;
   border-radius: var(--mt-radius-card);
   box-shadow: var(--mt-shadow-card);
 }

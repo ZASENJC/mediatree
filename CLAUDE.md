@@ -102,7 +102,7 @@ In production, the backend serves the built frontend at `/`. In development, run
 ### Scraper plugin system
 - `base.py` — `BaseScraper` abstract class with `search() -> ScrapeCandidate` and `get_detail() -> ScrapeResult`. Dataclasses defined here.
 - `registry.py` — Maps scraper names to instances. Built-ins are loaded from `backend/app/builtin_plugins/scrapers/*/plugin.json` manifests. Built-in: `tmdb_movie`, `tmdb_tv`, `tmdb_collection`, `bangumi`, `javdatabase`, `auto` (IMDB/TMDB ID → TMDB title → Bangumi chain), `none` (no-op). Use `get_scraper()` and `list_scrapers()`.
-- `scraper_plugins.py` — Runtime uploaded scraper plugin service. Installs trusted local `.zip` plugins into `settings.data_dir/scraper_plugins/<name>/<version>/`, validates archive boundaries and manifests, keeps uploaded plugins disabled until explicitly enabled, and prevents names reserved by built-ins/aliases.
+- `scraper_plugins.py` — Scraper plugin management service. Installs trusted local `.zip` plugins into `settings.data_dir/scraper_plugins/<name>/<version>/`, validates archive boundaries and manifests, keeps uploaded plugins disabled until explicitly enabled, prevents names reserved by built-ins/aliases, and stores Settings control state for built-in scrapers. Built-ins can be disabled or hidden from Settings without deleting application-shipped code.
 - `tmdb_scraper.py`, `bangumi_scraper.py`, `javdatabase_scraper.py` — Thin adapters wrapping `tmdb.py`, `bangumi.py`, `javdb.py`.
 - `auto_scraper.py`, `none_scraper.py` — Core classes used by the built-in `auto` and `none` plugin entrypoints.
 - `backend/app/builtin_plugins/scrapers/<name>/plugin.py` — Thin built-in plugin entrypoint that subclasses or configures the reusable scraper class.

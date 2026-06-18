@@ -52,7 +52,7 @@ export default function CoverPickerModal({
               <div
                 key={i}
                 onClick={() => onSelectCover(c.url)}
-                className="group cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition-all hover:border-apple-blue/40 hover:shadow-glow"
+                className="group cursor-pointer overflow-hidden rounded-2xl bg-white/[0.04] transition-all hover:shadow-glow"
               >
                 <div className="aspect-[2/3]">
                   <img src={c.url} alt={c.source} className="h-full w-full object-cover" />
@@ -79,7 +79,7 @@ export default function CoverPickerModal({
               <div
                 key={i}
                 onClick={() => onSelectBackdrop?.(b.url)}
-                className="cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] transition-all hover:border-apple-blue/40 hover:shadow-glow"
+                className="cursor-pointer overflow-hidden rounded-2xl bg-white/[0.04] transition-all hover:shadow-glow"
               >
                 <div className="aspect-video">
                   <img src={b.url} alt={b.source} className="h-full w-full object-cover" />

@@ -55,11 +55,14 @@ class AutoScraper(BaseScraper):
             logger.info(f"  Auto scraper using TMDB ID exact match: tmdbid={token.id}")
             from . import registry
 
-            data = await registry._try_auto_tmdb_id(token, movie or {}, candidates)
-            if data:
-                logger.info(f"  Auto scraper TMDB ID success: tmdbid={token.id} type={data.get('tmdb_type')}")
-                return data
-            logger.warning("  TMDB ID 精确匹配失败，fallback 到标题搜索")
+            if _tmdb_scrapers_available():
+                data = await registry._try_auto_tmdb_id(token, movie or {}, candidates)
+                if data:
+                    logger.info(f"  Auto scraper TMDB ID success: tmdbid={token.id} type={data.get('tmdb_type')}")
+                    return data
+                logger.warning("  TMDB ID 精确匹配失败，fallback 到标题搜索")
+            else:
+                logger.info("  Auto scraper skipped TMDB ID lookup because TMDB scrapers are disabled")
 
         clean_title = clean_search_title(search_name, candidates)
         logger.info(
@@ -73,12 +76,19 @@ class AutoScraper(BaseScraper):
         logger.info(f"  Auto scraper: sequential fallback to TMDB title search for '{clean_title}'")
         from . import registry
 
-        data = await registry.tmdb_title_search(clean_title, search_name, code)
-        if data and data.get("title"):
-            logger.info(f"  Auto scraper: TMDB title search success for '{clean_title}'")
-            return data
+        if _tmdb_scrapers_available():
+            data = await registry.tmdb_title_search(clean_title, search_name, code)
+            if data and data.get("title"):
+                logger.info(f"  Auto scraper: TMDB title search success for '{clean_title}'")
+                return data
+        else:
+            logger.info(f"  Auto scraper: TMDB title search skipped for '{clean_title}' because TMDB scrapers are disabled")
 
         logger.info(f"  Auto scraper: sequential fallback to Bangumi for '{clean_title}'")
+        if not _scraper_available("bangumi"):
+            logger.info(f"  Auto scraper: Bangumi fallback skipped for '{clean_title}' because Bangumi is disabled")
+            return None
+
         from .registry import get_scraper
 
         bangumi = get_scraper("bangumi")
@@ -92,6 +102,16 @@ class AutoScraper(BaseScraper):
 
     def normalize_result(self, raw: dict):
         raise NotImplementedError("Auto scraper is resolved by scanner fallback logic")
+
+
+def _scraper_available(name: str) -> bool:
+    from ..scraper_plugins import is_builtin_scraper_available_sync, is_enabled_plugin_name_sync
+
+    return is_builtin_scraper_available_sync(name) or is_enabled_plugin_name_sync(name)
+
+
+def _tmdb_scrapers_available() -> bool:
+    return _scraper_available("tmdb_movie") or _scraper_available("tmdb_tv")
 
 
 async def _try_auto_tmdb_id(

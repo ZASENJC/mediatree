@@ -75,7 +75,7 @@ cd frontend && npm run build
 
 用户可上传安装的刮削器应做成 `.zip` 插件包，包含 `plugin.json` 和继承 `BaseScraper` 的 Python 入口类。完整包结构、manifest 字段、安装启用流程和测试方法见[刮削器插件开发指南](/development/scraper-plugin-guide)。
 
-维护内置刮削器时，使用 `backend/app/builtin_plugins/scrapers/<name>/plugin.json` 和 `plugin.py` 接入 manifest 驱动注册表；核心复用逻辑仍可放在 `backend/app/scrapers/`。
+维护内置刮削器时，使用 `backend/app/builtin_plugins/scrapers/<name>/plugin.json` 和 `plugin.py` 接入 manifest 驱动注册表；核心复用逻辑仍可放在 `backend/app/scrapers/`。内置刮削器也会出现在设置页插件管理中，用户可以停用或隐藏它们。
 
 ## 添加前端主题
 

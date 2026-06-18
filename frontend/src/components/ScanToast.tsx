@@ -3,7 +3,7 @@ export default function ScanToast({ status, done, total, className = '' }: { sta
   const complete = status.includes('完成')
   const indeterminate = total <= 0 && !complete
   return (
-    <div className={`fixed bottom-3 left-3 right-3 z-50 rounded-3xl border border-white/10 bg-black/60 p-4 shadow-glass backdrop-blur-2xl sm:bottom-4 sm:left-auto sm:right-4 sm:w-80 ${className}`}>
+    <div className={`fixed bottom-3 left-3 right-3 z-50 rounded-3xl bg-black/60 p-4 shadow-glass backdrop-blur-2xl sm:bottom-4 sm:left-auto sm:right-4 sm:w-80 ${className}`}>
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className={`text-sm font-medium ${complete ? 'text-green-300' : 'text-white'}`}>{status}</p>

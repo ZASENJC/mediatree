@@ -8,7 +8,7 @@ from datetime import datetime
 from .config import settings
 from .anime_naming import parse_anime_filename
 from .scrapers.base import ScrapeCandidate, ScrapeResult, ScrapeStaff
-from .scraper_plugins import is_enabled_plugin_name_sync
+from .scraper_plugins import default_scraper_name_sync, is_builtin_scraper_available_sync, is_enabled_plugin_name_sync
 from .scrapers.registry import get_scraper
 from .scrapers.utils import scrape_result_to_legacy, _candidate_to_dict
 from .scrapers.tmdb_scraper import tmdb_title_search
@@ -187,11 +187,11 @@ def normalize_scraper_name(scraper: str | None) -> str:
     value = (scraper or "auto").strip().lower()
     if value == "tmdb":
         return "tmdb_movie"
-    if value in {"tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi", "javdatabase", "auto", "none"}:
+    if is_builtin_scraper_available_sync(value):
         return value
     if is_enabled_plugin_name_sync(value):
         return value
-    return "auto"
+    return default_scraper_name_sync()
 
 
 def build_fallback_chain(preferred: str) -> list[str]:
@@ -209,7 +209,12 @@ def build_fallback_chain(preferred: str) -> list[str]:
     if preferred == "tmdb_collection":
         return []
     if preferred == "bangumi":
-        return ["bangumi", "tmdb_tv_search", "tmdb_movie_search"]
+        chain = ["bangumi"]
+        if is_builtin_scraper_available_sync("tmdb_tv"):
+            chain.append("tmdb_tv_search")
+        if is_builtin_scraper_available_sync("tmdb_movie"):
+            chain.append("tmdb_movie_search")
+        return chain
     if is_enabled_plugin_name_sync(preferred):
         return [preferred]
     return ["auto"]

@@ -57,12 +57,12 @@ export default function MovieInfoPanel({ movie, compact = false }: Props) {
   ].filter(Boolean) as { label: string; value: string; tone?: string }[]
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+    <div className="rounded-2xl bg-white/[0.04] p-4">
       <h3 className="mb-3 text-sm font-semibold text-gray-200">影片信息</h3>
 
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {rows.map(row => (
-          <div key={row.label} className="rounded-2xl border border-white/10 bg-black/15 px-3 py-2">
+          <div key={row.label} className="rounded-2xl bg-black/15 px-3 py-2">
             <p className="mb-1 text-xs text-gray-500">{row.label}</p>
             <p className={`break-words text-sm ${row.tone || 'text-gray-200'}`}>{row.value}</p>
           </div>
@@ -70,7 +70,7 @@ export default function MovieInfoPanel({ movie, compact = false }: Props) {
       </div>
 
       {movie.tagline && (
-        <div className="mt-3 rounded-2xl border border-white/10 bg-black/15 px-4 py-2.5">
+        <div className="mt-3 rounded-2xl bg-black/15 px-4 py-2.5">
           <p className="text-xs italic text-apple-blue/80">"{movie.tagline}"</p>
         </div>
       )}
@@ -111,7 +111,7 @@ export default function MovieInfoPanel({ movie, compact = false }: Props) {
           </div>
           <div className={`space-y-2 ${compact ? 'max-h-48 overflow-hidden' : ''}`}>
             {visibleComments.map((comment, i) => (
-              <p key={i} className="rounded-2xl border border-white/10 bg-black/15 p-3 text-xs leading-relaxed text-gray-400">
+              <p key={i} className="rounded-2xl bg-black/15 p-3 text-xs leading-relaxed text-gray-400">
                 {comment}
               </p>
             ))}

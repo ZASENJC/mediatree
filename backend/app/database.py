@@ -100,10 +100,10 @@ def _valid_scraper(scraper: str | None) -> str:
     value = (scraper or "auto").strip().lower()
     if value == "tmdb":
         return "tmdb_movie"
-    builtin = {"auto", "javdatabase", "tmdb_movie", "tmdb_tv", "tmdb_collection", "bangumi", "none"}
-    if value in builtin:
+    from .scraper_plugins import default_scraper_name_sync, is_builtin_scraper_available_sync
+    if is_builtin_scraper_available_sync(value):
         return value
-    return value if _enabled_scraper_plugin_exists_sync(value) else "auto"
+    return value if _enabled_scraper_plugin_exists_sync(value) else default_scraper_name_sync()
 
 
 def _enabled_scraper_plugin_exists_sync(name: str) -> bool:
@@ -116,7 +116,7 @@ def _enabled_scraper_plugin_exists_sync(name: str) -> bool:
         import sqlite3
         with sqlite3.connect(str(db_path)) as conn:
             cur = conn.execute(
-                "SELECT 1 FROM scraper_plugins WHERE name=? AND enabled=1",
+                "SELECT 1 FROM scraper_plugins WHERE name=? AND enabled=1 AND builtin=0 AND COALESCE(deleted, 0)=0",
                 (name,),
             )
             return cur.fetchone() is not None

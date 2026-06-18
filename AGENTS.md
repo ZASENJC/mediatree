@@ -146,6 +146,13 @@ Codex does not provide Claude Code hooks in this repo, so enforce security throu
 - `docker-compose.yml`, `.env`, `data/`, `frontend/node_modules/`, and `frontend/dist/` are local/runtime artifacts.
 - Do not revert unrelated changes.
 
+## Scraper Plugin Management
+
+- Settings 的“插件管理”同时管理内置刮削器和用户上传插件。
+- 停用内置刮削器会让它从 `/api/scrapers`、媒体库下拉选项和运行时 registry 中消失，但仍保留在插件管理中，可重新启用。
+- 删除内置刮削器只会在当前配置中隐藏该内置项，不删除应用自带代码；仍在使用该内置项的媒体库会回退到当前可用默认刮削器。用户上传插件删除才会移除运行时安装目录，且上传插件被媒体库使用时仍禁止删除。
+- 如果变更影响刮削器可用性，保持 `scraper_plugins.py`、`scrapers/registry.py`、`database._valid_scraper()` 和设置页展示一致。
+
 ## Update Release Policy
 
 - App-package updates and full Docker image updates share one version baseline. When either side reaches a version, subsequent update comparisons must continue from the higher installed version instead of the currently running layer alone.

@@ -147,6 +147,9 @@ class TMDBScraper(BaseScraper):
 
         # Step 3: Bangumi fallback
         logger.info(f"  {scraper_name}: sequential fallback to Bangumi for '{clean_title}'")
+        if not _scraper_available("bangumi"):
+            logger.info(f"  {scraper_name}: Bangumi fallback skipped because Bangumi is disabled")
+            return None
         try:
             bangumi_scraper = get_scraper("bangumi")
             data = await bangumi_scraper.full_scrape(clean_title, code=code)
@@ -204,6 +207,12 @@ class TMDBScraper(BaseScraper):
             score=raw.get("score"),
             raw=raw,
         )
+
+
+def _scraper_available(name: str) -> bool:
+    from ..scraper_plugins import is_builtin_scraper_available_sync, is_enabled_plugin_name_sync
+
+    return is_builtin_scraper_available_sync(name) or is_enabled_plugin_name_sync(name)
 
 
 async def tmdb_title_search(

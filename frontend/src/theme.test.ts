@@ -246,6 +246,7 @@ test('topbar keeps split liquid glass groups', () => {
   assert.match(topbar, /className=\{`mt-topbar sticky top-0 z-50 pt-6 sm:pt-9/)
   assert.doesNotMatch(topbar, /pt-2 sm:pt-3/)
   assert.match(topbar, /\$\{topbarCompact \? 'is-compact' : 'is-expanded'\}/)
+  assert.match(topbar, /\$\{settingsDrawerOpen \? 'is-settings-drawer-open' : ''\}/)
   assert.match(topbar, /onPointerEnter=\{\(\) => setTopbarHovering\(true\)\}/)
   assert.match(topbar, /onPointerLeave=\{\(\) => setTopbarHovering\(false\)\}/)
   assert.match(topbar, /onFocusCapture=\{\(\) => setTopbarFocused\(true\)\}/)
@@ -282,6 +283,7 @@ test('topbar keeps split liquid glass groups', () => {
   assert.doesNotMatch(topbar, /className="rounded-full p-1\.5 text-white transition-colors hover:bg-red-500\/10 hover:text-white sm:p-2"/)
   assert.match(app, /const \[desktopSearchOpen, setDesktopSearchOpen\] = useState\(false\)/)
   assert.match(app, /const settingsDrawerOpen = location\.pathname === '\/settings'/)
+  assert.match(app, /className=\{`mt-topbar sticky top-0 z-50 pt-6 sm:pt-9 \$\{topbarCompact \? 'is-compact' : 'is-expanded'\} \$\{settingsDrawerOpen \? 'is-settings-drawer-open' : ''\}`\}/)
   assert.match(app, /const mainRouteLocation = settingsDrawerOpen/)
   assert.match(app, /const contentPathname = settingsDrawerOpen/)
   assert.match(app, /const openSettingsDrawer = \(\) => \{[\s\S]*navigate\('\/settings', \{ state: \{ settingsBackgroundLocation: mainRouteLocation \} \}\)/)
@@ -369,6 +371,11 @@ test('topbar compact mode animates into two icon spheres', () => {
   assert.match(topbar, /--mt-topbar-content-reveal-delay:\s*420ms;/)
   assert.match(topbar, /--mt-topbar-content-stagger:\s*100ms;/)
   assert.match(topbar, /--mt-topbar-text-fade-duration:\s*960ms;/)
+  assert.match(topbar, /opacity:\s*1;/)
+  assert.match(topbar, /transform:\s*translateY\(0\);/)
+  assert.match(topbar, /transition:[^}]*opacity\s+260ms\s+ease/s)
+  assert.match(topbar, /transition:[^}]*transform\s+260ms\s+ease/s)
+  assert.match(topbar, /will-change:\s*opacity,\s*transform;/)
   assert.match(topbarShell, /padding-inline:\s*var\(--mt-layout-page-padding-x\);/)
   assert.match(css, /@media \(min-width:\s*640px\)\s*\{[^}]*\.mt-topbar \.topbar-shell\s*\{[^}]*padding-inline:\s*var\(--mt-layout-page-padding-x-wide\);/s)
   assert.match(topbarGlass, /inline-size:\s*var\(--mt-topbar-expanded-width,\s*auto\);/)
@@ -455,6 +462,11 @@ test('topbar compact mode animates into two icon spheres', () => {
   assert.match(compactTrigger, /opacity\s+var\(--mt-topbar-icon-fade-duration\)\s+ease\s+var\(--mt-topbar-compact-icon-delay\),/)
   assert.match(compactTrigger, /pointer-events:\s*auto;/)
   assert.doesNotMatch(compactTrigger, /transform:/)
+
+  const settingsOpenTopbar = cssRuleBody(css, '.mt-topbar.is-settings-drawer-open {')
+  assert.match(settingsOpenTopbar, /opacity:\s*0;/)
+  assert.match(settingsOpenTopbar, /pointer-events:\s*none;/)
+  assert.match(settingsOpenTopbar, /transform:\s*translateY\(-0\.35rem\);/)
 })
 
 test('settings drawer aligns to the topbar and keeps selection weight only on active tabs', () => {
@@ -521,7 +533,8 @@ test('settings drawer aligns to the topbar and keeps selection weight only on ac
   assert.doesNotMatch(css, /\.settings-drawer-panel::after\s*\{/)
 
   const panelGlassRule = cssRuleBody(css, ':root .settings-drawer-panel.liquid-glass {')
-  assert.match(panelGlassRule, /border-color:\s*rgba\(255, 255, 255, 0\.12\);/)
+  assert.match(panelGlassRule, /border:\s*0;/)
+  assert.doesNotMatch(panelGlassRule, /border-color:/)
   assert.match(panelGlassRule, /background:\s*rgba\(5, 7, 13, 0\.96\);/)
   assert.match(panelGlassRule, /backdrop-filter:\s*blur\(34px\) saturate\(170%\);/)
   assert.match(panelGlassRule, /-webkit-backdrop-filter:\s*blur\(34px\) saturate\(170%\);/)
@@ -610,6 +623,35 @@ test('settings drawer aligns to the topbar and keeps selection weight only on ac
   assert.match(css, /@keyframes settings-drawer-backdrop-out/)
   assert.match(css, /@keyframes settings-tab-rail-in/)
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/)
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*\.mt-topbar,[\s\S]*\.mt-topbar\.is-settings-drawer-open,[\s\S]*transition:\s*none !important;[\s\S]*animation:\s*none !important;/)
+})
+
+test('settings drawer preserves the background scroll position', () => {
+  const app = readFileSync('src/App.tsx', 'utf8')
+  const css = readFileSync('src/index.css', 'utf8')
+
+  assert.match(app, /type SettingsBackgroundScrollLock = \{[\s\S]*x: number[\s\S]*y: number[\s\S]*bottomOffset: number[\s\S]*\}/)
+  assert.match(app, /function readSettingsBackgroundScrollLock\(\): SettingsBackgroundScrollLock/)
+  assert.match(app, /bottomOffset:\s*Math\.max\(0, maxScrollY - window\.scrollY\)/)
+  assert.match(app, /function getSettingsBackgroundRestoreY\(scrollLock: SettingsBackgroundScrollLock\): number/)
+  assert.match(app, /scrollLock\.bottomOffset <= SETTINGS_BOTTOM_SCROLL_TOLERANCE/)
+  assert.match(app, /return Math\.max\(0, maxScrollY - scrollLock\.bottomOffset\)/)
+  assert.match(app, /const settingsBackgroundScrollRef = useRef<SettingsBackgroundScrollLock \| null>\(null\)/)
+  assert.match(app, /settingsBackgroundScrollRef\.current = readSettingsBackgroundScrollLock\(\)/)
+  assert.match(app, /const scrollLock = settingsBackgroundScrollRef\.current \|\| readSettingsBackgroundScrollLock\(\)/)
+  assert.match(app, /body\.style\.overflowY = 'hidden'/)
+  assert.match(app, /documentElement\.style\.overflowY = 'hidden'/)
+  assert.match(app, /body\.style\.setProperty\('scrollbar-gutter', 'stable'\)/)
+  assert.match(app, /documentElement\.style\.setProperty\('scrollbar-gutter', 'stable'\)/)
+  assert.match(app, /window\.scrollTo\(scrollLock\.x, scrollLock\.y\)/)
+  assert.doesNotMatch(app, /body\.style\.position = 'fixed'/)
+  assert.doesNotMatch(app, /body\.style\.top = `-\$\{scrollLock\.y\}px`/)
+  assert.match(app, /window\.history\.scrollRestoration = 'manual'/)
+  assert.match(app, /const restoreScroll = \(\) => \{[\s\S]*window\.scrollTo\(scrollLock\.x, getSettingsBackgroundRestoreY\(scrollLock\)\)[\s\S]*\}/)
+  assert.match(app, /window\.requestAnimationFrame\(\(\) => \{[\s\S]*restoreScroll\(\)[\s\S]*window\.requestAnimationFrame\(restoreScroll\)[\s\S]*\}\)/)
+  assert.match(app, /window\.setTimeout\(restoreScroll, 80\)/)
+  assert.match(css, /\.settings-drawer-backdrop\s*\{[^}]*overscroll-behavior:\s*contain;/s)
+  assert.match(css, /\.settings-scroll-content\s*\{[^}]*overscroll-behavior:\s*contain;/s)
 })
 
 test('settings data tab constrains width without horizontal scrolling', () => {
@@ -758,6 +800,10 @@ test('settings general tab uses compact theme cards and tidy library rows', () =
   assert.match(themeCardRule, /grid-template-columns:\s*minmax\(0, 1fr\) auto;/)
   assert.match(themeCardRule, /overflow:\s*hidden;/)
 
+  const activeThemeCardRule = cssRuleBody(css, '.settings-theme-card.is-active {')
+  assert.match(activeThemeCardRule, /background:\s*rgba\(255, 255, 255, 0\.06\);/)
+  assert.doesNotMatch(activeThemeCardRule, /rgba\(10,\s*132,\s*255/)
+
   const themeCopyRule = cssRuleBody(css, '.settings-theme-card-copy {')
   assert.match(themeCopyRule, /display:\s*grid;/)
 
@@ -777,7 +823,7 @@ test('settings general tab uses compact theme cards and tidy library rows', () =
 
   const optionGroupRule = cssRuleBody(css, '.settings-option-group {')
   assert.match(optionGroupRule, /overflow:\s*hidden;/)
-  assert.match(optionGroupRule, /border:\s*1px solid rgba\(255, 255, 255, 0\.1\);/)
+  assert.match(optionGroupRule, /border:\s*0;/)
   assert.match(optionGroupRule, /border-radius:\s*1\.1rem;/)
 
   const optionRowRule = cssRuleBody(css, '.settings-option-row {')
@@ -813,7 +859,7 @@ test('liquid glass uses a single-tone dark frosted surface without highlights', 
   assert.match(liquidGlass, /overflow:\s*hidden;/)
   assert.match(liquidGlass, /isolation:\s*isolate;/)
   assert.match(liquidGlass, /border-radius:\s*18px;/)
-  assert.match(liquidGlass, /border:\s*1px solid rgba\(255,\s*255,\s*255,\s*0\.12\);/)
+  assert.match(liquidGlass, /border:\s*0;/)
   assert.match(liquidGlass, /background:\s*rgba\(8,\s*10,\s*18,\s*0\.78\);/)
   assert.match(liquidGlass, /backdrop-filter:\s*blur\(28px\) saturate\(170%\);/)
   assert.match(liquidGlass, /-webkit-backdrop-filter:\s*blur\(28px\) saturate\(170%\);/)
@@ -822,12 +868,34 @@ test('liquid glass uses a single-tone dark frosted surface without highlights', 
   assert.doesNotMatch(liquidGlass, /brightness\(/)
   assert.doesNotMatch(liquidGlass, /linear-gradient|radial-gradient|rgba\(10,\s*132,\s*255/)
   assert.doesNotMatch(css, /\.liquid-glass::before\s*\{/)
-  assert.match(css, /\.liquid-glass::after\s*\{[^}]*border:\s*1px solid rgba\(255,\s*255,\s*255,\s*0\.06\);[^}]*\}/s)
+  assert.match(css, /\.liquid-glass::after\s*\{[^}]*border:\s*0;[^}]*\}/s)
   assert.doesNotMatch(cssRuleBody(css, '.liquid-glass::after {'), /box-shadow:/)
   assert.doesNotMatch(cssRuleBody(css, '.liquid-glass::after {'), /linear-gradient|radial-gradient|rgba\(10,\s*132,\s*255/)
   assert.match(css, /\.mt-topbar \.glass-button,[^}]*\.mt-topbar \.glass-input:focus\s*\{[^}]*box-shadow:\s*none;/s)
   assert.ok(lightTextRemapIndex !== -1 && topbarWhiteIndex > lightTextRemapIndex)
   assert.match(css, /\.mt-topbar \.liquid-glass,[^}]*\.mt-topbar \.glass-input\s*\{[^}]*color:\s*#fff;/s)
+})
+
+test('container surfaces do not render outline borders', () => {
+  const css = readFileSync('src/index.css', 'utf8')
+
+  const selectors = [
+    '.glass-panel {',
+    '.glass-card {',
+    '.glass-popover {',
+    '.glass-modal {',
+    ':root .settings-drawer-panel.liquid-glass {',
+    '.settings-theme-card {',
+    '.settings-library-card {',
+    '.home-continue-cover {',
+    '.home-poster-cover {',
+  ]
+
+  for (const selector of selectors) {
+    const rule = cssRuleBody(css, selector)
+    assert.match(rule, /border:\s*0;/, `${selector} should remove the container outline`)
+    assert.doesNotMatch(rule, /border:\s*1px/, `${selector} should not draw a 1px outline`)
+  }
 })
 
 test('global layout fills available width responsively', () => {
@@ -1015,6 +1083,7 @@ test('home library uses poster grid cards with external title metadata', () => {
   assert.match(posterCard, /display:\s*flex;/)
   assert.match(posterCard, /flex-direction:\s*column;/)
   assert.match(posterCover, /overflow:\s*hidden;/)
+  assert.match(posterCover, /border:\s*0;/)
   assert.match(posterCover, /border-radius:\s*var\(--mt-radius-card\);/)
   assert.match(css, /(^|\n)\.home-poster-watched-action\s*\{\s*opacity:\s*0;/)
   assert.match(css, /\.home-poster-card:hover \.home-poster-watched-action,[^}]*\.home-poster-card:focus-within \.home-poster-watched-action\s*\{[^}]*opacity:\s*1;/s)
@@ -1166,6 +1235,28 @@ test('settings theme copy is user-facing', () => {
   assert.ok(source.includes('导入主题文件即可更换整体外观'))
   assert.ok(source.includes('导入主题'))
   assert.doesNotMatch(source, /JSON 主题包|上传主题|下载示例主题|导出我的主题/)
+})
+
+test('settings scraper tab manages built-in and uploaded scrapers in one plugin list', () => {
+  const source = readFileSync('src/pages/settings/Settings.tsx', 'utf8')
+
+  assert.doesNotMatch(source, /所有可用刮削器/)
+  assert.doesNotMatch(source, /scrapers\.map\(\s*scraper\s*=>/)
+  assert.match(source, /plugins\.map\(\s*plugin\s*=>/)
+  assert.ok(source.includes("plugin.builtin ? '内置' : '插件'"))
+  assert.doesNotMatch(source, />\s*\{plugin\.enabled \? '已启用' : '未启用'\}\s*</)
+  assert.match(source, /\{pluginBusy === plugin\.name \? '处理中\.\.\.' : plugin\.enabled \? '停用' : '启用'\}/)
+})
+
+test('setup wizard includes the TMDB token configuration guide link', () => {
+  const settings = readFileSync('src/pages/settings/Settings.tsx', 'utf8')
+  const setup = readFileSync('src/pages/setup/SetupWizard.tsx', 'utf8')
+  const tmdbGuideHref = 'https://zasenjc.github.io/mediatree/guide/configuration#获取-tmdb-读取访问令牌'
+
+  assert.ok(settings.includes(`href="${tmdbGuideHref}"`))
+  assert.ok(setup.includes(`href="${tmdbGuideHref}"`))
+  assert.match(setup, /target="_blank"/)
+  assert.match(setup, /rel="noreferrer"/)
 })
 
 test('applyTheme writes tokens, color scheme, dataset, and custom CSS', () => {

@@ -8,7 +8,7 @@ export default function JavdbPanel({ movie }: Props) {
   const comments = movie.javdb_comments || []
 
   return (
-    <div className="p-4 bg-dark-800 rounded-lg border border-dark-700">
+    <div className="p-4 bg-dark-800 rounded-lg">
       <h3 className="text-sm font-semibold mb-3 text-gray-300 flex items-center gap-2">
         <span className="text-blue-400">[i]</span> JAVDB 信息
       </h3>

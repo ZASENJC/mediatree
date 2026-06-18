@@ -103,7 +103,7 @@ export default function EditModal({ movie, onClose, onSaved, onSave }: Props) {
               />
             </div>
           </div>
-          {error && <p className="rounded-2xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">{error}</p>}
+          {error && <p className="rounded-2xl bg-red-500/10 px-3 py-2 text-xs text-red-300">{error}</p>}
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose}
               className="glass-button flex-1 py-2">

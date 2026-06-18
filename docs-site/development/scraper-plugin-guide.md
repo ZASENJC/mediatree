@@ -228,7 +228,7 @@ async def cached_search(self, query: str, media_type: str | None):
 
 ## 安装、启用、停用和删除
 
-设置页的插件管理面板负责用户操作：
+设置页的插件管理面板同时管理内置刮削器和用户上传插件。用户上传插件的操作流程是：
 
 1. 上传 `.zip`。
 2. 后端校验归档和 `plugin.json`。
@@ -238,16 +238,16 @@ async def cached_search(self, query: str, media_type: str | None):
 6. 后端动态加载入口类并检查它是否继承 `BaseScraper`。
 7. 启用成功后，插件出现在 `/api/scrapers` 和前端刮削器下拉栏。
 
-停用插件后，它会从 `/api/scrapers` 消失，也不会继续出现在刮削器下拉栏。插件记录仍保留在插件管理中，可以重新启用。
+停用插件或内置刮削器后，它会从 `/api/scrapers` 消失，也不会继续出现在刮削器下拉栏。记录仍保留在插件管理中，可以重新启用。
 
-删除插件会删除数据库记录和当前安装目录。如果某个媒体库仍在使用这个插件，删除会返回 `409 Plugin is used by a library`，需要先把对应媒体库切换到其他刮削器。
+删除用户上传插件会删除数据库记录和当前安装目录；如果仍有媒体库使用该上传插件，删除会返回 `409 Plugin is used by a library`，需要先切换对应媒体库。删除内置刮削器只会把它从当前配置中隐藏，不会删除应用自带代码；仍在使用该内置刮削器的媒体库会回退到当前可用默认刮削器。
 
 对应 API：
 
 | 方法 | 路径 | 作用 |
 | --- | --- | --- |
 | `GET` | `/api/scrapers` | 返回内置刮削器和已启用上传插件。 |
-| `GET` | `/api/scraper-plugins` | 返回用户上传安装的插件记录，不包含内置刮削器。 |
+| `GET` | `/api/scraper-plugins` | 返回插件管理列表，包含内置刮削器和用户上传插件。 |
 | `POST` | `/api/scraper-plugins/install` | 上传并安装 `.zip`，默认停用。 |
 | `POST` | `/api/scraper-plugins/{name}/enable` | 启用插件并尝试加载入口类。 |
 | `POST` | `/api/scraper-plugins/{name}/disable` | 停用插件。 |
@@ -286,8 +286,8 @@ backend/app/builtin_plugins/scrapers/<name>/
 
 默认情况下：
 
-- `/api/scrapers` 返回内置刮削器和已启用上传插件。
-- `/api/scraper-plugins` 只返回上传安装的插件，不返回内置刮削器。
+- `/api/scrapers` 返回当前启用且未隐藏的内置刮削器和已启用上传插件。
+- `/api/scraper-plugins` 返回插件管理列表，包含内置刮削器和用户上传插件。
 - fresh Docker 容器没有用户上传插件，但会有内置刮削器。
 - 设置 `ENABLE_BUILTIN_SCRAPER_PLUGINS=false` 可以让测试容器不加载任何内置刮削器。
 

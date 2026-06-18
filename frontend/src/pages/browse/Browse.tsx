@@ -217,7 +217,7 @@ export default function Browse() {
             className={`absolute inset-0 bg-black/20 ${mobileTreeClosing ? 'mobile-folder-backdrop-out' : 'mobile-folder-backdrop-in'}`}
             onClick={closeMobileTree}
           />
-          <aside className={`mobile-folder-drawer absolute left-0 top-0 flex h-full w-[82vw] max-w-xs flex-col overflow-hidden rounded-r-[2rem] border-r border-white/10 bg-[rgba(8,10,18,0.86)] p-4 shadow-[24px_0_80px_rgba(0,0,0,0.42),inset_-1px_0_0_rgba(255,255,255,0.08)] backdrop-blur-2xl ${mobileTreeClosing ? 'mobile-folder-drawer-out' : 'mobile-folder-drawer-in'}`}>
+          <aside className={`mobile-folder-drawer absolute left-0 top-0 flex h-full w-[82vw] max-w-xs flex-col overflow-hidden rounded-r-[2rem] bg-[rgba(8,10,18,0.86)] p-4 shadow-[24px_0_80px_rgba(0,0,0,0.42),inset_-1px_0_0_rgba(255,255,255,0.08)] backdrop-blur-2xl ${mobileTreeClosing ? 'mobile-folder-drawer-out' : 'mobile-folder-drawer-in'}`}>
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-apple-blue/70">Folders</p>
@@ -248,7 +248,7 @@ export default function Browse() {
           {loading ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid">
               {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="aspect-[2/3] animate-pulse rounded-2xl border border-white/10 bg-white/[0.06] media-grid-card" />
+                <div key={i} className="aspect-[2/3] animate-pulse rounded-2xl bg-white/[0.06] media-grid-card" />
               ))}
             </div>
           ) : movies.length === 0 ? (

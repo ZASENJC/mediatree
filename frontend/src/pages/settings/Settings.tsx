@@ -415,7 +415,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
       if (plugin.enabled) await api.disableScraperPlugin(plugin.name)
       else await api.enableScraperPlugin(plugin.name)
       await reloadScraperState()
-      setPluginMsg(plugin.enabled ? '插件已停用' : '插件已启用')
+      setPluginMsg(plugin.enabled ? '刮削器已停用' : '刮削器已启用')
     } catch (err) {
       setPluginMsg(`操作失败：${err instanceof Error ? err.message : '请查看后端日志'}`)
     } finally {
@@ -424,13 +424,13 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
   }
 
   const removePlugin = async (plugin: ScraperPlugin) => {
-    if (!confirm(`确定删除刮削器插件 "${plugin.label || plugin.name}"？`)) return
+    if (!confirm(`确定删除刮削器 "${plugin.label || plugin.name}"？`)) return
     setPluginBusy(plugin.name)
     setPluginMsg('')
     try {
       await api.deleteScraperPlugin(plugin.name)
       await reloadScraperState()
-      setPluginMsg('插件已删除')
+      setPluginMsg('刮削器已删除')
     } catch (err) {
       setPluginMsg(`删除失败：${err instanceof Error ? err.message : '请确认没有媒体库正在使用该插件'}`)
     } finally {
@@ -561,10 +561,10 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
   if (!open) return null
 
   const messageClass = (message: string) => (
-    "rounded-2xl border p-3 text-xs " +
+    "rounded-2xl p-3 text-xs " +
     (message.includes('失败')
-      ? 'border-red-400/20 bg-red-500/10 text-red-300'
-      : 'border-apple-mint/20 bg-apple-mint/10 text-apple-mint')
+      ? 'bg-red-500/10 text-red-300'
+      : 'bg-apple-mint/10 text-apple-mint')
   )
 
   const renderSwitch = (checked: boolean, onToggle: () => void) => (
@@ -763,7 +763,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
       <h2 className={sectionTitle}>媒体库</h2>
       <div className="settings-library-list">
         {librariesLoading && (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-xs text-gray-500">
+          <div className="rounded-2xl bg-white/[0.06] p-3 text-xs text-gray-500">
             媒体库加载中...
           </div>
         )}
@@ -861,7 +861,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
                 </div>
               </div>
               {logVisible[lib.path] && scanLogs[lib.path] && scanLogs[lib.path]!.length > 0 && (
-                <div className="mt-2 max-h-48 space-y-0.5 overflow-y-auto rounded-2xl border border-white/10 bg-black/35 p-3 font-mono text-[11px] text-gray-400">
+                <div className="mt-2 max-h-48 space-y-0.5 overflow-y-auto rounded-2xl bg-black/35 p-3 font-mono text-[11px] text-gray-400">
                   {scanLogs[lib.path]!.map((line, index) => (
                     <div key={index} className="break-all">{line}</div>
                   ))}
@@ -931,7 +931,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
             </label>
           </div>
           <p className="mb-3 text-xs text-gray-500">
-            插件包必须是包含 plugin.json 的 zip。上传的插件是受信任本地代码，安装后需手动启用。
+            内置刮削器和上传插件都在这里管理。删除内置刮削器只会从当前配置中隐藏，不会移除应用自带文件。
           </p>
           {pluginMsg && (
             <p className={"mb-3 text-xs " + (pluginMsg.includes('失败') ? 'text-red-400' : 'text-apple-mint')}>
@@ -940,22 +940,22 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
           )}
           <div className="space-y-2">
             {plugins.length === 0 && (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-xs text-gray-500">
+              <div className="rounded-2xl bg-white/[0.06] p-3 text-xs text-gray-500">
                 暂无已安装插件
               </div>
             )}
             {plugins.map(plugin => (
-              <div key={plugin.name} className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
+              <div key={plugin.name} className="flex flex-wrap items-center gap-3 rounded-2xl bg-white/[0.06] p-3 backdrop-blur-xl">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-white">{plugin.label || plugin.name}</p>
                   <p className="mt-0.5 text-xs text-gray-500">
-                    {plugin.name} · v{plugin.version} · {plugin.supported_media_types.join(', ') || 'unknown'}
+                    {plugin.name} · v{plugin.version} · {plugin.supported_media_types.join(', ') || '通用'}
                   </p>
                   {plugin.description && <p className="mt-1 text-xs text-gray-500">{plugin.description}</p>}
                   {plugin.error && <p className="mt-1 text-xs text-red-400">{plugin.error}</p>}
                 </div>
-                <span className={"rounded-full border px-2 py-0.5 text-[10px] " + (plugin.enabled ? 'border-apple-mint/30 bg-apple-mint/10 text-apple-mint' : 'border-white/10 bg-white/[0.06] text-gray-400')}>
-                  {plugin.enabled ? '已启用' : '未启用'}
+                <span className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] text-gray-400">
+                  {plugin.builtin ? '内置' : '插件'}
                 </span>
                 <button
                   type="button"
@@ -1070,12 +1070,12 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
         </div>
 
         {updateResult?.latest_sync_warning && (
-          <div className="mb-3 rounded-2xl border border-apple-yellow/30 bg-apple-yellow/10 px-3 py-2 text-xs text-apple-yellow">
+          <div className="mb-3 rounded-2xl bg-apple-yellow/10 px-3 py-2 text-xs text-apple-yellow">
             <p className="font-medium text-apple-yellow">DockerHub latest 尚未同步</p>
             <p className="mt-1 text-yellow-100/90">
               {updateResult.latest_sync_warning.message}
             </p>
-            <p className="mt-2 rounded-xl border border-apple-yellow/20 bg-black/20 px-2 py-1 font-mono text-[11px] leading-relaxed text-yellow-100">
+            <p className="mt-2 rounded-xl bg-black/20 px-2 py-1 font-mono text-[11px] leading-relaxed text-yellow-100">
               {updateResult.latest_sync_warning.action}
             </p>
           </div>
@@ -1088,7 +1088,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
         )}
 
         {dockerUpdateGuide && (
-          <div className="mb-3 rounded-2xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          <div className="mb-3 rounded-2xl bg-red-500/10 px-3 py-2 text-xs text-red-200">
             {dockerUpdateGuide}
           </div>
         )}
@@ -1126,7 +1126,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
               const dockerErrorGuide = activeUpdate?.status === 'error' ? getDockerUpdateGuide(activeUpdate.message) : ''
               return (
                 <div key={v.version}
-                     className="settings-update-card space-y-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
+                     className="settings-update-card space-y-3 rounded-2xl bg-white/[0.06] p-3 backdrop-blur-xl">
                   <div className="settings-update-summary">
                     <div className="settings-update-title">
                       <div className="settings-update-version-row">
@@ -1277,7 +1277,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
                   </div>
 
                   {isAppUpdate && activeUpdate && (
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-gray-300">
+                    <div className="rounded-2xl bg-black/20 p-3 text-xs text-gray-300">
                       <div className="mb-2 flex items-center justify-between gap-3">
                         <span>{statusLabel(activeUpdate.status)}</span>
                         <span className="text-gray-500">
@@ -1299,7 +1299,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
                   )}
 
                   {isDockerUpdate && activeUpdate && (
-                    <div className="settings-update-log max-h-48 space-y-0.5 overflow-y-auto rounded-2xl border border-white/10 bg-black/35 p-3 font-mono text-[11px] text-gray-400">
+                    <div className="settings-update-log max-h-48 space-y-0.5 overflow-y-auto rounded-2xl bg-black/35 p-3 font-mono text-[11px] text-gray-400">
                       <div className={activeUpdate.status === 'error' ? 'mb-1 text-red-400' : 'mb-1 text-gray-300'}>
                         {statusLabel(activeUpdate.status)}
                         {(dockerErrorGuide || activeUpdate.message) ? ' · ' + (dockerErrorGuide || getDockerUpdateShortError(activeUpdate.message)) : ''}

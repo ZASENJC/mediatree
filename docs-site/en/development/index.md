@@ -75,4 +75,4 @@ On macOS, local `python3` may point to an older version. Prefer Python 3.11+. Th
 
 User-installable scrapers should be packaged as `.zip` plugins with `plugin.json` and a Python entry class that inherits `BaseScraper`. The full plugin package structure, manifest fields, install/enable flow, and test checklist are currently documented in the Chinese [Scraper Plugin Guide](/development/scraper-plugin-guide).
 
-When maintaining built-in scrapers, use `backend/app/builtin_plugins/scrapers/<name>/plugin.json` and `plugin.py` to connect them to the manifest-driven registry. Shared core logic can still live under `backend/app/scrapers/`.
+When maintaining built-in scrapers, use `backend/app/builtin_plugins/scrapers/<name>/plugin.json` and `plugin.py` to connect them to the manifest-driven registry. Shared core logic can still live under `backend/app/scrapers/`. Built-in scrapers also appear in Settings plugin management, where users can disable or hide them.

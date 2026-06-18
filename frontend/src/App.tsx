@@ -24,6 +24,13 @@ const navItems = [
 
 const TOPBAR_LIBRARY_LABEL_LIMIT = 5
 const TOPBAR_LIBRARY_LABEL_PREFIX = 2
+const SETTINGS_BOTTOM_SCROLL_TOLERANCE = 8
+
+type SettingsBackgroundScrollLock = {
+  x: number
+  y: number
+  bottomOffset: number
+}
 
 function formatTopbarLibraryLabel(label: string) {
   const normalized = label.trim()
@@ -32,6 +39,23 @@ function formatTopbarLibraryLabel(label: string) {
   const chars = Array.from(normalized)
   if (chars.length <= TOPBAR_LIBRARY_LABEL_LIMIT) return normalized
   return `${chars.slice(0, TOPBAR_LIBRARY_LABEL_PREFIX).join('')}...`
+}
+
+function readSettingsBackgroundScrollLock(): SettingsBackgroundScrollLock {
+  const maxScrollY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
+  return {
+    x: window.scrollX,
+    y: window.scrollY,
+    bottomOffset: Math.max(0, maxScrollY - window.scrollY),
+  }
+}
+
+function getSettingsBackgroundRestoreY(scrollLock: SettingsBackgroundScrollLock): number {
+  if (scrollLock.bottomOffset <= SETTINGS_BOTTOM_SCROLL_TOLERANCE) {
+    const maxScrollY = Math.max(0, document.documentElement.scrollHeight - window.innerHeight)
+    return Math.max(0, maxScrollY - scrollLock.bottomOffset)
+  }
+  return scrollLock.y
 }
 
 export default function App() {
@@ -68,6 +92,7 @@ export default function App() {
   const topbarLeftRef = useRef<HTMLDivElement | null>(null)
   const topbarRightRef = useRef<HTMLDivElement | null>(null)
   const desktopSearchRootRef = useRef<HTMLDivElement | null>(null)
+  const settingsBackgroundScrollRef = useRef<SettingsBackgroundScrollLock | null>(null)
 
   const settingsDrawerOpen = location.pathname === '/settings'
   const settingsBackgroundLocation = settingsDrawerOpen
@@ -201,6 +226,47 @@ export default function App() {
       if (frame) window.cancelAnimationFrame(frame)
     }
   }, [topbarCompact, measureTopbarGlass])
+
+  useLayoutEffect(() => {
+    if (!settingsDrawerOpen || typeof window === 'undefined' || typeof document === 'undefined') return
+
+    const scrollLock = settingsBackgroundScrollRef.current || readSettingsBackgroundScrollLock()
+    settingsBackgroundScrollRef.current = scrollLock
+    const { body, documentElement } = document
+    const previousBodyStyle = {
+      overflowY: body.style.overflowY,
+      scrollbarGutter: body.style.getPropertyValue('scrollbar-gutter'),
+    }
+    const previousDocumentElementStyle = {
+      overflowY: documentElement.style.overflowY,
+      scrollbarGutter: documentElement.style.getPropertyValue('scrollbar-gutter'),
+    }
+    const previousScrollRestoration = window.history.scrollRestoration
+
+    window.history.scrollRestoration = 'manual'
+    body.style.overflowY = 'hidden'
+    body.style.setProperty('scrollbar-gutter', 'stable')
+    documentElement.style.overflowY = 'hidden'
+    documentElement.style.setProperty('scrollbar-gutter', 'stable')
+    window.scrollTo(scrollLock.x, scrollLock.y)
+
+    return () => {
+      body.style.overflowY = previousBodyStyle.overflowY
+      body.style.setProperty('scrollbar-gutter', previousBodyStyle.scrollbarGutter)
+      documentElement.style.overflowY = previousDocumentElementStyle.overflowY
+      documentElement.style.setProperty('scrollbar-gutter', previousDocumentElementStyle.scrollbarGutter)
+      window.history.scrollRestoration = previousScrollRestoration
+      const restoreScroll = () => {
+        window.scrollTo(scrollLock.x, getSettingsBackgroundRestoreY(scrollLock))
+      }
+      window.requestAnimationFrame(() => {
+        restoreScroll()
+        window.requestAnimationFrame(restoreScroll)
+      })
+      window.setTimeout(restoreScroll, 80)
+      settingsBackgroundScrollRef.current = null
+    }
+  }, [settingsDrawerOpen])
 
   const loadLibraries = useCallback(async () => {
     if (!getToken()) return
@@ -414,6 +480,7 @@ export default function App() {
     setMobileNavOpen(false)
     closeSearch()
     if (settingsDrawerOpen) return
+    settingsBackgroundScrollRef.current = readSettingsBackgroundScrollLock()
     navigate('/settings', { state: { settingsBackgroundLocation: mainRouteLocation } })
   }
 
@@ -519,7 +586,7 @@ export default function App() {
     <div className="mt-app-shell min-h-screen flex flex-col">
       {!theaterMode && (
       <header
-        className={`mt-topbar sticky top-0 z-50 pt-6 sm:pt-9 ${topbarCompact ? 'is-compact' : 'is-expanded'}`}
+        className={`mt-topbar sticky top-0 z-50 pt-6 sm:pt-9 ${topbarCompact ? 'is-compact' : 'is-expanded'} ${settingsDrawerOpen ? 'is-settings-drawer-open' : ''}`}
         onPointerEnter={() => setTopbarHovering(true)}
         onPointerLeave={() => setTopbarHovering(false)}
         onFocusCapture={() => setTopbarFocused(true)}
@@ -786,7 +853,7 @@ function ScanToast({ status, done, total, className = '' }: { status: string; do
   const complete = status.includes('完成')
   const indeterminate = total <= 0 && !complete
   return (
-    <div className={`fixed bottom-3 left-3 right-3 z-50 rounded-3xl border border-white/10 bg-black/60 p-4 shadow-glass backdrop-blur-2xl sm:bottom-4 sm:left-auto sm:right-4 sm:w-80 ${className}`}>
+    <div className={`fixed bottom-3 left-3 right-3 z-50 rounded-3xl bg-black/60 p-4 shadow-glass backdrop-blur-2xl sm:bottom-4 sm:left-auto sm:right-4 sm:w-80 ${className}`}>
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className={`text-sm font-medium ${complete ? 'text-green-300' : 'text-white'}`}>{status}</p>
@@ -888,7 +955,7 @@ function PasswordModal({ target, onOk, onCancel }: {
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4 backdrop-blur-2xl">
       <div className="glass-modal w-full max-w-xs p-6">
         <div className="mb-4 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-apple-yellow/30 bg-apple-yellow/10">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-apple-yellow/10">
             <svg className="h-6 w-6 text-apple-yellow" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
             </svg>

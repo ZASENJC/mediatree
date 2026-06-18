@@ -104,7 +104,7 @@ export default memo(function SortDropdown({ options, current, onChange, variant 
     const menu = (
       <div
         ref={menuRef}
-        className="fixed z-[9999] min-w-[132px] origin-top-right translate-y-0 scale-100 overflow-hidden rounded-[18px] border border-white/[0.14] bg-[rgba(8,10,18,0.72)] p-1.5 opacity-100 shadow-[0_24px_80px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.10)] backdrop-blur-[24px] backdrop-saturate-[160%] transition-[opacity,transform] duration-150"
+        className="fixed z-[9999] min-w-[132px] origin-top-right translate-y-0 scale-100 overflow-hidden rounded-[18px] bg-[rgba(8,10,18,0.72)] p-1.5 opacity-100 shadow-[0_24px_80px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.10)] backdrop-blur-[24px] backdrop-saturate-[160%] transition-[opacity,transform] duration-150"
         style={{ top: menuPosition.top, left: menuPosition.left }}
         onPointerDown={e => e.stopPropagation()}
         role="menu"

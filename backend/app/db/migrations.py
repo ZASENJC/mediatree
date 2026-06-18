@@ -11,6 +11,7 @@ def _is_expected_migration_error(exc: Exception) -> bool:
         "duplicate column name" in message
         or "no such table: movies" in message
         or "no such table: tags" in message
+        or "no such table: scraper_plugins" in message
     )
 
 
@@ -53,6 +54,7 @@ async def init_schema(get_db):
         "ALTER TABLE movies ADD COLUMN content_rating TEXT",
         "ALTER TABLE movies ADD COLUMN content_role TEXT DEFAULT 'main'",
         "ALTER TABLE movies ADD COLUMN special_parent_levels TEXT",
+        "ALTER TABLE scraper_plugins ADD COLUMN deleted INTEGER DEFAULT 0",
     ]
     for mig in migrations:
         try:
@@ -208,6 +210,7 @@ async def init_schema(get_db):
             installed_path TEXT NOT NULL,
             enabled INTEGER DEFAULT 0,
             builtin INTEGER DEFAULT 0,
+            deleted INTEGER DEFAULT 0,
             installed_at TEXT DEFAULT (datetime('now')),
             updated_at TEXT DEFAULT (datetime('now')),
             error TEXT

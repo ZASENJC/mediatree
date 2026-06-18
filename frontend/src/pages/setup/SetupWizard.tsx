@@ -101,7 +101,7 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
     return (
       <div className="flex min-h-screen items-center justify-center bg-aurora px-4 py-10">
         <div className="glass-modal w-full max-w-lg p-8 text-center">
-          <div className="mx-auto mb-5 h-14 w-14 rounded-3xl border border-white/10 bg-white/[0.08] shadow-glass backdrop-blur-2xl" />
+          <div className="mx-auto mb-5 h-14 w-14 rounded-3xl bg-white/[0.08] shadow-glass backdrop-blur-2xl" />
           <h1 className="mb-3 text-3xl font-bold tracking-tight text-white">未检测到媒体库</h1>
           <p className="mb-2 text-gray-400">容器内的 <span className="font-mono text-gray-300">/media</span> 目录下没有可配置的媒体库文件夹。</p>
           <p className="text-sm text-gray-500">请在 Docker 里挂载媒体目录，或在 <span className="font-mono text-gray-400">MEDIA_ROOT</span> 指向的目录下创建至少一个子文件夹后重启。</p>
@@ -114,7 +114,7 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
     return (
       <div className="flex min-h-screen items-center justify-center bg-aurora px-4 py-10">
         <div className="glass-modal w-full max-w-lg p-8 text-center">
-          <div className="mx-auto mb-5 h-14 w-14 rounded-3xl border border-white/10 bg-white/[0.08] shadow-glass backdrop-blur-2xl" />
+          <div className="mx-auto mb-5 h-14 w-14 rounded-3xl bg-white/[0.08] shadow-glass backdrop-blur-2xl" />
           <p className="mb-2 text-xs uppercase tracking-[0.24em] text-apple-blue/80">MediaTree</p>
           <h1 className="mb-3 text-3xl font-bold tracking-tight text-white">欢迎使用 MediaTree</h1>
           <p className="mb-2 text-gray-400">检测到 {libs.length} 个媒体库</p>
@@ -176,12 +176,23 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
                 placeholder="以 eyJ 开头的 Read Access Token"
                 className="glass-input w-full px-3 py-2 text-sm"
               />
-              <p className="mt-1 text-xs text-gray-500">填写 TMDB 设置页的 API Read Access Token，不是旧版 API Key。</p>
+              <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                填写 TMDB 设置页的 API Read Access Token，不是旧版 API Key；申请教程见{' '}
+                <a
+                  href="https://zasenjc.github.io/mediatree/guide/configuration#获取-tmdb-读取访问令牌"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-apple-blue transition hover:underline"
+                >
+                  配置说明
+                </a>
+                。
+              </p>
             </div>
           )}
 
           {lib.scraper === 'auto' && (
-            <p className="rounded-2xl border border-apple-yellow/20 bg-apple-yellow/10 p-3 text-xs leading-relaxed text-gray-400">
+            <p className="rounded-2xl bg-apple-yellow/10 p-3 text-xs leading-relaxed text-gray-400">
               自动：会尝试判断刮削源，但可能效果不好；推荐按媒体库类型手动选择 TMDB 电影、TMDB 剧集/番剧、Bangumi 或 Javdatabase。
             </p>
           )}
@@ -223,7 +234,7 @@ export default function SetupWizard({ onComplete }: { onComplete: () => void }) 
           </div>
         </div>
 
-        {error && <p className="mt-3 rounded-2xl border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-300">{error}</p>}
+        {error && <p className="mt-3 rounded-2xl bg-red-500/10 p-3 text-sm text-red-300">{error}</p>}
 
         <div className="mt-6 flex gap-3">
           {slide > 0 && (

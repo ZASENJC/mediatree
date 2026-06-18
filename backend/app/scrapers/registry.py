@@ -9,6 +9,7 @@ from .auto_scraper import _try_auto_tmdb_id
 from .base import BaseScraper, ScraperInfo
 from .tmdb_scraper import tmdb_title_search
 from ..scraper_plugins import (
+    is_builtin_scraper_available_sync,
     load_plugin_scraper,
     list_enabled_plugin_rows_sync,
     refresh_plugin_cache,
@@ -71,6 +72,8 @@ def ensure_builtin_scrapers():
         _initialized = True
         return
     for manifest in list_builtin_scraper_manifests():
+        if not is_builtin_scraper_available_sync(manifest.name):
+            continue
         register_scraper(load_builtin_scraper(manifest))
     _initialized = True
 

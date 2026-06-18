@@ -33,7 +33,7 @@ The implementation is now documented for plugin authors in [`docs-site/developme
 - Add scraper/plugin types and API helpers.
 - Load scraper options dynamically in Settings, manual scrape modals, movie cards, and folder manual scrape UI.
 - Keep `Javdatabase` visibility restricted to libraries using `javdatabase` where current behavior requires it.
-- Add a Settings scraper plugin management panel with upload, installed state, enable/disable, and uninstall controls.
+- Add a Settings scraper plugin management panel with upload, installed state, enable/disable, and uninstall controls for both built-in scrapers and uploaded plugins.
 
 ## Security Rules
 
@@ -59,10 +59,10 @@ The next step moves the built-in scraper registry to the same manifest-driven sh
 
 - Add application-shipped plugin directories under `backend/app/builtin_plugins/scrapers/`.
 - Each built-in scraper has a `plugin.json` manifest and a `plugin.py` entrypoint.
-- Built-in plugins are always available and are not installed into `settings.data_dir`.
+- Built-in plugins are application-shipped and are not installed into `settings.data_dir`, but Settings stores per-instance control state so users can disable or hide them.
 - Uploaded plugins remain separate runtime state under `settings.data_dir/scraper_plugins/`.
 - Keep the existing mature scraper implementations under `backend/app/scrapers/` as reusable core classes, but load/register them through built-in plugin manifests.
 - Keep built-in scraper names reserved so uploaded plugins cannot override them.
 - `GET /api/scrapers` should expose built-in plugin scrapers and enabled uploaded plugins through one list.
-- `GET /api/scraper-plugins` should continue to show only user-installed runtime plugins, not built-ins.
-- A fresh Docker container with an empty data directory must still expose built-in scrapers and no user-installed plugins.
+- `GET /api/scraper-plugins` should show the plugin management list, including built-in scrapers and user-installed runtime plugins.
+- A fresh Docker container with an empty data directory must expose built-in scrapers in both `/api/scrapers` and `/api/scraper-plugins`.

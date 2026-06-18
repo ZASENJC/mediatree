@@ -347,7 +347,7 @@ export default function Detail() {
                 <button
                   key={item.id}
                   onClick={() => { if (item.id !== movie.id) navigate(`/detail/${item.id}`) }}
-                  className="apple-focus group overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] text-left transition-all hover:border-apple-pink/40 hover:bg-white/[0.09]"
+                  className="apple-focus group overflow-hidden rounded-2xl bg-white/[0.06] text-left transition-all hover:bg-white/[0.09]"
                 >
                   <div className="relative aspect-video bg-black/20">
                     <img
@@ -389,7 +389,7 @@ export default function Detail() {
         {infoExpanded && (
           <div className="mt-4 space-y-4 border-t border-white/10 pt-4">
             {(movie.episode_overview || movie.folder_levels) && (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="rounded-2xl bg-white/[0.04] p-4">
                 {movie.episode_overview ? (
                   <div className="grid gap-4 lg:grid-cols-2">
                     <div>
@@ -412,7 +412,7 @@ export default function Detail() {
 
             {/* Poster Gallery */}
             {posters.length > 0 && (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="rounded-2xl bg-white/[0.04] p-4">
                 <h3 className="mb-3 text-sm font-semibold text-gray-200">海报画廊 <span className="ml-1 text-xs font-normal text-gray-500">{posters.length}</span></h3>
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
                   {posters.map((p, i) => (
@@ -422,7 +422,7 @@ export default function Detail() {
                       <img
                         src={p.url}
                         alt={`poster-${i}`}
-                        className="h-56 w-auto rounded-xl border border-white/10 object-cover transition-all group-hover:border-apple-blue/40"
+                        className="h-56 w-auto rounded-xl object-cover transition-all"
                         loading="lazy"
                       />
                       {p.language && p.language !== 'null' && (
@@ -436,13 +436,13 @@ export default function Detail() {
 
             {/* Trailers */}
             {videos.filter((v: any) => v.type === 'Trailer').length > 0 && (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="rounded-2xl bg-white/[0.04] p-4">
                 <h3 className="mb-3 text-sm font-semibold text-gray-200">预告片</h3>
                 <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
                   {videos.filter((v: any) => v.type === 'Trailer' || v.type === 'Teaser').map((v: any, i: number) => (
                     <div
                       key={i}
-                      className="apple-focus shrink-0 cursor-pointer overflow-hidden rounded-xl border border-white/10 bg-black/15"
+                      className="apple-focus shrink-0 cursor-pointer overflow-hidden rounded-xl bg-black/15"
                       onClick={() => setTrailerKey(v.key)}
                     >
                       <div className="relative">
@@ -487,11 +487,11 @@ export default function Detail() {
 
             {/* Reviews */}
             {reviews.length > 0 && (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="rounded-2xl bg-white/[0.04] p-4">
                 <h3 className="mb-3 text-sm font-semibold text-gray-200">用户评论 <span className="ml-1 text-xs font-normal text-gray-500">{reviews.length}</span></h3>
                 <div className="space-y-3">
                   {(showAllReviews ? reviews : reviews.slice(0, 3)).map((r: any, i: number) => (
-                    <div key={i} className="rounded-2xl border border-white/10 bg-black/15 p-3">
+                    <div key={i} className="rounded-2xl bg-black/15 p-3">
                       <div className="mb-2 flex items-center gap-2">
                         {r.author_details?.avatar_path ? (
                           <img
@@ -525,7 +525,7 @@ export default function Detail() {
             )}
 
             {(cast.length > 0 || crew.length > 0) && (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="rounded-2xl bg-white/[0.04] p-4">
                 <h3 className="mb-3 text-sm font-semibold text-gray-200">Staff</h3>
                 <div className="space-y-4">
                   {cast.length > 0 && (
@@ -564,7 +564,7 @@ export default function Detail() {
               <div
                 key={`${image.src}-${i}`}
                 onClick={() => setLightboxIdx(i)}
-                className="apple-focus block aspect-video cursor-pointer overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] transition-all hover:border-apple-blue/40"
+                className="apple-focus block aspect-video cursor-pointer overflow-hidden rounded-2xl bg-white/[0.06] transition-all"
               >
                 <img
                   src={image.src}

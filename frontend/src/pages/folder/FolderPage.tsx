@@ -429,7 +429,7 @@ export default function FolderPage() {
 
       <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
         {(seasonTabs.length > 0 || specialCount > 0) && (
-        <div className="-mt-2 inline-flex max-w-full min-w-0 flex-wrap items-center gap-2 rounded-3xl border border-white/15 bg-white/[0.08] p-2 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150 sm:max-w-[calc(100%_-_9rem)]">
+        <div className="-mt-2 inline-flex max-w-full min-w-0 flex-wrap items-center gap-2 rounded-3xl bg-white/[0.08] p-2 shadow-[0_10px_34px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-xl backdrop-saturate-150 sm:max-w-[calc(100%_-_9rem)]">
           <button
             onClick={() => selectSeason(null)}
             className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
