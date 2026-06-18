@@ -2044,7 +2044,9 @@ textarea {
   align-items: start;
 }
 
-.home-page {
+.home-page,
+.browse-page,
+.favorites-page {
   display: flex;
   flex-direction: column;
   --mt-home-continue-min: 14.5rem;
@@ -2120,6 +2122,12 @@ textarea {
 .home-library-header {
   justify-content: flex-end;
   transform: translateY(-0.3125rem);
+  padding-inline: 0;
+  margin-bottom: var(--mt-home-library-title-gap);
+}
+
+.browse-library-header {
+  justify-content: space-between;
   padding-inline: 0;
   margin-bottom: var(--mt-home-library-title-gap);
 }
@@ -2397,7 +2405,9 @@ textarea {
 }
 
 @media (max-width: 640px), (orientation: portrait) and (max-width: 820px) {
-  .home-page {
+  .home-page,
+  .browse-page,
+  .favorites-page {
     --mt-home-poster-min: 0;
     --mt-home-poster-max: 11.5rem;
     --mt-home-poster-width: min(var(--mt-home-poster-max), var(--mt-home-poster-three-column-width));

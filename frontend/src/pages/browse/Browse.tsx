@@ -187,8 +187,8 @@ export default function Browse() {
   )
 
   return (
-    <div className="home-aligned-page space-y-5">
-      <div className="home-section-header home-library-header">
+    <div className="home-aligned-page browse-page space-y-5">
+      <div className="home-section-header browse-library-header">
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2">
             <button
@@ -236,9 +236,9 @@ export default function Browse() {
         </div>
       )}
 
-      <div className="flex gap-5">
+      <div className="flex gap-10">
         <div className="hidden w-60 shrink-0 lg:block">
-          <div className="glass-panel sticky top-20 p-4">
+          <div className="glass-panel sticky top-28 p-4">
             <h3 className="mb-3 text-xs font-medium uppercase tracking-[0.24em] text-gray-500">文件夹</h3>
             {renderFolderTree()}
           </div>
@@ -246,9 +246,9 @@ export default function Browse() {
 
         <div className="min-w-0 flex-1">
           {loading ? (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid">
+            <div className="home-poster-grid media-grid">
               {Array.from({ length: 12 }).map((_, i) => (
-                <div key={i} className="aspect-[2/3] animate-pulse rounded-2xl bg-white/[0.06] media-grid-card" />
+                <div key={i} className="home-poster-card aspect-[2/3] animate-pulse rounded-2xl bg-white/[0.06] media-grid-card" />
               ))}
             </div>
           ) : movies.length === 0 ? (
@@ -258,12 +258,12 @@ export default function Browse() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid">
+              <div className="home-poster-grid media-grid">
                 {movies.map((movie) => (
                   <div
                     key={movie.id}
                     onClick={() => { saveScrollPos(); navigate(`/detail/${movie.id}`) }}
-                    className="glass-card apple-focus media-grid-card group cursor-pointer overflow-hidden"
+                    className="glass-card apple-focus home-poster-card media-grid-card group cursor-pointer overflow-hidden"
                   >
                     <div className="relative aspect-[2/3] overflow-hidden bg-white/[0.04]">
                       <img

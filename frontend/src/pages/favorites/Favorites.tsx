@@ -32,17 +32,9 @@ export default function Favorites() {
     else setSearchParams({ sort: s }, { replace: true })
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="animate-pulse text-gray-400 text-lg">加载中...</div>
-      </div>
-    )
-  }
-
   return (
-    <div className="home-aligned-page space-y-5">
-      <div className="home-section-header home-library-header">
+    <div className="home-aligned-page favorites-page space-y-5">
+      <div className="home-section-header">
         <div>
           <h2 className="home-section-title">我的收藏</h2>
           <p className="mt-1 text-xs text-gray-500">共 {total} 部</p>
@@ -52,19 +44,25 @@ export default function Favorites() {
         </div>
       </div>
 
-      {movies.length === 0 ? (
+      {loading ? (
+        <div className="home-poster-grid media-grid">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} className="home-poster-card aspect-[2/3] animate-pulse rounded-2xl bg-white/[0.06] media-grid-card" />
+          ))}
+        </div>
+      ) : movies.length === 0 ? (
         <div className="glass-panel py-20 text-center text-gray-500">
           <p className="mb-2 text-3xl font-light text-white/60">--</p>
           <p>还没有收藏影片</p>
           <p className="mt-2 text-sm text-gray-600">在影片详情页点击收藏按钮即可添加</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 media-grid">
+        <div className="home-poster-grid media-grid">
           {movies.map((movie) => (
             <div
               key={movie.id}
               onClick={() => { saveScrollPos(); navigate(`/detail/${movie.id}`) }}
-              className="glass-card apple-focus media-grid-card group cursor-pointer overflow-hidden"
+              className="glass-card apple-focus home-poster-card media-grid-card group cursor-pointer overflow-hidden"
             >
               <div className="relative aspect-[2/3] bg-white/[0.04]">
                 <img
