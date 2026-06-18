@@ -115,7 +115,7 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       const cfg = await api.getConfig()
       const normalizedScraper = scraperName === 'tmdb' ? 'tmdb_movie' : (scraperName || 'auto')
       if (!cfg.tmdb_configured && (normalizedScraper === 'auto' || normalizedScraper.startsWith('tmdb'))) {
-        showToast('TMDB API 未配置，刮削可能失败，请在设置中填写 API Key')
+        showToast('TMDB 读访问令牌未配置，刮削可能失败，请在设置中填写令牌')
       }
     } catch {}
   }, [manualScraper])

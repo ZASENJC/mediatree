@@ -13,6 +13,8 @@ All notable changes to MediaTree are documented here.
 - Changed Settings into a right-side drawer that opens above the current page instead of replacing the main route
 - Expanded the Settings category rail so tab labels stay fully visible, while keeping the text small and the active selection surface wider
 - Kept the Settings liquid-glass effect on the drawer panel only, so opening Settings no longer blurs or dims the page underneath
+- Removed the deprecated global Javdatabase enable toggle; Javdatabase is now controlled through scraper selection and plugin registration only
+- Kept only the TMDB Read Access Token in Settings scraper config and linked it to the token setup tutorial
 
 ### Library
 
@@ -356,7 +358,7 @@ All notable changes to MediaTree are documented here.
 
 - **Toast z-index fix**: toast notifications and scan progress now render via `createPortal` to `document.body`, fixing an issue where they were hidden behind modal backdrops due to `#root` stacking context
 - **Manual scrape progress toast**: after applying a manual scrape result, a progress indicator appears in the bottom-right with indeterminate animation, then auto-dismisses on completion
-- **TMDB config warning**: toast reminder to configure TMDB API Key in Settings when performing scrape operations without TMDB credentials
+- **TMDB config warning**: toast reminder to configure TMDB credentials in Settings when performing scrape operations without TMDB credentials
 
 ### Backend
 

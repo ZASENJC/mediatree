@@ -9,7 +9,7 @@ MediaTree は環境変数と実行時設定を組み合わせて使います。�
 | `AUTH_USER` | `""` | 管理者ユーザー名。空のままにすると初回起動時に管理者アカウントを作成します。 |
 | `AUTH_PASS` | `""` | 管理者パスワード。認証を有効にする場合は強いパスワードを使ってください。 |
 
-機密値は環境変数からのみ読み込まれ、`data/config.json` には保存されません。
+認証シークレットは環境変数からのみ読み込まれ、`data/config.json` には保存されません。
 
 ## メディアとデータ
 
@@ -26,22 +26,20 @@ MediaTree は環境変数と実行時設定を組み合わせて使います。�
 
 | 変数 | 既定値 | 説明 |
 | --- | --- | --- |
-| `TMDB_API_KEY` | `""` | TMDB v3 API key。 |
 | `TMDB_ACCESS_TOKEN` | `""` | TMDB v4 Read Access Token。推奨です。 |
-| `JAVDB_ENABLED` | `true` | Javdatabase スクレイパーを有効にします。 |
 | `SCRAPE_CONCURRENCY_PER_LIBRARY` | `8` | ライブラリごとの最大同時スクレイプ数。 |
 | `SCRAPE_GLOBAL_CONCURRENCY` | `16` | 全体の最大同時スクレイプ数。 |
 | `SCRAPER_API_CONCURRENCY` | `8` | 外部 API リクエストの最大同時数。 |
 | `SCRAPER_HTTP_TIMEOUT` | `10.0` | 外部 HTTP タイムアウト秒数。 |
 
-キャッシュ TTL と Javdatabase のリクエスト間隔は内部ポリシーであり、ユーザー設定としては公開していません。手動スキャン、再スクレイプ、手動適用はキャッシュをバイパスします。
+Javdatabase は組み込みスクレイパープラグインとして提供されます。使用するには Settings で対象ライブラリに `Javdatabase` を選択します。キャッシュ TTL と Javdatabase のリクエスト間隔は内部ポリシーであり、ユーザー設定としては公開していません。手動スキャン、再スクレイプ、手動適用はキャッシュをバイパスします。
 
 ## 実行時設定
 
 以下は Settings ページで管理され、`data/config.json` に保存されます。
 
 - ライブラリパス、スクレイパー、パスワード。
-- TMDB API key または Read Access Token。
+- TMDB Read Access Token。
 - ホームタイトル非表示、アンビエントモード、元ファイル名表示などの UI 設定。
 - バックアップ、復元、更新、字幕フォント。
 
@@ -50,6 +48,6 @@ MediaTree は環境変数と実行時設定を組み合わせて使います。�
 1. [TMDB](https://www.themoviedb.org/) に登録またはログインします。
 2. [API Settings](https://www.themoviedb.org/settings/api) を開きます。
 3. v4 Read Access Token を生成します。
-4. `.env` または Settings に `TMDB_ACCESS_TOKEN` を設定します。
+4. `.env` に `TMDB_ACCESS_TOKEN` を設定するか、Settings → Scrapers で `TMDB Read Access Token` を入力します。
 
 TMDB 認証情報がなくても MediaTree はスキャンと再生ができますが、メタデータと画像は制限されます。

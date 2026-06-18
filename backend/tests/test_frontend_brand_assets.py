@@ -10,7 +10,7 @@ FRONTEND = ROOT / "frontend"
 
 class FrontendBrandAssetsTest(unittest.TestCase):
     def test_login_and_site_logos_are_distinct_local_assets(self):
-        login = (FRONTEND / "src" / "pages" / "Login.tsx").read_text(encoding="utf-8")
+        login = (FRONTEND / "src" / "pages" / "login" / "Login.tsx").read_text(encoding="utf-8")
         html = (FRONTEND / "index.html").read_text(encoding="utf-8")
 
         self.assertIn('src="/login-logo.png"', login)

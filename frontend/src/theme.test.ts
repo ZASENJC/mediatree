@@ -6,6 +6,7 @@ import {
   BUILTIN_THEMES,
   createExampleTheme,
   createThemeExport,
+  setActiveTheme,
   importCustomThemes,
   parseThemeFileContent,
   sanitizeCustomCss,
@@ -162,13 +163,28 @@ test('parseThemeFileContent rejects unsafe custom CSS', () => {
   )
 })
 
-test('built-in themes do not include the removed Material You light scheme', () => {
+test('built-in themes do not include removed light schemes', () => {
   assert.equal(
     BUILTIN_THEMES.some(item => item.name === 'material-you-light' || item.label === 'Material You 浅色'),
     false
   )
+  assert.equal(
+    BUILTIN_THEMES.some(item => item.name === 'soft-daylight' || item.label === '晨光浅色'),
+    false
+  )
   assert.ok(BUILTIN_THEMES.every(theme => theme.schemaVersion === 2))
   assert.ok(BUILTIN_THEMES.every(theme => theme.capabilities?.includes('stable-selectors')))
+})
+
+test('setActiveTheme falls back safely from the removed soft-daylight theme', () => {
+  const storage = createMemoryStorage()
+  const doc = createDocumentStub()
+
+  const applied = setActiveTheme('soft-daylight', storage, doc)
+
+  assert.equal(applied.name, BUILTIN_THEMES[0].name)
+  assert.equal(storage.getItem('mediatree_active_theme'), BUILTIN_THEMES[0].name)
+  assert.equal(doc.documentElement.getAttribute('data-mediatree-theme'), BUILTIN_THEMES[0].name)
 })
 
 test('createExampleTheme emits advanced skin metadata and stable selector CSS', () => {
@@ -324,7 +340,7 @@ test('topbar compact mode animates into two icon spheres', () => {
   const compactGlass = cssRuleBody(css, '.mt-topbar.is-compact .topbar-glass {')
   const compactRightGlass = cssRuleBody(css, '.mt-topbar.is-compact .topbar-right-glass {')
   const compactCollapsed = cssRuleBody(css, '.mt-topbar.is-compact .topbar-brand-text,')
-  const topbarGlassOverlay = cssRuleBody(css, '.mt-topbar .topbar-glass::before,')
+  const topbarGlassOverlay = cssRuleBody(css, '.mt-topbar .topbar-glass::after {')
   const logo = cssRuleBody(css, '.mt-topbar .topbar-logo-mark {')
   const compactLibraryTrigger = cssRuleBody(css, '.mt-topbar .topbar-compact-library-trigger {')
   const compactLibraryTriggerIcon = cssRuleBody(css, '.mt-topbar .topbar-compact-library-trigger svg {')
@@ -446,6 +462,9 @@ test('settings drawer aligns to the topbar and keeps selection weight only on ac
   const css = readFileSync('src/index.css', 'utf8')
 
   assert.match(settings, /const \[closing, setClosing\] = useState\(false\)/)
+  assert.match(settings, /const \[settingsScrollbarVisible, setSettingsScrollbarVisible\] = useState\(false\)/)
+  assert.match(settings, /const settingsScrollbarTimer = useRef<number \| null>\(null\)/)
+  assert.match(settings, /const revealSettingsScrollbar = useCallback\(\(\) => \{[\s\S]*setSettingsScrollbarVisible\(true\)[\s\S]*window\.setTimeout\(\(\) => \{[\s\S]*setSettingsScrollbarVisible\(false\)[\s\S]*\}, 2000\)/)
   assert.match(settings, /const cardClass = "settings-section"/)
   assert.match(settings, /const sectionTitle = "settings-section-title"/)
   assert.match(settings, /const tabButtonClass = "settings-tab-button"/)
@@ -456,9 +475,14 @@ test('settings drawer aligns to the topbar and keeps selection weight only on ac
   assert.doesNotMatch(settings, /settings-drawer-backdrop fixed inset-0 z-\[60\][^\"]*backdrop-blur/)
   assert.match(settings, /settings-drawer-shell flex h-full w-full justify-end px-3 py-6 sm:px-4 sm:py-9/)
   assert.match(settings, /settings-drawer-panel liquid-glass flex h-full/)
-  assert.match(settings, /settings-drawer-body flex min-h-0 flex-1/)
+  assert.doesNotMatch(settings, /settings-drawer-panel liquid-glass[^"]*border border-white\/10/)
+  assert.doesNotMatch(settings, /settings-drawer-panel liquid-glass[^"]*shadow-glass/)
+  assert.match(settings, /settings-drawer-header flex shrink-0 items-start justify-between gap-4 border-b border-white\/10/)
+  assert.match(settings, /settings-drawer-body flex min-h-0 flex-1 gap-2/)
   assert.match(settings, /settings-row-copy/)
-  assert.match(settings, /settings-tab-content[^"]*flex-1[^"]*overflow-y-auto/)
+  assert.match(settings, /settings-tab-content settings-scroll-content[^"]*flex-1[^"]*overflow-y-auto/)
+  assert.match(settings, /onScroll=\{revealSettingsScrollbar\}/)
+  assert.match(settings, /settingsScrollbarVisible \? ' is-scrolling' : ''/)
   assert.match(settings, /settings-tab-rail flex shrink-0 flex-col gap-0\.5/)
   assert.doesNotMatch(settings, /settings-tab-rail liquid-glass/)
   assert.doesNotMatch(settings, /rounded-\[1\.5rem\][^"]*settings-tab-rail/)
@@ -474,26 +498,66 @@ test('settings drawer aligns to the topbar and keeps selection weight only on ac
   assert.doesNotMatch(settings, /const cardClass = "glass-panel p-5"/)
 
   const panelRule = cssRuleBody(css, '.settings-drawer-panel {')
+  assert.match(panelRule, /--settings-drawer-inner-padding:\s*clamp\(2rem, 4vw, 3rem\);/)
+  assert.match(panelRule, /--settings-drawer-body-start-padding:\s*clamp\(1\.15rem, 2\.4vw, 1\.65rem\);/)
   assert.match(panelRule, /inline-size:\s*min\(calc\(100vw - 1rem\), 36rem\)/)
+  assert.doesNotMatch(panelRule, /block-size:\s*min\(calc\(100dvh - var\(--settings-drawer-safe-area\)/)
+  assert.doesNotMatch(panelRule, /max-inline-size:\s*none;/)
   assert.match(panelRule, /animation:\s*settings-drawer-panel-in 0\.52s cubic-bezier\(0\.16, 1, 0\.3, 1\) both/)
-  assert.match(panelRule, /background:\s*linear-gradient\(180deg,\s*rgba\(18, 20, 30, 0\.76\),\s*rgba\(6, 8, 16, 0\.8\)\),\s*rgba\(8, 10, 18, 0\.7\)/)
-  assert.match(panelRule, /backdrop-filter:\s*blur\(32px\) saturate\(180%\) brightness\(1\.08\)/)
-  assert.match(panelRule, /box-shadow:\s*0 28px 90px rgba\(0, 0, 0, 0\.5\),\s*inset 0 1px 0 rgba\(255, 255, 255, 0\.14\),\s*inset 0 0 0 1px rgba\(255, 255, 255, 0\.05\)/)
-  const panelBeforeRule = cssRuleBody(css, '.settings-drawer-panel::before {')
-  assert.match(panelBeforeRule, /background:\s*none;/)
-  assert.doesNotMatch(panelBeforeRule, /radial-gradient/)
-  assert.doesNotMatch(panelBeforeRule, /rgba\(10, 132, 255/)
-  assert.doesNotMatch(panelBeforeRule, /linear-gradient/)
-  assert.match(css, /\.settings-drawer-panel::after\s*\{[^}]*border:\s*1px solid rgba\(255, 255, 255, 0\.11\);[^}]*box-shadow:\s*inset 0 1px 0 rgba\(255, 255, 255, 0\.18\),\s*inset 0 -44px 88px rgba\(0, 0, 0, 0\.18\);[^}]*\}/s)
+  assert.doesNotMatch(panelRule, /background:/)
+  assert.doesNotMatch(panelRule, /backdrop-filter:/)
+  assert.doesNotMatch(panelRule, /-webkit-backdrop-filter:/)
+  assert.doesNotMatch(panelRule, /box-shadow:/)
+  assert.doesNotMatch(panelRule, /var\(--mt-color-surface\)/)
+  assert.doesNotMatch(panelRule, /var\(--mt-backdrop-panel\)/)
+  assert.doesNotMatch(panelRule, /background:\s*var\(--mt-color-surface\);/)
+  assert.doesNotMatch(panelRule, /rgba\(10, 132, 255/)
+  assert.doesNotMatch(panelRule, /brightness\(/)
+  assert.doesNotMatch(panelRule, /blur\(/)
+  assert.doesNotMatch(panelRule, /linear-gradient/)
+  assert.doesNotMatch(panelRule, /radial-gradient/)
+  assert.doesNotMatch(panelRule, /inset/)
+  assert.doesNotMatch(css, /\.settings-drawer-panel::before\s*\{/)
+  assert.doesNotMatch(css, /\.settings-drawer-panel::after\s*\{/)
+
+  const panelGlassRule = cssRuleBody(css, ':root .settings-drawer-panel.liquid-glass {')
+  assert.match(panelGlassRule, /border-color:\s*rgba\(255, 255, 255, 0\.12\);/)
+  assert.match(panelGlassRule, /background:\s*rgba\(5, 7, 13, 0\.96\);/)
+  assert.match(panelGlassRule, /backdrop-filter:\s*blur\(34px\) saturate\(170%\);/)
+  assert.match(panelGlassRule, /-webkit-backdrop-filter:\s*blur\(34px\) saturate\(170%\);/)
+  assert.match(panelGlassRule, /box-shadow:\s*none;/)
+  assert.doesNotMatch(panelGlassRule, /linear-gradient|radial-gradient|rgba\(10,\s*132,\s*255|brightness\(|inset/)
 
   const shellRule = cssRuleBody(css, '.settings-drawer-shell {')
   assert.match(shellRule, /align-items:\s*stretch;/)
+  assert.doesNotMatch(shellRule, /justify-content:\s*center;/)
+  assert.doesNotMatch(shellRule, /padding:\s*var\(--settings-drawer-safe-area\);/)
+
+  const headerRule = cssRuleBody(css, '.settings-drawer-header {')
+  assert.match(headerRule, /padding:\s*var\(--settings-drawer-inner-padding\);/)
+
+  const bodyRule = cssRuleBody(css, '.settings-drawer-body {')
+  assert.match(bodyRule, /min-height:\s*0;/)
+  assert.match(bodyRule, /padding:\s*var\(--settings-drawer-body-start-padding\) var\(--settings-drawer-inner-padding\) var\(--settings-drawer-inner-padding\);/)
+
+  const scrollRule = cssRuleBody(css, '.settings-scroll-content {')
+  assert.match(scrollRule, /overflow-x:\s*hidden;/)
+  assert.match(scrollRule, /overflow-y:\s*auto;/)
+  assert.match(scrollRule, /scrollbar-gutter:\s*stable;/)
+  assert.match(scrollRule, /scrollbar-width:\s*thin;/)
+  assert.match(scrollRule, /scrollbar-color:\s*transparent transparent;/)
+
+  const scrollActiveRule = cssRuleBody(css, '.settings-scroll-content.is-scrolling {')
+  assert.match(scrollActiveRule, /scrollbar-color:\s*rgba\(255, 255, 255, 0\.24\) transparent;/)
+  assert.match(css, /\.settings-scroll-content::-webkit-scrollbar\s*\{[^}]*width:\s*6px;[^}]*height:\s*0;[^}]*\}/s)
+  assert.match(css, /\.settings-scroll-content::-webkit-scrollbar-thumb\s*\{[^}]*background:\s*transparent;[^}]*\}/s)
+  assert.match(css, /\.settings-scroll-content\.is-scrolling::-webkit-scrollbar-thumb\s*\{[^}]*background:\s*rgba\(255, 255, 255, 0\.24\);[^}]*\}/s)
 
   const panelOutRule = cssRuleBody(css, '.settings-drawer-panel.is-closing {')
   assert.match(panelOutRule, /settings-drawer-panel-out 0\.42s cubic-bezier\(0\.76, 0, 0\.24, 1\) both/)
 
   const sectionRule = cssRuleBody(css, '.settings-section {')
-  assert.match(sectionRule, /padding:\s*1\.25rem 0 0;/)
+  assert.match(sectionRule, /padding:\s*1rem 0 0;/)
   assert.match(sectionRule, /border-top:\s*1px solid rgba\(255, 255, 255, 0\.1\)/)
   assert.match(sectionRule, /background:\s*transparent;/)
   assert.match(sectionRule, /box-shadow:\s*none;/)
@@ -505,8 +569,9 @@ test('settings drawer aligns to the topbar and keeps selection weight only on ac
 
   assert.match(settings, /mt-4 border-t border-white\/10 pt-4/)
   assert.match(settings, /mt-3 border-t border-white\/10 pt-3/)
-  assert.match(settings, /flex shrink-0 items-start justify-between gap-4 border-b border-white\/10 px-4 py-4 sm:px-5/)
-  assert.match(settings, /flex shrink-0 items-center justify-between border-b border-white\/10 p-5/)
+  assert.doesNotMatch(settings, /flex shrink-0 items-start justify-between gap-4 border-b border-white\/10 px-4 py-4 sm:px-5/)
+  assert.doesNotMatch(settings, /settings-drawer-header[^\n]*px-4 py-4/)
+  assert.doesNotMatch(settings, /settings-drawer-header[^\n]*p-5/)
 
   const rowCopyRule = cssRuleBody(css, '.settings-row-copy {')
   assert.match(rowCopyRule, /display:\s*grid;/)
@@ -547,6 +612,101 @@ test('settings drawer aligns to the topbar and keeps selection weight only on ac
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/)
 })
 
+test('settings data tab constrains width without horizontal scrolling', () => {
+  const settings = readFileSync('src/pages/settings/Settings.tsx', 'utf8')
+  const css = readFileSync('src/index.css', 'utf8')
+
+  assert.match(settings, /className="settings-backup-actions"/)
+  assert.match(settings, /className="settings-file-field flex min-w-0 items-center gap-2"/)
+  assert.match(settings, /className=\{inputClass \+ " settings-file-input"\}/)
+  assert.match(settings, /className="settings-update-list"/)
+  assert.match(settings, /className="settings-update-card space-y-3/)
+  assert.match(settings, /className="settings-update-summary"/)
+  assert.doesNotMatch(settings, /settings-update-summary flex flex-col/)
+  assert.match(settings, /className="settings-update-title"/)
+  assert.match(settings, /className="settings-update-version-row"/)
+  assert.match(settings, /className="settings-update-version text-sm font-semibold text-white"/)
+  assert.match(settings, /className="settings-update-date text-xs text-gray-500"/)
+  assert.match(settings, /className="settings-update-meta/)
+  assert.match(settings, /\{v\.reason && \(\s*<p className="settings-update-reason text-xs text-gray-400"/)
+  assert.match(settings, /className="settings-update-actions flex flex-wrap items-center gap-2"/)
+  assert.doesNotMatch(settings, /className="flex shrink-0 flex-wrap items-center gap-2"/)
+  assert.match(settings, /className="settings-update-log max-h-48/)
+
+  const tabStackRule = cssRuleBody(css, '.settings-tab-stack {')
+  assert.match(tabStackRule, /min-width:\s*0;/)
+  assert.match(tabStackRule, /max-width:\s*100%;/)
+  assert.match(tabStackRule, /overflow:\s*hidden;/)
+
+  const sectionRule = cssRuleBody(css, '.settings-section {')
+  assert.match(sectionRule, /min-width:\s*0;/)
+  assert.match(sectionRule, /max-width:\s*100%;/)
+  assert.match(sectionRule, /overflow:\s*hidden;/)
+
+  const backupActionsRule = cssRuleBody(css, '.settings-backup-actions {')
+  assert.match(backupActionsRule, /display:\s*flex;/)
+  assert.match(backupActionsRule, /flex-wrap:\s*wrap;/)
+  assert.match(backupActionsRule, /max-width:\s*100%;/)
+
+  const fileInputRule = cssRuleBody(css, '.settings-file-input {')
+  assert.match(fileInputRule, /min-width:\s*0;/)
+  assert.match(fileInputRule, /max-width:\s*100%;/)
+
+  const updateListRule = cssRuleBody(css, '.settings-update-list {')
+  assert.match(updateListRule, /display:\s*grid;/)
+  assert.match(updateListRule, /min-width:\s*0;/)
+  assert.match(updateListRule, /max-width:\s*100%;/)
+  assert.match(updateListRule, /overflow:\s*hidden;/)
+
+  const updateCardRule = cssRuleBody(css, '.settings-update-card {')
+  assert.match(updateCardRule, /min-width:\s*0;/)
+  assert.match(updateCardRule, /max-width:\s*100%;/)
+  assert.match(updateCardRule, /overflow:\s*hidden;/)
+
+  const updateSummaryRule = cssRuleBody(css, '.settings-update-summary {')
+  assert.match(updateSummaryRule, /display:\s*grid;/)
+  assert.match(updateSummaryRule, /min-width:\s*0;/)
+  assert.match(updateSummaryRule, /gap:\s*0\.65rem;/)
+
+  const updateTitleRule = cssRuleBody(css, '.settings-update-title {')
+  assert.match(updateTitleRule, /display:\s*grid;/)
+  assert.match(updateTitleRule, /gap:\s*0\.3rem;/)
+
+  const updateVersionRowRule = cssRuleBody(css, '.settings-update-version-row {')
+  assert.match(updateVersionRowRule, /display:\s*flex;/)
+  assert.match(updateVersionRowRule, /flex-wrap:\s*wrap;/)
+  assert.match(updateVersionRowRule, /align-items:\s*center;/)
+
+  const updateVersionRule = cssRuleBody(css, '.settings-update-version {')
+  assert.match(updateVersionRule, /line-height:\s*1\.25;/)
+  assert.match(updateVersionRule, /overflow-wrap:\s*anywhere;/)
+
+  const updateDateRule = cssRuleBody(css, '.settings-update-date {')
+  assert.match(updateDateRule, /line-height:\s*1\.2;/)
+
+  const updateMetaRule = cssRuleBody(css, '.settings-update-meta {')
+  assert.match(updateMetaRule, /display:\s*flex;/)
+  assert.match(updateMetaRule, /flex-wrap:\s*wrap;/)
+  assert.match(updateMetaRule, /align-items:\s*center;/)
+  assert.match(updateMetaRule, /line-height:\s*1\.35;/)
+
+  const updateReasonRule = cssRuleBody(css, '.settings-update-reason {')
+  assert.match(updateReasonRule, /display:\s*block;/)
+  assert.match(updateReasonRule, /max-width:\s*100%;/)
+  assert.match(updateReasonRule, /overflow-wrap:\s*anywhere;/)
+  assert.match(updateReasonRule, /word-break:\s*break-word;/)
+  assert.match(updateReasonRule, /line-height:\s*1\.62;/)
+
+  const updateActionsRule = cssRuleBody(css, '.settings-update-actions {')
+  assert.match(updateActionsRule, /min-width:\s*0;/)
+  assert.match(updateActionsRule, /max-width:\s*100%;/)
+  assert.match(updateActionsRule, /width:\s*100%;/)
+  assert.match(updateActionsRule, /padding-top:\s*0\.25rem;/)
+
+  const updateLogRule = cssRuleBody(css, '.settings-update-log {')
+  assert.match(updateLogRule, /overflow-x:\s*hidden;/)
+})
+
 test('settings general tab uses compact theme cards and tidy library rows', () => {
   const settings = readFileSync('src/pages/settings/Settings.tsx', 'utf8')
   const css = readFileSync('src/index.css', 'utf8')
@@ -575,6 +735,19 @@ test('settings general tab uses compact theme cards and tidy library rows', () =
   assert.match(settings, /className="settings-library-status"/)
   assert.match(settings, /className="settings-library-actions"/)
   assert.doesNotMatch(settings, /space-y-2 rounded-2xl border border-white\/10 bg-white\/\[0\.06\] p-3 backdrop-blur-xl/)
+  assert.match(settings, /className="settings-option-group"/)
+  assert.match(settings, /className="settings-option-row"/)
+  assert.match(settings, /className="settings-option-control"/)
+  assert.match(settings, /className="settings-tab-stack"/)
+  assert.doesNotMatch(settings, /className="space-y-5"/)
+  assert.doesNotMatch(settings, /flex items-center justify-between gap-4 rounded-2xl border border-white\/10 bg-white\/\[0\.06\] p-3 backdrop-blur-xl/)
+
+  const tabStackRule = cssRuleBody(css, '.settings-tab-stack {')
+  assert.match(tabStackRule, /display:\s*grid;/)
+  assert.match(tabStackRule, /gap:\s*1rem;/)
+
+  const sectionRule = cssRuleBody(css, '.settings-section {')
+  assert.match(sectionRule, /padding:\s*1rem 0 0;/)
 
   const themeGridRule = cssRuleBody(css, '.settings-theme-grid {')
   assert.match(themeGridRule, /grid-template-columns:\s*minmax\(0, 1fr\);/)
@@ -602,6 +775,18 @@ test('settings general tab uses compact theme cards and tidy library rows', () =
   const themeActionsRule = cssRuleBody(css, '.settings-theme-card-actions {')
   assert.match(themeActionsRule, /flex:\s*0 0 auto;/)
 
+  const optionGroupRule = cssRuleBody(css, '.settings-option-group {')
+  assert.match(optionGroupRule, /overflow:\s*hidden;/)
+  assert.match(optionGroupRule, /border:\s*1px solid rgba\(255, 255, 255, 0\.1\);/)
+  assert.match(optionGroupRule, /border-radius:\s*1\.1rem;/)
+
+  const optionRowRule = cssRuleBody(css, '.settings-option-row {')
+  assert.match(optionRowRule, /display:\s*flex;/)
+  assert.match(optionRowRule, /justify-content:\s*space-between;/)
+
+  const optionDividerRule = cssRuleBody(css, '.settings-option-row \+ .settings-option-row {')
+  assert.match(optionDividerRule, /border-top:\s*1px solid rgba\(255, 255, 255, 0\.1\);/)
+
   const libraryCardRule = cssRuleBody(css, '.settings-library-card {')
   assert.match(libraryCardRule, /display:\s*grid;/)
   assert.match(libraryCardRule, /gap:\s*0\.68rem;/)
@@ -619,7 +804,7 @@ test('settings general tab uses compact theme cards and tidy library rows', () =
   assert.match(libraryActionsRule, /justify-content:\s*flex-end;/)
 })
 
-test('liquid glass uses a compact dark frosted surface', () => {
+test('liquid glass uses a single-tone dark frosted surface without highlights', () => {
   const css = readFileSync('src/index.css', 'utf8')
   const liquidGlass = cssRuleBody(css, '.liquid-glass {')
   const lightTextRemapIndex = css.indexOf(':root[data-mediatree-color-scheme="light"] .text-white')
@@ -629,13 +814,17 @@ test('liquid glass uses a compact dark frosted surface', () => {
   assert.match(liquidGlass, /isolation:\s*isolate;/)
   assert.match(liquidGlass, /border-radius:\s*18px;/)
   assert.match(liquidGlass, /border:\s*1px solid rgba\(255,\s*255,\s*255,\s*0\.12\);/)
-  assert.match(liquidGlass, /background:\s*rgba\(8,\s*10,\s*18,\s*0\.62\);/)
-  assert.match(liquidGlass, /backdrop-filter:\s*blur\(4px\) saturate\(140%\);/)
+  assert.match(liquidGlass, /background:\s*rgba\(8,\s*10,\s*18,\s*0\.78\);/)
+  assert.match(liquidGlass, /backdrop-filter:\s*blur\(28px\) saturate\(170%\);/)
+  assert.match(liquidGlass, /-webkit-backdrop-filter:\s*blur\(28px\) saturate\(170%\);/)
   assert.match(liquidGlass, /box-shadow:\s*none;/)
   assert.doesNotMatch(liquidGlass, /var\(--mt-shadow-glass\)/)
   assert.doesNotMatch(liquidGlass, /brightness\(/)
+  assert.doesNotMatch(liquidGlass, /linear-gradient|radial-gradient|rgba\(10,\s*132,\s*255/)
+  assert.doesNotMatch(css, /\.liquid-glass::before\s*\{/)
   assert.match(css, /\.liquid-glass::after\s*\{[^}]*border:\s*1px solid rgba\(255,\s*255,\s*255,\s*0\.06\);[^}]*\}/s)
   assert.doesNotMatch(cssRuleBody(css, '.liquid-glass::after {'), /box-shadow:/)
+  assert.doesNotMatch(cssRuleBody(css, '.liquid-glass::after {'), /linear-gradient|radial-gradient|rgba\(10,\s*132,\s*255/)
   assert.match(css, /\.mt-topbar \.glass-button,[^}]*\.mt-topbar \.glass-input:focus\s*\{[^}]*box-shadow:\s*none;/s)
   assert.ok(lightTextRemapIndex !== -1 && topbarWhiteIndex > lightTextRemapIndex)
   assert.match(css, /\.mt-topbar \.liquid-glass,[^}]*\.mt-topbar \.glass-input\s*\{[^}]*color:\s*#fff;/s)
@@ -688,15 +877,17 @@ test('global layout fills available width responsively', () => {
   assert.match(css, /\.media-grid\s+\.media-grid-card\s+img\s*\{[^}]*transition:\s*none\s*!important;[^}]*transform:\s*none\s*!important;/s)
 })
 
-test('home page stacks continue watching above library grid without tab switcher', () => {
+test('home page stacks continue watching above library grid with a conditional divider', () => {
   const css = readFileSync('src/index.css', 'utf8')
   const source = readFileSync('src/pages/home/Home.tsx', 'utf8')
   const sortDropdownSource = readFileSync('src/components/SortDropdown.tsx', 'utf8')
   const scrollButton = cssRuleBody(css, '.home-scroll-button {')
   const scrollIcon = cssRuleBody(css, '.home-scroll-icon {')
+  const divider = cssRuleBody(css, '.home-section-separator {')
   const continueHeadingIndex = source.indexOf('home-section-title">继续观看')
   const continueStripIndex = source.indexOf('home-continue-strip')
-  const libraryHeadingIndex = source.indexOf('home-section-title">媒体库')
+  const separatorIndex = source.indexOf('home-section-separator')
+  const sortIndex = source.indexOf('<SortDropdown options={sortOptions}')
   const libraryGridIndex = source.indexOf('home-poster-grid')
 
   assert.doesNotMatch(source, /text-xs uppercase tracking-\[0\.24em\][\s\S]*Library/)
@@ -706,16 +897,23 @@ test('home page stacks continue watching above library grid without tab switcher
   assert.doesNotMatch(source, /setTab\('recent'\)/)
   assert.match(source, /if \(libraryLoading \|\| recentLoading\)/)
   assert.doesNotMatch(source, /if \(libraryLoading && recentLoading\)/)
+  assert.doesNotMatch(source, /home-section-title">媒体库/)
   assert.ok(continueHeadingIndex !== -1, 'continue watching heading should be rendered')
   assert.ok(continueStripIndex > continueHeadingIndex, 'continue strip should follow its heading')
-  assert.ok(libraryHeadingIndex > continueStripIndex, 'library heading should appear after continue watching')
-  assert.ok(libraryGridIndex > libraryHeadingIndex, 'poster grid should follow the library heading')
+  assert.ok(separatorIndex > continueStripIndex, 'divider should appear after continue watching')
+  assert.ok(sortIndex > separatorIndex, 'sort control should follow the divider')
+  assert.ok(libraryGridIndex > sortIndex, 'poster grid should follow the sort control')
+  assert.match(source, /recentMovies\.length > 0 && \(\s*<>[\s\S]*className="home-section-separator" aria-hidden="true"[\s\S]*<\/>\s*\)/)
   assert.match(source, /<div className="home-section-header home-continue-header">/)
+  assert.match(source, /<div className="home-section-header home-library-header">\s*<SortDropdown options=\{sortOptions\}/)
   assert.match(source, /className="home-scroll-icon"/)
   assert.match(scrollButton, /align-items:\s*flex-end;/)
   assert.match(scrollButton, /height:\s*2rem;/)
   assert.match(scrollIcon, /height:\s*1\.125rem;/)
   assert.match(scrollIcon, /width:\s*1\.125rem;/)
+  assert.match(divider, /height:\s*1px;/)
+  assert.match(divider, /margin:\s*clamp\(2rem,\s*4\.2vw,\s*3\.25rem\) 0;/)
+  assert.match(divider, /background:\s*linear-gradient\(90deg,\s*transparent,\s*rgba\(255,\s*255,\s*255,\s*0\.18\),\s*transparent\);/)
   assert.match(source, /<SortDropdown options=\{sortOptions\} current=\{sort\} onChange=\{handleSort\} variant="menu" size="heading" \/>/)
   assert.match(sortDropdownSource, /size\?: 'default' \| 'heading'/)
   assert.match(sortDropdownSource, /const isHeadingSize = size === 'heading'/)
@@ -761,7 +959,9 @@ test('home library uses poster grid cards with external title metadata', () => {
   const mediaCardRuleIndex = css.indexOf('.media-grid > .media-grid-card {')
   const homePosterCardRuleIndex = css.indexOf('.home-poster-grid > .home-poster-card {')
 
-  assert.match(source, /className="home-page space-y-8"/)
+  assert.match(source, /className="home-page"/)
+  assert.match(homePage, /display:\s*flex;/)
+  assert.match(homePage, /flex-direction:\s*column;/)
   assert.match(source, /<section className="home-section home-library-section">/)
   assert.match(source, /<div className="home-section-header home-library-header">/)
   assert.ok(libraryGrid.includes('home-poster-grid'), 'home library grid should use poster-grid class')
@@ -780,6 +980,7 @@ test('home library uses poster grid cards with external title metadata', () => {
   assert.match(sectionHeader, /align-items:\s*flex-end;/)
   assert.match(sectionHeader, /margin-bottom:\s*var\(--mt-home-section-title-gap\);/)
   assert.match(libraryHeader, /padding-inline:\s*0;/)
+  assert.match(libraryHeader, /transform:\s*translateY\(-0\.3125rem\);/)
   assert.match(libraryHeader, /margin-bottom:\s*var\(--mt-home-library-title-gap\);/)
   assert.match(posterGrid, /display:\s*grid;/)
   assert.match(posterGrid, /width:\s*100%;/)

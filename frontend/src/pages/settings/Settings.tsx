@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { marked } from 'marked'
-import { api, Config, MediaRoot, LibrarySetting, UpdateCheckResult, UpdateStatus, ScraperInfo, ScraperPlugin, clearCache, getServerUrl, setServerUrl as saveServerUrl, isNativeApp, resolveApiUrl } from '../../api'
+import { api, MediaRoot, LibrarySetting, UpdateCheckResult, UpdateStatus, ScraperInfo, ScraperPlugin, clearCache, getServerUrl, setServerUrl as saveServerUrl, isNativeApp, resolveApiUrl } from '../../api'
 import { FALLBACK_SCRAPER_OPTIONS, normalizeLibraryScraperOptions } from '../../scrapers'
 import { getUiPrefs, setUiPrefs, dismissUpdate } from '../../store'
 import {
@@ -45,11 +45,8 @@ const SETTINGS_DRAWER_CLOSE_MS = 420
 
 export default function Settings({ open = true, onClose }: SettingsProps = {}) {
   const nativeApp = isNativeApp()
-  const [config, setConfig] = useState<Config | null>(null)
   const [librariesLoading, setLibrariesLoading] = useState(true)
 
-  const [javdbEnabled, setJavdbEnabled] = useState(true)
-  const [tmdbKey, setTmdbKey] = useState('')
   const [tmdbToken, setTmdbToken] = useState('')
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
@@ -62,6 +59,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
   const [themeMsg, setThemeMsg] = useState('')
   const [activeTab, setActiveTab] = useState<SettingsTabId>('general')
   const [closing, setClosing] = useState(false)
+  const [settingsScrollbarVisible, setSettingsScrollbarVisible] = useState(false)
 
   const [libraries, setLibraries] = useState<(MediaRoot & { settings?: LibrarySetting })[]>([])
   const [libScraper, setLibScraper] = useState<Record<string, string>>({})
@@ -104,6 +102,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
   const [changelogBody, setChangelogBody] = useState('')
   const [changelogError, setChangelogError] = useState('')
   const closeTimer = useRef<number | null>(null)
+  const settingsScrollbarTimer = useRef<number | null>(null)
 
   const openChangelog = async (v: any) => {
     setChangelogModal(v)
@@ -276,9 +275,6 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
 
   useEffect(() => {
     api.getConfig().then(d => {
-      setConfig(d)
-      setJavdbEnabled(d.javdb_enabled)
-      setTmdbKey(d.tmdb_api_key || '')
       setTmdbToken(d.tmdb_access_token || '')
     }).catch(() => {})
 
@@ -326,8 +322,6 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
     try {
       setUiPrefs({ ...getUiPrefs(), hideHomeTitleText })
       await api.updateConfig({
-        javdb_enabled: javdbEnabled,
-        tmdb_api_key: tmdbKey,
         tmdb_access_token: tmdbToken,
       })
       setMsg('已保存')
@@ -528,11 +522,26 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
     }, SETTINGS_DRAWER_CLOSE_MS)
   }, [closing, onClose])
 
+  const revealSettingsScrollbar = useCallback(() => {
+    setSettingsScrollbarVisible(true)
+    if (settingsScrollbarTimer.current) {
+      window.clearTimeout(settingsScrollbarTimer.current)
+    }
+    settingsScrollbarTimer.current = window.setTimeout(() => {
+      settingsScrollbarTimer.current = null
+      setSettingsScrollbarVisible(false)
+    }, 2000)
+  }, [])
+
   useEffect(() => {
     return () => {
       if (closeTimer.current) {
         window.clearTimeout(closeTimer.current)
         closeTimer.current = null
+      }
+      if (settingsScrollbarTimer.current) {
+        window.clearTimeout(settingsScrollbarTimer.current)
+        settingsScrollbarTimer.current = null
       }
     }
   }, [])
@@ -572,8 +581,20 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
     </button>
   )
 
+  const renderOptionRow = (title: string, description: string, control: React.ReactNode) => (
+    <div className="settings-option-row">
+      <div className="settings-row-copy">
+        <p className="text-sm font-medium text-white">{title}</p>
+        <p className="mt-0.5 text-xs text-gray-500">{description}</p>
+      </div>
+      <div className="settings-option-control">
+        {control}
+      </div>
+    </div>
+  )
+
   const renderGeneralTab = () => (
-    <div className="space-y-5">
+    <div className="settings-tab-stack">
       {nativeApp && (
         <div className={cardClass}>
           <h2 className={sectionTitle}>服务器</h2>
@@ -600,29 +621,25 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
 
       <div className={cardClass}>
         <h2 className={sectionTitle}>界面偏好</h2>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
-            <div className="settings-row-copy">
-              <p className="text-sm font-medium text-white">无字模式</p>
-              <p className="mt-0.5 text-xs text-gray-500">开启后首页仅展示影片封面图，隐藏卡片上的标题文字和目录数量。</p>
-            </div>
-            {renderSwitch(hideHomeTitleText, () => {
+        <div className="settings-option-group">
+          {renderOptionRow(
+            '无字模式',
+            '开启后首页仅展示影片封面图，隐藏卡片上的标题文字和目录数量。',
+            renderSwitch(hideHomeTitleText, () => {
               const v = !hideHomeTitleText
               setHideHomeTitleText(v)
               setUiPrefs({ ...getUiPrefs(), hideHomeTitleText: v })
-            })}
-          </div>
-          <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
-            <div className="settings-row-copy">
-              <p className="text-sm font-medium text-white">使用源文件名称</p>
-              <p className="mt-0.5 text-xs text-gray-500">开启后首页媒体库卡片显示源文件夹名称；关闭则显示刮削到的标题。</p>
-            </div>
-            {renderSwitch(showSourceName, () => {
+            }),
+          )}
+          {renderOptionRow(
+            '使用源文件名称',
+            '开启后首页媒体库卡片显示源文件夹名称；关闭则显示刮削到的标题。',
+            renderSwitch(showSourceName, () => {
               const v = !showSourceName
               setShowSourceName(v)
               setUiPrefs({ ...getUiPrefs(), showSourceName: v })
-            })}
-          </div>
+            }),
+          )}
         </div>
 
         <div className="mt-4 border-t border-white/10 pt-4">
@@ -873,17 +890,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
       </div>
       <div className="space-y-3">
         <div>
-          <label className={labelClass}>TMDB API Key</label>
-          <input
-            type="text"
-            value={tmdbKey}
-            onChange={e => setTmdbKey(e.target.value)}
-            placeholder="去 themoviedb.org 免费申请"
-            className={inputClass}
-          />
-        </div>
-        <div>
-          <label className={labelClass}>TMDB 读访问令牌（推荐，优先使用）</label>
+          <label className={labelClass}>TMDB 读访问令牌</label>
           <input
             type="password"
             value={tmdbToken}
@@ -891,13 +898,18 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
             placeholder="Bearer Token"
             className={inputClass}
           />
-        </div>
-        <div className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
-          <div className="settings-row-copy">
-            <p className="text-sm font-medium text-white">启用 Javdatabase</p>
-            <p className="mt-0.5 text-xs text-gray-500">用于 JAV 编号匹配的刮削器开关；请求间隔仍由后端内部策略控制。</p>
-          </div>
-          {renderSwitch(javdbEnabled, () => setJavdbEnabled(!javdbEnabled))}
+          <p className="mt-2 text-xs text-gray-500">
+            推荐使用读访问令牌；申请教程见{' '}
+            <a
+              href="https://zasenjc.github.io/mediatree/guide/configuration#获取-tmdb-读取访问令牌"
+              target="_blank"
+              rel="noreferrer"
+              className="text-apple-blue transition hover:underline"
+            >
+              配置说明
+            </a>
+            。
+          </p>
         </div>
 
         <div className="mt-3 border-t border-white/10 pt-3">
@@ -970,10 +982,10 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
   )
 
   const renderBackupTab = () => (
-    <div className="space-y-5">
+    <div className="settings-tab-stack">
       <div className={cardClass}>
         <h2 className={sectionTitle}>数据备份与恢复</h2>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="settings-backup-actions">
           <a href={api.backupUrl('core')} className={btnPrimary}>
             下载数据库备份
           </a>
@@ -986,7 +998,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
         </p>
         <div className="mt-3">
           <label className={labelClass}>上传备份恢复</label>
-          <div className="flex items-center gap-2">
+          <div className="settings-file-field flex min-w-0 items-center gap-2">
             <input
               type="file"
               accept=".db,.tar.gz,.gz"
@@ -1017,7 +1029,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
                 }
                 setSaving(false)
               }}
-              className={inputClass}
+              className={inputClass + " settings-file-input"}
             />
           </div>
         </div>
@@ -1082,7 +1094,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
         )}
 
         {visibleUpdateVersions.length > 0 && (
-          <div className="space-y-2">
+          <div className="settings-update-list">
             {visibleUpdateVersions.map((v: any, i: number) => {
               const result = updateResult
               if (!result) return null
@@ -1114,152 +1126,154 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
               const dockerErrorGuide = activeUpdate?.status === 'error' ? getDockerUpdateGuide(activeUpdate.message) : ''
               return (
                 <div key={v.version}
-                     className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
-                  <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-white">
-                        {v.display_version || v.version}
+                     className="settings-update-card space-y-3 rounded-2xl border border-white/10 bg-white/[0.06] p-3 backdrop-blur-xl">
+                  <div className="settings-update-summary">
+                    <div className="settings-update-title">
+                      <div className="settings-update-version-row">
+                        <p className="settings-update-version text-sm font-semibold text-white">
+                          {v.display_version || v.version}
+                        </p>
                         {isCurrent && (
-                          <span className="ml-2 inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] text-gray-400">
+                          <span className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] text-gray-400">
                             当前
                           </span>
                         )}
                         {!isCurrent && i === 0 && result.has_update && (
-                          <span className="ml-2 inline-flex items-center rounded-full border border-green-400/30 bg-green-500/15 px-2 py-0.5 text-[10px] text-green-400">
+                          <span className="inline-flex items-center rounded-full border border-green-400/30 bg-green-500/15 px-2 py-0.5 text-[10px] text-green-400">
                             最新
                           </span>
                         )}
-                      </p>
+                      </div>
                       {v.published_at && (
-                        <p className="mt-0.5 truncate text-xs text-gray-500">
+                        <p className="settings-update-date text-xs text-gray-500">
                           {new Date(v.published_at).toLocaleDateString('zh-CN')}
                         </p>
                       )}
-                      <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-500">
-                        <span className={"inline-flex rounded-full border px-2 py-0.5 " + (v.requires_image_update ? 'border-apple-yellow/30 bg-apple-yellow/10 text-apple-yellow' : 'border-apple-mint/30 bg-apple-mint/10 text-apple-mint')}>
-                          {v.requires_image_update ? '需要完整镜像更新' : '应用包更新'}
-                        </span>
-                        {!v.requires_image_update && (
-                          <span>{formatSize(v.size)}</span>
-                        )}
-                        {v.reason && (
-                          <span className="truncate">{v.reason}</span>
-                        )}
-                      </p>
                     </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <p className="settings-update-meta text-[11px] text-gray-500">
+                      <span className={"inline-flex rounded-full border px-2 py-0.5 " + (v.requires_image_update ? 'border-apple-yellow/30 bg-apple-yellow/10 text-apple-yellow' : 'border-apple-mint/30 bg-apple-mint/10 text-apple-mint')}>
+                        {v.requires_image_update ? '需要完整镜像更新' : '应用包更新'}
+                      </span>
+                      {!v.requires_image_update && (
+                        <span>{formatSize(v.size)}</span>
+                      )}
+                    </p>
+                    {v.reason && (
+                      <p className="settings-update-reason text-xs text-gray-400">{v.reason}</p>
+                    )}
+                  </div>
+                  <div className="settings-update-actions flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openChangelog(v)}
+                      className="text-xs text-apple-blue transition-colors hover:text-white"
+                    >
+                      更新日志
+                    </button>
+                    {canRollbackToThis ? (
                       <button
                         type="button"
-                        onClick={() => openChangelog(v)}
-                        className="text-xs text-apple-blue transition-colors hover:text-white"
+                        onClick={async () => {
+                          if (!confirm('确定要回滚到 ' + (v.display_version || v.version) + ' 吗？服务将自动重启。')) return
+                          setUpdatePerforming(v.version)
+                          setUpdateMsg('')
+                          setUpdateProgress({
+                            status: 'restarting',
+                            version: v.version,
+                            downloaded: 0,
+                            total: 0,
+                            message: '正在回滚到此版本...',
+                            update_type: 'app-package',
+                          })
+                          try {
+                            const res = await api.rollbackUpdate()
+                            if (res.ok === false) throw new Error((res as any).error || '回滚失败')
+                            setUpdateMsg(res.message || '已触发回滚')
+                            startUpdatePolling(res.version || v.version)
+                          } catch (e: any) {
+                            setUpdateMsg('回滚失败: ' + (e.message || '未知错误'))
+                          }
+                          setUpdatePerforming(null)
+                        }}
+                        disabled={isBusy}
+                        className={btnDark + " px-2 py-1 text-xs disabled:opacity-50"}
                       >
-                        更新日志
+                        {updatePerforming === v.version ? '回滚中...' : '回滚此版本'}
                       </button>
-                      {canRollbackToThis ? (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!confirm('确定要回滚到 ' + (v.display_version || v.version) + ' 吗？服务将自动重启。')) return
-                            setUpdatePerforming(v.version)
-                            setUpdateMsg('')
-                            setUpdateProgress({
-                              status: 'restarting',
-                              version: v.version,
-                              downloaded: 0,
-                              total: 0,
-                              message: '正在回滚到此版本...',
-                              update_type: 'app-package',
-                            })
-                            try {
-                              const res = await api.rollbackUpdate()
-                              if (res.ok === false) throw new Error((res as any).error || '回滚失败')
-                              setUpdateMsg(res.message || '已触发回滚')
-                              startUpdatePolling(res.version || v.version)
-                            } catch (e: any) {
-                              setUpdateMsg('回滚失败: ' + (e.message || '未知错误'))
+                    ) : !isCurrent && !v.requires_image_update ? (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!confirm('确定要' + (isOlderVersion ? '回滚到' : '切换到') + ' ' + (v.display_version || v.version) + ' 吗？容器将自动重启。')) return
+                          setUpdatePerforming(v.version)
+                          setUpdateMsg('')
+                          setUpdateProgress({
+                            status: 'downloading',
+                            version: v.version,
+                            downloaded: 0,
+                            total: 0,
+                            message: isOlderVersion ? '正在发起版本回滚...' : '正在发起应用包更新...',
+                            update_type: 'app-package',
+                          })
+                          startUpdatePolling(v.version)
+                          try {
+                            const res = await api.performUpdate(v.version, 'app-package')
+                            if (res.ok === false) throw new Error(res.error || (isOlderVersion ? '回滚失败' : '更新失败'))
+                            setUpdateMsg(res.message || (isOlderVersion ? '回滚已触发' : '更新已触发'))
+                            dismissUpdate(v.version)
+                          } catch (e: any) {
+                            setUpdateMsg((isOlderVersion ? '回滚' : '更新') + '失败: ' + (e.message || '未知错误'))
+                          }
+                          setUpdatePerforming(null)
+                        }}
+                        disabled={isBusy}
+                        className={btnPrimary + " px-2 py-1 text-xs disabled:opacity-50"}
+                      >
+                        {updatePerforming === v.version
+                          ? (isOlderVersion ? '回滚中...' : '更新中...')
+                          : (isOlderVersion ? '回滚此版本' : '下载并更新')}
+                      </button>
+                    ) : !isCurrent && v.requires_image_update ? (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!confirm('确定要执行完整镜像更新到 ' + dockerTargetVersion + ' 吗？该操作需要已挂载 Docker socket。')) return
+                          setUpdatePerforming(v.version)
+                          setUpdateMsg('')
+                          setUpdateProgress({
+                            status: 'installing',
+                            version: dockerTargetVersion,
+                            downloaded: 0,
+                            total: 0,
+                            message: '正在发起完整镜像更新...',
+                            update_type: 'docker-image',
+                            logs: [],
+                          })
+                          startUpdatePolling(dockerTargetVersion)
+                          try {
+                            const res = await api.performUpdate(dockerTargetVersion, 'docker-image')
+                            if (res.ok === false) throw new Error(res.error || '完整镜像更新失败')
+                            setUpdateMsg(res.message || '完整镜像更新已触发')
+                            dismissUpdate(dockerTargetVersion)
+                          } catch (e: any) {
+                            const message = e.message || '未知错误'
+                            if (message.includes('Failed to fetch')) {
+                              setUpdateMsg('完整镜像更新已触发，服务可能正在重启')
+                            } else if (isDockerSetupError(message)) {
+                              setUpdateMsg('')
+                            } else {
+                              setUpdateMsg('完整镜像更新失败: ' + message)
                             }
-                            setUpdatePerforming(null)
-                          }}
-                          disabled={isBusy}
-                          className={btnDark + " px-2 py-1 text-xs disabled:opacity-50"}
-                        >
-                          {updatePerforming === v.version ? '回滚中...' : '回滚此版本'}
-                        </button>
-                      ) : !isCurrent && !v.requires_image_update ? (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!confirm('确定要' + (isOlderVersion ? '回滚到' : '切换到') + ' ' + (v.display_version || v.version) + ' 吗？容器将自动重启。')) return
-                            setUpdatePerforming(v.version)
-                            setUpdateMsg('')
-                            setUpdateProgress({
-                              status: 'downloading',
-                              version: v.version,
-                              downloaded: 0,
-                              total: 0,
-                              message: isOlderVersion ? '正在发起版本回滚...' : '正在发起应用包更新...',
-                              update_type: 'app-package',
-                            })
-                            startUpdatePolling(v.version)
-                            try {
-                              const res = await api.performUpdate(v.version, 'app-package')
-                              if (res.ok === false) throw new Error(res.error || (isOlderVersion ? '回滚失败' : '更新失败'))
-                              setUpdateMsg(res.message || (isOlderVersion ? '回滚已触发' : '更新已触发'))
-                              dismissUpdate(v.version)
-                            } catch (e: any) {
-                              setUpdateMsg((isOlderVersion ? '回滚' : '更新') + '失败: ' + (e.message || '未知错误'))
-                            }
-                            setUpdatePerforming(null)
-                          }}
-                          disabled={isBusy}
-                          className={btnPrimary + " px-2 py-1 text-xs disabled:opacity-50"}
-                        >
-                          {updatePerforming === v.version
-                            ? (isOlderVersion ? '回滚中...' : '更新中...')
-                            : (isOlderVersion ? '回滚此版本' : '下载并更新')}
-                        </button>
-                      ) : !isCurrent && v.requires_image_update ? (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!confirm('确定要执行完整镜像更新到 ' + dockerTargetVersion + ' 吗？该操作需要已挂载 Docker socket。')) return
-                            setUpdatePerforming(v.version)
-                            setUpdateMsg('')
-                            setUpdateProgress({
-                              status: 'installing',
-                              version: dockerTargetVersion,
-                              downloaded: 0,
-                              total: 0,
-                              message: '正在发起完整镜像更新...',
-                              update_type: 'docker-image',
-                              logs: [],
-                            })
-                            startUpdatePolling(dockerTargetVersion)
-                            try {
-                              const res = await api.performUpdate(dockerTargetVersion, 'docker-image')
-                              if (res.ok === false) throw new Error(res.error || '完整镜像更新失败')
-                              setUpdateMsg(res.message || '完整镜像更新已触发')
-                              dismissUpdate(dockerTargetVersion)
-                            } catch (e: any) {
-                              const message = e.message || '未知错误'
-                              if (message.includes('Failed to fetch')) {
-                                setUpdateMsg('完整镜像更新已触发，服务可能正在重启')
-                              } else if (isDockerSetupError(message)) {
-                                setUpdateMsg('')
-                              } else {
-                                setUpdateMsg('完整镜像更新失败: ' + message)
-                              }
-                            }
-                            setUpdatePerforming(null)
-                          }}
-                          disabled={isBusy}
-                          title={v.reason || '该版本需要完整镜像更新'}
-                          className={btnDark + " px-2 py-1 text-xs disabled:opacity-50"}
-                        >
-                          {updatePerforming === v.version ? '更新中...' : '完整镜像更新'}
-                        </button>
-                      ) : null}
-                    </div>
+                          }
+                          setUpdatePerforming(null)
+                        }}
+                        disabled={isBusy}
+                        title={v.reason || '该版本需要完整镜像更新'}
+                        className={btnDark + " px-2 py-1 text-xs disabled:opacity-50"}
+                      >
+                        {updatePerforming === v.version ? '更新中...' : '完整镜像更新'}
+                      </button>
+                    ) : null}
                   </div>
 
                   {isAppUpdate && activeUpdate && (
@@ -1285,7 +1299,7 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
                   )}
 
                   {isDockerUpdate && activeUpdate && (
-                    <div className="max-h-48 space-y-0.5 overflow-y-auto rounded-2xl border border-white/10 bg-black/35 p-3 font-mono text-[11px] text-gray-400">
+                    <div className="settings-update-log max-h-48 space-y-0.5 overflow-y-auto rounded-2xl border border-white/10 bg-black/35 p-3 font-mono text-[11px] text-gray-400">
                       <div className={activeUpdate.status === 'error' ? 'mb-1 text-red-400' : 'mb-1 text-gray-300'}>
                         {statusLabel(activeUpdate.status)}
                         {(dockerErrorGuide || activeUpdate.message) ? ' · ' + (dockerErrorGuide || getDockerUpdateShortError(activeUpdate.message)) : ''}
@@ -1371,13 +1385,13 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
       >
         <div className="settings-drawer-shell flex h-full w-full justify-end px-3 py-6 sm:px-4 sm:py-9">
           <div
-            className={"settings-drawer-panel liquid-glass flex h-full w-full max-w-[min(100vw-1rem,36rem)] flex-col overflow-hidden rounded-[2rem] border border-white/10 shadow-glass" + (closing ? ' is-closing' : '')}
+            className={"settings-drawer-panel liquid-glass flex h-full w-full max-w-[min(100vw-1rem,36rem)] flex-col overflow-hidden rounded-[2rem]" + (closing ? ' is-closing' : '')}
             role="dialog"
             aria-modal="true"
             aria-labelledby="settings-drawer-title"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 px-4 py-4 sm:px-5">
+            <div className="settings-drawer-header flex shrink-0 items-start justify-between gap-4 border-b border-white/10">
               <div className="min-w-0 pr-2">
                 <h2 id="settings-drawer-title" className="text-xl font-semibold text-white">设置</h2>
                 <p className="mt-1 text-xs text-gray-500">右侧抽屉按标题分组切换，保留在当前页面上方。</p>
@@ -1401,8 +1415,11 @@ export default function Settings({ open = true, onClose }: SettingsProps = {}) {
               </div>
             </div>
 
-            <div className="settings-drawer-body flex min-h-0 flex-1 gap-2 px-4 py-4 sm:px-5 sm:py-5">
-              <div className="settings-tab-content flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+            <div className="settings-drawer-body flex min-h-0 flex-1 gap-2">
+              <div
+                className={"settings-tab-content settings-scroll-content flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1" + (settingsScrollbarVisible ? ' is-scrolling' : '')}
+                onScroll={revealSettingsScrollbar}
+              >
                 {msg && (
                   <div className={messageClass(msg)}>{msg}</div>
                 )}

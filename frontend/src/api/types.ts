@@ -172,8 +172,6 @@ export interface Category {
 }
 
 export interface Config {
-  javdb_enabled: boolean
-  tmdb_api_key: string
   tmdb_access_token: string
   tmdb_configured: boolean
   media_root: string

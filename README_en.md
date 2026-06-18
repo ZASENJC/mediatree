@@ -86,9 +86,6 @@ services:
       # Scan libraries when the container starts.
       - SCAN_ON_STARTUP=true
 
-      # Enable or disable Javdatabase scraping.
-      - JAVDB_ENABLED=true
-
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/api/health"]
       interval: 30s
@@ -129,10 +126,9 @@ The default image is size-optimized. It includes the lightweight `fonts-wqy-micr
 | `MEDIA_VOLUMES` | Mounts your media folders, for example `/host/movies:/media/movies:ro` |
 | `DATA_DIR` | Stores database, covers, fonts, backups, and app-package updates. Default: `./data` |
 | `HOST_PORT` | Web port on the host. Default: `27580` |
-| `TMDB_API_KEY` / `TMDB_ACCESS_TOKEN` | Optional, improves TMDB scraping |
-| `JAVDB_ENABLED` | Enables or disables Javdatabase scraping |
+| `TMDB_ACCESS_TOKEN` | Optional, improves TMDB scraping; see the [docs](https://zasenjc.github.io/mediatree/en/guide/configuration#getting-a-tmdb-read-access-token) |
 
-Scraper cache TTLs and the Javdatabase request interval are managed internally instead of being tuned from Settings or environment variables. Manual scans, rescrapes, and manual apply actions bypass cache, and empty results are not cached, so stale empty responses do not block later metadata fixes.
+Javdatabase is now provided as a built-in scraper plugin; choose `Javdatabase` for the relevant library in Settings to use it. Scraper cache TTLs and the Javdatabase request interval are managed internally instead of being tuned from Settings or environment variables. Manual scans, rescrapes, and manual apply actions bypass cache, and empty results are not cached, so stale empty responses do not block later metadata fixes.
 
 See [.env.example](.env.example) for all options. Detailed setup, scraper behavior, playback, and troubleshooting live in the [Docs Site](https://zasenjc.github.io/mediatree/en/).
 

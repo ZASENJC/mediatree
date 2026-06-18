@@ -8,7 +8,7 @@ MediaTree uses plugin-style scrapers to fetch titles, posters, cast, summaries, 
 
 `tmdb_movie` and `tmdb_tv` are for movies and TV shows. They support titles, summaries, genres, cast, people, posters, backdrops, season posters, episode stills, trailers, reviews, and release information.
 
-TMDB requires `TMDB_ACCESS_TOKEN` or `TMDB_API_KEY`.
+TMDB requires `TMDB_ACCESS_TOKEN`. Settings only exposes the `TMDB Read Access Token` field.
 
 ### Bangumi
 

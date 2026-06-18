@@ -19,7 +19,7 @@ _INTERNAL_SCRAPER_POLICY_DEFAULTS = {
     "bangumi_cache_hours": 168,
 }
 _INTERNAL_SCRAPER_POLICY_KEYS = set(_INTERNAL_SCRAPER_POLICY_DEFAULTS)
-_ENV_ONLY_KEYS = {"enable_builtin_scraper_plugins"}
+_ENV_ONLY_KEYS = {"enable_builtin_scraper_plugins", "tmdb_api_key"}
 
 
 def setup_file_logging(data_dir: str):
@@ -41,7 +41,6 @@ class Settings(BaseSettings):
     data_dir: str = str(Path(__file__).parent.parent.parent / "data")
     enable_builtin_scraper_plugins: bool = True
 
-    javdb_enabled: bool = True
     javdb_base_url: str = "https://www.javdatabase.com"
     javdb_cache_hours: int = 24
     javdb_request_interval: float = 3.0
@@ -163,9 +162,7 @@ class Settings(BaseSettings):
         try:
             Path(self.data_dir).mkdir(parents=True, exist_ok=True)
             data = {
-                "javdb_enabled": self.javdb_enabled,
                 "javdb_base_url": self.javdb_base_url,
-                "tmdb_api_key": self.tmdb_api_key,
                 "tmdb_access_token": self.tmdb_access_token,
                 "scrape_concurrency_per_library": self.scrape_concurrency_per_library,
                 "scrape_global_concurrency": self.scrape_global_concurrency,

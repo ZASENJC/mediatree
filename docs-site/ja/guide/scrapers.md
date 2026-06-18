@@ -8,7 +8,7 @@ MediaTree はプラグイン形式のスクレイパーで、タイトル、ポ�
 
 `tmdb_movie` と `tmdb_tv` は映画と TV 番組向けです。タイトル、概要、ジャンル、出演者、人物、ポスター、背景画像、シーズンポスター、エピソード画像、予告編、レビュー、リリース情報に対応します。
 
-TMDB には `TMDB_ACCESS_TOKEN` または `TMDB_API_KEY` が必要です。
+TMDB には `TMDB_ACCESS_TOKEN` が必要です。Settings には `TMDB Read Access Token` の入力欄だけを表示します。
 
 ### Bangumi
 

@@ -356,9 +356,7 @@ def _mask_sensitive(value: str) -> str:
 @app.get("/api/config")
 async def api_get_config():
     return {
-        "javdb_enabled": settings.javdb_enabled,
         "javdb_base_url": settings.javdb_base_url,
-        "tmdb_api_key": _mask_sensitive(settings.tmdb_api_key),
         "tmdb_access_token": _mask_sensitive(settings.tmdb_access_token),
         "tmdb_configured": bool(settings.tmdb_api_key or settings.tmdb_access_token),
         "scrape_concurrency_per_library": settings.scrape_concurrency_per_library,
@@ -373,17 +371,13 @@ async def api_get_config():
 
 @app.post("/api/config")
 async def api_update_config(data: dict):
-    if "javdb_enabled" in data:
-        settings.javdb_enabled = data["javdb_enabled"]
     if "javdb_base_url" in data:
         settings.javdb_base_url = data["javdb_base_url"]
-    if "tmdb_api_key" in data:
-        val = data["tmdb_api_key"]
-        if val and "***" not in val:
-            settings.tmdb_api_key = val
     if "tmdb_access_token" in data:
         val = data["tmdb_access_token"]
-        if val and "***" not in val:
+        if val == "":
+            settings.tmdb_access_token = ""
+        elif val and "***" not in val:
             settings.tmdb_access_token = val
     if "scrape_concurrency_per_library" in data:
         settings.scrape_concurrency_per_library = int(data["scrape_concurrency_per_library"])

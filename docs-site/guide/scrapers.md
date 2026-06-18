@@ -8,7 +8,7 @@ MediaTree 使用插件化刮削器从多个来源获取标题、海报、演员�
 
 `tmdb_movie` 和 `tmdb_tv` 适合电影和电视剧，支持标题、简介、类型、演员、人物、海报、背景图、季海报、分集剧照、预告片、评论和上映信息。
 
-使用 TMDB 需要 `TMDB_ACCESS_TOKEN` 或 `TMDB_API_KEY`。
+使用 TMDB 需要 `TMDB_ACCESS_TOKEN`。设置页只提供 `TMDB 读访问令牌` 输入项。
 
 ### Bangumi
 

@@ -50,11 +50,6 @@ class ScanResult(BaseModel):
     errors: list[str]
 
 
-class ConfigUpdate(BaseModel):
-    javdb_cookie: Optional[str] = None
-    javdb_enabled: Optional[bool] = None
-
-
 class FolderNode(BaseModel):
     name: str
     path: str

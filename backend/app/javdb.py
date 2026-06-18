@@ -233,7 +233,7 @@ def _jav_code_variants(code: str) -> list[str]:
 
 
 async def search_javdb(code: str) -> dict | None:
-    if not settings.javdb_enabled or not code:
+    if not code:
         return None
 
     cached = await _get_cached(code)

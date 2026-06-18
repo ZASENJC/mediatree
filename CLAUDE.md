@@ -76,11 +76,11 @@ Application update packages must be produced by `scripts/build-app-package.sh`. 
 
 Copy `.env.example` to `.env` and configure:
 - `AUTH_USER` / `AUTH_PASS` (required) — web UI credentials
-- `TMDB_API_KEY` / `TMDB_ACCESS_TOKEN` (optional) — enables TMDB API
+- `TMDB_ACCESS_TOKEN` (optional) — enables TMDB API; Settings exposes only the TMDB read access token. Keep legacy `TMDB_API_KEY` backend compatibility hidden from Settings unless a future migration explicitly removes or redesigns it.
 - `MEDIA_VOLUMES` — format `/host/path:/media/alias:ro`
 - `DATA_DIR` — persistent data (DB, covers, config), default `./data`
 - `HOST_PORT` — default `27580`
-- `JAVDB_ENABLED` — enable/disable the Javdatabase scraper. Scraper cache TTLs and the Javdatabase request interval are internal runtime policy, not user-facing env/config knobs.
+- Javdatabase is provided as a built-in scraper plugin. Select `Javdatabase` per library in Settings; there is no separate environment/config toggle for it. Scraper cache TTLs and the Javdatabase request interval are internal runtime policy, not user-facing env/config knobs.
 
 ## Architecture
 
@@ -93,7 +93,7 @@ In production, the backend serves the built frontend at `/`. In development, run
 - `auto_scrape.py` — Automatic scrape scheduling and watcher path policy. Coalesces affected media roots, filters relevant file/folder changes, and centralizes container-safe watcher polling defaults.
 - `database.py` — All SQLite CRUD (~1150 lines): `init_db()` with schema migrations, movie/folder/tag/category ops, and Web playback progress in `user_data`.
 - `config.py` — `pydantic-settings` + JSON config persistence. `Settings` class reads `.env`, then `load_persisted_config()` overlays `data/config.json` except for internal scraper cache/request policy keys. Runtime changes via `/api/config` POST write back to `config.json`.
-- `models.py` — Pydantic v2 models: `Movie`, `JavdbCache`, `Category`, `Tag`, `ScanResult`, `ConfigUpdate`, `FolderNode`.
+- `models.py` — Pydantic v2 models: `Movie`, `JavdbCache`, `Category`, `Tag`, `ScanResult`, `FolderNode`.
 - `stream.py` — Video streaming with HTTP Range support (byte-range seeking), ffmpeg transcoding, media info extraction via ffprobe.
 - `covers.py` — Cover image management: download, compress (Pillow, max 500px, JPEG q=80), episode still generation.
 - `title_match.py` — Title matching utilities: code extraction, TMDB ID token parsing, CJK/romaji extraction, season inference, folder clean name generation.

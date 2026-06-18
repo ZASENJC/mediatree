@@ -39,7 +39,6 @@ services:
       - AUTH_PASS=change-me
       - PORT=80
       - SCAN_ON_STARTUP=true
-      - JAVDB_ENABLED=true
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/api/health"]
       interval: 30s

@@ -300,7 +300,7 @@ export default function Home() {
       ])
       const libraryScraper = librarySettings.find(item => item.media_root === activeMediaRoot)?.scraper || 'auto'
       if (!cfg.tmdb_configured && scraperMayNeedTmdb(libraryScraper)) {
-        showToast('TMDB API 未配置，刮削可能失败，请在设置中填写 API Key')
+        showToast('TMDB 读访问令牌未配置，刮削可能失败，请在设置中填写令牌')
       }
       await api.rescrapeFolder(activeFolderPath, activeMediaRoot)
       showToast('刮削任务已触发')
@@ -325,7 +325,7 @@ export default function Home() {
     try {
       const cfg = await api.getConfig()
       if (!cfg.tmdb_configured && (folderScrapeSrc === 'auto' || folderScrapeSrc.startsWith('tmdb'))) {
-        showToast('TMDB API 未配置，刮削可能失败，请在设置中填写 API Key')
+        showToast('TMDB 读访问令牌未配置，刮削可能失败，请在设置中填写令牌')
       }
     } catch {}
     setFolderScrapeSearching(true)
@@ -502,52 +502,54 @@ export default function Home() {
   }
 
   return (
-    <div className="home-page space-y-8">
+    <div className="home-page">
       {recentMovies.length > 0 && (
-        <section className="home-section">
-          <div className="home-section-header home-continue-header">
-            <h2 className="home-section-title">继续观看</h2>
-            <div className="home-scroll-actions" aria-label="继续观看滚动控制">
-              <button type="button" className="home-scroll-button" aria-label="向左滚动继续观看" onClick={() => scrollContinue(-1)}>
-                <span className="home-scroll-icon" aria-hidden="true">‹</span>
-              </button>
-              <button type="button" className="home-scroll-button" aria-label="向右滚动继续观看" onClick={() => scrollContinue(1)}>
-                <span className="home-scroll-icon" aria-hidden="true">›</span>
-              </button>
+        <>
+          <section className="home-section">
+            <div className="home-section-header home-continue-header">
+              <h2 className="home-section-title">继续观看</h2>
+              <div className="home-scroll-actions" aria-label="继续观看滚动控制">
+                <button type="button" className="home-scroll-button" aria-label="向左滚动继续观看" onClick={() => scrollContinue(-1)}>
+                  <span className="home-scroll-icon" aria-hidden="true">‹</span>
+                </button>
+                <button type="button" className="home-scroll-button" aria-label="向右滚动继续观看" onClick={() => scrollContinue(1)}>
+                  <span className="home-scroll-icon" aria-hidden="true">›</span>
+                </button>
+              </div>
             </div>
-          </div>
-          <div ref={continueStripRef} className="home-continue-strip">
-            {recentMovies.map((movie) => (
-              <article key={movie.id} className="home-continue-item" onClick={() => goMovie(movie.id)}>
-                <div className="home-continue-cover">
-                  <div className="home-continue-cover-placeholder">暂无继续观看封面</div>
-                  <img
-                    src={getHomeContinueCoverSrc(movie)}
-                    alt={getHomeContinueTitle(movie)}
-                    loading="lazy"
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-                  />
-                  <div className="home-continue-cover-shade" />
-                  <div className="home-continue-progress-track" aria-hidden="true">
-                    <div
-                      className="home-continue-progress-bar"
-                      style={{ width: `${Math.max(0, Math.min(100, movie.progress_percent || 0))}%` }}
+            <div ref={continueStripRef} className="home-continue-strip">
+              {recentMovies.map((movie) => (
+                <article key={movie.id} className="home-continue-item" onClick={() => goMovie(movie.id)}>
+                  <div className="home-continue-cover">
+                    <div className="home-continue-cover-placeholder">暂无继续观看封面</div>
+                    <img
+                      src={getHomeContinueCoverSrc(movie)}
+                      alt={getHomeContinueTitle(movie)}
+                      loading="lazy"
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
                     />
+                    <div className="home-continue-cover-shade" />
+                    <div className="home-continue-progress-track" aria-hidden="true">
+                      <div
+                        className="home-continue-progress-bar"
+                        style={{ width: `${Math.max(0, Math.min(100, movie.progress_percent || 0))}%` }}
+                      />
+                    </div>
                   </div>
-                </div>
-                <div className="home-continue-meta">
-                  <p className="home-continue-title">{getHomeContinueTitle(movie)}</p>
-                  <p className="home-continue-subtitle">{getHomeContinueSubtitle(movie)}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
+                  <div className="home-continue-meta">
+                    <p className="home-continue-title">{getHomeContinueTitle(movie)}</p>
+                    <p className="home-continue-subtitle">{getHomeContinueSubtitle(movie)}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+          <div className="home-section-separator" aria-hidden="true" />
+        </>
       )}
 
       <section className="home-section home-library-section">
         <div className="home-section-header home-library-header">
-          <h2 className="home-section-title">媒体库</h2>
           <SortDropdown options={sortOptions} current={sort} onChange={handleSort} variant="menu" size="heading" />
         </div>
 

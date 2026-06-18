@@ -87,9 +87,6 @@ services:
       # 启动时自动扫描媒体库
       - SCAN_ON_STARTUP=true
 
-      # 是否启用 Javdatabase 刮削
-      - JAVDB_ENABLED=true
-
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/api/health"]
       interval: 30s
@@ -130,10 +127,9 @@ Docker Hub 镜像：`zasenjc/mediatree:latest`
 | `MEDIA_VOLUMES` | 挂载媒体目录，例如 `/host/movies:/media/movies:ro` |
 | `DATA_DIR` | 保存数据库、封面、字体、备份和应用包更新。默认 `./data` |
 | `HOST_PORT` | Web 访问端口。默认 `27580` |
-| `TMDB_API_KEY` / `TMDB_ACCESS_TOKEN` | 可选，用于改善 TMDB 刮削 |
-| `JAVDB_ENABLED` | 启用或关闭 Javdatabase 刮削 |
+| `TMDB_ACCESS_TOKEN` | 可选，用于改善 TMDB 刮削；申请方式见[文档站](https://zasenjc.github.io/mediatree/guide/configuration#获取-tmdb-读取访问令牌) |
 
-刮削器缓存有效期和 Javdatabase 请求间隔由应用内部管理，不再需要在设置页或环境变量里调整。手动扫描、重新刮削和手动应用结果会绕过缓存，空结果不会写入缓存，避免旧的空结果挡住后续补齐的数据。
+Javdatabase 现在作为内置刮削器插件提供；在设置页为对应媒体库选择 `Javdatabase` 即可使用。刮削器缓存有效期和 Javdatabase 请求间隔由应用内部管理，不再需要在设置页或环境变量里调整。手动扫描、重新刮削和手动应用结果会绕过缓存，空结果不会写入缓存，避免旧的空结果挡住后续补齐的数据。
 
 完整配置见 [.env.example](.env.example)。高级配置、刮削逻辑、播放和排障说明放在 [文档站](https://zasenjc.github.io/mediatree/)。
 
