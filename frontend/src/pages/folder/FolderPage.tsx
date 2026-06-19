@@ -1,6 +1,6 @@
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback, useLayoutEffect, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { api, Movie, FolderNode, resolveApiUrl } from '../../api'
 import { getExcluded } from '../../store'
 import { getCached, setCache } from '../../cache'
@@ -12,6 +12,18 @@ import { showToast } from '../../toast'
 import { LIBRARY_SORT_OPTIONS } from '../../constants/sortOptions'
 
 type SortMode = 'name' | 'created_desc' | 'created_asc' | 'release_date_desc' | 'release_date_asc' | 'random'
+const FOLDER_ENTRY_TRANSITION_MS = 520
+
+type FolderTransitionState = {
+  rect: {
+    left: number
+    top: number
+    width: number
+    height: number
+  }
+  coverSrc: string
+  title: string
+}
 
 interface SeasonTab { name: string; path: string; count: number }
 
@@ -30,6 +42,11 @@ function isSeasonLabel(label: string) {
 export default function FolderPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  const initialFolderTransitionRef = useRef<FolderTransitionState | null>(
+    (location.state as { folderTransition?: FolderTransitionState } | null)?.folderTransition || null,
+  )
+  const initialFolderTransition = initialFolderTransitionRef.current
   const folderPath = searchParams.get('path') || ''
   const mediaRoot = searchParams.get('media_root') || ''
   const seasonFilter = searchParams.get('season') || ''
@@ -51,6 +68,11 @@ export default function FolderPage() {
   const [showSpecials, setShowSpecials] = useState(false)
   const [specialsLoading, setSpecialsLoading] = useState(false)
   const [specialsToggling, setSpecialsToggling] = useState(false)
+  const [folderTransition, setFolderTransition] = useState<FolderTransitionState | null>(null)
+  const [folderEntering, setFolderEntering] = useState(false)
+  const [folderEntryBackdropKey, setFolderEntryBackdropKey] = useState<number | null>(null)
+  const returnTransitionRef = useRef<FolderTransitionState | null>(initialFolderTransition || null)
+  const folderEntryStartedRef = useRef(false)
 
   // ─── Backdrop Carousel (powered by folder-scraped TMDB data) ───
   const [backdrops, setBackdrops] = useState<{ url: string; width: number; height: number }[]>([])
@@ -177,6 +199,27 @@ export default function FolderPage() {
   }, [allMovies, seasonFilter])
 
   useEffect(() => { restoreScrollPos() }, [])
+  useLayoutEffect(() => {
+    if (!initialFolderTransition) return
+    returnTransitionRef.current = initialFolderTransition
+    if (loading || folderEntryStartedRef.current) return
+    folderEntryStartedRef.current = true
+    setFolderEntryBackdropKey(activeBackdrop ? fadeKey : null)
+    setFolderTransition(initialFolderTransition)
+    setFolderEntering(true)
+    navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true, state: null })
+    const clearEnteringTimer = window.setTimeout(() => setFolderEntering(false), FOLDER_ENTRY_TRANSITION_MS)
+    const clearTransitionTimer = window.setTimeout(() => setFolderTransition(null), FOLDER_ENTRY_TRANSITION_MS)
+    return () => {
+      window.clearTimeout(clearEnteringTimer)
+      window.clearTimeout(clearTransitionTimer)
+    }
+  }, [initialFolderTransition, loading])
+
+  useEffect(() => {
+    if (!folderEntering || !activeBackdrop) return
+    setFolderEntryBackdropKey(fadeKey)
+  }, [activeBackdrop, fadeKey, folderEntering])
 
   const seasonTabs = useMemo(() => {
     const seen = new Set<string>()
@@ -279,6 +322,16 @@ export default function FolderPage() {
     if (!showSpecials) void enableSpecials()
   }
 
+  const goHome = () => {
+    saveScrollPos()
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (!returnTransitionRef.current || prefersReducedMotion) {
+      navigate('/')
+      return
+    }
+    navigate('/', { state: { homeReturnTransition: returnTransitionRef.current } })
+  }
+
   useEffect(() => {
     if (specialsSelected && specialCount > 0 && !showSpecials) {
       void enableSpecials()
@@ -290,6 +343,7 @@ export default function FolderPage() {
   const displayedEmptyText = specialsSelected ? '此文件夹下没有花絮' : '此文件夹下没有影片'
   const displayedCountText = specialsSelected ? `${specialCount} 个花絮` : `${movies.length} 部影片`
   const backdropImageClass = 'pointer-events-none absolute inset-0 h-full w-full object-cover object-center saturate-115'
+  const useFolderEntryBackdropImage = folderEntering || (folderEntryBackdropKey === fadeKey && Boolean(activeBackdrop))
 
   if (loading) {
     return (
@@ -328,9 +382,9 @@ export default function FolderPage() {
         </div>,
         document.body,
       )}
-      <div className="relative z-0 space-y-6">
+      <div className={`folder-page ${folderEntering ? 'is-folder-entering' : ''} relative z-0 space-y-6`}>
       {activeBackdrop && (
-        <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="folder-backdrop-layer pointer-events-none fixed inset-0 -z-10 overflow-hidden">
           {exitBackdrop && (
             <img
               key={`exit-${fadeKey}`}
@@ -343,13 +397,15 @@ export default function FolderPage() {
             key={`enter-${fadeKey}`}
             src={activeBackdrop}
             alt=""
-            className={`${backdropImageClass} animate-backdrop-in`}
+            className={`${backdropImageClass} ${useFolderEntryBackdropImage ? 'folder-entry-backdrop-image' : 'animate-backdrop-in'}`}
           />
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,transparent_58%,rgba(3,4,10,0.72)_100%)]" />
         </div>
       )}
+      <div className="folder-content-layer">
       {activeBackdrop ? (
-        <div className="relative -mt-5 min-h-[56vh] sm:-mt-7 sm:min-h-[62vh]"
+        <div
+          className="relative -mt-5 min-h-[calc(100dvh-5.5rem)] sm:-mt-7 sm:min-h-[calc(100dvh-6.75rem)]"
           onMouseEnter={() => setBackdropHover(true)}
           onMouseLeave={() => setBackdropHover(false)}
         >
@@ -375,8 +431,8 @@ export default function FolderPage() {
             </>
           )}
 
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 p-4 pb-14 sm:p-7 sm:pb-24">
-            <button onClick={() => { saveScrollPos(); navigate('/') }}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 p-4 pb-16 sm:p-7 sm:pb-24">
+            <button onClick={goHome}
               className="pointer-events-auto glass-chip mb-4 text-sm text-gray-300 drop-shadow hover:text-white">
               返回首页
             </button>
@@ -404,7 +460,7 @@ export default function FolderPage() {
       ) : (
         <div className="glass-panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <div className="min-w-0">
-            <button onClick={() => { saveScrollPos(); navigate('/') }}
+            <button onClick={goHome}
               className="glass-chip mb-2 text-sm text-gray-400 hover:text-white">
               返回首页
             </button>
@@ -433,7 +489,7 @@ export default function FolderPage() {
           <button
             onClick={() => selectSeason(null)}
             className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
-              !seasonFilter && !specialsSelected ? 'bg-apple-blue/80 text-white shadow-glow' : 'text-gray-400 hover:bg-white/[0.08] hover:text-white'
+              !seasonFilter && !specialsSelected ? 'bg-apple-blue/80 text-white shadow-glow' : 'text-white/80 hover:bg-white/[0.08] hover:text-white'
             }`}
           >
             全部 ({allMovies.length})
@@ -442,7 +498,7 @@ export default function FolderPage() {
             <button key={tab.path}
               onClick={() => selectSeason(tab.path)}
               className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
-                seasonFilter === tab.path ? 'bg-apple-blue/80 text-white shadow-glow' : 'text-gray-400 hover:bg-white/[0.08] hover:text-white'
+                seasonFilter === tab.path ? 'bg-apple-blue/80 text-white shadow-glow' : 'text-white/80 hover:bg-white/[0.08] hover:text-white'
               }`}
             >
               {tab.name} ({tab.count})
@@ -453,7 +509,7 @@ export default function FolderPage() {
               onClick={selectSpecials}
               disabled={specialsToggling && specialsSelected}
               className={`rounded-full px-3 py-1.5 text-xs font-medium transition-all disabled:cursor-wait disabled:opacity-70 ${
-                specialsSelected ? 'bg-apple-pink/80 text-white shadow-glow' : 'text-gray-400 hover:bg-apple-pink/10 hover:text-apple-pink'
+                specialsSelected ? 'bg-apple-pink/80 text-white shadow-glow' : 'text-white/80 hover:bg-apple-pink/10 hover:text-white'
               }`}
             >
               {specialsToggling && specialsSelected ? '花絮加载中...' : `花絮 (${specialCount})`}
@@ -466,24 +522,46 @@ export default function FolderPage() {
         </div>
       </div>
 
-      {displayedMoviesLoading ? (
-        <div className="glass-panel py-20 text-center text-gray-500">
-          <div className="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-2 border-apple-pink border-t-transparent" />
-          <p>花絮加载中...</p>
-        </div>
-      ) : displayedMovies.length === 0 ? (
-        <div className="glass-panel py-20 text-center text-gray-500">
-          <p className="mb-2 text-3xl font-light text-white/60">--</p>
-          <p>{displayedEmptyText}</p>
-        </div>
-      ) : (
-        <div className="folder-episode-grid grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 media-grid">
-          {displayedMovies.map((movie) => (
-            <MovieCard key={movie.id} movie={movie} onUpdated={specialsSelected ? loadSpecials : load} showBadges={false} coverStrategy="episode-still-only" />
-          ))}
-        </div>
-      )}
+      <div className="folder-episode-section">
+        {displayedMoviesLoading ? (
+          <div className="glass-panel py-20 text-center text-gray-500">
+            <div className="mx-auto mb-3 h-6 w-6 animate-spin rounded-full border-2 border-apple-pink border-t-transparent" />
+            <p>花絮加载中...</p>
+          </div>
+        ) : displayedMovies.length === 0 ? (
+          <div className="glass-panel py-20 text-center text-gray-500">
+            <p className="mb-2 text-3xl font-light text-white/60">--</p>
+            <p>{displayedEmptyText}</p>
+          </div>
+        ) : (
+          <div className="folder-episode-grid grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 media-grid">
+            {displayedMovies.map((movie) => (
+              <MovieCard key={movie.id} movie={movie} onUpdated={specialsSelected ? loadSpecials : load} showBadges={false} coverStrategy="episode-still-only" />
+            ))}
+          </div>
+        )}
+      </div>
+      </div>
     </div>
+      {folderTransition && createPortal(
+        <div
+          className="home-folder-transition"
+          aria-hidden="true"
+          style={{
+            '--home-folder-transition-left': `${folderTransition.rect.left}px`,
+            '--home-folder-transition-top': `${folderTransition.rect.top}px`,
+            '--home-folder-transition-width': `${folderTransition.rect.width}px`,
+            '--home-folder-transition-height': `${folderTransition.rect.height}px`,
+          } as CSSProperties}
+        >
+          <img
+            src={folderTransition.coverSrc}
+            alt={folderTransition.title}
+            className="home-folder-transition-image"
+          />
+        </div>,
+        document.body,
+      )}
     </>
   )
 }

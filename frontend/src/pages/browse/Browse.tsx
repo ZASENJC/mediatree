@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef, type CSSProperties } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { api, Movie, FolderNode } from '../../api'
 import { getExcluded, setExcluded } from '../../store'
@@ -10,6 +10,8 @@ import SortDropdown from '../../components/SortDropdown'
 import { BROWSE_SORT_OPTIONS } from '../../constants/sortOptions'
 
 const MOBILE_TREE_EXIT_MS = 300
+const BROWSE_OPENING_ANIMATION_MS = 1680
+const BROWSE_OPENING_MAX_ITEMS = 48
 
 export default function Browse() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -33,7 +35,9 @@ export default function Browse() {
   const [excluded, setExcludedState] = useState<Set<string>>(getExcluded())
   const [mobileTreeOpen, setMobileTreeOpen] = useState(false)
   const [mobileTreeClosing, setMobileTreeClosing] = useState(false)
+  const [browseOpening, setBrowseOpening] = useState(false)
   const mobileTreeCloseTimer = useRef<number | null>(null)
+  const browseOpeningStartedRef = useRef(false)
   const pageSize = 48
 
   const sortedFolders = useMemo(() => {
@@ -157,6 +161,16 @@ export default function Browse() {
     }
   }, [])
 
+  useEffect(() => {
+    if (loading || browseOpeningStartedRef.current) return
+    browseOpeningStartedRef.current = true
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    setBrowseOpening(true)
+    const timer = window.setTimeout(() => setBrowseOpening(false), BROWSE_OPENING_ANIMATION_MS)
+    return () => window.clearTimeout(timer)
+  }, [loading])
+
   const handleFolderSelect = (path: string) => {
     setFolder(path)
     closeMobileTree()
@@ -187,7 +201,7 @@ export default function Browse() {
   )
 
   return (
-    <div className="home-aligned-page browse-page space-y-5">
+    <div className={`home-aligned-page browse-page space-y-5 ${browseOpening ? 'is-browse-opening' : ''}`}>
       <div className="home-section-header browse-library-header">
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2">
@@ -259,11 +273,12 @@ export default function Browse() {
           ) : (
             <>
               <div className="home-poster-grid media-grid">
-                {movies.map((movie) => (
+                {movies.map((movie, index) => (
                   <div
                     key={movie.id}
                     onClick={() => { saveScrollPos(); navigate(`/detail/${movie.id}`) }}
                     className="glass-card apple-focus home-poster-card media-grid-card group cursor-pointer overflow-hidden"
+                    style={{ '--home-opening-index': Math.min(index, BROWSE_OPENING_MAX_ITEMS) } as CSSProperties}
                   >
                     <div className="relative aspect-[2/3] overflow-hidden bg-white/[0.04]">
                       <img

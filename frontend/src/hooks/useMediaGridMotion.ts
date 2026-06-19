@@ -22,6 +22,10 @@ function getCards(grid: Element) {
   return Array.from(grid.querySelectorAll<HTMLElement>(':scope > .media-grid-card'))
 }
 
+function isGridEntranceAnimating(grid: Element) {
+  return Boolean(grid.closest('.is-home-opening, .is-browse-opening'))
+}
+
 function getDocumentCardRect(card: HTMLElement): CardRect {
   const rect = card.getBoundingClientRect()
   return {
@@ -34,7 +38,7 @@ function readRects(grids: Iterable<Element>) {
   const rects = new WeakMap<HTMLElement, CardRect>()
   for (const grid of grids) {
     for (const card of getCards(grid)) {
-      rects.set(card, getDocumentCardRect(card))
+      rects.set(card, getDocumentCardLayoutRect(card))
     }
   }
   return rects
@@ -50,18 +54,30 @@ function readTransformOffset(transform: string): CardRect {
   }
 }
 
+function getDocumentCardLayoutRect(card: HTMLElement, activeOffset?: CardRect): CardRect {
+  const rect = getDocumentCardRect(card)
+  const offset = activeOffset ?? readTransformOffset(getComputedStyle(card).transform)
+  return {
+    left: rect.left - offset.left,
+    top: rect.top - offset.top,
+  }
+}
+
 function animateGridShift(grid: Element, beforeRects: WeakMap<HTMLElement, CardRect>, nextRects: WeakMap<HTMLElement, CardRect>) {
+  if (isGridEntranceAnimating(grid)) {
+    for (const card of getCards(grid)) {
+      nextRects.set(card, getDocumentCardLayoutRect(card))
+    }
+    return
+  }
+
   for (const card of getCards(grid)) {
     const before = beforeRects.get(card)
     const animatedCard = card as AnimatedCard
     const activeTransform = getComputedStyle(card).transform
     const activeOffset = readTransformOffset(activeTransform)
 
-    const after = getDocumentCardRect(card)
-    const afterLayout = {
-      left: after.left - activeOffset.left,
-      top: after.top - activeOffset.top,
-    }
+    const afterLayout = getDocumentCardLayoutRect(card, activeOffset)
     nextRects.set(card, afterLayout)
     if (!before && activeTransform === 'none') continue
 

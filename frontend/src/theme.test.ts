@@ -85,6 +85,19 @@ function cssRuleBody(css: string, selector: string, occurrence = 0) {
   return css.slice(openBraceIndex + 1, closingBraceIndex)
 }
 
+function cssRuleBodyBetween(css: string, selector: string, endPattern: string) {
+  const selectorIndex = css.indexOf(selector)
+  assert.notEqual(selectorIndex, -1, `missing selector: ${selector}`)
+
+  const openBraceIndex = css.indexOf('{', selectorIndex)
+  assert.notEqual(openBraceIndex, -1, `missing rule start for selector: ${selector}`)
+
+  const closingBraceIndex = css.indexOf(endPattern, openBraceIndex)
+  assert.notEqual(closingBraceIndex, -1, `missing rule end pattern for selector: ${selector}`)
+
+  return css.slice(openBraceIndex + 1, closingBraceIndex)
+}
+
 test('parseThemeFileContent validates and normalizes a theme package', () => {
   const parsed = parseThemeFileContent(JSON.stringify({
     name: 'night-theater',
@@ -1005,7 +1018,7 @@ test('browse and favorites keep the aligned page heading pattern while settings 
   assert.match(alignedPage, /--mt-home-library-title-gap:\s*calc\(var\(--mt-home-section-title-gap\) \+ 3px\);/)
   assert.match(alignedPage, /padding-top:\s*calc\(2rem - \(0\.9375rem \* 1\.2\)\);/)
   assert.match(css, /\.home-page,\s*\.browse-page,\s*\.favorites-page\s*\{/)
-  assert.match(browseSource, /className="home-aligned-page browse-page space-y-5"/)
+  assert.match(browseSource, /className=\{`home-aligned-page browse-page space-y-5 \$\{browseOpening \? 'is-browse-opening' : ''\}`\}/)
   assert.match(browseSource, /className="home-section-header browse-library-header"/)
   assert.match(favoritesSource, /className="home-aligned-page favorites-page space-y-5"/)
   assert.match(browseHeader, /justify-content:\s*space-between;/)
@@ -1028,12 +1041,12 @@ test('home library uses poster grid cards with external title metadata', () => {
   const sectionHeader = cssRuleBody(css, '.home-section-header {')
   const posterGrid = cssRuleBody(css, '.home-poster-grid {')
   const libraryHeader = cssRuleBody(css, '.home-library-header {')
-  const posterCard = cssRuleBody(css, '.home-poster-grid > .home-poster-card {')
   const posterCover = cssRuleBody(css, '.home-poster-cover {')
   const mediaCardRuleIndex = css.indexOf('.media-grid > .media-grid-card {')
   const homePosterCardRuleIndex = css.indexOf('.home-poster-grid > .home-poster-card {')
+  const posterCard = cssRuleBody(css, '.home-poster-grid > .home-poster-card {', 1)
 
-  assert.match(source, /className="home-page"/)
+  assert.match(source, /className=\{`home-page \$\{homeReturning \? 'is-home-returning' : ''\} \$\{homeOpening \? 'is-home-opening' : ''\}`\}/)
   assert.match(sharedPosterPageRule, /display:\s*flex;/)
   assert.match(sharedPosterPageRule, /flex-direction:\s*column;/)
   assert.match(source, /<section className="home-section home-library-section">/)
@@ -1095,9 +1108,132 @@ test('home library uses poster grid cards with external title metadata', () => {
   assert.match(css, /\.home-poster-card:hover \.home-poster-watched-action,[^}]*\.home-poster-card:focus-within \.home-poster-watched-action\s*\{[^}]*opacity:\s*1;/s)
 })
 
+test('home to folder navigation shares the clicked poster with the folder page entrance', () => {
+  const css = readFileSync('src/index.css', 'utf8')
+  const homeSource = readFileSync('src/pages/home/Home.tsx', 'utf8')
+  const folderSource = readFileSync('src/pages/folder/FolderPage.tsx', 'utf8')
+  const transitionLayer = cssRuleBody(css, '.home-folder-transition {')
+  const transitionImage = cssRuleBody(css, '.home-folder-transition-image {')
+  const homeReturn = cssRuleBody(css, '.home-page.is-home-returning {')
+  const folderBackdropEntrance = cssRuleBody(css, '.folder-page.is-folder-entering .folder-backdrop-layer {')
+  const folderContentEntrance = cssRuleBody(css, '.folder-page.is-folder-entering .folder-content-layer {', 1)
+  const reducedMotionIndex = css.indexOf('@media (prefers-reduced-motion: reduce) {')
+
+  assert.match(homeSource, /import \{ useNavigate, useSearchParams, useLocation \}/)
+  assert.match(homeSource, /type FolderTransitionState =/)
+  assert.match(homeSource, /import \{ useEffect, useState, useCallback, useRef, useLayoutEffect, type CSSProperties \}/)
+  assert.match(homeSource, /const location = useLocation\(\)/)
+  assert.match(homeSource, /const initialHomeReturnTransitionRef = useRef<FolderTransitionState \| null>\(/)
+  assert.match(homeSource, /\(location\.state as \{ homeReturnTransition\?: FolderTransitionState \} \| null\)\?\.homeReturnTransition \|\| null/)
+  assert.match(homeSource, /const initialHomeReturnTransition = initialHomeReturnTransitionRef\.current/)
+  assert.match(homeSource, /const homeReturnStartedRef = useRef\(false\)/)
+  assert.match(homeSource, /const sourceCover = e\.currentTarget\.querySelector\('\.home-poster-cover'\)/)
+  assert.match(homeSource, /sourceCover\??\.getBoundingClientRect\(\)/)
+  assert.match(homeSource, /const folderTransition: FolderTransitionState =/)
+  assert.match(homeSource, /navigate\(`\/folder\?\$\{p\.toString\(\)\}`, \{ state: \{ folderTransition \} \}\)/)
+  assert.match(homeSource, /const \[homeReturnTransition, setHomeReturnTransition\] = useState<FolderTransitionState \| null>\(null\)/)
+  assert.match(homeSource, /const \[homeReturning, setHomeReturning\] = useState\(false\)/)
+  assert.doesNotMatch(homeSource, /useState<FolderTransitionState \| null>\(initialHomeReturnTransition \|\| null\)/)
+  assert.doesNotMatch(homeSource, /useState\(Boolean\(initialHomeReturnTransition\)\)/)
+  assert.match(homeSource, /useLayoutEffect\(\(\) => \{[\s\S]*if \(libraryLoading \|\| recentLoading \|\| homeReturnStartedRef\.current\) return[\s\S]*homeReturnStartedRef\.current = true[\s\S]*setHomeReturnTransition\(initialHomeReturnTransition\)[\s\S]*setHomeReturning\(true\)/)
+  assert.match(homeSource, /if \(libraryLoading \|\| recentLoading \|\| homeReturnStartedRef\.current\) return/)
+  assert.match(homeSource, /homeReturnStartedRef\.current = true/)
+  assert.match(homeSource, /navigate\(\{ pathname: location\.pathname,\s*search: location\.search,\s*hash: location\.hash \}, \{ replace: true,\s*state: null \}\)/)
+  assert.match(homeSource, /window\.setTimeout\(\(\) => setHomeReturnTransition\(null\), HOME_RETURN_TRANSITION_MS\)/)
+  assert.match(homeSource, /className=\{`home-page \$\{homeReturning \? 'is-home-returning' : ''\} \$\{homeOpening \? 'is-home-opening' : ''\}`\}/)
+  assert.match(homeSource, /homeReturnTransition && createPortal\(/)
+  assert.match(homeSource, /className="home-folder-transition-image"/)
+  assert.doesNotMatch(homeSource, /is-reverse/)
+  assert.doesNotMatch(homeSource, /folderTransitionTimerRef/)
+  assert.doesNotMatch(homeSource, /setFolderTransition/)
+  assert.doesNotMatch(homeSource, /HOME_FOLDER_TRANSITION_MS/)
+
+  assert.match(folderSource, /import \{ useSearchParams, useNavigate, useLocation \}/)
+  assert.match(folderSource, /type FolderTransitionState =/)
+  assert.match(folderSource, /import \{ useEffect, useState, useMemo, useRef, useCallback, useLayoutEffect, type CSSProperties \}/)
+  assert.match(folderSource, /const location = useLocation\(\)/)
+  assert.match(folderSource, /const initialFolderTransitionRef = useRef<FolderTransitionState \| null>\(/)
+  assert.match(folderSource, /\(location\.state as \{ folderTransition\?: FolderTransitionState \} \| null\)\?\.folderTransition \|\| null/)
+  assert.match(folderSource, /const initialFolderTransition = initialFolderTransitionRef\.current/)
+  assert.match(folderSource, /const \[folderTransition, setFolderTransition\] = useState<FolderTransitionState \| null>\(null\)/)
+  assert.match(folderSource, /const \[folderEntryBackdropKey, setFolderEntryBackdropKey\] = useState<number \| null>\(null\)/)
+  assert.match(folderSource, /const returnTransitionRef = useRef<FolderTransitionState \| null>\(initialFolderTransition \|\| null\)/)
+  assert.match(folderSource, /const folderEntryStartedRef = useRef\(false\)/)
+  assert.match(folderSource, /const \[folderEntering, setFolderEntering\] = useState\(false\)/)
+  assert.doesNotMatch(folderSource, /useState<FolderTransitionState \| null>\(initialFolderTransition \|\| null\)/)
+  assert.doesNotMatch(folderSource, /useState\(Boolean\(initialFolderTransition\)\)/)
+  assert.match(folderSource, /useLayoutEffect\(\(\) => \{[\s\S]*if \(loading \|\| folderEntryStartedRef\.current\) return[\s\S]*folderEntryStartedRef\.current = true[\s\S]*setFolderTransition\(initialFolderTransition\)[\s\S]*setFolderEntering\(true\)/)
+  assert.match(folderSource, /if \(loading \|\| folderEntryStartedRef\.current\) return/)
+  assert.match(folderSource, /folderEntryStartedRef\.current = true/)
+  assert.match(folderSource, /setFolderEntryBackdropKey\(activeBackdrop \? fadeKey : null\)/)
+  assert.match(folderSource, /navigate\(\{ pathname: location\.pathname,\s*search: location\.search,\s*hash: location\.hash \}, \{ replace: true,\s*state: null \}\)/)
+  assert.match(folderSource, /\}, \[initialFolderTransition,\s*loading\]\)/)
+  assert.match(folderSource, /if \(!folderEntering \|\| !activeBackdrop\) return[\s\S]*setFolderEntryBackdropKey\(fadeKey\)/)
+  assert.match(folderSource, /const goHome = \(\) => \{/)
+  assert.match(folderSource, /navigate\('\/', \{ state: \{ homeReturnTransition: returnTransitionRef\.current \} \}\)/)
+  assert.match(folderSource, /onClick=\{goHome\}/)
+  assert.match(folderSource, /window\.setTimeout\(\(\) => setFolderTransition\(null\), FOLDER_ENTRY_TRANSITION_MS\)/)
+  assert.match(folderSource, /className=\{`folder-page \$\{folderEntering \? 'is-folder-entering' : ''\} relative z-0 space-y-6`\}/)
+  assert.match(folderSource, /className="folder-backdrop-layer pointer-events-none fixed inset-0 -z-10 overflow-hidden"/)
+  assert.match(folderSource, /className="folder-content-layer"/)
+  assert.match(folderSource, /const useFolderEntryBackdropImage = folderEntering \|\| \(folderEntryBackdropKey === fadeKey && Boolean\(activeBackdrop\)\)/)
+  assert.match(folderSource, /useFolderEntryBackdropImage \? 'folder-entry-backdrop-image' : 'animate-backdrop-in'/)
+  assert.match(folderSource, /folderTransition && createPortal\(/)
+  assert.match(folderSource, /className="home-folder-transition"/)
+  assert.match(folderSource, /className="home-folder-transition-image"/)
+
+  assert.match(transitionLayer, /position:\s*fixed;/)
+  assert.match(transitionLayer, /inset:\s*0;/)
+  assert.match(transitionLayer, /z-index:\s*65;/)
+  assert.match(transitionLayer, /pointer-events:\s*none;/)
+  assert.match(transitionLayer, /background:\s*transparent;/)
+  assert.doesNotMatch(transitionLayer, /animation:/)
+  assert.match(transitionImage, /position:\s*fixed;/)
+  assert.match(transitionImage, /left:\s*var\(--home-folder-transition-left\);/)
+  assert.match(transitionImage, /top:\s*var\(--home-folder-transition-top\);/)
+  assert.match(transitionImage, /width:\s*var\(--home-folder-transition-width\);/)
+  assert.match(transitionImage, /height:\s*var\(--home-folder-transition-height\);/)
+  assert.match(transitionImage, /animation:\s*home-folder-transition-zoom\s+520ms/)
+  assert.match(homeReturn, /animation:\s*home-page-clear-in\s+520ms/)
+  assert.match(homeReturn, /filter:\s*blur\(12px\) brightness\(0\.68\);/)
+  assert.match(folderBackdropEntrance, /animation:\s*folder-backdrop-clear-in\s+520ms/)
+  assert.match(folderBackdropEntrance, /filter:\s*blur\(18px\) brightness\(0\.54\);/)
+  assert.match(folderBackdropEntrance, /transform:\s*none;/)
+  assert.match(cssRuleBody(css, '.folder-entry-backdrop-image {'), /opacity:\s*0\.8;/)
+  assert.match(folderContentEntrance, /animation:\s*folder-content-clear-in\s+520ms/)
+  assert.match(folderContentEntrance, /filter:\s*blur\(10px\) brightness\(0\.72\);/)
+  assert.match(css, /@keyframes home-folder-transition-zoom\s*\{[\s\S]*filter:\s*blur\(16px\) saturate\(122%\);[\s\S]*transform:\s*translate3d\(0,\s*0,\s*0\) scale\(1\.34\);/s)
+  assert.doesNotMatch(css, /home-folder-transition-zoom-out/)
+  assert.doesNotMatch(css, /\.home-folder-transition-image\.is-reverse/)
+  assert.doesNotMatch(css, /home-folder-transition-backdrop/)
+  assert.match(css, /@keyframes home-page-clear-in\s*\{[\s\S]*filter:\s*blur\(12px\) brightness\(0\.68\);[\s\S]*filter:\s*blur\(0\) brightness\(1\);/s)
+  assert.match(css, /@keyframes folder-backdrop-clear-in\s*\{[\s\S]*filter:\s*blur\(18px\) brightness\(0\.54\);[\s\S]*filter:\s*blur\(0\) brightness\(1\);/s)
+  assert.match(css, /@keyframes folder-content-clear-in\s*\{[\s\S]*filter:\s*blur\(10px\) brightness\(0\.72\);[\s\S]*filter:\s*blur\(0\) brightness\(1\);/s)
+  assert.doesNotMatch(css.match(/@keyframes folder-backdrop-clear-in\s*\{[\s\S]*?\n\}/)?.[0] || '', /scale\(|translate|transform:/)
+  assert.ok(reducedMotionIndex !== -1, 'reduced-motion media query should exist')
+  const reducedTransitionIndex = css.indexOf('.home-folder-transition,', reducedMotionIndex)
+  assert.ok(reducedTransitionIndex > reducedMotionIndex)
+  const reducedTransitionRule = css.slice(
+    reducedTransitionIndex,
+    css.indexOf('}', reducedTransitionIndex) + 1
+  )
+  for (const selector of [
+    '.home-folder-transition',
+    '.home-folder-transition-image',
+    '.home-page.is-home-returning',
+    '.folder-entry-backdrop-image',
+    '.folder-page.is-folder-entering .folder-backdrop-layer',
+    '.folder-page.is-folder-entering .folder-content-layer',
+  ]) {
+    assert.ok(reducedTransitionRule.includes(selector), `missing reduced-motion selector: ${selector}`)
+  }
+  assert.match(reducedTransitionRule, /animation-duration:\s*1ms\s*!important;/)
+})
+
 test('folder episode cards prefer episode stills and placeholder missing metadata', () => {
   const css = readFileSync('src/index.css', 'utf8')
   const folderSource = readFileSync('src/pages/folder/FolderPage.tsx', 'utf8')
+  const folderSection = cssRuleBody(css, '.folder-episode-section {')
   const folderGrid = cssRuleBody(css, '.folder-episode-grid {')
 
   assert.deepEqual(
@@ -1112,10 +1248,33 @@ test('folder episode cards prefer episode stills and placeholder missing metadat
     getMovieCardCover({ tmdb_type: 'movie', tmdb_episode: undefined }, 'episode-still-only'),
     { kind: 'placeholder', isEpisode: false, hasEpisodeStill: false, usesLandscape: true }
   )
+  assert.match(folderSection, /padding-top:\s*clamp\(1rem,\s*2\.4vw,\s*1\.5rem\);/)
+  assert.match(folderSource, /className="folder-episode-section"/)
   assert.match(folderGrid, /--mt-media-card-width:\s*16rem;/)
   assert.match(folderGrid, /--mt-media-card-height:\s*9rem;/)
   assert.match(folderSource, /folder-episode-grid/)
   assert.match(folderSource, /coverStrategy="episode-still-only"/)
+})
+
+test('folder backdrop header keeps episode controls below the first viewport', () => {
+  const folderSource = readFileSync('src/pages/folder/FolderPage.tsx', 'utf8')
+
+  assert.match(folderSource, /min-h-\[calc\(100dvh-5\.5rem\)\]/)
+  assert.match(folderSource, /sm:min-h-\[calc\(100dvh-6\.75rem\)\]/)
+  assert.match(folderSource, /bottom-0 p-4 pb-16 sm:p-7 sm:pb-24/)
+  assert.doesNotMatch(folderSource, /min-h-\[clamp\(18rem,42vh,30rem\)\]/)
+  assert.doesNotMatch(folderSource, /sm:min-h-\[clamp\(20rem,46vh,34rem\)\]/)
+  assert.doesNotMatch(folderSource, /pb-10 sm:p-7 sm:pb-16/)
+})
+
+test('folder season selector keeps inactive tab labels white', () => {
+  const folderSource = readFileSync('src/pages/folder/FolderPage.tsx', 'utf8')
+
+  assert.match(folderSource, /!seasonFilter && !specialsSelected \? 'bg-apple-blue\/80 text-white shadow-glow' : 'text-white\/80 hover:bg-white\/\[0\.08\] hover:text-white'/)
+  assert.match(folderSource, /seasonFilter === tab\.path \? 'bg-apple-blue\/80 text-white shadow-glow' : 'text-white\/80 hover:bg-white\/\[0\.08\] hover:text-white'/)
+  assert.match(folderSource, /specialsSelected \? 'bg-apple-pink\/80 text-white shadow-glow' : 'text-white\/80 hover:bg-apple-pink\/10 hover:text-white'/)
+  assert.doesNotMatch(folderSource, /text-gray-400 hover:bg-white\/\[0\.08\] hover:text-white/)
+  assert.doesNotMatch(folderSource, /text-gray-400 hover:bg-apple-pink\/10 hover:text-apple-pink/)
 })
 
 test('continue watching cards use episode stills or cached movie snapshots', () => {
@@ -1213,8 +1372,13 @@ test('media grid layout shifts animate with translate-only FLIP motion', () => {
   assert.match(hook, /card\.animate/)
   assert.match(hook, /DOMMatrixReadOnly/)
   assert.match(hook, /getComputedStyle\(card\)\.transform/)
-  assert.match(hook, /left:\s*after\.left\s*-\s*activeOffset\.left/)
-  assert.match(hook, /top:\s*after\.top\s*-\s*activeOffset\.top/)
+  assert.match(hook, /function getDocumentCardLayoutRect\(card: HTMLElement,\s*activeOffset\?: CardRect\): CardRect/)
+  assert.match(hook, /const rect = getDocumentCardRect\(card\)/)
+  assert.match(hook, /const offset = activeOffset \?\? readTransformOffset\(getComputedStyle\(card\)\.transform\)/)
+  assert.match(hook, /left:\s*rect\.left\s*-\s*offset\.left/)
+  assert.match(hook, /top:\s*rect\.top\s*-\s*offset\.top/)
+  assert.match(hook, /rects\.set\(card,\s*getDocumentCardLayoutRect\(card\)\)/)
+  assert.match(hook, /const afterLayout = getDocumentCardLayoutRect\(card,\s*activeOffset\)/)
   assert.match(hook, /const fromX = dx \+ activeOffset\.left/)
   assert.match(hook, /const fromY = dy \+ activeOffset\.top/)
   assert.match(hook, /__mediaGridAnimationCount/)
@@ -1230,8 +1394,44 @@ test('media grid layout motion compares page coordinates so scrolling is not ani
   assert.match(hook, /function getDocumentCardRect\(card: HTMLElement\): CardRect/)
   assert.match(hook, /left:\s*rect\.left\s*\+\s*window\.scrollX/)
   assert.match(hook, /top:\s*rect\.top\s*\+\s*window\.scrollY/)
-  assert.match(hook, /const after = getDocumentCardRect\(card\)/)
+  assert.match(hook, /const rect = getDocumentCardRect\(card\)/)
+  assert.match(hook, /const afterLayout = getDocumentCardLayoutRect\(card,\s*activeOffset\)/)
   assert.doesNotMatch(hook, /const after = card\.getBoundingClientRect\(\)/)
+})
+
+test('home page plays a top-to-bottom opening drop animation without fighting grid motion', () => {
+  const css = readFileSync('src/index.css', 'utf8')
+  const homeSource = readFileSync('src/pages/home/Home.tsx', 'utf8')
+  const hook = readFileSync('src/hooks/useMediaGridMotion.ts', 'utf8')
+  const openingHeader = cssRuleBody(css, '.home-page.is-home-opening .home-section-header,', 1)
+  const openingContinue = cssRuleBody(css, '.home-page.is-home-opening .home-continue-item {')
+  const openingCard = cssRuleBody(css, '.home-page.is-home-opening .home-poster-grid > .home-poster-card,', 1)
+  const continueKeyframes = css.match(/@keyframes home-opening-continue-in\s*\{[\s\S]*?\n\}/)?.[0] || ''
+
+  assert.match(homeSource, /const HOME_OPENING_ANIMATION_MS = 1680/)
+  assert.match(homeSource, /const HOME_OPENING_MAX_ITEMS = 48/)
+  assert.match(homeSource, /const homeOpeningStartedRef = useRef\(false\)/)
+  assert.match(homeSource, /const \[homeOpening, setHomeOpening\] = useState\(false\)/)
+  assert.match(homeSource, /prefers-reduced-motion:\s*reduce/)
+  assert.match(homeSource, /setHomeOpening\(true\)/)
+  assert.match(homeSource, /window\.setTimeout\(\(\) => setHomeOpening\(false\), HOME_OPENING_ANIMATION_MS\)/)
+  assert.match(homeSource, /className=\{`home-page \$\{homeReturning \? 'is-home-returning' : ''\} \$\{homeOpening \? 'is-home-opening' : ''\}`\}/)
+  assert.match(homeSource, /--home-opening-index/)
+  assert.match(openingHeader, /animation:\s*home-opening-header-drop\s+420ms/)
+  assert.match(openingContinue, /animation:\s*home-opening-continue-in\s+360ms/)
+  assert.match(openingContinue, /animation-delay:\s*calc\(40ms \+ min\(var\(--home-opening-index,\s*0\),\s*48\) \* 16ms\);/)
+  assert.match(css, /@keyframes home-opening-continue-in\s*\{[\s\S]*filter:\s*blur\(8px\) brightness\(0\.9\);[\s\S]*filter:\s*blur\(0\) brightness\(1\);/s)
+  assert.doesNotMatch(continueKeyframes, /translate3d|translateY|rotateX/)
+  assert.match(openingCard, /animation:\s*home-opening-card-drop\s+520ms/)
+  assert.match(openingCard, /animation-delay:\s*calc\(40ms \+ min\(var\(--home-opening-index,\s*0\),\s*48\) \* 22ms\);/)
+  assert.match(css, /@keyframes home-opening-card-drop\s*\{[\s\S]*translate3d\(0,\s*-2\.4rem,\s*0\)[\s\S]*translate3d\(0,\s*0,\s*0\)/s)
+  assert.doesNotMatch(css.match(/@keyframes home-opening-card-drop\s*\{[\s\S]*?\n\}/)?.[0] || '', /translate3d\(0,\s*0\.[1-9]/)
+  assert.doesNotMatch(css, /\.home-page\.is-home-opening \.home-poster-grid\s*\{[\s\S]*pointer-events:\s*none;/)
+  assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.home-page\.is-home-opening \.home-continue-item,[\s\S]*\.home-page\.is-home-opening \.home-poster-grid > \.home-poster-card[\s\S]*animation-duration:\s*1ms\s*!important;/s)
+  assert.match(hook, /function isGridEntranceAnimating\(grid: Element\)/)
+  assert.match(hook, /grid\.closest\('\.is-home-opening,\s*\.is-browse-opening'\)/)
+  assert.match(hook, /function getDocumentCardLayoutRect\(card: HTMLElement,\s*activeOffset\?: CardRect\): CardRect/)
+  assert.match(hook, /if \(isGridEntranceAnimating\(grid\)\) \{[\s\S]*nextRects\.set\(card,\s*getDocumentCardLayoutRect\(card\)\)[\s\S]*return/s)
 })
 
 test('settings theme copy is user-facing', () => {

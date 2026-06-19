@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useLayoutEffect, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { api, FolderNode, Movie, resolveMediaUrl, type ManualScraperName, type ScrapeSearchResult, type ScraperInfo } from '../../api'
 import { getExcluded, getUiPrefs } from '../../store'
 import { saveScrollPos, restoreScrollPos } from '../../scroll'
@@ -28,6 +28,20 @@ function getCoverSrc(cover: string | null | undefined, version?: number): string
 }
 
 type SortMode = 'name' | 'created_desc' | 'created_asc' | 'release_date_desc' | 'release_date_asc' | 'random'
+const HOME_RETURN_TRANSITION_MS = 520
+const HOME_OPENING_ANIMATION_MS = 1680
+const HOME_OPENING_MAX_ITEMS = 48
+
+type FolderTransitionState = {
+  rect: {
+    left: number
+    top: number
+    width: number
+    height: number
+  }
+  coverSrc: string
+  title: string
+}
 
 const sortOptions = [
   { key: 'created_desc', label: '最近添加' },
@@ -152,8 +166,15 @@ function CheckIcon({ className = 'h-4 w-4' }: { className?: string }) {
 export default function Home() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
+  const location = useLocation()
+  const initialHomeReturnTransitionRef = useRef<FolderTransitionState | null>(
+    (location.state as { homeReturnTransition?: FolderTransitionState } | null)?.homeReturnTransition || null,
+  )
+  const initialHomeReturnTransition = initialHomeReturnTransitionRef.current
   const sort = (searchParams.get('sort') || 'created_desc') as SortMode
   const continueStripRef = useRef<HTMLDivElement>(null)
+  const homeReturnStartedRef = useRef(false)
+  const homeOpeningStartedRef = useRef(false)
 
   const [tree, setTree] = useState<FolderNode[]>([])
   const [libraryScrapers, setLibraryScrapers] = useState<Record<string, string>>({})
@@ -202,6 +223,9 @@ export default function Home() {
 
   const [showFolderEdit, setShowFolderEdit] = useState(false)
   const [editFolderMovie, setEditFolderMovie] = useState<Movie | null>(null)
+  const [homeReturnTransition, setHomeReturnTransition] = useState<FolderTransitionState | null>(null)
+  const [homeReturning, setHomeReturning] = useState(false)
+  const [homeOpening, setHomeOpening] = useState(false)
   const activeFolderUsesJavdatabase = libraryScrapers[activeMediaRoot] === 'javdatabase'
   const folderScraperOptions = normalizeScraperOptions(scraperOptions, activeFolderUsesJavdatabase)
 
@@ -210,7 +234,6 @@ export default function Home() {
     api.folders().then((data) => {
       const ex = getExcluded()
       const relevant = data.tree.filter(n => getHomeFolderCount(n) > 0 && !ex.has(n.path))
-      console.log('[load] tree covers:', relevant.map(n => ({ path: n.path, cover: n.cover?.slice(0, 60), random_cover: n.random_cover?.slice(0, 60) })))
       let filtered = relevant
       if (sort === 'name') {
         filtered.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
@@ -254,17 +277,64 @@ export default function Home() {
     loadRecent()
   }, [load, loadRecent])
   useEffect(() => { restoreScrollPos() }, [])
+  useLayoutEffect(() => {
+    if (!initialHomeReturnTransition) return
+    if (libraryLoading || recentLoading || homeReturnStartedRef.current) return
+    homeReturnStartedRef.current = true
+    setHomeReturnTransition(initialHomeReturnTransition)
+    setHomeReturning(true)
+    navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true, state: null })
+    const clearReturningTimer = window.setTimeout(() => setHomeReturning(false), HOME_RETURN_TRANSITION_MS)
+    const clearTransitionTimer = window.setTimeout(() => setHomeReturnTransition(null), HOME_RETURN_TRANSITION_MS)
+    return () => {
+      window.clearTimeout(clearReturningTimer)
+      window.clearTimeout(clearTransitionTimer)
+    }
+  }, [initialHomeReturnTransition, libraryLoading, recentLoading])
+  useEffect(() => {
+    if (initialHomeReturnTransition || libraryLoading || recentLoading || homeOpeningStartedRef.current) return
+    homeOpeningStartedRef.current = true
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    setHomeOpening(true)
+    const timer = window.setTimeout(() => setHomeOpening(false), HOME_OPENING_ANIMATION_MS)
+    return () => window.clearTimeout(timer)
+  }, [initialHomeReturnTransition, libraryLoading, recentLoading])
 
   const handleSort = (s: string) => {
     setSearchParams({ sort: s }, { replace: true })
   }
 
-  const goFolder = (path: string, mediaRoot?: string) => {
-    saveScrollPos()
+  const goFolder = (e: React.MouseEvent<HTMLDivElement>, node: FolderNode, coverSrc: string | null) => {
     const p = new URLSearchParams()
-    p.set('path', path)
-    if (mediaRoot) p.set('media_root', mediaRoot)
-    navigate(`/folder?${p.toString()}`)
+    p.set('path', node.path)
+    if (node.media_root) p.set('media_root', node.media_root)
+    saveScrollPos()
+
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (prefersReducedMotion || !coverSrc) {
+      navigate(`/folder?${p.toString()}`)
+      return
+    }
+
+    const sourceCover = e.currentTarget.querySelector('.home-poster-cover') as HTMLElement | null
+    const rect = sourceCover?.getBoundingClientRect()
+    if (!rect || rect.width <= 0 || rect.height <= 0) {
+      navigate(`/folder?${p.toString()}`)
+      return
+    }
+
+    const folderTransition: FolderTransitionState = {
+      rect: {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+      },
+      coverSrc,
+      title: node.name,
+    }
+    navigate(`/folder?${p.toString()}`, { state: { folderTransition } })
   }
 
   const goMovie = (movieId: number) => {
@@ -502,7 +572,7 @@ export default function Home() {
   }
 
   return (
-    <div className="home-page">
+    <div className={`home-page ${homeReturning ? 'is-home-returning' : ''} ${homeOpening ? 'is-home-opening' : ''}`}>
       {recentMovies.length > 0 && (
         <>
           <section className="home-section">
@@ -518,8 +588,13 @@ export default function Home() {
               </div>
             </div>
             <div ref={continueStripRef} className="home-continue-strip">
-              {recentMovies.map((movie) => (
-                <article key={movie.id} className="home-continue-item" onClick={() => goMovie(movie.id)}>
+              {recentMovies.map((movie, index) => (
+                <article
+                  key={movie.id}
+                  className="home-continue-item"
+                  onClick={() => goMovie(movie.id)}
+                  style={{ '--home-opening-index': Math.min(index, HOME_OPENING_MAX_ITEMS) } as CSSProperties}
+                >
                   <div className="home-continue-cover">
                     <div className="home-continue-cover-placeholder">暂无继续观看封面</div>
                     <img
@@ -561,7 +636,7 @@ export default function Home() {
           </div>
         ) : (
           <div className="home-poster-grid media-grid">
-            {tree.map((node) => {
+            {tree.map((node, index) => {
               const coverSrc = getCoverSrc(node.random_cover || node.cover, folderCoverVersion)
               const localKey = getFolderLocalKey(node)
               const watchState = getHomeFolderWatchState(node, folderWatched[localKey])
@@ -569,9 +644,10 @@ export default function Home() {
               const titleText = getHomeFolderTitle(node, showSourceName)
               return (
                 <div key={node.path}
-                  onClick={() => goFolder(node.path, node.media_root)}
+                  onClick={(e) => goFolder(e, node, coverSrc)}
                   onContextMenu={(e) => handleFolderContextMenu(e, node)}
                   className="home-poster-card media-grid-card group cursor-pointer"
+                  style={{ '--home-opening-index': Math.min(index, HOME_OPENING_MAX_ITEMS) } as CSSProperties}
                 >
                   <div className="home-poster-cover relative aspect-[2/3] bg-white/[0.04]">
                     {coverSrc ? (
@@ -619,6 +695,26 @@ export default function Home() {
       {folderMenu && (
         <ContextMenu x={folderMenu.x} y={folderMenu.y} items={folderMenuItems}
           onClose={() => setFolderMenu(null)} />
+      )}
+
+      {homeReturnTransition && createPortal(
+        <div
+          className="home-folder-transition"
+          aria-hidden="true"
+          style={{
+            '--home-folder-transition-left': `${homeReturnTransition.rect.left}px`,
+            '--home-folder-transition-top': `${homeReturnTransition.rect.top}px`,
+            '--home-folder-transition-width': `${homeReturnTransition.rect.width}px`,
+            '--home-folder-transition-height': `${homeReturnTransition.rect.height}px`,
+          } as CSSProperties}
+        >
+          <img
+            src={homeReturnTransition.coverSrc}
+            alt={homeReturnTransition.title}
+            className="home-folder-transition-image"
+          />
+        </div>,
+        document.body,
       )}
 
       {showFolderScrape && createPortal(
