@@ -31,17 +31,10 @@ services:
     restart: unless-stopped
     init: true
     ports:
-      - "${BIND_ADDRESS:-0.0.0.0}:${HOST_PORT:-27580}:80"
+      - "27580:80"
     volumes:
-      - type: bind
-        source: ${DATA_DIR:-./data}
-        target: /app/data
-      - type: bind
-        source: ${MEDIA_DIR:?Set MEDIA_DIR in .env to your media folder}
-        target: /media/${MEDIA_ALIAS:-movies}
-        read_only: true
-        bind:
-          create_host_path: false
+      - ./data:/app/data
+      - /path/to/your/media:/media/movies:ro
     env_file:
       - .env
     environment:
@@ -54,7 +47,7 @@ services:
       start_period: 20s
 ```
 
-媒体目录建议以只读方式挂载。默认模板会把 `.env` 里的 `MEDIA_DIR` 挂载到 `/media/${MEDIA_ALIAS}`，例如 `/host/movies` → `/media/movies`。MediaTree 会读取文件并把数据库、封面、配置、字体、备份和应用包更新写入 `./data`。
+媒体目录建议以只读方式挂载，例如 `/host/movies:/media/movies:ro`。MediaTree 会读取文件并把数据库、封面、配置、字体、备份和应用包更新写入 `./data`。
 
 ### 3. 启动
 

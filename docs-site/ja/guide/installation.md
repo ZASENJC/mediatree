@@ -31,17 +31,10 @@ services:
     restart: unless-stopped
     init: true
     ports:
-      - "${BIND_ADDRESS:-0.0.0.0}:${HOST_PORT:-27580}:80"
+      - "27580:80"
     volumes:
-      - type: bind
-        source: ${DATA_DIR:-./data}
-        target: /app/data
-      - type: bind
-        source: ${MEDIA_DIR:?Set MEDIA_DIR in .env to your media folder}
-        target: /media/${MEDIA_ALIAS:-movies}
-        read_only: true
-        bind:
-          create_host_path: false
+      - ./data:/app/data
+      - /path/to/your/media:/media/movies:ro
     env_file:
       - .env
     environment:
@@ -54,7 +47,7 @@ services:
       start_period: 20s
 ```
 
-メディアフォルダは読み取り専用でマウントします。標準テンプレートでは `.env` の `MEDIA_DIR` を `/media/${MEDIA_ALIAS}` にマウントします。例: `/host/movies` → `/media/movies`。MediaTree はデータベース、カバー、設定、フォント、バックアップ、アプリパッケージ更新を `./data` に保存します。
+メディアフォルダは読み取り専用でマウントします。例: `/host/movies:/media/movies:ro`。MediaTree はデータベース、カバー、設定、フォント、バックアップ、アプリパッケージ更新を `./data` に保存します。
 
 ### 3. 起動する
 

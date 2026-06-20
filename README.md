@@ -65,27 +65,20 @@ services:
 
     ports:
       # 左侧是宿主机访问端口，启动后打开 http://localhost:27580
-      - "${BIND_ADDRESS:-0.0.0.0}:${HOST_PORT:-27580}:80"
+      - "27580:80"
 
     volumes:
       # 持久化数据目录：数据库、封面、字体、备份和应用包更新都会保存在这里
-      - type: bind
-        source: ${DATA_DIR:-./data}
-        target: /app/data
+      - ./data:/app/data
 
-      # 媒体目录只读挂载；MEDIA_DIR 必须改成宿主机真实路径
-      - type: bind
-        source: ${MEDIA_DIR:?Set MEDIA_DIR in .env to your media folder}
-        target: /media/${MEDIA_ALIAS:-movies}
-        read_only: true
-        bind:
-          create_host_path: false
+      # 媒体目录只读挂载；左侧改成宿主机真实路径，右侧是容器内路径
+      - /path/to/your/media:/media/movies:ro
+      # 需要多个媒体库时继续添加：
+      # - /path/to/your/anime:/media/anime:ro
 
       # 可选：允许设置页执行完整 Docker 镜像更新。
       # 这会让容器获得宿主机 Docker 控制权限；普通应用包更新不需要。
-      # - type: bind
-      #   source: /var/run/docker.sock
-      #   target: /var/run/docker.sock
+      # - /var/run/docker.sock:/var/run/docker.sock
 
     env_file:
       - .env
@@ -136,10 +129,9 @@ Docker Hub 镜像：`zasenjc/mediatree:latest`
 | 变量 | 作用 |
 |---|---|
 | `AUTH_USER` / `AUTH_PASS` | 预置管理员登录账号；留空时首次打开网页创建账号 |
-| `MEDIA_DIR` / `MEDIA_ALIAS` | 默认媒体目录和容器内别名，例如 `/host/movies` → `/media/movies` |
-| `DATA_DIR` | 保存数据库、封面、字体、备份和应用包更新。默认 `./data` |
-| `HOST_PORT` | Web 访问端口。默认 `27580` |
-| `BIND_ADDRESS` | 监听地址。默认 `0.0.0.0` 允许局域网访问；可改为 `127.0.0.1` 仅本机访问 |
+| 媒体目录挂载 | 在 `docker-compose.yml` 的 `volumes` 中配置，例如 `/host/movies:/media/movies:ro` |
+| 数据目录挂载 | 在 `docker-compose.yml` 的 `volumes` 中配置，例如 `./data:/app/data` |
+| 访问端口 | 在 `docker-compose.yml` 的 `ports` 中配置，例如 `27580:80` |
 | `TMDB_ACCESS_TOKEN` | 可选，用于改善 TMDB 刮削；申请方式见[文档站](https://zasenjc.github.io/mediatree/guide/configuration#获取-tmdb-读取访问令牌) |
 
 Javdatabase 现在作为内置刮削器插件提供；在设置页为对应媒体库选择 `Javdatabase` 即可使用。刮削器缓存有效期和 Javdatabase 请求间隔由应用内部管理，不再需要在设置页或环境变量里调整。手动扫描、重新刮削和手动应用结果会绕过缓存，空结果不会写入缓存，避免旧的空结果挡住后续补齐的数据。

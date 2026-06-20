@@ -49,7 +49,7 @@ For a mobile experience, pair it with the standalone Android client [ZASENJC/med
 
 ## Quick Deploy
 
-Create `docker-compose.yml`, update the account, password, and media paths in the comments, then start the container:
+Create `.env` and `docker-compose.yml`, update the data and media paths in the comments, then start the container. You can either preset the admin account or create it on first launch.
 
 ```yaml
 services:
@@ -57,6 +57,10 @@ services:
     image: zasenjc/mediatree:latest
     container_name: mediatree
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
 
     ports:
       # Left side is the host port. Open http://localhost:27580 after startup.
@@ -75,16 +79,11 @@ services:
       # This gives the container Docker control on the host; app-package updates do not need it.
       # - /var/run/docker.sock:/var/run/docker.sock
 
+    env_file:
+      - .env
     environment:
-      # Preset admin account. You can leave these empty and create the admin account on first launch.
-      - AUTH_USER=admin
-      - AUTH_PASS=change-me
-
       # Internal service port. Usually keep this unchanged.
-      - PORT=80
-
-      # Scan libraries when the container starts.
-      - SCAN_ON_STARTUP=true
+      PORT: "80"
 
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/api/health"]
@@ -92,6 +91,12 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 ```
 
 Start:
@@ -123,9 +128,9 @@ The default image is size-optimized. It includes the lightweight `fonts-wqy-micr
 | Variable | What it does |
 |---|---|
 | `AUTH_USER` / `AUTH_PASS` | Presets the admin login; leave empty to create it on first launch |
-| `MEDIA_VOLUMES` | Mounts your media folders, for example `/host/movies:/media/movies:ro` |
-| `DATA_DIR` | Stores database, covers, fonts, backups, and app-package updates. Default: `./data` |
-| `HOST_PORT` | Web port on the host. Default: `27580` |
+| Media mounts | Configure in `docker-compose.yml` `volumes`, for example `/host/movies:/media/movies:ro` |
+| Data mount | Configure in `docker-compose.yml` `volumes`, for example `./data:/app/data` |
+| Web port | Configure in `docker-compose.yml` `ports`, for example `27580:80` |
 | `TMDB_ACCESS_TOKEN` | Optional, improves TMDB scraping; see the [docs](https://zasenjc.github.io/mediatree/en/guide/configuration#getting-a-tmdb-read-access-token) |
 
 Javdatabase is now provided as a built-in scraper plugin; choose `Javdatabase` for the relevant library in Settings to use it. Scraper cache TTLs and the Javdatabase request interval are managed internally instead of being tuned from Settings or environment variables. Manual scans, rescrapes, and manual apply actions bypass cache, and empty results are not cached, so stale empty responses do not block later metadata fixes.
@@ -138,7 +143,7 @@ Most updates can be installed directly from Settings. MediaTree downloads a smal
 
 For app-package releases, maintainers now build and push `zasenjc/mediatree:latest` locally instead of syncing DockerHub through GitHub Actions. Existing installs keep using the Settings app-package path, while new installs still start from the latest application baseline.
 
-Some releases show "full image update required". That usually means the runtime changed too, such as Python, ffmpeg, fonts, or startup behavior. The simplest path is to run the two host-side commands below. If you want Settings to perform full image updates automatically, mount `/var/run/docker.sock:/var/run/docker.sock` in `docker-compose.yml`; this gives the container control over Docker on the host, so leave it unmounted if you are unsure.
+Some releases show "full image update required". That usually means the runtime changed too, such as Python, ffmpeg, fonts, or startup behavior. The simplest path is to run the two host-side commands below. If you want Settings to perform full image updates automatically, mount `/var/run/docker.sock:/var/run/docker.sock` in `docker-compose.yml` and use an image that includes the Docker CLI; this gives the container control over Docker on the host, so leave it unmounted if you are unsure.
 
 For full image updates:
 

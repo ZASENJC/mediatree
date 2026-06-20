@@ -77,10 +77,9 @@ Application update packages must be produced by `scripts/build-app-package.sh`. 
 Copy `.env.example` to `.env` and configure:
 - `AUTH_USER` / `AUTH_PASS` — optional preconfigured web UI credentials; leave blank for first-run admin setup
 - `TMDB_ACCESS_TOKEN` (optional) — enables TMDB API; Settings exposes only the TMDB read access token. Keep legacy `TMDB_API_KEY` backend compatibility hidden from Settings unless a future migration explicitly removes or redesigns it.
-- `MEDIA_DIR` / `MEDIA_ALIAS` — default Docker Compose media bind source and `/media/<alias>` target; add extra bind mounts in `docker-compose.yml` for additional libraries
-- `DATA_DIR` — persistent data (DB, covers, config), default `./data`
-- `HOST_PORT` — default `27580`
-- `BIND_ADDRESS` — default `0.0.0.0`; use `127.0.0.1` for local-only access
+- Media mounts — configure directly in `docker-compose.yml` as `/host/path:/media/alias:ro`
+- Data mount — configure directly in `docker-compose.yml`, default `./data:/app/data`
+- Host port — configure directly in `docker-compose.yml`, default `27580:80`
 - Javdatabase is provided as a built-in scraper plugin. Select `Javdatabase` per library in Settings; there is no separate environment/config toggle for it. Scraper cache TTLs and the Javdatabase request interval are internal runtime policy, not user-facing env/config knobs.
 
 ## Architecture

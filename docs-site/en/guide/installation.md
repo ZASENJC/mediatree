@@ -31,17 +31,10 @@ services:
     restart: unless-stopped
     init: true
     ports:
-      - "${BIND_ADDRESS:-0.0.0.0}:${HOST_PORT:-27580}:80"
+      - "27580:80"
     volumes:
-      - type: bind
-        source: ${DATA_DIR:-./data}
-        target: /app/data
-      - type: bind
-        source: ${MEDIA_DIR:?Set MEDIA_DIR in .env to your media folder}
-        target: /media/${MEDIA_ALIAS:-movies}
-        read_only: true
-        bind:
-          create_host_path: false
+      - ./data:/app/data
+      - /path/to/your/media:/media/movies:ro
     env_file:
       - .env
     environment:
@@ -54,7 +47,7 @@ services:
       start_period: 20s
 ```
 
-Mount media folders read-only. The default template mounts `MEDIA_DIR` from `.env` to `/media/${MEDIA_ALIAS}`, for example `/host/movies` → `/media/movies`. MediaTree stores its database, covers, config, fonts, backups, and app-package updates in `./data`.
+Mount media folders read-only, for example `/host/movies:/media/movies:ro`. MediaTree stores its database, covers, config, fonts, backups, and app-package updates in `./data`.
 
 ### 3. Start
 
