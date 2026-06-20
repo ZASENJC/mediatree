@@ -8,6 +8,10 @@ All notable changes to MediaTree are documented here.
 
 ## Unreleased
 
+---
+
+## 1.1.0 (2026-06-21)
+
 ### Settings
 
 - Changed Settings into a right-side drawer that opens above the current page instead of replacing the main route
@@ -32,6 +36,11 @@ All notable changes to MediaTree are documented here.
 ### Maintenance
 
 - Updated the frontend build toolchain and transitive development dependencies to clear current `npm audit` findings
+
+### Release Type
+
+- App-package update; no full Docker image update is required
+- Docker Compose users can update from Settings; new installs using `zasenjc/mediatree:latest` receive the refreshed baseline
 
 ### Scraping
 
