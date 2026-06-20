@@ -22,6 +22,11 @@ All notable changes to MediaTree are documented here.
 - Stabilized the home media library's initial layout so poster rows no longer slide down while the page finishes rendering
 - Made home media library poster repositioning animate more naturally at a 60fps-tuned cadence when sorting or layout changes move cards
 
+### Playback
+
+- Made the detail page open with an autoplaying player fitted to the first viewport, while keeping title, metadata, and galleries below the player
+- Preserved the normal embedded-player default so reused `VideoPlayer` instances do not autoplay unless a page opts in
+
 ### Scraping
 
 - Converted application-shipped scrapers to manifest-driven built-in plugins under `backend/app/builtin_plugins/scrapers`

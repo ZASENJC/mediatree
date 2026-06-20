@@ -808,6 +808,79 @@ canvas[data-mediatree-subtitle="ass"] {
   pointer-events: none;
 }
 
+.detail-page {
+  --detail-player-edge-gap: var(--mt-layout-page-padding-x);
+  --detail-player-top-reserve: calc(7.75rem + var(--mt-layout-page-padding-y));
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .detail-page {
+    --detail-player-edge-gap: var(--mt-layout-page-padding-x-wide);
+    --detail-player-top-reserve: calc(9rem + var(--mt-layout-page-padding-y-wide));
+  }
+}
+
+.detail-player-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.detail-player-stage {
+  position: relative;
+  display: flex;
+  block-size: max(18rem, calc(100dvh - var(--detail-player-top-reserve) - var(--detail-player-edge-gap)));
+  min-block-size: 0;
+  align-items: stretch;
+}
+
+.detail-back-button {
+  flex: 0 0 auto;
+}
+
+.detail-info-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: var(--detail-player-edge-gap);
+  padding-top: clamp(1rem, 2.4vw, 1.5rem);
+}
+
+.fitted-player-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.fitted-player-wrapper > div:first-child {
+  flex: 0 0 auto;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.fitted-player-wrapper .mediatree-artplayer {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+}
+
+.fitted-player-wrapper .player-action-row {
+  width: 100%;
+  max-width: 100%;
+  min-height: 2rem;
+  margin-block-start: 0.75rem;
+  padding-block-end: 0;
+}
+
 .mediatree-artplayer {
   width: 100%;
   aspect-ratio: var(--mediatree-video-aspect, 16 / 9);

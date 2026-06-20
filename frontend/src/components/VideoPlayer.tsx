@@ -32,6 +32,8 @@ interface Props {
   onEpisodeSelect?: (episode: Movie) => void
   onWatched?: () => void
   captureContinueSnapshot?: boolean
+  autoPlay?: boolean
+  fitToContainer?: boolean
 }
 
 const POS_KEY = 'mediatree_pos_'
@@ -39,6 +41,7 @@ const WATCHED_AFTER = 60
 const WATCHED_RATIO = 0.9
 const SEEK_SMALL = 5
 const POS_SAVE_INTERVAL = 5000
+const FITTED_ACTION_ROW_HEIGHT = 52
 const AUTO_TRANSCODE_AUDIO = new Set(['ac3'])
 const BROWSER_UNSUPPORTED_AUDIO = new Set([...AUTO_TRANSCODE_AUDIO, 'eac3', 'truehd', 'dts', 'dca', 'mlp'])
 
@@ -86,7 +89,18 @@ function absoluteApiUrl(url: string) {
   return new URL(resolveMediaUrl(url), window.location.origin).toString()
 }
 
-export default function VideoPlayer({ src, poster, movieId, title, episodes = [], onEpisodeSelect, onWatched, captureContinueSnapshot = false }: Props) {
+export default function VideoPlayer({
+  src,
+  poster,
+  movieId,
+  title,
+  episodes = [],
+  onEpisodeSelect,
+  onWatched,
+  captureContinueSnapshot = false,
+  autoPlay = false,
+  fitToContainer = false,
+}: Props) {
   const artContainerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const playerFrameRef = useRef<HTMLDivElement>(null)
@@ -170,10 +184,15 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
   const externalPlaylistUrl = new URL(api.externalPlaylistUrl(movieId), localPlayerOrigin()).toString()
   const localPlaybackUrl = hasExternalSubtitles ? externalPlaylistUrl : streamUrl
   const playerStyle = { '--mediatree-video-aspect': videoAspect } as CSSProperties
-  const theaterSize = useTheaterPlayerSize(wrapperRef, theaterMode, videoAspect)
-  const theaterFrameStyle = theaterSize ? {
-    width: `${theaterSize.width}px`,
-    height: `${theaterSize.height}px`,
+  const fittedSize = useTheaterPlayerSize(
+    wrapperRef,
+    theaterMode || fitToContainer,
+    videoAspect,
+    fitToContainer && !theaterMode ? FITTED_ACTION_ROW_HEIGHT : 0,
+  )
+  const fittedFrameStyle = fittedSize ? {
+    width: `${fittedSize.width}px`,
+    height: `${fittedSize.height}px`,
   } as CSSProperties : undefined
 
   const effectiveAmbient = ambientEnabled || theaterMode
@@ -852,7 +871,7 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
       url: streamSrc,
       poster: poster || '',
       volume,
-      autoplay: false,
+      autoplay: autoPlay,
       autoSize: false,
       autoMini: false,
       loop: false,
@@ -1261,7 +1280,7 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
     return () => window.clearTimeout(timer)
   }, [theaterMode])
 
-  // 剧院模式尺寸变化后触发 ArtPlayer 重新计算内部画布、字幕和控件布局。
+  // 播放器尺寸变化后触发 ArtPlayer 重新计算内部画布、字幕和控件布局。
   useEffect(() => {
     const art = artRef.current
     if (!art || art.isDestroy) return
@@ -1269,7 +1288,7 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
       window.dispatchEvent(new Event('resize'))
     }, 150)
     return () => clearTimeout(timer)
-  }, [theaterMode, theaterSize?.width, theaterSize?.height])
+  }, [theaterMode, fitToContainer, fittedSize?.width, fittedSize?.height])
 
   return (
     <>
@@ -1286,12 +1305,12 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
         document.getElementById('ambient-root')!,
       )}
       <div ref={wrapperRef}
-        className={theaterMode ? 'theater-player-wrapper' : 'relative mx-auto w-full transition-all duration-300'}
+        className={theaterMode ? 'theater-player-wrapper' : `relative mx-auto w-full transition-all duration-300 ${fitToContainer ? 'fitted-player-wrapper' : ''}`}
         style={playerStyle}>
         <div
           ref={playerFrameRef}
           className={`mediatree-player-frame theater-player-frame relative z-[1] overflow-hidden rounded-3xl ${theaterTransition ? `theater-player-frame-${theaterTransition}` : ''}`}
-          style={theaterMode ? theaterFrameStyle : undefined}
+          style={(theaterMode || fitToContainer) ? fittedFrameStyle : undefined}
           onMouseMove={showPlayerChrome}
           onMouseEnter={showPlayerChrome}
           onMouseLeave={hidePlayerChrome}
@@ -1366,7 +1385,7 @@ export default function VideoPlayer({ src, poster, movieId, title, episodes = []
       </div>
 
       {!theaterMode && (
-      <div className="mt-5 flex items-center justify-center gap-2 overflow-x-auto pb-1">
+      <div className="player-action-row mt-5 flex items-center justify-center gap-2 overflow-x-auto pb-1">
         <a href={`iina://weblink?url=${encodeURIComponent(localPlaybackUrl)}`} target="_blank" rel="noopener noreferrer" className="player-action-chip shrink-0 rounded-full px-2.5 py-1 text-xs transition-all">
           IINA
         </a>

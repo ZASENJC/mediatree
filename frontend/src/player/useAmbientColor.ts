@@ -117,10 +117,42 @@ export function usePlayerRect(
   return rect
 }
 
+export function calculateTheaterPlayerSize(
+  maxWidth: number,
+  maxHeight: number,
+  aspect: number,
+  heightOffset = 0,
+): TheaterPlayerSize | null {
+  const availableWidth = Math.floor(maxWidth)
+  const availableHeight = Math.floor(Math.max(0, maxHeight - heightOffset))
+  if (availableWidth <= 0 || availableHeight <= 0) return null
+
+  const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9
+  let width = availableWidth
+  let height = width / safeAspect
+  if (height > availableHeight) {
+    height = availableHeight
+    width = height * safeAspect
+  }
+
+  return {
+    width: Math.floor(Math.min(width, availableWidth)),
+    height: Math.floor(Math.min(height, availableHeight)),
+  }
+}
+
+function isSameTheaterPlayerSize(
+  current: TheaterPlayerSize,
+  next: TheaterPlayerSize,
+): boolean {
+  return Math.abs(current.width - next.width) < 1 && Math.abs(current.height - next.height) < 1
+}
+
 export function useTheaterPlayerSize(
   wrapperRef: RefObject<HTMLDivElement | null>,
   enabled: boolean,
   aspect: number,
+  heightOffset = 0,
 ): TheaterPlayerSize | null {
   const [size, setSize] = useState<TheaterPlayerSize | null>(null)
 
@@ -131,34 +163,21 @@ export function useTheaterPlayerSize(
     }
 
     const el = wrapperRef.current
-    if (!el) return
+    if (!el) {
+      setSize(null)
+      return
+    }
 
-    const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 16 / 9
     let raf = 0
 
     const update = () => {
       cancelAnimationFrame(raf)
       raf = requestAnimationFrame(() => {
-        const maxWidth = el.clientWidth
-        const maxHeight = el.clientHeight
-        if (maxWidth <= 0 || maxHeight <= 0) return
-
-        let width = maxWidth
-        let height = width / safeAspect
-        if (height > maxHeight) {
-          height = maxHeight
-          width = height * safeAspect
-        }
-
-        const next = {
-          width: Math.floor(Math.min(width, maxWidth)),
-          height: Math.floor(Math.min(height, maxHeight)),
-        }
-        setSize(prev => (
-          prev && Math.abs(prev.width - next.width) < 1 && Math.abs(prev.height - next.height) < 1
-            ? prev
-            : next
-        ))
+        const next = calculateTheaterPlayerSize(el.clientWidth, el.clientHeight, aspect, heightOffset)
+        setSize(prev => {
+          if (!next || !prev) return next
+          return isSameTheaterPlayerSize(prev, next) ? prev : next
+        })
       })
     }
 
@@ -174,7 +193,7 @@ export function useTheaterPlayerSize(
       window.removeEventListener('resize', update)
       window.visualViewport?.removeEventListener('resize', update)
     }
-  }, [enabled, aspect])
+  }, [enabled, aspect, heightOffset])
 
   return size
 }

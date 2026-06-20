@@ -227,370 +227,377 @@ export default function Detail() {
   ].filter(Boolean) as { label: string; value: string; tone?: string }[]
 
   return (
-    <div className={theaterMode ? 'flex-1 flex flex-col min-h-0' : 'space-y-5'}>
+    <div className={theaterMode ? 'flex-1 flex flex-col min-h-0' : 'detail-page'}>
       {!theaterMode && (
-        <button
-          onClick={() => navigate(-1)}
-          className="glass-button px-4 py-2 text-sm"
-        >
-          返回
-        </button>
+        <div className="detail-player-toolbar">
+          <button
+            onClick={() => navigate(-1)}
+            className="glass-button detail-back-button px-4 py-2 text-sm"
+          >
+            返回
+          </button>
+        </div>
       )}
 
-      <VideoPlayer src={api.streamUrl(movie.id)} poster={api.coverUrl(movie.id)} movieId={movie.id}
-        title={displayTitle}
-        episodes={episodes}
-        captureContinueSnapshot={captureContinueSnapshot}
-        onEpisodeSelect={(episode) => {
-          if (episode.id !== movie.id) navigate(`/detail/${episode.id}`)
-        }}
-        onWatched={() => { if (!movie.tags?.includes('watched')) toggleTag('watched') }} />
-
-      {!theaterMode && (<>
-      <section className="glass-panel p-4 sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">Now Playing</p>
-            <h1 className="mt-1 break-words text-2xl font-bold tracking-tight text-white sm:text-4xl">
-              {displayTitle}
-            </h1>
-            {!isSpecial && movie.original_title && movie.original_title !== movie.title && (
-              <p className="mt-2 break-words text-sm text-gray-400">{movie.original_title}</p>
-            )}
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
-              <span className="glass-chip font-mono text-gray-200">{movie.code}</span>
-              {coreMeta.map(item => (
-                <span key={item.label} className="glass-chip">
-                  <span className="mr-1 text-gray-500">{item.label}</span>
-                  <span className={item.tone || 'text-gray-200'}>{item.value}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => toggleTag('favorite')}
-              className={`rounded-full border px-4 py-2 text-sm font-medium transition-all ${
-                isFavorited
-                  ? 'border-apple-yellow/40 bg-apple-yellow/20 text-apple-yellow shadow-glow'
-                  : 'border-white/10 bg-white/[0.08] text-gray-300 hover:bg-white/[0.14] hover:text-apple-yellow'
-              }`}
-            >
-              {isFavorited ? '已收藏' : '收藏'}
-            </button>
-            <button
-              onClick={() => toggleTag('want_to_watch')}
-              className={`rounded-full border px-4 py-2 text-sm transition-all ${
-                movie.tags?.includes('want_to_watch')
-                  ? 'border-apple-blue/40 bg-apple-blue/20 text-apple-blue shadow-glow'
-                  : 'border-white/10 bg-white/[0.08] text-gray-300 hover:bg-white/[0.14] hover:text-white'
-              }`}
-            >
-              {movie.tags?.includes('want_to_watch') ? '想看中' : '想看'}
-            </button>
-            <button
-              onClick={() => toggleTag('watched')}
-              className={`rounded-full border px-4 py-2 text-sm transition-all ${
-                movie.tags?.includes('watched')
-                  ? 'border-apple-mint/40 bg-apple-mint/20 text-apple-mint shadow-glow'
-                  : 'border-white/10 bg-white/[0.08] text-gray-300 hover:bg-white/[0.14] hover:text-white'
-              }`}
-            >
-              {movie.tags?.includes('watched') ? '已看' : '标为已看'}
-            </button>
-          </div>
-        </div>
-
-        {performerText && (
-          <div className="mt-5 flex flex-wrap items-start gap-2 text-sm">
-            <span className="shrink-0 text-gray-500">{isJavdatabase ? '女优' : '演员'}</span>
-            <div className="flex min-w-0 flex-wrap gap-1.5">
-              {performerText.split(/[,，、]/).map((name: string, i: number) => {
-                const trimmed = name.trim()
-                if (!trimmed) return null
-                return (
-                  <button
-                    key={`${trimmed}-${i}`}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      goStaff(trimmed)
-                    }}
-                    className="rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-200 transition-all hover:border-apple-blue/40 hover:text-apple-blue"
-                  >
-                    {trimmed}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
+      <section className={theaterMode ? 'contents' : 'detail-player-stage'}>
+        <VideoPlayer src={api.streamUrl(movie.id)} poster={api.coverUrl(movie.id)} movieId={movie.id}
+          title={displayTitle}
+          autoPlay
+          fitToContainer
+          episodes={episodes}
+          captureContinueSnapshot={captureContinueSnapshot}
+          onEpisodeSelect={(episode) => {
+            if (episode.id !== movie.id) navigate(`/detail/${episode.id}`)
+          }}
+          onWatched={() => { if (!movie.tags?.includes('watched')) toggleTag('watched') }} />
       </section>
 
-      {specialCount > 0 && (
-        <section className="rounded-3xl bg-white/[0.04] px-4 py-3 shadow-glass backdrop-blur-2xl sm:px-6 sm:py-4">
-          <button
-            onClick={toggleSpecials}
-            className={`${specialsExpanded ? 'mb-3' : ''} flex w-full items-center justify-between gap-4 text-left`}
-          >
-            <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-[0.24em] text-apple-pink/70">Specials</p>
-              <h2 className="mt-0.5 truncate text-base font-semibold text-white sm:text-lg">花絮</h2>
+      {!theaterMode && (
+        <div className="detail-info-stack">
+        <section className="glass-panel p-4 sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">Now Playing</p>
+              <h1 className="mt-1 break-words text-2xl font-bold tracking-tight text-white sm:text-4xl">
+                {displayTitle}
+              </h1>
+              {!isSpecial && movie.original_title && movie.original_title !== movie.title && (
+                <p className="mt-2 break-words text-sm text-gray-400">{movie.original_title}</p>
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                <span className="glass-chip font-mono text-gray-200">{movie.code}</span>
+                {coreMeta.map(item => (
+                  <span key={item.label} className="glass-chip">
+                    <span className="mr-1 text-gray-500">{item.label}</span>
+                    <span className={item.tone || 'text-gray-200'}>{item.value}</span>
+                  </span>
+                ))}
+              </div>
             </div>
-            <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-3 py-1 text-xs text-gray-300 transition-all hover:border-apple-pink/40 hover:text-apple-pink">
-              {specialsExpanded ? '收起' : '展开'}
-            </span>
-          </button>
-          {specialsExpanded && specialMovies.length > 0 && (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 media-grid">
-              {specialMovies.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => { if (item.id !== movie.id) navigate(`/detail/${item.id}`) }}
-                  className="apple-focus group overflow-hidden rounded-2xl bg-white/[0.06] text-left transition-all hover:bg-white/[0.09]"
-                >
-                  <div className="relative aspect-video bg-black/20">
-                    <img
-                      src={api.coverUrl(item.id)}
-                      alt={item.title || item.code}
-                      className="h-full w-full object-cover opacity-85 transition-transform duration-500 group-hover:scale-105"
-                      loading="lazy"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                    />
-                    <span className="absolute left-2 top-2 rounded-full border border-apple-pink/30 bg-black/45 px-2 py-0.5 text-[10px] font-semibold text-apple-pink backdrop-blur-xl">
-                      花絮
-                    </span>
-                  </div>
-                  <div className="p-3">
-                    <p className="line-clamp-2 text-sm font-semibold text-white">{specialMovieTitle(item)}</p>
-                    <p className="mt-1 truncate text-xs text-gray-500">{item.folder_levels}</p>
-                  </div>
-                </button>
-              ))}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => toggleTag('favorite')}
+                className={`rounded-full border px-4 py-2 text-sm font-medium transition-all ${
+                  isFavorited
+                    ? 'border-apple-yellow/40 bg-apple-yellow/20 text-apple-yellow shadow-glow'
+                    : 'border-white/10 bg-white/[0.08] text-gray-300 hover:bg-white/[0.14] hover:text-apple-yellow'
+                }`}
+              >
+                {isFavorited ? '已收藏' : '收藏'}
+              </button>
+              <button
+                onClick={() => toggleTag('want_to_watch')}
+                className={`rounded-full border px-4 py-2 text-sm transition-all ${
+                  movie.tags?.includes('want_to_watch')
+                    ? 'border-apple-blue/40 bg-apple-blue/20 text-apple-blue shadow-glow'
+                    : 'border-white/10 bg-white/[0.08] text-gray-300 hover:bg-white/[0.14] hover:text-white'
+                }`}
+              >
+                {movie.tags?.includes('want_to_watch') ? '想看中' : '想看'}
+              </button>
+              <button
+                onClick={() => toggleTag('watched')}
+                className={`rounded-full border px-4 py-2 text-sm transition-all ${
+                  movie.tags?.includes('watched')
+                    ? 'border-apple-mint/40 bg-apple-mint/20 text-apple-mint shadow-glow'
+                    : 'border-white/10 bg-white/[0.08] text-gray-300 hover:bg-white/[0.14] hover:text-white'
+                }`}
+              >
+                {movie.tags?.includes('watched') ? '已看' : '标为已看'}
+              </button>
+            </div>
+          </div>
+
+          {performerText && (
+            <div className="mt-5 flex flex-wrap items-start gap-2 text-sm">
+              <span className="shrink-0 text-gray-500">{isJavdatabase ? '女优' : '演员'}</span>
+              <div className="flex min-w-0 flex-wrap gap-1.5">
+                {performerText.split(/[,，、]/).map((name: string, i: number) => {
+                  const trimmed = name.trim()
+                  if (!trimmed) return null
+                  return (
+                    <button
+                      key={`${trimmed}-${i}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        goStaff(trimmed)
+                      }}
+                      className="rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs text-gray-200 transition-all hover:border-apple-blue/40 hover:text-apple-blue"
+                    >
+                      {trimmed}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           )}
         </section>
-      )}
 
-      <section className="rounded-3xl bg-white/[0.04] px-4 py-3 shadow-glass backdrop-blur-2xl sm:px-6 sm:py-4">
-        <button
-          onClick={() => setInfoExpanded(v => !v)}
-          className="flex w-full items-center justify-between gap-4 text-left"
-        >
-          <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-[0.24em] text-apple-blue/70">Details</p>
-            <h2 className="mt-0.5 truncate text-base font-semibold text-white sm:text-lg">影片信息</h2>
-          </div>
-          <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-3 py-1 text-xs text-gray-300">
-            {infoExpanded ? '收起' : '展开'}
-          </span>
-        </button>
-
-        {infoExpanded && (
-          <div className="mt-4 space-y-4 border-t border-white/10 pt-4">
-            {(movie.episode_overview || movie.folder_levels) && (
-              <div className="rounded-2xl bg-white/[0.04] p-4">
-                {movie.episode_overview ? (
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <div>
-                      <p className="mb-1.5 text-xs text-gray-500">集概述</p>
-                      <p className="whitespace-pre-line text-sm leading-relaxed text-gray-300">{movie.episode_overview}</p>
-                    </div>
-                    <div className="space-y-3 text-sm lg:text-right">
-                      {movie.folder_levels && (
-                        <InfoLine label="目录" value={movie.folder_levels} />
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  movie.folder_levels && (
-                    <InfoLine label="目录" value={movie.folder_levels} />
-                  )
-                )}
+        {specialCount > 0 && (
+          <section className="rounded-3xl bg-white/[0.04] px-4 py-3 shadow-glass backdrop-blur-2xl sm:px-6 sm:py-4">
+            <button
+              onClick={toggleSpecials}
+              className={`${specialsExpanded ? 'mb-3' : ''} flex w-full items-center justify-between gap-4 text-left`}
+            >
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-[0.24em] text-apple-pink/70">Specials</p>
+                <h2 className="mt-0.5 truncate text-base font-semibold text-white sm:text-lg">花絮</h2>
               </div>
-            )}
-
-            {/* Poster Gallery */}
-            {posters.length > 0 && (
-              <div className="rounded-2xl bg-white/[0.04] p-4">
-                <h3 className="mb-3 text-sm font-semibold text-gray-200">海报画廊 <span className="ml-1 text-xs font-normal text-gray-500">{posters.length}</span></h3>
-                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
-                  {posters.map((p, i) => (
-                    <div key={i} className="apple-focus group shrink-0 cursor-pointer" onClick={async () => {
-                      try { await api.changeCover(movie.id, p.url); setMovie(prev => prev ? { ...prev, cover_remote: p.url, cover_local: undefined } : null) } catch {}
-                    }}>
+              <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-3 py-1 text-xs text-gray-300 transition-all hover:border-apple-pink/40 hover:text-apple-pink">
+                {specialsExpanded ? '收起' : '展开'}
+              </span>
+            </button>
+            {specialsExpanded && specialMovies.length > 0 && (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 media-grid">
+                {specialMovies.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => { if (item.id !== movie.id) navigate(`/detail/${item.id}`) }}
+                    className="apple-focus group overflow-hidden rounded-2xl bg-white/[0.06] text-left transition-all hover:bg-white/[0.09]"
+                  >
+                    <div className="relative aspect-video bg-black/20">
                       <img
-                        src={p.url}
-                        alt={`poster-${i}`}
-                        className="h-56 w-auto rounded-xl object-cover transition-all"
+                        src={api.coverUrl(item.id)}
+                        alt={item.title || item.code}
+                        className="h-full w-full object-cover opacity-85 transition-transform duration-500 group-hover:scale-105"
                         loading="lazy"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                       />
-                      {p.language && p.language !== 'null' && (
-                        <p className="mt-1 text-center text-[10px] text-gray-500">{p.language.toUpperCase()}</p>
-                      )}
+                      <span className="absolute left-2 top-2 rounded-full border border-apple-pink/30 bg-black/45 px-2 py-0.5 text-[10px] font-semibold text-apple-pink backdrop-blur-xl">
+                        花絮
+                      </span>
                     </div>
-                  ))}
-                </div>
+                    <div className="p-3">
+                      <p className="line-clamp-2 text-sm font-semibold text-white">{specialMovieTitle(item)}</p>
+                      <p className="mt-1 truncate text-xs text-gray-500">{item.folder_levels}</p>
+                    </div>
+                  </button>
+                ))}
               </div>
             )}
+          </section>
+        )}
 
-            {/* Trailers */}
-            {videos.filter((v: any) => v.type === 'Trailer').length > 0 && (
-              <div className="rounded-2xl bg-white/[0.04] p-4">
-                <h3 className="mb-3 text-sm font-semibold text-gray-200">预告片</h3>
-                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
-                  {videos.filter((v: any) => v.type === 'Trailer' || v.type === 'Teaser').map((v: any, i: number) => (
-                    <div
-                      key={i}
-                      className="apple-focus shrink-0 cursor-pointer overflow-hidden rounded-xl bg-black/15"
-                      onClick={() => setTrailerKey(v.key)}
-                    >
-                      <div className="relative">
+        <section className="rounded-3xl bg-white/[0.04] px-4 py-3 shadow-glass backdrop-blur-2xl sm:px-6 sm:py-4">
+          <button
+            onClick={() => setInfoExpanded(v => !v)}
+            className="flex w-full items-center justify-between gap-4 text-left"
+          >
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-apple-blue/70">Details</p>
+              <h2 className="mt-0.5 truncate text-base font-semibold text-white sm:text-lg">影片信息</h2>
+            </div>
+            <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.08] px-3 py-1 text-xs text-gray-300">
+              {infoExpanded ? '收起' : '展开'}
+            </span>
+          </button>
+
+          {infoExpanded && (
+            <div className="mt-4 space-y-4 border-t border-white/10 pt-4">
+              {(movie.episode_overview || movie.folder_levels) && (
+                <div className="rounded-2xl bg-white/[0.04] p-4">
+                  {movie.episode_overview ? (
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <div>
+                        <p className="mb-1.5 text-xs text-gray-500">集概述</p>
+                        <p className="whitespace-pre-line text-sm leading-relaxed text-gray-300">{movie.episode_overview}</p>
+                      </div>
+                      <div className="space-y-3 text-sm lg:text-right">
+                        {movie.folder_levels && (
+                          <InfoLine label="目录" value={movie.folder_levels} />
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    movie.folder_levels && (
+                      <InfoLine label="目录" value={movie.folder_levels} />
+                    )
+                  )}
+                </div>
+              )}
+
+              {/* Poster Gallery */}
+              {posters.length > 0 && (
+                <div className="rounded-2xl bg-white/[0.04] p-4">
+                  <h3 className="mb-3 text-sm font-semibold text-gray-200">海报画廊 <span className="ml-1 text-xs font-normal text-gray-500">{posters.length}</span></h3>
+                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+                    {posters.map((p, i) => (
+                      <div key={i} className="apple-focus group shrink-0 cursor-pointer" onClick={async () => {
+                        try { await api.changeCover(movie.id, p.url); setMovie(prev => prev ? { ...prev, cover_remote: p.url, cover_local: undefined } : null) } catch {}
+                      }}>
                         <img
-                          src={`https://img.youtube.com/vi/${v.key}/mqdefault.jpg`}
-                          alt={v.name}
-                          className="h-28 w-48 object-cover"
+                          src={p.url}
+                          alt={`poster-${i}`}
+                          className="h-56 w-auto rounded-xl object-cover transition-all"
                           loading="lazy"
                         />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="rounded-full bg-black/60 p-2 backdrop-blur-sm">
-                            <svg className="h-6 w-6 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="p-2">
-                        <p className="text-xs text-gray-300 line-clamp-2">{v.name}</p>
-                        <p className="mt-0.5 text-[10px] text-gray-500">{v.type}{v.official ? ' · 官方' : ''}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Trailer Modal */}
-            {trailerKey && (
-              <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-md" onClick={() => setTrailerKey(null)}>
-                <div className="w-full max-w-4xl p-4" onClick={(e) => e.stopPropagation()}>
-                  <div className="relative overflow-hidden rounded-2xl bg-black" style={{ paddingBottom: '56.25%' }}>
-                    <iframe
-                      src={`https://www.youtube.com/embed/${trailerKey}?autoplay=1`}
-                      className="absolute inset-0 h-full w-full"
-                      allow="autoplay; encrypted-media"
-                      allowFullScreen
-                    />
-                  </div>
-                  <button onClick={() => setTrailerKey(null)} className="glass-button mt-3 px-4 py-2 text-sm">关闭</button>
-                </div>
-              </div>
-            )}
-
-            {/* Reviews */}
-            {reviews.length > 0 && (
-              <div className="rounded-2xl bg-white/[0.04] p-4">
-                <h3 className="mb-3 text-sm font-semibold text-gray-200">用户评论 <span className="ml-1 text-xs font-normal text-gray-500">{reviews.length}</span></h3>
-                <div className="space-y-3">
-                  {(showAllReviews ? reviews : reviews.slice(0, 3)).map((r: any, i: number) => (
-                    <div key={i} className="rounded-2xl bg-black/15 p-3">
-                      <div className="mb-2 flex items-center gap-2">
-                        {r.author_details?.avatar_path ? (
-                          <img
-                            src={r.author_details.avatar_path.startsWith('/') ? `https://image.tmdb.org/t/p/w45${r.author_details.avatar_path}` : r.author_details.avatar_path}
-                            className="h-6 w-6 rounded-full object-cover"
-                            alt=""
-                          />
-                        ) : (
-                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-apple-blue/20 text-[10px] text-apple-blue">
-                            {(r.author || '?')[0]}
-                          </div>
+                        {p.language && p.language !== 'null' && (
+                          <p className="mt-1 text-center text-[10px] text-gray-500">{p.language.toUpperCase()}</p>
                         )}
-                        <div>
-                          <p className="text-xs font-medium text-gray-200">{r.author || '匿名'}</p>
-                          <p className="text-[10px] text-gray-500">{r.author_details?.rating ? `评分 ${r.author_details.rating} / 10` : ''}{r.created_at ? ` · ${r.created_at.slice(0, 10)}` : ''}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Trailers */}
+              {videos.filter((v: any) => v.type === 'Trailer').length > 0 && (
+                <div className="rounded-2xl bg-white/[0.04] p-4">
+                  <h3 className="mb-3 text-sm font-semibold text-gray-200">预告片</h3>
+                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+                    {videos.filter((v: any) => v.type === 'Trailer' || v.type === 'Teaser').map((v: any, i: number) => (
+                      <div
+                        key={i}
+                        className="apple-focus shrink-0 cursor-pointer overflow-hidden rounded-xl bg-black/15"
+                        onClick={() => setTrailerKey(v.key)}
+                      >
+                        <div className="relative">
+                          <img
+                            src={`https://img.youtube.com/vi/${v.key}/mqdefault.jpg`}
+                            alt={v.name}
+                            className="h-28 w-48 object-cover"
+                            loading="lazy"
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="rounded-full bg-black/60 p-2 backdrop-blur-sm">
+                              <svg className="h-6 w-6 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="p-2">
+                          <p className="text-xs text-gray-300 line-clamp-2">{v.name}</p>
+                          <p className="mt-0.5 text-[10px] text-gray-500">{v.type}{v.official ? ' · 官方' : ''}</p>
                         </div>
                       </div>
-                      <p className="text-xs leading-relaxed text-gray-400 line-clamp-5">{r.content?.slice(0, 500)}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Trailer Modal */}
+              {trailerKey && (
+                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-md" onClick={() => setTrailerKey(null)}>
+                  <div className="w-full max-w-4xl p-4" onClick={(e) => e.stopPropagation()}>
+                    <div className="relative overflow-hidden rounded-2xl bg-black" style={{ paddingBottom: '56.25%' }}>
+                      <iframe
+                        src={`https://www.youtube.com/embed/${trailerKey}?autoplay=1`}
+                        className="absolute inset-0 h-full w-full"
+                        allow="autoplay; encrypted-media"
+                        allowFullScreen
+                      />
                     </div>
-                  ))}
+                    <button onClick={() => setTrailerKey(null)} className="glass-button mt-3 px-4 py-2 text-sm">关闭</button>
+                  </div>
                 </div>
-                {reviews.length > 3 && (
-                  <button
-                    onClick={() => setShowAllReviews(v => !v)}
-                    className="mt-3 rounded-full border border-white/10 bg-white/[0.08] px-3 py-1 text-xs text-gray-400 transition-all hover:text-apple-blue"
-                  >
-                    {showAllReviews ? '收起' : `查看全部 ${reviews.length} 条`}
-                  </button>
-                )}
-              </div>
-            )}
+              )}
 
-            {(cast.length > 0 || crew.length > 0) && (
-              <div className="rounded-2xl bg-white/[0.04] p-4">
-                <h3 className="mb-3 text-sm font-semibold text-gray-200">Staff</h3>
-                <div className="space-y-4">
-                  {cast.length > 0 && (
-                    <StaffGroup label="演员" items={cast.map(p => ({ name: p.name, sub: p.role || p.character, person_id: p.person_id, profile_path: p.profile_path }))} onClick={goStaff} />
-                  )}
-                  {directors.length > 0 && (
-                    <StaffGroup label="导演" items={directors.map(p => ({ name: p.name, sub: p.job, person_id: p.person_id, profile_path: p.profile_path }))} onClick={goStaff} />
-                  )}
-                  {supervisors.length > 0 && (
-                    <StaffGroup label="监督" items={supervisors.map(p => ({ name: p.name, sub: p.job, person_id: p.person_id, profile_path: p.profile_path }))} onClick={goStaff} />
-                  )}
-                  {writers.length > 0 && (
-                    <StaffGroup label="编剧" items={writers.map(p => ({ name: p.name, sub: p.job, person_id: p.person_id, profile_path: p.profile_path }))} onClick={goStaff} />
-                  )}
-                  {studios.length > 0 && (
-                    <StaffGroup label="制作" items={studios.map(p => ({ name: p.name, sub: p.job, person_id: p.person_id, profile_path: p.profile_path }))} onClick={goStaff} />
+              {/* Reviews */}
+              {reviews.length > 0 && (
+                <div className="rounded-2xl bg-white/[0.04] p-4">
+                  <h3 className="mb-3 text-sm font-semibold text-gray-200">用户评论 <span className="ml-1 text-xs font-normal text-gray-500">{reviews.length}</span></h3>
+                  <div className="space-y-3">
+                    {(showAllReviews ? reviews : reviews.slice(0, 3)).map((r: any, i: number) => (
+                      <div key={i} className="rounded-2xl bg-black/15 p-3">
+                        <div className="mb-2 flex items-center gap-2">
+                          {r.author_details?.avatar_path ? (
+                            <img
+                              src={r.author_details.avatar_path.startsWith('/') ? `https://image.tmdb.org/t/p/w45${r.author_details.avatar_path}` : r.author_details.avatar_path}
+                              className="h-6 w-6 rounded-full object-cover"
+                              alt=""
+                            />
+                          ) : (
+                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-apple-blue/20 text-[10px] text-apple-blue">
+                              {(r.author || '?')[0]}
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-xs font-medium text-gray-200">{r.author || '匿名'}</p>
+                            <p className="text-[10px] text-gray-500">{r.author_details?.rating ? `评分 ${r.author_details.rating} / 10` : ''}{r.created_at ? ` · ${r.created_at.slice(0, 10)}` : ''}</p>
+                          </div>
+                        </div>
+                        <p className="text-xs leading-relaxed text-gray-400 line-clamp-5">{r.content?.slice(0, 500)}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {reviews.length > 3 && (
+                    <button
+                      onClick={() => setShowAllReviews(v => !v)}
+                      className="mt-3 rounded-full border border-white/10 bg-white/[0.08] px-3 py-1 text-xs text-gray-400 transition-all hover:text-apple-blue"
+                    >
+                      {showAllReviews ? '收起' : `查看全部 ${reviews.length} 条`}
+                    </button>
                   )}
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-      </section>
+              )}
 
-      {thumbnailImages.length > 0 && (
-        <section className="rounded-3xl bg-white/[0.04] px-4 py-3 shadow-glass backdrop-blur-2xl sm:px-6 sm:py-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-[0.24em] text-apple-blue/70">Thumbnails</p>
-              <h3 className="mt-0.5 text-base font-semibold text-white sm:text-lg">缩略图</h3>
+              {(cast.length > 0 || crew.length > 0) && (
+                <div className="rounded-2xl bg-white/[0.04] p-4">
+                  <h3 className="mb-3 text-sm font-semibold text-gray-200">Staff</h3>
+                  <div className="space-y-4">
+                    {cast.length > 0 && (
+                      <StaffGroup label="演员" items={cast.map(p => ({ name: p.name, sub: p.role || p.character, person_id: p.person_id, profile_path: p.profile_path }))} onClick={goStaff} />
+                    )}
+                    {directors.length > 0 && (
+                      <StaffGroup label="导演" items={directors.map(p => ({ name: p.name, sub: p.job, person_id: p.person_id, profile_path: p.profile_path }))} onClick={goStaff} />
+                    )}
+                    {supervisors.length > 0 && (
+                      <StaffGroup label="监督" items={supervisors.map(p => ({ name: p.name, sub: p.job, person_id: p.person_id, profile_path: p.profile_path }))} onClick={goStaff} />
+                    )}
+                    {writers.length > 0 && (
+                      <StaffGroup label="编剧" items={writers.map(p => ({ name: p.name, sub: p.job, person_id: p.person_id, profile_path: p.profile_path }))} onClick={goStaff} />
+                    )}
+                    {studios.length > 0 && (
+                      <StaffGroup label="制作" items={studios.map(p => ({ name: p.name, sub: p.job, person_id: p.person_id, profile_path: p.profile_path }))} onClick={goStaff} />
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            <span className="glass-chip text-xs text-gray-400">{thumbnailImages.length}</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
-            {thumbnailImages.map((image, i) => (
-              <div
-                key={`${image.src}-${i}`}
-                onClick={() => setLightboxIdx(i)}
-                className="apple-focus block aspect-video cursor-pointer overflow-hidden rounded-2xl bg-white/[0.06] transition-all"
-              >
-                <img
-                  src={image.src}
-                  alt={image.alt}
-                  className="h-full w-full object-cover"
-                  loading="lazy"
-                  onError={(e) => {
-                    if (image.fallback) (e.target as HTMLImageElement).src = image.fallback
-                  }}
-                />
-              </div>
-            ))}
-          </div>
+          )}
         </section>
-      )}
 
-      {lightboxIdx >= 0 && thumbnailImages.length > 0 && (
-        <Lightbox
-          images={thumbnailImages}
-          index={lightboxIdx}
-          onClose={() => setLightboxIdx(-1)}
-          onPrev={() => setLightboxIdx(i => Math.max(0, i - 1))}
-          onNext={() => setLightboxIdx(i => Math.min(thumbnailImages.length - 1, i + 1))}
-        />
-      )}
-      </>
+        {thumbnailImages.length > 0 && (
+          <section className="rounded-3xl bg-white/[0.04] px-4 py-3 shadow-glass backdrop-blur-2xl sm:px-6 sm:py-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-[0.24em] text-apple-blue/70">Thumbnails</p>
+                <h3 className="mt-0.5 text-base font-semibold text-white sm:text-lg">缩略图</h3>
+              </div>
+              <span className="glass-chip text-xs text-gray-400">{thumbnailImages.length}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
+              {thumbnailImages.map((image, i) => (
+                <div
+                  key={`${image.src}-${i}`}
+                  onClick={() => setLightboxIdx(i)}
+                  className="apple-focus block aspect-video cursor-pointer overflow-hidden rounded-2xl bg-white/[0.06] transition-all"
+                >
+                  <img
+                    src={image.src}
+                    alt={image.alt}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                    onError={(e) => {
+                      if (image.fallback) (e.target as HTMLImageElement).src = image.fallback
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {lightboxIdx >= 0 && thumbnailImages.length > 0 && (
+          <Lightbox
+            images={thumbnailImages}
+            index={lightboxIdx}
+            onClose={() => setLightboxIdx(-1)}
+            onPrev={() => setLightboxIdx(i => Math.max(0, i - 1))}
+            onNext={() => setLightboxIdx(i => Math.min(thumbnailImages.length - 1, i + 1))}
+          />
+        )}
+        </div>
       )}
     </div>
   )

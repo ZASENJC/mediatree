@@ -13,6 +13,7 @@ import {
   type ThemePackage,
 } from './theme'
 import { formatMovieCardEpisodePrefix, formatMovieCardEpisodeTitle, getMovieCardCover } from './components/movieCardCover'
+import { calculateTheaterPlayerSize } from './player/useAmbientColor'
 
 function createMemoryStorage() {
   const values = new Map<string, string>()
@@ -1323,6 +1324,73 @@ test('continue watching cards use episode stills or cached movie snapshots', () 
   assert.match(playerSource, /api\.saveProgress\(movieId, pos, total, true, captureContinueSnapshot\)/)
   assert.match(detailSource, /captureContinueSnapshot=\{captureContinueSnapshot\}/)
   assert.doesNotMatch(playerSource, /api\.resetContinueCover\(movieId\)/)
+})
+
+test('detail page opts into autoplay without changing VideoPlayer default reuse behavior', () => {
+  const playerSource = readFileSync('src/components/VideoPlayer.tsx', 'utf8')
+  const detailSource = readFileSync('src/pages/detail/Detail.tsx', 'utf8')
+
+  assert.match(playerSource, /autoPlay\?: boolean/)
+  assert.match(playerSource, /autoPlay = false/)
+  assert.match(playerSource, /autoplay: autoPlay/)
+  assert.match(detailSource, /<VideoPlayer[\s\S]*\sautoPlay[\s\S]*episodes=\{episodes\}/)
+})
+
+test('detail page fits the player to the viewport with matching side and bottom gutters', () => {
+  const css = readFileSync('src/index.css', 'utf8')
+  const playerSource = readFileSync('src/components/VideoPlayer.tsx', 'utf8')
+  const detailSource = readFileSync('src/pages/detail/Detail.tsx', 'utf8')
+  const detailPage = cssRuleBody(css, '.detail-page {')
+  const detailStage = cssRuleBody(css, '.detail-player-stage {')
+  const detailToolbar = cssRuleBody(css, '.detail-player-toolbar {')
+  const detailBackButton = cssRuleBody(css, '.detail-back-button {')
+  const detailInfoStack = cssRuleBody(css, '.detail-info-stack {')
+  const fittedWrapper = cssRuleBody(css, '.fitted-player-wrapper {')
+  const fittedArt = cssRuleBody(css, '.fitted-player-wrapper .mediatree-artplayer {')
+  const actionRow = cssRuleBody(css, '.fitted-player-wrapper .player-action-row {')
+  const stageIndex = detailSource.indexOf("className={theaterMode ? 'contents' : 'detail-player-stage'}")
+  const infoStackIndex = detailSource.indexOf('className="detail-info-stack"')
+
+  assert.match(detailSource, /className=\{theaterMode \? 'flex-1 flex flex-col min-h-0' : 'detail-page'\}/)
+  assert.match(detailSource, /className=\{theaterMode \? 'contents' : 'detail-player-stage'\}/)
+  assert.doesNotMatch(detailSource, /className="detail-first-screen"/)
+  assert.notEqual(stageIndex, -1)
+  assert.ok(infoStackIndex > stageIndex, 'detail info should be rendered after the player stage')
+  assert.match(detailSource, /className="detail-player-toolbar"/)
+  assert.match(detailSource, /className="detail-info-stack"/)
+  assert.match(detailSource, /fitToContainer/)
+  assert.match(playerSource, /fitToContainer\?: boolean/)
+  assert.match(playerSource, /const FITTED_ACTION_ROW_HEIGHT = 52/)
+  assert.match(playerSource, /fitToContainer && !theaterMode \? FITTED_ACTION_ROW_HEIGHT : 0/)
+  assert.match(detailPage, /--detail-player-edge-gap:\s*var\(--mt-layout-page-padding-x\);/)
+  assert.match(detailPage, /--detail-player-top-reserve:\s*calc\(7\.75rem \+ var\(--mt-layout-page-padding-y\)\);/)
+  assert.match(detailPage, /gap:\s*0\.75rem;/)
+  assert.match(detailToolbar, /display:\s*flex;/)
+  assert.match(detailStage, /block-size:\s*max\(18rem,\s*calc\(100dvh - var\(--detail-player-top-reserve\) - var\(--detail-player-edge-gap\)\)\);/)
+  assert.match(detailStage, /align-items:\s*stretch;/)
+  assert.match(detailInfoStack, /margin-top:\s*var\(--detail-player-edge-gap\);/)
+  assert.match(detailInfoStack, /padding-top:\s*clamp\(1rem,\s*2\.4vw,\s*1\.5rem\);/)
+  assert.doesNotMatch(detailBackButton, /position:\s*absolute;/)
+  assert.match(fittedWrapper, /justify-content:\s*flex-end;/)
+  assert.match(fittedArt, /height:\s*100% !important;/)
+  assert.doesNotMatch(actionRow, /position:\s*absolute;/)
+  assert.match(actionRow, /min-height:\s*2rem;/)
+})
+
+test('theater player sizing reserves external action row height and clears impossible fits', () => {
+  assert.deepEqual(
+    calculateTheaterPlayerSize(1280, 800, 16 / 9, 52),
+    { width: 1280, height: 720 }
+  )
+  assert.deepEqual(
+    calculateTheaterPlayerSize(1000, 400, 16 / 9, 52),
+    { width: 618, height: 348 }
+  )
+  assert.equal(calculateTheaterPlayerSize(1000, 40, 16 / 9, 52), null)
+  assert.deepEqual(
+    calculateTheaterPlayerSize(900, 500, Number.NaN),
+    { width: 888, height: 500 }
+  )
 })
 
 test('movie card episode labels prefer tmdb_episode and fall back to episode_number', () => {
