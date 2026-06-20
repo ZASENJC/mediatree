@@ -102,6 +102,50 @@
     padding-block: var(--mt-layout-page-padding-y);
   }
 
+  .mt-project-footer {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    padding-block: 0.6rem 0;
+    color: rgba(148, 163, 184, 0.86);
+    font-size: 0.72rem;
+    line-height: 1.2;
+  }
+
+  .mt-project-footer-link {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.42rem;
+    color: currentColor;
+    opacity: 0.62;
+    text-decoration: none;
+    transition:
+      opacity var(--mt-motion-fast) ease,
+      color var(--mt-motion-fast) ease;
+  }
+
+  .mt-project-footer-link:hover,
+  .mt-project-footer-link:focus-visible {
+    color: rgba(226, 232, 240, 0.92);
+    opacity: 0.9;
+  }
+
+  .mt-project-footer-link:focus-visible {
+    outline: 1px solid rgba(226, 232, 240, 0.5);
+    outline-offset: 0.25rem;
+    border-radius: 999px;
+  }
+
+  .mt-project-footer-icon {
+    inline-size: 1rem;
+    block-size: 1rem;
+    flex: 0 0 auto;
+    color: currentColor;
+  }
+
   @media (min-width: 640px) {
     .mt-content {
       padding-inline: var(--mt-layout-page-padding-x-wide);
@@ -849,6 +893,18 @@ canvas[data-mediatree-subtitle="ass"] {
   padding-top: clamp(1rem, 2.4vw, 1.5rem);
 }
 
+@media (max-width: 640px), (pointer: coarse) {
+  .detail-player-stage {
+    display: block;
+    block-size: auto;
+  }
+
+  .detail-info-stack {
+    margin-top: 0;
+    padding-top: 0;
+  }
+}
+
 .fitted-player-wrapper {
   display: flex;
   flex-direction: column;
@@ -1467,19 +1523,12 @@ textarea {
 
 @keyframes settings-drawer-panel-in {
   from {
-    opacity: 0.82;
-    transform: translateX(3.25rem) scale(0.985);
-    filter: saturate(0.92);
-  }
-  62% {
-    opacity: 0.96;
-    transform: translateX(-0.2rem) scale(1.003);
-    filter: saturate(1.02);
+    opacity: 0.88;
+    transform: translate3d(2.4rem, 0, 0) scale(0.99);
   }
   to {
     opacity: 1;
-    transform: translateX(0) scale(1);
-    filter: saturate(1);
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
@@ -1535,7 +1584,7 @@ textarea {
   --settings-drawer-body-start-padding: clamp(1.15rem, 2.4vw, 1.65rem);
   inline-size: min(calc(100vw - 1rem), 36rem);
   animation: settings-drawer-panel-in 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
-  will-change: transform, opacity, filter;
+  will-change: transform, opacity;
 }
 
 :root .settings-drawer-panel.liquid-glass {

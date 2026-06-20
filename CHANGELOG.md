@@ -13,6 +13,7 @@ All notable changes to MediaTree are documented here.
 - Changed Settings into a right-side drawer that opens above the current page instead of replacing the main route
 - Expanded the Settings category rail so tab labels stay fully visible, while keeping the text small and the active selection surface wider
 - Kept the Settings liquid-glass effect on the drawer panel only, so opening Settings no longer blurs or dims the page underneath
+- Added a subtle GitHub project attribution link to the bottom of the Settings drawer
 - Removed the deprecated global Javdatabase enable toggle; Javdatabase is now controlled through scraper selection and plugin registration only
 - Kept only the TMDB Read Access Token in Settings scraper config and linked it to the token setup tutorial
 
@@ -25,7 +26,12 @@ All notable changes to MediaTree are documented here.
 ### Playback
 
 - Made the detail page open with an autoplaying player fitted to the first viewport, while keeping title, metadata, and galleries below the player
+- Let mobile and touch detail pages use the normal stacked player layout instead of forcing the first-viewport fit
 - Preserved the normal embedded-player default so reused `VideoPlayer` instances do not autoplay unless a page opts in
+
+### Maintenance
+
+- Updated the frontend build toolchain and transitive development dependencies to clear current `npm audit` findings
 
 ### Scraping
 

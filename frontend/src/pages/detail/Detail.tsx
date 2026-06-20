@@ -8,6 +8,34 @@ import { specialMovieTitle } from '../../movieTitle'
 
 type ThumbnailImage = { src: string; fallback?: string; alt: string }
 
+const DETAIL_MOBILE_QUERY = '(max-width: 640px), (pointer: coarse)'
+
+function readDetailMobileLayout() {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  return window.matchMedia(DETAIL_MOBILE_QUERY).matches
+}
+
+function useDetailMobileLayout() {
+  const [isMobileDetailLayout, setIsMobileDetailLayout] = useState(readDetailMobileLayout)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const mediaQuery = window.matchMedia(DETAIL_MOBILE_QUERY)
+    const update = () => setIsMobileDetailLayout(mediaQuery.matches)
+    update()
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', update)
+      return () => mediaQuery.removeEventListener('change', update)
+    }
+    if (typeof mediaQuery.addListener === 'function') {
+      mediaQuery.addListener(update)
+      return () => mediaQuery.removeListener(update)
+    }
+  }, [])
+
+  return isMobileDetailLayout
+}
+
 function parentFolder(path?: string) {
   if (!path || !path.includes('/')) return ''
   return path.split('/').slice(0, -1).join('/')
@@ -43,6 +71,7 @@ export default function Detail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { theaterMode } = useTheater()
+  const isMobileDetailLayout = useDetailMobileLayout()
   const [movie, setMovie] = useState<Movie | null>(null)
   const [loading, setLoading] = useState(true)
   const [episodes, setEpisodes] = useState<Movie[]>([])
@@ -243,7 +272,7 @@ export default function Detail() {
         <VideoPlayer src={api.streamUrl(movie.id)} poster={api.coverUrl(movie.id)} movieId={movie.id}
           title={displayTitle}
           autoPlay
-          fitToContainer
+          fitToContainer={!isMobileDetailLayout}
           episodes={episodes}
           captureContinueSnapshot={captureContinueSnapshot}
           onEpisodeSelect={(episode) => {
