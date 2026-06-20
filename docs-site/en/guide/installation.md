@@ -30,6 +30,7 @@ services:
     container_name: mediatree
     restart: unless-stopped
     init: true
+    user: "${PUID:-1000}:${PGID:-1000}"
     ports:
       - "27580:80"
     volumes:
@@ -66,11 +67,11 @@ Open `http://localhost:27580`. If `AUTH_USER` / `AUTH_PASS` are not preset, the 
 
 ### Data Directory Permissions
 
-The container runs as a non-root user. If `./data` is not writable, adjust it on the host:
+The container runs as `PUID=1000` / `PGID=1000` from `.env` by default. On Linux/macOS, check your current UID/GID with `id -u` and `id -g`. If `./data` is not writable, adjust it on the host:
 
 ```bash
 mkdir -p ./data
-sudo chown -R 1000:1000 ./data
+sudo chown -R "$(id -u):$(id -g)" ./data
 chmod 755 ./data
 ```
 

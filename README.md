@@ -60,6 +60,7 @@ services:
     restart: unless-stopped
     init: true
     stop_grace_period: 30s
+    user: "${PUID:-1000}:${PGID:-1000}"
     security_opt:
       - no-new-privileges:true
 
@@ -129,6 +130,7 @@ Docker Hub 镜像：`zasenjc/mediatree:latest`
 | 变量 | 作用 |
 |---|---|
 | `AUTH_USER` / `AUTH_PASS` | 预置管理员登录账号；留空时首次打开网页创建账号 |
+| `PUID` / `PGID` | 容器运行用户 UID/GID；Linux/macOS 可用 `id -u` 和 `id -g` 查看 |
 | 媒体目录挂载 | 在 `docker-compose.yml` 的 `volumes` 中配置，例如 `/host/movies:/media/movies:ro` |
 | 数据目录挂载 | 在 `docker-compose.yml` 的 `volumes` 中配置，例如 `./data:/app/data` |
 | 访问端口 | 在 `docker-compose.yml` 的 `ports` 中配置，例如 `27580:80` |

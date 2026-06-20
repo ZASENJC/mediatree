@@ -30,6 +30,7 @@ services:
     container_name: mediatree
     restart: unless-stopped
     init: true
+    user: "${PUID:-1000}:${PGID:-1000}"
     ports:
       - "27580:80"
     volumes:
@@ -66,11 +67,11 @@ docker compose up -d
 
 ### データディレクトリの権限
 
-コンテナは非 root ユーザーで動作します。`./data` に書き込めない場合は、ホスト側で権限を調整します。
+コンテナは既定で `.env` の `PUID=1000` / `PGID=1000` で動作します。Linux/macOS では `id -u` と `id -g` で現在の UID/GID を確認できます。`./data` に書き込めない場合は、ホスト側で権限を調整します。
 
 ```bash
 mkdir -p ./data
-sudo chown -R 1000:1000 ./data
+sudo chown -R "$(id -u):$(id -g)" ./data
 chmod 755 ./data
 ```
 

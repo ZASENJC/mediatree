@@ -76,6 +76,7 @@ Application update packages must be produced by `scripts/build-app-package.sh`. 
 
 Copy `.env.example` to `.env` and configure:
 - `AUTH_USER` / `AUTH_PASS` — optional preconfigured web UI credentials; leave blank for first-run admin setup
+- `PUID` / `PGID` — Docker Compose runtime UID/GID used by `user: "${PUID:-1000}:${PGID:-1000}"`
 - `TMDB_ACCESS_TOKEN` (optional) — enables TMDB API; Settings exposes only the TMDB read access token. Keep legacy `TMDB_API_KEY` backend compatibility hidden from Settings unless a future migration explicitly removes or redesigns it.
 - Media mounts — configure directly in `docker-compose.yml` as `/host/path:/media/alias:ro`
 - Data mount — configure directly in `docker-compose.yml`, default `./data:/app/data`

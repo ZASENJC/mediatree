@@ -30,6 +30,7 @@ services:
     container_name: mediatree
     restart: unless-stopped
     init: true
+    user: "${PUID:-1000}:${PGID:-1000}"
     ports:
       - "27580:80"
     volumes:
@@ -66,11 +67,11 @@ docker compose up -d
 
 ### 数据目录权限
 
-容器以非 root 用户运行。若 `./data` 无法写入，可以在宿主机调整权限：
+容器默认以 `.env` 中的 `PUID=1000` / `PGID=1000` 运行。Linux/macOS 可用 `id -u` 和 `id -g` 查看当前用户 UID/GID；若 `./data` 无法写入，可以在宿主机调整权限：
 
 ```bash
 mkdir -p ./data
-sudo chown -R 1000:1000 ./data
+sudo chown -R "$(id -u):$(id -g)" ./data
 chmod 755 ./data
 ```
 

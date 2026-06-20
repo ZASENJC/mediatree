@@ -59,6 +59,7 @@ services:
     restart: unless-stopped
     init: true
     stop_grace_period: 30s
+    user: "${PUID:-1000}:${PGID:-1000}"
     security_opt:
       - no-new-privileges:true
 
@@ -128,6 +129,7 @@ The default image is size-optimized. It includes the lightweight `fonts-wqy-micr
 | Variable | What it does |
 |---|---|
 | `AUTH_USER` / `AUTH_PASS` | Presets the admin login; leave empty to create it on first launch |
+| `PUID` / `PGID` | UID/GID used to run the container; on Linux/macOS check them with `id -u` and `id -g` |
 | Media mounts | Configure in `docker-compose.yml` `volumes`, for example `/host/movies:/media/movies:ro` |
 | Data mount | Configure in `docker-compose.yml` `volumes`, for example `./data:/app/data` |
 | Web port | Configure in `docker-compose.yml` `ports`, for example `27580:80` |
