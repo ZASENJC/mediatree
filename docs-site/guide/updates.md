@@ -29,7 +29,7 @@ docker compose pull
 docker compose up -d
 ```
 
-如果确认要让设置页执行完整镜像更新，可以挂载 Docker socket：
+如果确认要让设置页执行完整镜像更新，需要挂载 Docker socket，并使用包含 Docker CLI 的镜像：
 
 ```yaml
 volumes:

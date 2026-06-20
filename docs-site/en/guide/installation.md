@@ -19,7 +19,7 @@ cp .env.example .env
 cp docker-compose.example.yml docker-compose.yml
 ```
 
-Edit `.env` and `docker-compose.yml`. At minimum, set the admin account, data directory, and media mounts.
+Edit `.env` and `docker-compose.yml`. At minimum, set the data directory and media mounts; you can either preconfigure the admin account or create it on first launch.
 
 ### 2. Minimal docker-compose.yml
 
@@ -29,16 +29,23 @@ services:
     image: zasenjc/mediatree:latest
     container_name: mediatree
     restart: unless-stopped
+    init: true
     ports:
-      - "27580:80"
+      - "${BIND_ADDRESS:-0.0.0.0}:${HOST_PORT:-27580}:80"
     volumes:
-      - ./data:/app/data
-      - /path/to/your/movies:/media/movies:ro
+      - type: bind
+        source: ${DATA_DIR:-./data}
+        target: /app/data
+      - type: bind
+        source: ${MEDIA_DIR:?Set MEDIA_DIR in .env to your media folder}
+        target: /media/${MEDIA_ALIAS:-movies}
+        read_only: true
+        bind:
+          create_host_path: false
+    env_file:
+      - .env
     environment:
-      - AUTH_USER=admin
-      - AUTH_PASS=change-me
-      - PORT=80
-      - SCAN_ON_STARTUP=true
+      PORT: "80"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/api/health"]
       interval: 30s
@@ -47,7 +54,7 @@ services:
       start_period: 20s
 ```
 
-Mount media folders read-only, for example `/host/movies:/media/movies:ro`. MediaTree stores its database, covers, config, fonts, backups, and app-package updates in `./data`.
+Mount media folders read-only. The default template mounts `MEDIA_DIR` from `.env` to `/media/${MEDIA_ALIAS}`, for example `/host/movies` → `/media/movies`. MediaTree stores its database, covers, config, fonts, backups, and app-package updates in `./data`.
 
 ### 3. Start
 

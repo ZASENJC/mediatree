@@ -19,7 +19,7 @@ cp .env.example .env
 cp docker-compose.example.yml docker-compose.yml
 ```
 
-`.env` と `docker-compose.yml` を編集します。最低限、管理者アカウント、データディレクトリ、メディアのマウントを設定してください。
+`.env` と `docker-compose.yml` を編集します。最低限、データディレクトリとメディアのマウントを設定してください。管理者アカウントは事前設定するか、初回起動時に作成できます。
 
 ### 2. 最小構成の docker-compose.yml
 
@@ -29,16 +29,23 @@ services:
     image: zasenjc/mediatree:latest
     container_name: mediatree
     restart: unless-stopped
+    init: true
     ports:
-      - "27580:80"
+      - "${BIND_ADDRESS:-0.0.0.0}:${HOST_PORT:-27580}:80"
     volumes:
-      - ./data:/app/data
-      - /path/to/your/movies:/media/movies:ro
+      - type: bind
+        source: ${DATA_DIR:-./data}
+        target: /app/data
+      - type: bind
+        source: ${MEDIA_DIR:?Set MEDIA_DIR in .env to your media folder}
+        target: /media/${MEDIA_ALIAS:-movies}
+        read_only: true
+        bind:
+          create_host_path: false
+    env_file:
+      - .env
     environment:
-      - AUTH_USER=admin
-      - AUTH_PASS=change-me
-      - PORT=80
-      - SCAN_ON_STARTUP=true
+      PORT: "80"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/api/health"]
       interval: 30s
@@ -47,7 +54,7 @@ services:
       start_period: 20s
 ```
 
-メディアフォルダは読み取り専用でマウントします。例: `/host/movies:/media/movies:ro`。MediaTree はデータベース、カバー、設定、フォント、バックアップ、アプリパッケージ更新を `./data` に保存します。
+メディアフォルダは読み取り専用でマウントします。標準テンプレートでは `.env` の `MEDIA_DIR` を `/media/${MEDIA_ALIAS}` にマウントします。例: `/host/movies` → `/media/movies`。MediaTree はデータベース、カバー、設定、フォント、バックアップ、アプリパッケージ更新を `./data` に保存します。
 
 ### 3. 起動する
 

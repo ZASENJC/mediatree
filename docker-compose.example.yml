@@ -1,32 +1,62 @@
 services:
   mediatree:
     image: zasenjc/mediatree:latest
-    build:
-      context: .
-      # 可选：如果你自己构建镜像，并希望设置页能执行完整 Docker 镜像更新，
-      # 需要把 Docker CLI 打进镜像；直接使用 Docker Hub latest 时不用改这里。
-      args:
-        INCLUDE_DOCKER_CLI: "false"
     container_name: mediatree
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+
     ports:
-      - "${HOST_PORT:-27580}:80"
+      # 默认监听所有网卡，方便局域网设备访问；只允许本机访问时把 BIND_ADDRESS 改为 127.0.0.1。
+      - "${BIND_ADDRESS:-0.0.0.0}:${HOST_PORT:-27580}:80"
+
     volumes:
-      # 挂载你的媒体目录（只读），格式：/你的/本地/路径:/media/别名:ro
-      - /path/to/your/media:/media/movies:ro
       # 数据目录（持久化数据库、封面缓存、配置）
-      - ${DATA_DIR:-./data}:/app/data
+      - type: bind
+        source: ${DATA_DIR:-./data}
+        target: /app/data
+
+      # 媒体目录（只读）。MEDIA_DIR 必须改成宿主机真实路径。
+      - type: bind
+        source: ${MEDIA_DIR:?Set MEDIA_DIR in .env to your media folder}
+        target: /media/${MEDIA_ALIAS:-movies}
+        read_only: true
+        bind:
+          create_host_path: false
+
+      # 需要多个媒体库时，复制下面这组并修改 source/target：
+      # - type: bind
+      #   source: /path/to/your/anime
+      #   target: /media/anime
+      #   read_only: true
+      #   bind:
+      #     create_host_path: false
+
       # 可选：允许设置页执行完整 Docker 镜像更新。
       # 原因：容器需要通过宿主机 Docker 拉取新镜像并重建自身。
-      # 风险：这等同于把宿主机 Docker 控制权交给容器；普通应用包更新不需要。
-      # - /var/run/docker.sock:/var/run/docker.sock
+      # 风险：这等同于把宿主机 Docker 控制权交给容器；普通应用包更新不需要，也不建议默认启用。
+      # 注意：如果要从设置页执行完整镜像更新，镜像还必须包含 Docker CLI。
+      # - type: bind
+      #   source: /var/run/docker.sock
+      #   target: /var/run/docker.sock
+
     env_file:
       - .env
+
     environment:
-      - PORT=80
+      PORT: "80"
+
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
-    restart: unless-stopped
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

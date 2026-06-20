@@ -29,7 +29,7 @@ docker compose pull
 docker compose up -d
 ```
 
-To let Settings perform full image updates, mount the Docker socket:
+To let Settings perform full image updates, mount the Docker socket and use an image that includes the Docker CLI:
 
 ```yaml
 volumes:

@@ -50,7 +50,7 @@ MediaTree 面向把电影、电视剧、动漫和私人片库保存在自己硬�
 
 ## 快速部署
 
-新建 `docker-compose.yml`，按注释改好账号、密码和媒体目录后启动：
+新建 `.env` 和 `docker-compose.yml`，按注释改好数据目录和媒体目录后启动；管理员账号可以预置，也可以首次打开网页时创建：
 
 ```yaml
 services:
@@ -58,34 +58,40 @@ services:
     image: zasenjc/mediatree:latest
     container_name: mediatree
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
 
     ports:
       # 左侧是宿主机访问端口，启动后打开 http://localhost:27580
-      - "27580:80"
+      - "${BIND_ADDRESS:-0.0.0.0}:${HOST_PORT:-27580}:80"
 
     volumes:
       # 持久化数据目录：数据库、封面、字体、备份和应用包更新都会保存在这里
-      - ./data:/app/data
+      - type: bind
+        source: ${DATA_DIR:-./data}
+        target: /app/data
 
-      # 挂载你的媒体目录，建议只读。左侧改成宿主机真实路径，右侧是容器内路径
-      - /path/to/your/movies:/media/movies:ro
-      # 可以继续添加更多媒体目录
-      # - /path/to/your/anime:/media/anime:ro
+      # 媒体目录只读挂载；MEDIA_DIR 必须改成宿主机真实路径
+      - type: bind
+        source: ${MEDIA_DIR:?Set MEDIA_DIR in .env to your media folder}
+        target: /media/${MEDIA_ALIAS:-movies}
+        read_only: true
+        bind:
+          create_host_path: false
 
       # 可选：允许设置页执行完整 Docker 镜像更新。
       # 这会让容器获得宿主机 Docker 控制权限；普通应用包更新不需要。
-      # - /var/run/docker.sock:/var/run/docker.sock
+      # - type: bind
+      #   source: /var/run/docker.sock
+      #   target: /var/run/docker.sock
 
+    env_file:
+      - .env
     environment:
-      # 预置管理员账号。也可以留空，首次打开网页时创建管理员账号
-      - AUTH_USER=admin
-      - AUTH_PASS=change-me
-
       # 容器内部服务端口，通常不需要改
-      - PORT=80
-
-      # 启动时自动扫描媒体库
-      - SCAN_ON_STARTUP=true
+      PORT: "80"
 
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/api/health"]
@@ -93,6 +99,12 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 ```
 
 启动：
@@ -124,9 +136,10 @@ Docker Hub 镜像：`zasenjc/mediatree:latest`
 | 变量 | 作用 |
 |---|---|
 | `AUTH_USER` / `AUTH_PASS` | 预置管理员登录账号；留空时首次打开网页创建账号 |
-| `MEDIA_VOLUMES` | 挂载媒体目录，例如 `/host/movies:/media/movies:ro` |
+| `MEDIA_DIR` / `MEDIA_ALIAS` | 默认媒体目录和容器内别名，例如 `/host/movies` → `/media/movies` |
 | `DATA_DIR` | 保存数据库、封面、字体、备份和应用包更新。默认 `./data` |
 | `HOST_PORT` | Web 访问端口。默认 `27580` |
+| `BIND_ADDRESS` | 监听地址。默认 `0.0.0.0` 允许局域网访问；可改为 `127.0.0.1` 仅本机访问 |
 | `TMDB_ACCESS_TOKEN` | 可选，用于改善 TMDB 刮削；申请方式见[文档站](https://zasenjc.github.io/mediatree/guide/configuration#获取-tmdb-读取访问令牌) |
 
 Javdatabase 现在作为内置刮削器插件提供；在设置页为对应媒体库选择 `Javdatabase` 即可使用。刮削器缓存有效期和 Javdatabase 请求间隔由应用内部管理，不再需要在设置页或环境变量里调整。手动扫描、重新刮削和手动应用结果会绕过缓存，空结果不会写入缓存，避免旧的空结果挡住后续补齐的数据。
@@ -139,7 +152,7 @@ Javdatabase 现在作为内置刮削器插件提供；在设置页为对应媒�
 
 发布应用包更新时，维护者会在本地构建并推送 `zasenjc/mediatree:latest`，不再通过 GitHub Actions 同步 DockerHub。这样新安装用户仍会拿到最新应用基线，已安装用户则继续走设置页里的应用包更新。
 
-少数更新会提示“需要完整镜像更新”，通常是因为运行环境也变了，例如 Python、ffmpeg、字体或启动流程。这时最简单的做法是在宿主机执行下面两条命令。如果想让设置页也能自动完成这类完整镜像更新，可以在 `docker-compose.yml` 里挂载 `/var/run/docker.sock:/var/run/docker.sock`；但这会让容器获得控制宿主机 Docker 的能力，不确定时建议不要挂载。
+少数更新会提示“需要完整镜像更新”，通常是因为运行环境也变了，例如 Python、ffmpeg、字体或启动流程。这时最简单的做法是在宿主机执行下面两条命令。如果想让设置页也能自动完成这类完整镜像更新，需要挂载 `/var/run/docker.sock:/var/run/docker.sock`，并使用包含 Docker CLI 的镜像；但这会让容器获得控制宿主机 Docker 的能力，不确定时建议不要挂载。
 
 完整镜像更新：
 

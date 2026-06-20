@@ -19,7 +19,7 @@ cp .env.example .env
 cp docker-compose.example.yml docker-compose.yml
 ```
 
-编辑 `.env` 和 `docker-compose.yml`，至少设置管理员账号、数据目录和媒体目录挂载。
+编辑 `.env` 和 `docker-compose.yml`，至少设置数据目录和媒体目录挂载；管理员账号可以预置，也可以首次打开网页时创建。
 
 ### 2. 最小 docker-compose.yml
 
@@ -29,16 +29,23 @@ services:
     image: zasenjc/mediatree:latest
     container_name: mediatree
     restart: unless-stopped
+    init: true
     ports:
-      - "27580:80"
+      - "${BIND_ADDRESS:-0.0.0.0}:${HOST_PORT:-27580}:80"
     volumes:
-      - ./data:/app/data
-      - /path/to/your/movies:/media/movies:ro
+      - type: bind
+        source: ${DATA_DIR:-./data}
+        target: /app/data
+      - type: bind
+        source: ${MEDIA_DIR:?Set MEDIA_DIR in .env to your media folder}
+        target: /media/${MEDIA_ALIAS:-movies}
+        read_only: true
+        bind:
+          create_host_path: false
+    env_file:
+      - .env
     environment:
-      - AUTH_USER=admin
-      - AUTH_PASS=change-me
-      - PORT=80
-      - SCAN_ON_STARTUP=true
+      PORT: "80"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:80/api/health"]
       interval: 30s
@@ -47,7 +54,7 @@ services:
       start_period: 20s
 ```
 
-媒体目录建议以只读方式挂载，例如 `/host/movies:/media/movies:ro`。MediaTree 会读取文件并把数据库、封面、配置、字体、备份和应用包更新写入 `./data`。
+媒体目录建议以只读方式挂载。默认模板会把 `.env` 里的 `MEDIA_DIR` 挂载到 `/media/${MEDIA_ALIAS}`，例如 `/host/movies` → `/media/movies`。MediaTree 会读取文件并把数据库、封面、配置、字体、备份和应用包更新写入 `./data`。
 
 ### 3. 启动
 

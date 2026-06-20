@@ -29,7 +29,7 @@ docker compose pull
 docker compose up -d
 ```
 
-Settings から完全イメージ更新を実行したい場合は Docker socket をマウントします。
+Settings から完全イメージ更新を実行したい場合は Docker socket をマウントし、Docker CLI を含むイメージを使用します。
 
 ```yaml
 volumes:
