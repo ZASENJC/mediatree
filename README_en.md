@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.1.0-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/ZASENJC/mediatree/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.1.01-blue?style=flat-square" alt="Version"></a>
   <a href="https://github.com/ZASENJC/mediatree/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.12+-blue?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/react-18-61DAFB?style=flat-square&logo=react" alt="React">
@@ -28,6 +28,7 @@ MediaTree is built for people who keep movies, TV shows, anime, and private nich
 
 - **Your files stay where they are** - mount existing folders read-only and keep the original directory structure.
 - **Metadata without manual busywork** - scrape posters, titles, cast, seasons, episodes, and details from TMDB, Bangumi, and Javdatabase.
+- **Clearer folder browsing** - folder pages can show Chinese or English TMDB title logos, while episodes without stills fall back to shared landscape artwork.
 - **A player made for real libraries** - stream directly, seek with HTTP Range, transcode on demand, render ASS/SSA subtitles, show playback state in the browser tab, and open in IINA, mpv, VLC, or PiP.
 - **Useful from day one** - browse by library, folder tree, favorites, categories, or seasons; scan on startup or let the file watcher pick up changes.
 - **Works with more than the web UI** - the web player can generate external playback links and M3U playlists for VLC, IINA, and mpv.

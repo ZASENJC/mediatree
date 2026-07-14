@@ -812,14 +812,14 @@ async def _try_season_merge_auto(
 # ─── TMDB Extended API ───
 
 
-async def fetch_tmdb_images(tmdb_id: int, media_type: str, lang: str = "zh,null") -> dict | None:
+async def fetch_tmdb_images(tmdb_id: int, media_type: str, lang: str = "zh,en,null") -> dict | None:
     """Fetch posters, backdrops, logos for a movie or TV series."""
     if not _has_tmdb_auth():
         return None
     mt = media_type.lower()
     if mt not in {"movie", "tv"}:
         return None
-    cache_key = f"images:{mt}:{tmdb_id}"
+    cache_key = f"images:v2:{mt}:{tmdb_id}:{lang}"
     cache_data = await get_scraper_cache("tmdb", cache_key, settings.tmdb_cache_hours)
     if cache_data is not None:
         return cache_data

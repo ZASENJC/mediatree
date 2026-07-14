@@ -4,10 +4,11 @@ import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { api, Movie, FolderNode, resolveApiUrl } from '../../api'
 import { getExcluded } from '../../store'
 import { getCached, setCache } from '../../cache'
-import { saveScrollPos, restoreScrollPos } from '../../scroll'
+import { restoreScrollPos } from '../../scroll'
 import { MovieCard } from '../../components/MovieCard'
 import SortDropdown from '../../components/SortDropdown'
 import { showToast } from '../../toast'
+import FolderTitle, { type FolderLogo } from './folderTitle'
 
 import { LIBRARY_SORT_OPTIONS } from '../../constants/sortOptions'
 
@@ -62,6 +63,7 @@ export default function FolderPage() {
   const [loading, setLoading] = useState(true)
   const [folderDisplayTitle, setFolderDisplayTitle] = useState('')
   const [folderBackdrop, setFolderBackdrop] = useState('')
+  const [folderLogos, setFolderLogos] = useState<FolderLogo[]>([])
   const [overviewModal, setOverviewModal] = useState(false)
   const [specialMovies, setSpecialMovies] = useState<Movie[]>([])
   const [specialCount, setSpecialCount] = useState(0)
@@ -71,7 +73,6 @@ export default function FolderPage() {
   const [folderTransition, setFolderTransition] = useState<FolderTransitionState | null>(null)
   const [folderEntering, setFolderEntering] = useState(false)
   const [folderEntryBackdropKey, setFolderEntryBackdropKey] = useState<number | null>(null)
-  const returnTransitionRef = useRef<FolderTransitionState | null>(initialFolderTransition || null)
   const folderEntryStartedRef = useRef(false)
 
   // ─── Backdrop Carousel (powered by folder-scraped TMDB data) ───
@@ -143,15 +144,17 @@ export default function FolderPage() {
     }).catch(() => {})
   }, [folderPath])
 
-  // Load backdrops from folder-scraped TMDB data
+  // Load backdrop and title logo artwork from folder-scraped TMDB data
   useEffect(() => {
     if (!folderPath) return
     if (lastPath.current === folderPath + mediaRoot) return
     lastPath.current = folderPath + mediaRoot
     setBackdrops([])
+    setFolderLogos([])
     setBackdropIdx(0)
     api.folderBackdrops(folderPath, mediaRoot)
       .then(data => {
+        setFolderLogos(data?.logos || [])
         if (data?.backdrops?.length) {
           setBackdrops(data.backdrops.slice(0, 10))
           prevIdxRef.current = -1
@@ -178,6 +181,7 @@ export default function FolderPage() {
 
   // Determine which backdrop source to use
   const activeBackdrop = resolveApiUrl(backdrops.length > 0 ? backdrops[backdropIdx]?.url : folderBackdrop)
+  const episodeFallbackBackdrop = resolveApiUrl(backdrops[0]?.url || folderBackdrop)
   const exitBackdrop = resolveApiUrl(prevIdxRef.current >= 0 && backdrops.length > prevIdxRef.current ? backdrops[prevIdxRef.current]?.url : '')
 
   useEffect(() => {
@@ -201,7 +205,6 @@ export default function FolderPage() {
   useEffect(() => { restoreScrollPos() }, [])
   useLayoutEffect(() => {
     if (!initialFolderTransition) return
-    returnTransitionRef.current = initialFolderTransition
     if (loading || folderEntryStartedRef.current) return
     folderEntryStartedRef.current = true
     setFolderEntryBackdropKey(activeBackdrop ? fadeKey : null)
@@ -322,16 +325,6 @@ export default function FolderPage() {
     if (!showSpecials) void enableSpecials()
   }
 
-  const goHome = () => {
-    saveScrollPos()
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (!returnTransitionRef.current || prefersReducedMotion) {
-      navigate('/')
-      return
-    }
-    navigate('/', { state: { homeReturnTransition: returnTransitionRef.current } })
-  }
-
   useEffect(() => {
     if (specialsSelected && specialCount > 0 && !showSpecials) {
       void enableSpecials()
@@ -413,16 +406,18 @@ export default function FolderPage() {
           {backdrops.length > 1 && (
             <>
               <button
+                aria-label="上一张背景图"
                 onClick={(e) => { e.stopPropagation(); cycleTo((backdropIdxRef.current - 1 + backdrops.length) % backdrops.length) }}
-                className={`absolute left-3 top-1/2 z-20 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white/70 backdrop-blur transition-all hover:bg-black/60 hover:text-white sm:left-5 sm:p-2.5 ${
+                className={`absolute left-3 top-1/2 z-20 -translate-y-1/2 p-2 text-white/70 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] transition-[color,opacity,transform] hover:scale-110 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 sm:left-5 sm:p-2.5 ${
                   backdropHover ? 'opacity-100' : 'opacity-0'
                 }`}
               >
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
               </button>
               <button
+                aria-label="下一张背景图"
                 onClick={(e) => { e.stopPropagation(); cycleTo((backdropIdxRef.current + 1) % backdrops.length) }}
-                className={`absolute right-3 top-1/2 z-20 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white/70 backdrop-blur transition-all hover:bg-black/60 hover:text-white sm:right-5 sm:p-2.5 ${
+                className={`absolute right-3 top-1/2 z-20 -translate-y-1/2 p-2 text-white/70 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)] transition-[color,opacity,transform] hover:scale-110 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 sm:right-5 sm:p-2.5 ${
                   backdropHover ? 'opacity-100' : 'opacity-0'
                 }`}
               >
@@ -432,16 +427,11 @@ export default function FolderPage() {
           )}
 
           <div className="pointer-events-none absolute inset-x-0 bottom-0 p-4 pb-16 sm:p-7 sm:pb-24">
-            <button onClick={goHome}
-              className="pointer-events-auto glass-chip mb-4 text-sm text-gray-300 drop-shadow hover:text-white">
-              返回首页
-            </button>
-            <p className="text-xs uppercase tracking-[0.28em] text-apple-blue/90 drop-shadow">Folder</p>
-            <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+            <div className="flex flex-wrap items-end justify-between gap-4">
               <div className="min-w-0">
-                <h1 className="max-w-4xl break-words text-3xl font-bold tracking-tight text-white drop-shadow-2xl sm:text-5xl">{showTitle}</h1>
+                <FolderTitle title={showTitle} logos={folderLogos} hasBackdrop />
                 {folderOverviewText && (
-                  <p className="mt-2 max-w-[320px] text-xs leading-relaxed text-gray-400/70 drop-shadow line-clamp-2">
+                  <p className="mt-4 max-w-[320px] text-xs leading-relaxed text-gray-400/70 drop-shadow line-clamp-2">
                     {folderOverviewText.length > 46 ? folderOverviewText.slice(0, 46) : folderOverviewText}
                     {folderOverviewText.length > 46 && <span>… </span>}
                     <button
@@ -460,14 +450,9 @@ export default function FolderPage() {
       ) : (
         <div className="glass-panel flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <div className="min-w-0">
-            <button onClick={goHome}
-              className="glass-chip mb-2 text-sm text-gray-400 hover:text-white">
-              返回首页
-            </button>
-            <p className="text-xs uppercase tracking-[0.24em] text-apple-blue/80">Folder</p>
-            <h1 className="break-words text-2xl font-bold tracking-tight text-white sm:text-3xl">{showTitle}</h1>
+            <FolderTitle title={showTitle} logos={folderLogos} hasBackdrop={false} />
             {folderOverviewText && (
-              <p className="mt-1.5 max-w-[320px] text-xs leading-relaxed text-gray-400 line-clamp-2">
+              <p className="mt-3 max-w-[320px] text-xs leading-relaxed text-gray-400 line-clamp-2">
                 {folderOverviewText.length > 46 ? folderOverviewText.slice(0, 46) : folderOverviewText}
                 {folderOverviewText.length > 46 && <span>… </span>}
                 <button
@@ -534,9 +519,16 @@ export default function FolderPage() {
             <p>{displayedEmptyText}</p>
           </div>
         ) : (
-          <div className="folder-episode-grid grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 media-grid">
+          <div className="folder-episode-grid media-grid">
             {displayedMovies.map((movie) => (
-              <MovieCard key={movie.id} movie={movie} onUpdated={specialsSelected ? loadSpecials : load} showBadges={false} coverStrategy="episode-still-only" />
+              <MovieCard
+                key={movie.id}
+                movie={movie}
+                onUpdated={specialsSelected ? loadSpecials : load}
+                showBadges={false}
+                coverStrategy="episode-still-or-landscape"
+                landscapeFallbackSrc={episodeFallbackBackdrop}
+              />
             ))}
           </div>
         )}

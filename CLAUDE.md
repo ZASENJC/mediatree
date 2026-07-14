@@ -182,6 +182,7 @@ scan_media(root)
 - `cover_remote`: direct URL, used as `<img src>`
 - `fanart_local`: folder hero background image
 - Episode stills stored in `data/stills/`
+- Folder headers prefer TMDB Chinese title logos, then English logos, and finally text. Folder episode cards prefer episode stills before shared landscape artwork; shared artwork must keep one cacheable URL and the responsive cards must retain a 16:9 intrinsic size.
 
 ### Frontend key patterns
 - API client in `api.ts`: single `request()` function with 120s TTL cache, auth token management, all typed methods. Supports `VITE_API_BASE_URL` env override for Capacitor native app.

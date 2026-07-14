@@ -10,6 +10,26 @@ All notable changes to MediaTree are documented here.
 
 ---
 
+## 1.1.01 (2026-07-14)
+
+### Folder Browsing
+
+- Added TMDB title artwork to folder headers, preferring Chinese logos, then English logos, and falling back to the folder title when artwork is unavailable
+- Enlarged folder titles, simplified the hero controls, and removed the redundant generic folder label and in-page home button
+- Changed episode cards to use episode stills first and fall back to shared folder landscape artwork in a responsive two-column mobile and adaptive desktop grid
+- Kept shared landscape artwork cacheable across episode cards and stabilized offscreen 16:9 card sizing to avoid repeated downloads and scroll jumps
+
+### Security
+
+- Updated `pydantic-settings` to 2.14.2, `python-multipart` to 0.0.31, and `Pillow` to 12.3.0 to include their current security fixes
+
+### Release Type
+
+- Full Docker image update required so the patched Python dependencies are installed
+- Docker Compose users should run `docker compose pull && docker compose up -d` on the host; new installs using `zasenjc/mediatree:latest` receive the refreshed baseline
+
+---
+
 ## 1.1.0 (2026-06-21)
 
 ### Settings

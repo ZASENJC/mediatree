@@ -12,7 +12,7 @@ import { clearCache } from '../cache'
 import CoverPickerModal from './CoverPickerModal'
 import { specialMovieTitle } from '../movieTitle'
 import { normalizeScraperOptions } from '../scrapers'
-import { formatMovieCardEpisodePrefix, formatMovieCardEpisodeTitle, getMovieCardCover, type MovieCardCoverStrategy } from './movieCardCover'
+import { formatMovieCardEpisodePrefix, formatMovieCardEpisodeTitle, getMovieCardCover, resolveMovieCardImageSrc, type MovieCardCoverStrategy } from './movieCardCover'
 
 interface MovieCardProps {
   movie: Movie
@@ -21,9 +21,10 @@ interface MovieCardProps {
   hideTitle?: boolean
   adaptiveCover?: boolean
   coverStrategy?: MovieCardCoverStrategy
+  landscapeFallbackSrc?: string
 }
 
-export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = false, adaptiveCover = false, coverStrategy = 'auto' }: MovieCardProps) {
+export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = false, adaptiveCover = false, coverStrategy = 'auto', landscapeFallbackSrc }: MovieCardProps) {
   const navigate = useNavigate()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [showEdit, setShowEdit] = useState(false)
@@ -49,6 +50,9 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
       setCoverLoadFailed(false)
     }
   }, [movie.id, movie.updated_at])
+  useEffect(() => {
+    setCoverLoadFailed(false)
+  }, [coverStrategy, landscapeFallbackSrc])
   useEffect(() => {
     api.mediaRoots().then(data => {
       const scrapers: Record<string, string> = {}
@@ -93,10 +97,18 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
   const isSpecial = movie.content_role === 'special'
   const episodePrefix = formatMovieCardEpisodePrefix(movie)
   const displayEpisodeTitle = formatMovieCardEpisodeTitle(movie)
-  const withVersion = (url: string) => coverVersion ? `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(coverVersion)}` : url
+  const landscapeCoverSrc = landscapeFallbackSrc || api.coverUrl(movie.id)
+  const usesSharedLandscapeCover = coverStrategy === 'episode-still-or-landscape' && Boolean(landscapeFallbackSrc)
   const coverSrc = coverState.kind === 'episode-still'
     ? api.episodeStillUrl(movie.id)
+    : coverStrategy === 'episode-still-or-landscape'
+    ? landscapeCoverSrc
     : api.coverUrl(movie.id)
+  const resolvedCoverSrc = resolveMovieCardImageSrc(
+    coverSrc,
+    coverVersion,
+    usesSharedLandscapeCover && coverState.kind !== 'episode-still',
+  )
   const coverPlaceholder = '暂无单集海报'
   const displayTitle = isSpecial
     ? specialMovieTitle(movie)
@@ -261,14 +273,25 @@ export function MovieCard({ movie, onUpdated, showBadges = true, hideTitle = fal
             </div>
           ) : (
             <img
-              src={withVersion(coverSrc)}
+              src={resolvedCoverSrc}
               alt={movie.code}
               className={`${adaptiveCover ? 'h-auto' : 'h-full'} w-full object-cover transition-transform duration-500 group-hover:scale-105`}
               loading="lazy"
               onError={(e) => {
                 const img = e.target as HTMLImageElement
                 if (coverStrategy !== 'episode-still-only' && coverState.kind === 'episode-still') {
-                  img.src = withVersion(api.coverUrl(movie.id))
+                  const fallbackSrc = resolveMovieCardImageSrc(
+                    coverStrategy === 'episode-still-or-landscape'
+                      ? landscapeCoverSrc
+                      : api.coverUrl(movie.id),
+                    coverVersion,
+                    usesSharedLandscapeCover,
+                  )
+                  if (img.getAttribute('src') !== fallbackSrc) {
+                    img.src = fallbackSrc
+                    return
+                  }
+                  setCoverLoadFailed(true)
                 } else {
                   setCoverLoadFailed(true)
                 }

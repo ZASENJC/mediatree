@@ -1,6 +1,6 @@
 import type { Movie } from '../api'
 
-export type MovieCardCoverStrategy = 'auto' | 'episode-still-only'
+export type MovieCardCoverStrategy = 'auto' | 'episode-still-only' | 'episode-still-or-landscape'
 export type MovieCardCoverKind = 'cover' | 'episode-still' | 'placeholder'
 
 export interface MovieCardCoverState {
@@ -8,6 +8,11 @@ export interface MovieCardCoverState {
   isEpisode: boolean
   hasEpisodeStill: boolean
   usesLandscape: boolean
+}
+
+export function resolveMovieCardImageSrc(url: string, version: string, sharedArtwork: boolean) {
+  if (!version || sharedArtwork) return url
+  return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(version)}`
 }
 
 type CoverMovie = Pick<Movie, 'tmdb_type' | 'tmdb_episode' | 'episode_number' | 'episode_still' | 'episode_still_local'>
@@ -20,6 +25,15 @@ export function getMovieCardCover(movie: CoverMovie, strategy: MovieCardCoverStr
   if (strategy === 'episode-still-only') {
     return {
       kind: hasEpisodeStill ? 'episode-still' : 'placeholder',
+      isEpisode,
+      hasEpisodeStill,
+      usesLandscape: true,
+    }
+  }
+
+  if (strategy === 'episode-still-or-landscape') {
+    return {
+      kind: hasEpisodeStill ? 'episode-still' : 'cover',
       isEpisode,
       hasEpisodeStill,
       usesLandscape: true,

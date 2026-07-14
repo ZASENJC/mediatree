@@ -940,14 +940,14 @@ async def api_media_file(file_path: str, request: Request):
 
 @app.get("/api/folder-backdrops")
 async def api_folder_backdrops(path: str = Query(""), media_root: str = Query("")):
-    """Return TMDB backdrops for a folder using its scraped tmdb_id."""
+    """Return TMDB backdrops and title logos for a folder."""
     from .tmdb import fetch_tmdb_images
     from .database import get_db
     import re
     if not settings.tmdb_access_token and not settings.tmdb_api_key:
         raise HTTPException(status_code=503, detail="TMDB not configured")
     if not path:
-        return {"backdrops": []}
+        return {"backdrops": [], "logos": []}
     db = await get_db()
     mr_where = " AND media_root=?" if media_root else ""
     mr_params = [media_root] if media_root else []
@@ -975,10 +975,16 @@ async def api_folder_backdrops(path: str = Query(""), media_root: str = Query(""
             if m:
                 tmdb_type = "tv" if re.search(r'\[tmdbtype=tv\]', row2["folder_levels"] or "", re.IGNORECASE) else "movie"
                 result = await fetch_tmdb_images(int(m.group(1)), tmdb_type)
-                return {"backdrops": (result or {}).get("backdrops", [])}
-        return {"backdrops": []}
+                return {
+                    "backdrops": (result or {}).get("backdrops", []),
+                    "logos": (result or {}).get("logos", []),
+                }
+        return {"backdrops": [], "logos": []}
     result = await fetch_tmdb_images(row["tmdb_id"], row["tmdb_type"] or "movie")
-    return {"backdrops": (result or {}).get("backdrops", [])}
+    return {
+        "backdrops": (result or {}).get("backdrops", []),
+        "logos": (result or {}).get("logos", []),
+    }
 
 
 @app.get("/api/tmdb-images/{tmdb_id}")

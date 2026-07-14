@@ -12,8 +12,9 @@ import {
   sanitizeCustomCss,
   type ThemePackage,
 } from './theme'
-import { formatMovieCardEpisodePrefix, formatMovieCardEpisodeTitle, getMovieCardCover } from './components/movieCardCover'
+import { formatMovieCardEpisodePrefix, formatMovieCardEpisodeTitle, getMovieCardCover, resolveMovieCardImageSrc } from './components/movieCardCover'
 import { calculateTheaterPlayerSize } from './player/useAmbientColor'
+import './pages/folder/folderTitle.test'
 
 function createMemoryStorage() {
   const values = new Map<string, string>()
@@ -1200,7 +1201,7 @@ test('home to folder navigation shares the clicked poster with the folder page e
   assert.match(folderSource, /const initialFolderTransition = initialFolderTransitionRef\.current/)
   assert.match(folderSource, /const \[folderTransition, setFolderTransition\] = useState<FolderTransitionState \| null>\(null\)/)
   assert.match(folderSource, /const \[folderEntryBackdropKey, setFolderEntryBackdropKey\] = useState<number \| null>\(null\)/)
-  assert.match(folderSource, /const returnTransitionRef = useRef<FolderTransitionState \| null>\(initialFolderTransition \|\| null\)/)
+  assert.doesNotMatch(folderSource, /returnTransitionRef/)
   assert.match(folderSource, /const folderEntryStartedRef = useRef\(false\)/)
   assert.match(folderSource, /const \[folderEntering, setFolderEntering\] = useState\(false\)/)
   assert.doesNotMatch(folderSource, /useState<FolderTransitionState \| null>\(initialFolderTransition \|\| null\)/)
@@ -1212,9 +1213,10 @@ test('home to folder navigation shares the clicked poster with the folder page e
   assert.match(folderSource, /navigate\(\{ pathname: location\.pathname,\s*search: location\.search,\s*hash: location\.hash \}, \{ replace: true,\s*state: null \}\)/)
   assert.match(folderSource, /\}, \[initialFolderTransition,\s*loading\]\)/)
   assert.match(folderSource, /if \(!folderEntering \|\| !activeBackdrop\) return[\s\S]*setFolderEntryBackdropKey\(fadeKey\)/)
-  assert.match(folderSource, /const goHome = \(\) => \{/)
-  assert.match(folderSource, /navigate\('\/', \{ state: \{ homeReturnTransition: returnTransitionRef\.current \} \}\)/)
-  assert.match(folderSource, /onClick=\{goHome\}/)
+  assert.doesNotMatch(folderSource, /const goHome = \(\) => \{/)
+  assert.doesNotMatch(folderSource, /homeReturnTransition/)
+  assert.doesNotMatch(folderSource, /onClick=\{goHome\}/)
+  assert.doesNotMatch(folderSource, /返回首页/)
   assert.match(folderSource, /window\.setTimeout\(\(\) => setFolderTransition\(null\), FOLDER_ENTRY_TRANSITION_MS\)/)
   assert.match(folderSource, /className=\{`folder-page \$\{folderEntering \? 'is-folder-entering' : ''\} relative z-0 space-y-6`\}/)
   assert.match(folderSource, /className="folder-backdrop-layer pointer-events-none fixed inset-0 -z-10 overflow-hidden"/)
@@ -1273,30 +1275,56 @@ test('home to folder navigation shares the clicked poster with the folder page e
   assert.match(reducedTransitionRule, /animation-duration:\s*1ms\s*!important;/)
 })
 
-test('folder episode cards prefer episode stills and placeholder missing metadata', () => {
+test('folder episode cards fall back to landscape artwork and use a left-aligned adaptive grid', () => {
   const css = readFileSync('src/index.css', 'utf8')
   const folderSource = readFileSync('src/pages/folder/FolderPage.tsx', 'utf8')
+  const cardSource = readFileSync('src/components/MovieCard.tsx', 'utf8')
   const folderSection = cssRuleBody(css, '.folder-episode-section {')
   const folderGrid = cssRuleBody(css, '.folder-episode-grid {')
+  const folderCard = cssRuleBody(css, '.folder-episode-grid > .media-grid-card {')
 
   assert.deepEqual(
-    getMovieCardCover({ tmdb_type: 'tv', tmdb_episode: 3, episode_still: 'https://img.example/still.jpg' }, 'episode-still-only'),
+    getMovieCardCover({ tmdb_type: 'tv', tmdb_episode: 3, episode_still: 'https://img.example/still.jpg' }, 'episode-still-or-landscape'),
     { kind: 'episode-still', isEpisode: true, hasEpisodeStill: true, usesLandscape: true }
   )
   assert.deepEqual(
-    getMovieCardCover({ tmdb_type: 'tv', tmdb_episode: 4 }, 'episode-still-only'),
-    { kind: 'placeholder', isEpisode: true, hasEpisodeStill: false, usesLandscape: true }
+    getMovieCardCover({ tmdb_type: 'tv', tmdb_episode: 4 }, 'episode-still-or-landscape'),
+    { kind: 'cover', isEpisode: true, hasEpisodeStill: false, usesLandscape: true }
   )
   assert.deepEqual(
-    getMovieCardCover({ tmdb_type: 'movie', tmdb_episode: undefined }, 'episode-still-only'),
-    { kind: 'placeholder', isEpisode: false, hasEpisodeStill: false, usesLandscape: true }
+    getMovieCardCover({ tmdb_type: 'movie', tmdb_episode: undefined }, 'episode-still-or-landscape'),
+    { kind: 'cover', isEpisode: false, hasEpisodeStill: false, usesLandscape: true }
   )
   assert.match(folderSection, /padding-top:\s*clamp\(1rem,\s*2\.4vw,\s*1\.5rem\);/)
   assert.match(folderSource, /className="folder-episode-section"/)
-  assert.match(folderGrid, /--mt-media-card-width:\s*16rem;/)
-  assert.match(folderGrid, /--mt-media-card-height:\s*9rem;/)
-  assert.match(folderSource, /folder-episode-grid/)
-  assert.match(folderSource, /coverStrategy="episode-still-only"/)
+  assert.match(folderGrid, /display:\s*grid;/)
+  assert.match(folderGrid, /grid-template-columns:\s*repeat\(auto-fill,\s*minmax\(0,\s*var\(--mt-folder-episode-card-width\)\)\);/)
+  assert.match(folderGrid, /justify-content:\s*space-between;/)
+  assert.doesNotMatch(folderGrid, /justify-content:\s*center;/)
+  assert.match(folderCard, /width:\s*100%;/)
+  assert.match(folderCard, /height:\s*auto;/)
+  assert.match(folderCard, /contain-intrinsic-size:\s*var\(--mt-folder-episode-card-width\)\s+calc\(var\(--mt-folder-episode-card-width\)\s*\*\s*0\.5625\);/)
+  assert.match(folderSource, /className="folder-episode-grid media-grid"/)
+  assert.doesNotMatch(folderSource, /folder-episode-grid grid grid-cols-/)
+  assert.match(folderSource, /const episodeFallbackBackdrop = resolveApiUrl\(backdrops\[0\]\?\.url \|\| folderBackdrop\)/)
+  assert.match(folderSource, /coverStrategy="episode-still-or-landscape"/)
+  assert.match(folderSource, /landscapeFallbackSrc=\{episodeFallbackBackdrop\}/)
+  assert.match(cardSource, /landscapeFallbackSrc \|\| api\.coverUrl\(movie\.id\)/)
+})
+
+test('movie cards keep shared landscape artwork cacheable while versioning movie-owned images', () => {
+  assert.equal(
+    resolveMovieCardImageSrc('https://image.tmdb.org/t/p/w1280/backdrop.jpg', '2026-07-14 12:00:00', true),
+    'https://image.tmdb.org/t/p/w1280/backdrop.jpg',
+  )
+  assert.equal(
+    resolveMovieCardImageSrc('/api/episode-still/42', '2026-07-14 12:00:00', false),
+    '/api/episode-still/42?v=2026-07-14%2012%3A00%3A00',
+  )
+  assert.equal(
+    resolveMovieCardImageSrc('/api/cover/42?size=small', '2026-07-14 12:00:00', false),
+    '/api/cover/42?size=small&v=2026-07-14%2012%3A00%3A00',
+  )
 })
 
 test('folder backdrop header keeps episode controls below the first viewport', () => {
@@ -1308,6 +1336,31 @@ test('folder backdrop header keeps episode controls below the first viewport', (
   assert.doesNotMatch(folderSource, /min-h-\[clamp\(18rem,42vh,30rem\)\]/)
   assert.doesNotMatch(folderSource, /sm:min-h-\[clamp\(20rem,46vh,34rem\)\]/)
   assert.doesNotMatch(folderSource, /pb-10 sm:p-7 sm:pb-16/)
+})
+
+test('folder backdrop arrows use bare icon buttons without circular frames', () => {
+  const folderSource = readFileSync('src/pages/folder/FolderPage.tsx', 'utf8')
+  const arrowControls = folderSource.match(/\/\* Arrow controls[\s\S]*?<div className="pointer-events-none absolute inset-x-0 bottom-0/)?.[0] ?? ''
+
+  assert.match(arrowControls, /aria-label="上一张背景图"/)
+  assert.match(arrowControls, /aria-label="下一张背景图"/)
+  assert.doesNotMatch(arrowControls, /rounded-full/)
+  assert.doesNotMatch(arrowControls, /bg-black\/40/)
+  assert.doesNotMatch(arrowControls, /hover:bg-black\/60/)
+  assert.doesNotMatch(arrowControls, /backdrop-blur/)
+})
+
+test('folder headers omit the generic Folder label', () => {
+  const folderSource = readFileSync('src/pages/folder/FolderPage.tsx', 'utf8')
+
+  assert.doesNotMatch(folderSource, />Folder<\/p>/)
+})
+
+test('folder titles keep a larger gap before the overview', () => {
+  const folderSource = readFileSync('src/pages/folder/FolderPage.tsx', 'utf8')
+
+  assert.match(folderSource, /mt-4 max-w-\[320px\] text-xs leading-relaxed text-gray-400\/70 drop-shadow line-clamp-2/)
+  assert.match(folderSource, /mt-3 max-w-\[320px\] text-xs leading-relaxed text-gray-400 line-clamp-2/)
 })
 
 test('folder season selector keeps inactive tab labels white', () => {
