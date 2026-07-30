@@ -165,3 +165,51 @@ Codex does not provide Claude Code hooks in this repo, so enforce security throu
 - Every release must refresh DockerHub `zasenjc/mediatree:latest` so new Docker installs start from the newest application baseline. Do this from a local build/push with `scripts/push-docker-release.sh`, not GitHub Actions. App-package releases publish only `latest`; full Docker image releases publish both `zasenjc/mediatree:<version>` and `latest`.
 - Keep GitHub Release notes user-facing: write concise functional changes and upgrade guidance for users there, and put implementation details, configuration changes, test notes, and maintainer bookkeeping in `CHANGELOG.md` / `CHANGELOG_zh-CN.md`.
 - When the chosen path is full Docker image update, keep Settings/release messaging aligned so users are guided to host-side `docker compose pull && docker compose up -d` when in-container image replacement is unavailable.
+
+## MediaTree-NEXT Execution Rules
+
+The current workspace is the `MediaTree-NEXT` development line. These rules add the Jellyfin-based migration governance to the repository-specific rules above.
+
+### Canonical Plan and Branch
+
+- `PLAN.md` is the canonical execution plan for the Jellyfin-based MediaTree-NEXT work.
+- All commits for this work must be created on the local `next` branch and pushed only to the remote `next` branch. Before committing, verify `git branch --show-current` is `next`.
+- Never commit migration work directly on `main`, `origin/main`, or another feature branch.
+- Keep `origin` connected to `https://github.com/ZASENJC/mediatree.git`. Use `upstream` for `jellyfin/jellyfin` only after the planned server fork step establishes that remote.
+- Read this file and `PLAN.md` before every run. Preserve user changes and ignored runtime files.
+
+### Confirmed Architecture
+
+- Jellyfin is the only authority for media Items, users, sessions, progress, playback and library state.
+- The new MediaTree clients use the standard Jellyfin API. Do not add a long-term compatibility layer for the old MediaTree FastAPI API.
+- Do not maintain dual scanners, dual primary databases, dual authentication systems or dual playback paths.
+- MediaTree custom endpoints use a separate `/MediaTree/*` namespace and must not alter standard Jellyfin routes or DTO semantics.
+- Migrate MediaTree-specific behavior through a Jellyfin plugin first. Only merge a capability into the server core after source evidence and the approved plan show that the plugin boundary is insufficient.
+- Preserve separate provider behavior for MediaTree, Jellyfin/Emby, SMB and WebDAV clients; do not collapse their contracts into one generic provider.
+
+### Two-Phase Approval Gate
+
+- Phase 1 is the planned fork and frontend/API integration. It may be implemented continuously after the user confirms the repository layout and remote target.
+- Phase 2 starts with a complete Jellyfin server source audit, resource baseline, reduction matrix and plugin migration plan. Until those artifacts exist, only read-only exploration, documentation and explicitly planned measurements are allowed.
+- No Phase 2 physical deletion is allowed until the user reviews and approves the reduction matrix and batch route recorded in `PLAN.md`.
+- A directory name or project reference is not enough evidence for deletion. Trace callers, shared interfaces, DI registration, API, permissions, background jobs, migrations, packaging and relevant tests.
+
+### Plan Changes and Run Completion
+
+- At the beginning of every run, check `PLAN.md` status, the current branch and `git status`.
+- At the end of every run, update `PLAN.md` with the current step, completed work, actual verification, skipped or unavailable verification, blockers and next step.
+- Any write, dependency, architecture, repository, migration, deployment, release or destructive action outside `PLAN.md` requires a proposal to the user first. The proposal must include scope, alternatives, risks, verification and rollback. Update `PLAN.md` only after approval, then execute.
+- Do not retroactively edit the plan to authorize an already completed unplanned action.
+
+### Minimal Verification
+
+- Do not run extra tests. Run only the smallest verification required by the current change: affected build, directly relevant tests and one relevant smoke path.
+- Do not run full suites, all platforms, all devices, unrelated screenshots, broad E2E or repeated performance tests unless the current `PLAN.md` step explicitly requires them.
+- Resource measurements in the planned baseline and after an approved reduction batch are required acceptance evidence, not optional extra testing.
+- If a necessary check cannot run, record it as unavailable; do not claim completion.
+
+### Source and License Safety
+
+- Retain Jellyfin copyright and GPL-2.0 requirements in any derived server distribution.
+- Use MediaTree branding and assets; do not present the product as an official Jellyfin project or reuse the Jellyfin logo without permission.
+- Read exports, callers, shared utilities and tests before editing a file. Keep changes surgical and avoid opportunistic refactors.
