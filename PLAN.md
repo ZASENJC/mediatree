@@ -463,4 +463,4 @@
 | 日期 | 阶段 | 本次完成 | 验证 | 剩余/阻塞 | 下一步 |
 |---|---|---|---|---|---|
 | 2026-07-31 | 规划 | 创建两部分执行规划和治理规则；已完成文档级复核 | 检查两份文件的结构、关键约束、审批闸门，以及无尾随空白/Tab | 远端仓库名称、布局待用户确认；未执行 fork、克隆或构建 | 用户审查规划后进入 P1.0 |
-| 2026-07-31 | P1.0 初始化 | 工作区从 `/Volumes/STU/Code/jellyfin` 重命名为 `/Volumes/STU/Code/mediatree-NEXT`；`origin` 连接到 `ZASENJC/mediatree`；从 `origin/main` 创建本地 `next`；更新分支和执行规则，并将规则与规划提交到 `next` | 已核对当前目录、`next`、`origin` URL、`origin/main` 基线 commit 及文档中旧路径/远端引用；仅执行文档格式和 Git 状态检查，未运行构建或测试 | 尚未导入 Jellyfin、添加 `upstream` 或运行构建基线；第二部分仍受审批闸门约束 | 推送 `next` 建立远端跟踪分支，再建立 Jellyfin 服务端来源与基线 |
+| 2026-07-31 | P1.0 初始化 | 工作区从 `/Volumes/STU/Code/jellyfin` 重命名为 `/Volumes/STU/Code/mediatree-NEXT`；`origin` 连接到 `ZASENJC/mediatree`；从 `origin/main` 创建本地 `next`；更新分支和执行规则；规则与规划已提交并推送到远端 `next` | 已核对当前目录、`next`、`origin` URL、`origin/main` 基线 commit、`origin/next` 跟踪状态及文档中旧路径/远端引用；仅执行文档格式和 Git 状态检查，未运行构建或测试 | 尚未导入 Jellyfin、添加 `upstream` 或运行构建基线；第二部分仍受审批闸门约束 | 建立 Jellyfin 服务端来源与 P1.0 基线 |
