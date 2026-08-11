@@ -1,3 +1,5 @@
+
+
 <p align="center">
   <img src="docs/assets/logo.png" alt="MediaTree" width="112" />
 </p>
@@ -51,7 +53,7 @@ MediaTree 面向把电影、电视剧、动漫和私人片库保存在自己硬�
 
 ## 快速部署
 
-新建 `.env` 和 `docker-compose.yml`，按注释改好数据目录和媒体目录后启动；管理员账号可以预置，也可以首次打开网页时创建：
+新建 `.env` 和 `docker-compose.yml`，按注释改好数据目录和媒体目录后启动（注：`.env` 为本地敏感配置，请勿提交至版本控制系统）；管理员账号可以预置，也可以首次打开网页时创建：
 
 ```yaml
 services:
